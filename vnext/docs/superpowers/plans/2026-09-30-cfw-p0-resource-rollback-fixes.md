@@ -10,6 +10,11 @@ User-approved scope: fix the measured resource regression and old/new catalog/af
 - [x] Repeat large-body and altered-history checks: 80/80 ascending and 20/20 reversed-order successes; all dispatches exactly once, twenty success-only sampled windows, unchanged delayed-refresh hashes.
 - [x] Record all favorable and adverse results, source/runtime boundaries and current architecture ruling in the [resource evidence](../research/2026-09-30-cfw-resource-remediation/README.md).
 - [ ] Identify and reduce remaining ordinary allocation/background holding costs with controlled capture and frame/read diagnostics. Task 1 remains open.
+- [x] Preserve the failed capture diagnostic and verify the successful storage subset separately: 4,000 offers, 712 unsent client-cap drops, one failed dump write, and 3,287 successful rows. Restore the isolated diagnostic Worker to its archived ordinary version. This run cannot establish capture cost or resource acceptance.
+- [x] Verify and reduce preparation-only closure retention in actual workerd, preserving cancellation and completion ownership: `5934d23d`, 18 independently audited snapshots and 100 focused regression tests. This proves the narrow ownership change, not cloud resource acceptance.
+- [x] Complete exact frozen full CI for `5934d23d`: 5,248 passed, 2 skipped, 0 failed; all other stages passed and 2,307 source hashes matched afterward. Same-lock dependency reuse remains a clean-install gap.
+- [ ] Complete unchanged cloud resource qualification for the preparation-ownership candidate.
+- [ ] Validate explicit driver task-retirement accounting before another remote load comparison. Keep the failed runner and all dropped offers in the evidence.
 - [ ] Pass joint enabled-feature resource qualification, remaining fault/cancellation/protocol coverage and one-hour mixed soak.
 - [ ] Complete catalog legacy-writer and affinity rollback compatibility (Tasks 2 and 3).
 - [ ] Complete combined qualification and integrate reviewed passing work into vNext (Task 4). No production deployment or push in this phase.

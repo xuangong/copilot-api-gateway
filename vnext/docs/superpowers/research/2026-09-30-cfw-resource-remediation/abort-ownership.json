@@ -1,0 +1,2373 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-09-30",
+  "candidate": "A: release preparation-only args/factory references",
+  "productFiles": [
+    "vnext/packages/gateway/src/data-plane/chat-flow/responses/serve.ts",
+    "vnext/packages/gateway/src/data-plane/chat-flow/responses/turn.ts"
+  ],
+  "changes": [
+    "Create inbound abort and unlink closures in a module-level helper taking only the signal/controller; pass unlink directly to completion.finally.",
+    "Clear the pending input slot when the existing preparation callback takes ownership, before pre-abort or factory execution; preserve Promise scheduling."
+  ],
+  "testFile": "vnext/packages/gateway/tests/data-plane/chat-flow/responses/abort-ownership.test.ts",
+  "scope": {
+    "runtime": "Actual local workerd through Node-launched Wrangler, not deployed Cloudflare Workers.",
+    "measurement": "Snapshot-perturbed object-retainer diagnostics; no collectGarbage call in valid runs.",
+    "fixtureMarkerPayloadBytes": 1048576,
+    "payloadInterpretation": "Fixture capacity only; not measured memory savings.",
+    "claims": [
+      "Synthetic objects exclusive to serve args or preparation factory stop being retained after preparation in the tested scenarios.",
+      "Factory marker remains present while preparation is held, with valid positive and negative controls."
+    ],
+    "notEstablished": [
+      "Release of complete raw request bodies or strings legitimately shared with merged input, affinity or continuation state.",
+      "Dominator retained size, physical memory savings, ordinary-request latency/CPU/memory improvement, or the cause of the prior 40 MiB difference.",
+      "Production CFW resource acceptance, rollout safety or catalog/affinity rollback compatibility."
+    ]
+  },
+  "runs": {
+    "baseline": {
+      "attempt": "red-05",
+      "sourceHead": "6238ab6ecd0ac8395b330dcb2034afb549f7ed40",
+      "sourceManifestSha256": "c9303c8637d81c7c688ddba24fc65e58f3fb3e485f9abce4351cb2ff30dcacc5",
+      "productSourceSha256": {
+        "vnext/packages/gateway/src/data-plane/chat-flow/responses/serve.ts": "75efcf6502ccc8c6eade331461adf22b3261dc978cea151d7ff2ce493a43d592",
+        "vnext/packages/gateway/src/data-plane/chat-flow/responses/turn.ts": "7f32a1d7a959d72e40333bb20c7ba4f9cceaed6813e71688061f181eee4f2652"
+      },
+      "harnessSha256": {
+        "prepare.py": "617fa3473320baa9eb009eca8949971dedf97aefc5c2652f3f1ea8e54cd7deec",
+        "entry.template.ts": "80b71fee56f0bb3974d9a233c39e9e27b705d0f363e083f34ddb4f8be78fe4d1",
+        "measure.ts": "8c770aa049f31f8ac2b852508fdc582026deea32457dd2b72f36f87ab2bf5410",
+        "analyze.py": "49d65ee3699acbcfb91ff5c0e74509c6ea1d1f721ed5c815685a72f9b9587d95"
+      },
+      "toolchain": {
+        "Wrangler entry": {
+          "sha256": "72d02815cbffc9ad14e1667188296e7126e13f0d90bfbb6046db8e6c4b6ff39a"
+        },
+        "workerd binary": {
+          "sha256": "612ba8ee37c4c15f597e918b9ab641bb7e9e6a4c33bc966f022e3eeff32f89af"
+        },
+        "wrangler package.json": {
+          "sha256": "9d508a0e56dc1f19154483feb3211d437ef116e7eff231487a176a0c23e7fae9",
+          "version": "4.97.0"
+        },
+        "workerd package.json": {
+          "sha256": "aac043954821034e16550ce3df8b192fdb06cad33f84d467e1ed24d439e06ffa",
+          "version": "1.20260601.1"
+        },
+        "Node launcher binary": {
+          "sha256": "08dad0581f00a0cabf4d49ec92ca1f25fdfd01c2c18fa8e92b35f04d4c24c164"
+        }
+      },
+      "runtimeIdentity": "Owned listening workerd pid/executable recorded locally and matched the hashed installed runtime; runtime stopped cleanly.",
+      "prepareExitCode": 0,
+      "runtimeStopExitCode": 0,
+      "scenarios": {
+        "serve": {
+          "scenario": "serve-error",
+          "measureExitCode": 0,
+          "analyzeExitCode": 0,
+          "diagnosticValid": true,
+          "bundleSha256": "a751a2fdcbd86bba899748e552af5974f4e55cc83360374150150cacd5566694",
+          "analysisSha256": "29ca9c6c592945109ba2c6a3fc891f534660e84555d2db6f7d8c6d493e86ef7b",
+          "stages": [
+            {
+              "stage": "cold",
+              "targetObjects": 0,
+              "positiveObjects": 0,
+              "negativeObjects": 0,
+              "controlsValid": true,
+              "stageExpectationsMet": true,
+              "snapshotSha256": "4ad194f56de7a27b80c5601f47f8d49e72664aed5aa2f46fcd8b5859bf814b30",
+              "barrierElapsedMs": null,
+              "semanticBefore": {
+                "sourceSha": "c9303c8637d81c7c688ddba24fc65e58f3fb3e485f9abce4351cb2ff30dcacc5",
+                "variant": "red",
+                "outboundAttempts": 0,
+                "active": null
+              },
+              "semanticAfter": {
+                "sourceSha": "c9303c8637d81c7c688ddba24fc65e58f3fb3e485f9abce4351cb2ff30dcacc5",
+                "variant": "red",
+                "outboundAttempts": 0,
+                "active": null
+              },
+              "targetPaths": []
+            },
+            {
+              "stage": "dump-held",
+              "targetObjects": 1,
+              "positiveObjects": 1,
+              "negativeObjects": 0,
+              "controlsValid": true,
+              "stageExpectationsMet": true,
+              "snapshotSha256": "97736b4536c5956885388cc9416c7b30443789a603898e4e27355ed142d5486c",
+              "barrierElapsedMs": 747.5340000000001,
+              "semanticBefore": {
+                "sourceSha": "c9303c8637d81c7c688ddba24fc65e58f3fb3e485f9abce4351cb2ff30dcacc5",
+                "variant": "red",
+                "outboundAttempts": 0,
+                "active": {
+                  "id": "red_serve",
+                  "scenario": "serve-error",
+                  "readyStatus": 400,
+                  "eventTypes": [
+                    "error"
+                  ],
+                  "factoryCalls": 0,
+                  "drainComplete": false
+                }
+              },
+              "semanticAfter": {
+                "sourceSha": "c9303c8637d81c7c688ddba24fc65e58f3fb3e485f9abce4351cb2ff30dcacc5",
+                "variant": "red",
+                "outboundAttempts": 0,
+                "active": {
+                  "id": "red_serve",
+                  "scenario": "serve-error",
+                  "readyStatus": 400,
+                  "eventTypes": [
+                    "error"
+                  ],
+                  "factoryCalls": 0,
+                  "drainComplete": false
+                }
+              },
+              "targetPaths": [
+                {
+                  "objectType": "object",
+                  "objectName": "AbortOwnershipMarker",
+                  "objectId": 2030629,
+                  "payloadType": "Uint8Array",
+                  "directHolders": [
+                    {
+                      "holder": {
+                        "index": 551236,
+                        "id": 2030441,
+                        "type": "object",
+                        "name": "Object",
+                        "selfSize": 36
+                      },
+                      "edge": {
+                        "type": "property",
+                        "name": "marker"
+                      }
+                    }
+                  ],
+                  "rootPathIgnoringWeakEdges": [
+                    {
+                      "holder": {
+                        "index": 0,
+                        "id": 1,
+                        "type": "synthetic",
+                        "name": "",
+                        "selfSize": 0
+                      },
+                      "edge": {
+                        "type": "element",
+                        "name": 1
+                      },
+                      "target": {
+                        "index": 1,
+                        "id": 3,
+                        "type": "synthetic",
+                        "name": "(GC roots)",
+                        "selfSize": 0
+                      }
+                    },
+                    {
+                      "holder": {
+                        "index": 1,
+                        "id": 3,
+                        "type": "synthetic",
+                        "name": "(GC roots)",
+                        "selfSize": 0
+                      },
+                      "edge": {
+                        "type": "element",
+                        "name": 33
+                      },
+                      "target": {
+                        "index": 556575,
+                        "id": 164,
+                        "type": "synthetic",
+                        "name": "workerd / IsolateBase",
+                        "selfSize": 704
+                      }
+                    },
+                    {
+                      "holder": {
+                        "index": 556575,
+                        "id": 164,
+                        "type": "synthetic",
+                        "name": "workerd / IsolateBase",
+                        "selfSize": 704
+                      },
+                      "edge": {
+                        "type": "internal",
+                        "name": "heapTracer"
+                      },
+                      "target": {
+                        "index": 556576,
+                        "id": 166,
+                        "type": "native",
+                        "name": "workerd / HeapTracer",
+                        "selfSize": 112
+                      }
+                    },
+                    {
+                      "holder": {
+                        "index": 556576,
+                        "id": 166,
+                        "type": "native",
+                        "name": "workerd / HeapTracer",
+                        "selfSize": 112
+                      },
+                      "edge": {
+                        "type": "internal",
+                        "name": "wrapper"
+                      },
+                      "target": {
+                        "index": 556663,
+                        "id": 340,
+                        "type": "native",
+                        "name": "workerd / AbortSignal",
+                        "selfSize": 432
+                      }
+                    },
+                    {
+                      "holder": {
+                        "index": 556663,
+                        "id": 340,
+                        "type": "native",
+                        "name": "workerd / AbortSignal",
+                        "selfSize": 432
+                      },
+                      "edge": {
+                        "type": "internal",
+                        "name": "native_to_javascript"
+                      },
+                      "target": {
+                        "index": 551234,
+                        "id": 2030437,
+                        "type": "native",
+                        "name": "CppgcShim",
+                        "selfSize": 72
+                      }
+                    },
+                    {
+                      "holder": {
+                        "index": 551234,
+                        "id": 2030437,
+                        "type": "native",
+                        "name": "CppgcShim",
+                        "selfSize": 72
+                      },
+                      "edge": {
+                        "type": "element",
+                        "name": 4
+                      },
+                      "target": {
+                        "index": 14341,
+                        "id": 1101611,
+                        "type": "closure",
+                        "name": "",
+                        "selfSize": 28
+                      }
+                    },
+                    {
+                      "holder": {
+                        "index": 14341,
+                        "id": 1101611,
+                        "type": "closure",
+                        "name": "",
+                        "selfSize": 28
+                      },
+                      "edge": {
+                        "type": "internal",
+                        "name": "context"
+                      },
+                      "target": {
+                        "index": 551235,
+                        "id": 2030439,
+                        "type": "object",
+                        "name": "system / Context",
+                        "selfSize": 36
+                      }
+                    },
+                    {
+                      "holder": {
+                        "index": 551235,
+                        "id": 2030439,
+                        "type": "object",
+                        "name": "system / Context",
+                        "selfSize": 36
+                      },
+                      "edge": {
+                        "type": "context",
+                        "name": "args"
+                      },
+                      "target": {
+                        "index": 551236,
+                        "id": 2030441,
+                        "type": "object",
+                        "name": "Object",
+                        "selfSize": 36
+                      }
+                    },
+                    {
+                      "holder": {
+                        "index": 551236,
+                        "id": 2030441,
+                        "type": "object",
+                        "name": "Object",
+                        "selfSize": 36
+                      },
+                      "edge": {
+                        "type": "property",
+                        "name": "marker"
+                      },
+                      "target": {
+                        "index": 551330,
+                        "id": 2030629,
+                        "type": "object",
+                        "name": "AbortOwnershipMarker",
+                        "selfSize": 60
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "stage": "settled-retained-turn",
+              "targetObjects": 1,
+              "positiveObjects": 1,
+              "negativeObjects": 0,
+              "controlsValid": true,
+              "stageExpectationsMet": true,
+              "snapshotSha256": "f6cc2008b1518693872eddab683a32148f6c5baabd127369077ee8be49fb3ced",
+              "barrierElapsedMs": null,
+              "semanticBefore": {
+                "sourceSha": "c9303c8637d81c7c688ddba24fc65e58f3fb3e485f9abce4351cb2ff30dcacc5",
+                "variant": "red",
+                "outboundAttempts": 0,
+                "active": {
+                  "id": "red_serve",
+                  "scenario": "serve-error",
+                  "readyStatus": 400,
+                  "eventTypes": [
+                    "error"
+                  ],
+                  "factoryCalls": 0,
+                  "drainComplete": true,
+                  "completion": {
+                    "outcome": "failed",
+                    "cleanupComplete": true
+                  }
+                }
+              },
+              "semanticAfter": {
+                "sourceSha": "c9303c8637d81c7c688ddba24fc65e58f3fb3e485f9abce4351cb2ff30dcacc5",
+                "variant": "red",
+                "outboundAttempts": 0,
+                "active": {
+                  "id": "red_serve",
+                  "scenario": "serve-error",
+                  "readyStatus": 400,
+                  "eventTypes": [
+                    "error"
+                  ],
+                  "factoryCalls": 0,
+                  "drainComplete": true,
+                  "completion": {
+                    "outcome": "failed",
+                    "cleanupComplete": true
+                  }
+                }
+              },
+              "targetPaths": [
+                {
+                  "objectType": "object",
+                  "objectName": "AbortOwnershipMarker",
+                  "objectId": 2030629,
+                  "payloadType": "Uint8Array",
+                  "directHolders": [
+                    {
+                      "holder": {
+                        "index": 551200,
+                        "id": 2030441,
+                        "type": "object",
+                        "name": "Object",
+                        "selfSize": 36
+                      },
+                      "edge": {
+                        "type": "property",
+                        "name": "marker"
+                      }
+                    }
+                  ],
+                  "rootPathIgnoringWeakEdges": [
+                    {
+                      "holder": {
+                        "index": 0,
+                        "id": 1,
+                        "type": "synthetic",
+                        "name": "",
+                        "selfSize": 0
+                      },
+                      "edge": {
+                        "type": "shortcut",
+                        "name": "2"
+                      },
+                      "target": {
+                        "index": 3479,
+                        "id": 6939,
+                        "type": "hidden",
+                        "name": "system / NativeContext",
+                        "selfSize": 1204
+                      }
+                    },
+                    {
+                      "holder": {
+                        "index": 3479,
+                        "id": 6939,
+                        "type": "hidden",
+                        "name": "system / NativeContext",
+                        "selfSize": 1204
+                      },
+                      "edge": {
+                        "type": "internal",
+                        "name": "global_object"
+                      },
+                      "target": {
+                        "index": 41237,
+                        "id": 82221,
+                        "type": "object",
+                        "name": "ServiceWorkerGlobalScope [JSGlobalObject]",
+                        "selfSize": 40
+                      }
+                    },
+                    {
+                      "holder": {
+                        "index": 41237,
+                        "id": 82221,
+                        "type": "object",
+                        "name": "ServiceWorkerGlobalScope [JSGlobalObject]",
+                        "selfSize": 40
+                      },
+                      "edge": {
+                        "type": "property",
+                        "name": "PerformanceMeasure"
+                      },
+                      "target": {
+                        "index": 60974,
+                        "id": 121781,
+                        "type": "closure",
+                        "name": "PerformanceMeasure",
+                        "selfSize": 32
+                      }
+                    },
+                    {
+                      "holder": {
+                        "index": 60974,
+                        "id": 121781,
+                        "type": "closure",
+                        "name": "PerformanceMeasure",
+                        "selfSize": 32
+                      },
+                      "edge": {
+                        "type": "internal",
+                        "name": "context"
+                      },
+                      "target": {
+                        "index": 41934,
+                        "id": 83615,
+                        "type": "object",
+                        "name": "system / Context",
+                        "selfSize": 14956
+                      }
+                    },
+                    {
+                      "holder": {
+                        "index": 41934,
+                        "id": 83615,
+                        "type": "object",
+                        "name": "system / Context",
+                        "selfSize": 14956
+                      },
+                      "edge": {
+                        "type": "context",
+                        "name": "active"
+                      },
+                      "target": {
+                        "index": 334659,
+                        "id": 1626501,
+                        "type": "object",
+                        "name": "Object",
+                        "selfSize": 56
+                      }
+                    },
+                    {
+                      "holder": {
+                        "index": 334659,
+                        "id": 1626501,
+                        "type": "object",
+                        "name": "Object",
+                        "selfSize": 56
+                      },
+                      "edge": {
+                        "type": "property",
+                        "name": "turn"
+                      },
+                      "target": {
+                        "index": 551282,
+                        "id": 2030615,
+                        "type": "object",
+                        "name": "Object",
+                        "selfSize": 12
+                      }
+                    },
+                    {
+                      "holder": {
+                        "index": 551282,
+                        "id": 2030615,
+                        "type": "object",
+                        "name": "Object",
+                        "selfSize": 12
+                      },
+                      "edge": {
+                        "type": "property",
+                        "name": "events"
+                      },
+                      "target": {
+                        "index": 551277,
+                        "id": 2023963,
+                        "type": "object",
+                        "name": "run",
+                        "selfSize": 88
+                      }
+                    },
+                    {
+                      "holder": {
+                        "index": 551277,
+                        "id": 2023963,
+                        "type": "object",
+                        "name": "run",
+                        "selfSize": 88
+                      },
+                      "edge": {
+                        "type": "internal",
+                        "name": "context"
+                      },
+                      "target": {
+                        "index": 547996,
+                        "id": 2023935,
+                        "type": "object",
+                        "name": "system / Context",
+                        "selfSize": 124
+                      }
+                    },
+                    {
+                      "holder": {
+                        "index": 547996,
+                        "id": 2023935,
+                        "type": "object",
+                        "name": "system / Context",
+                        "selfSize": 124
+                      },
+                      "edge": {
+                        "type": "context",
+                        "name": "input"
+                      },
+                      "target": {
+                        "index": 550507,
+                        "id": 2028999,
+                        "type": "closure",
+                        "name": "",
+                        "selfSize": 28
+                      }
+                    },
+                    {
+                      "holder": {
+                        "index": 550507,
+                        "id": 2028999,
+                        "type": "closure",
+                        "name": "",
+                        "selfSize": 28
+                      },
+                      "edge": {
+                        "type": "internal",
+                        "name": "context"
+                      },
+                      "target": {
+                        "index": 551199,
+                        "id": 2030439,
+                        "type": "object",
+                        "name": "system / Context",
+                        "selfSize": 36
+                      }
+                    },
+                    {
+                      "holder": {
+                        "index": 551199,
+                        "id": 2030439,
+                        "type": "object",
+                        "name": "system / Context",
+                        "selfSize": 36
+                      },
+                      "edge": {
+                        "type": "context",
+                        "name": "args"
+                      },
+                      "target": {
+                        "index": 551200,
+                        "id": 2030441,
+                        "type": "object",
+                        "name": "Object",
+                        "selfSize": 36
+                      }
+                    },
+                    {
+                      "holder": {
+                        "index": 551200,
+                        "id": 2030441,
+                        "type": "object",
+                        "name": "Object",
+                        "selfSize": 36
+                      },
+                      "edge": {
+                        "type": "property",
+                        "name": "marker"
+                      },
+                      "target": {
+                        "index": 551290,
+                        "id": 2030629,
+                        "type": "object",
+                        "name": "AbortOwnershipMarker",
+                        "selfSize": 60
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "stage": "forgotten",
+              "targetObjects": 0,
+              "positiveObjects": 0,
+              "negativeObjects": 0,
+              "controlsValid": true,
+              "stageExpectationsMet": true,
+              "snapshotSha256": "9b32e7dcb973405c9aa390287cbba1771ca58cd54ccda8ba38ae83baeb2adf07",
+              "barrierElapsedMs": null,
+              "semanticBefore": {
+                "sourceSha": "c9303c8637d81c7c688ddba24fc65e58f3fb3e485f9abce4351cb2ff30dcacc5",
+                "variant": "red",
+                "outboundAttempts": 0,
+                "active": null
+              },
+              "semanticAfter": {
+                "sourceSha": "c9303c8637d81c7c688ddba24fc65e58f3fb3e485f9abce4351cb2ff30dcacc5",
+                "variant": "red",
+                "outboundAttempts": 0,
+                "active": null
+              },
+              "targetPaths": []
+            }
+          ]
+        },
+        "factory": {
+          "scenario": "factory-success",
+          "measureExitCode": 0,
+          "analyzeExitCode": 0,
+          "diagnosticValid": true,
+          "bundleSha256": "a751a2fdcbd86bba899748e552af5974f4e55cc83360374150150cacd5566694",
+          "analysisSha256": "5981c63d26ffc1e8fd34ed70ba33046c63bb58d31f9caa523641e7593a6a22de",
+          "stages": [
+            {
+              "stage": "cold",
+              "targetObjects": 0,
+              "positiveObjects": 0,
+              "negativeObjects": 0,
+              "controlsValid": true,
+              "stageExpectationsMet": true,
+              "snapshotSha256": "1bd93cf7d2b4f5d64c8d912a737dca381eeacb03cf687291dc0b3d5d701382c6",
+              "barrierElapsedMs": null,
+              "semanticBefore": {
+                "sourceSha": "c9303c8637d81c7c688ddba24fc65e58f3fb3e485f9abce4351cb2ff30dcacc5",
+                "variant": "red",
+                "outboundAttempts": 0,
+                "active": null
+              },
+              "semanticAfter": {
+                "sourceSha": "c9303c8637d81c7c688ddba24fc65e58f3fb3e485f9abce4351cb2ff30dcacc5",
+                "variant": "red",
+                "outboundAttempts": 0,
+                "active": null
+              },
+              "targetPaths": []
+            },
+            {
+              "stage": "preparation-held",
+              "targetObjects": 1,
+              "positiveObjects": 1,
+              "negativeObjects": 0,
+              "controlsValid": true,
+              "stageExpectationsMet": true,
+              "snapshotSha256": "fd8048cec45ccc0919ef99cdb3ed72d0285a85097270f9c0601511609e98d738",
+              "barrierElapsedMs": 572.826542,
+              "semanticBefore": {
+                "sourceSha": "c9303c8637d81c7c688ddba24fc65e58f3fb3e485f9abce4351cb2ff30dcacc5",
+                "variant": "red",
+                "outboundAttempts": 0,
+                "active": {
+                  "id": "red_factory",
+                  "scenario": "factory-success",
+                  "eventTypes": [],
+                  "factoryCalls": 1,
+                  "drainComplete": false
+                }
+              },
+              "semanticAfter": {
+                "sourceSha": "c9303c8637d81c7c688ddba24fc65e58f3fb3e485f9abce4351cb2ff30dcacc5",
+                "variant": "red",
+                "outboundAttempts": 0,
+                "active": {
+                  "id": "red_factory",
+                  "scenario": "factory-success",
+                  "eventTypes": [],
+                  "factoryCalls": 1,
+                  "drainComplete": false
+                }
+              },
+              "targetPaths": [
+                {
+                  "objectType": "object",
+                  "objectName": "AbortOwnershipMarker",
+                  "objectId": 5737779,
+                  "payloadType": "Uint8Array",
+                  "directHolders": [
+                    {
+                      "holder": {
+                        "index": 548539,
+                        "id": 5738599,
+                        "type": "object",
+                        "name": "system / Context",
+                        "selfSize": 32
+                      },
+                      "edge": {
+                        "type": "context",
+                        "name": "marker"
+                      }
+                    }
+                  ],
+                  "rootPathIgnoringWeakEdges": [
+                    {
+                      "holder": {
+                        "index": 0,
+                        "id": 1,
+                        "type": "synthetic",
+                        "name": "",
+                        "selfSize": 0
+                      },
+                      "edge": {
+                        "type": "element",
+                        "name": 1
+                      },
+                      "target": {
+                        "index": 1,
+                        "id": 3,
+                        "type": "synthetic",
+                        "name": "(GC roots)",
+                        "selfSize": 0
+                      }
+                    },
+                    {
+                      "holder": {
+                        "index": 1,
+                        "id": 3,
+                        "type": "synthetic",
+                        "name": "(GC roots)",
+                        "selfSize": 0
+                      },
+                      "edge": {
+                        "type": "element",
+                        "name": 33
+                      },
+                      "target": {
+                        "index": 555699,
+                        "id": 1044,
+                        "type": "synthetic",
+                        "name": "workerd / IsolateBase",
+                        "selfSize": 704
+                      }
+                    },
+                    {
+                      "holder": {
+                        "index": 555699,
+                        "id": 1044,
+                        "type": "synthetic",
+                        "name": "workerd / IsolateBase",
+                        "selfSize": 704
+                      },
+                      "edge": {
+                        "type": "internal",
+                        "name": "heapTracer"
+                      },
+                      "target": {
+                        "index": 555700,
+                        "id": 1046,
+                        "type": "native",
+                        "name": "workerd / HeapTracer",
+                        "selfSize": 112
+                      }
+                    },
+                    {
+                      "holder": {
+                        "index": 555700,
+                        "id": 1046,
+                        "type": "native",
+                        "name": "workerd / HeapTracer",
+                        "selfSize": 112
+                      },
+                      "edge": {
+                        "type": "internal",
+                        "name": "wrapper"
+                      },
+                      "target": {
+                        "index": 555787,
+                        "id": 1220,
+                        "type": "native",
+                        "name": "workerd / AbortSignal",
+                        "selfSize": 432
+                      }
+                    },
+                    {
+                      "holder": {
+                        "index": 555787,
+                        "id": 1220,
+                        "type": "native",
+                        "name": "workerd / AbortSignal",
+                        "selfSize": 432
+                      },
+                      "edge": {
+                        "type": "internal",
+                        "name": "native_to_javascript"
+                      },
+                      "target": {
+                        "index": 549709,
+                        "id": 5740489,
+                        "type": "native",
+                        "name": "CppgcShim",
+                        "selfSize": 72
+                      }
+                    },
+                    {
+                      "holder": {
+                        "index": 549709,
+                        "id": 5740489,
+                        "type": "native",
+                        "name": "CppgcShim",
+                        "selfSize": 72
+                      },
+                      "edge": {
+                        "type": "element",
+                        "name": 4
+                      },
+                      "target": {
+                        "index": 14364,
+                        "id": 4815869,
+                        "type": "closure",
+                        "name": "",
+                        "selfSize": 28
+                      }
+                    },
+                    {
+                      "holder": {
+                        "index": 14364,
+                        "id": 4815869,
+                        "type": "closure",
+                        "name": "",
+                        "selfSize": 28
+                      },
+                      "edge": {
+                        "type": "internal",
+                        "name": "context"
+                      },
+                      "target": {
+                        "index": 548042,
+                        "id": 5737787,
+                        "type": "object",
+                        "name": "system / Context",
+                        "selfSize": 124
+                      }
+                    },
+                    {
+                      "holder": {
+                        "index": 548042,
+                        "id": 5737787,
+                        "type": "object",
+                        "name": "system / Context",
+                        "selfSize": 124
+                      },
+                      "edge": {
+                        "type": "context",
+                        "name": "input"
+                      },
+                      "target": {
+                        "index": 548537,
+                        "id": 5738595,
+                        "type": "closure",
+                        "name": "",
+                        "selfSize": 28
+                      }
+                    },
+                    {
+                      "holder": {
+                        "index": 548537,
+                        "id": 5738595,
+                        "type": "closure",
+                        "name": "",
+                        "selfSize": 28
+                      },
+                      "edge": {
+                        "type": "internal",
+                        "name": "context"
+                      },
+                      "target": {
+                        "index": 548539,
+                        "id": 5738599,
+                        "type": "object",
+                        "name": "system / Context",
+                        "selfSize": 32
+                      }
+                    },
+                    {
+                      "holder": {
+                        "index": 548539,
+                        "id": 5738599,
+                        "type": "object",
+                        "name": "system / Context",
+                        "selfSize": 32
+                      },
+                      "edge": {
+                        "type": "context",
+                        "name": "marker"
+                      },
+                      "target": {
+                        "index": 548037,
+                        "id": 5737779,
+                        "type": "object",
+                        "name": "AbortOwnershipMarker",
+                        "selfSize": 60
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "stage": "dump-held",
+              "targetObjects": 1,
+              "positiveObjects": 1,
+              "negativeObjects": 0,
+              "controlsValid": true,
+              "stageExpectationsMet": true,
+              "snapshotSha256": "42cae556a03079eab433e9dc9d447faaa3fbab02a746b45fc0ee8e2f655395d0",
+              "barrierElapsedMs": 1357.653833,
+              "semanticBefore": {
+                "sourceSha": "c9303c8637d81c7c688ddba24fc65e58f3fb3e485f9abce4351cb2ff30dcacc5",
+                "variant": "red",
+                "outboundAttempts": 0,
+                "active": {
+                  "id": "red_factory",
+                  "scenario": "factory-success",
+                  "readyStatus": 200,
+                  "eventTypes": [
+                    "response.completed"
+                  ],
+                  "terminalId": "resp_probe",
+                  "factoryCalls": 1,
+                  "drainComplete": false
+                }
+              },
+              "semanticAfter": {
+                "sourceSha": "c9303c8637d81c7c688ddba24fc65e58f3fb3e485f9abce4351cb2ff30dcacc5",
+                "variant": "red",
+                "outboundAttempts": 0,
+                "active": {
+                  "id": "red_factory",
+                  "scenario": "factory-success",
+                  "readyStatus": 200,
+                  "eventTypes": [
+                    "response.completed"
+                  ],
+                  "terminalId": "resp_probe",
+                  "factoryCalls": 1,
+                  "drainComplete": false
+                }
+              },
+              "targetPaths": [
+                {
+                  "objectType": "object",
+                  "objectName": "AbortOwnershipMarker",
+                  "objectId": 5737779,
+                  "payloadType": "Uint8Array",
+                  "directHolders": [
+                    {
+                      "holder": {
+                        "index": 548649,
+                        "id": 5738599,
+                        "type": "object",
+                        "name": "system / Context",
+                        "selfSize": 32
+                      },
+                      "edge": {
+                        "type": "context",
+                        "name": "marker"
+                      }
+                    }
+                  ],
+                  "rootPathIgnoringWeakEdges": [
+                    {
+                      "holder": {
+                        "index": 0,
+                        "id": 1,
+                        "type": "synthetic",
+                        "name": "",
+                        "selfSize": 0
+                      },
+                      "edge": {
+                        "type": "element",
+                        "name": 1
+                      },
+                      "target": {
+                        "index": 1,
+                        "id": 3,
+                        "type": "synthetic",
+                        "name": "(GC roots)",
+                        "selfSize": 0
+                      }
+                    },
+                    {
+                      "holder": {
+                        "index": 1,
+                        "id": 3,
+                        "type": "synthetic",
+                        "name": "(GC roots)",
+                        "selfSize": 0
+                      },
+                      "edge": {
+                        "type": "element",
+                        "name": 33
+                      },
+                      "target": {
+                        "index": 558368,
+                        "id": 1264,
+                        "type": "synthetic",
+                        "name": "workerd / IsolateBase",
+                        "selfSize": 704
+                      }
+                    },
+                    {
+                      "holder": {
+                        "index": 558368,
+                        "id": 1264,
+                        "type": "synthetic",
+                        "name": "workerd / IsolateBase",
+                        "selfSize": 704
+                      },
+                      "edge": {
+                        "type": "internal",
+                        "name": "heapTracer"
+                      },
+                      "target": {
+                        "index": 558369,
+                        "id": 1266,
+                        "type": "native",
+                        "name": "workerd / HeapTracer",
+                        "selfSize": 112
+                      }
+                    },
+                    {
+                      "holder": {
+                        "index": 558369,
+                        "id": 1266,
+                        "type": "native",
+                        "name": "workerd / HeapTracer",
+                        "selfSize": 112
+                      },
+                      "edge": {
+                        "type": "internal",
+                        "name": "wrapper"
+                      },
+                      "target": {
+                        "index": 558456,
+                        "id": 1440,
+                        "type": "native",
+                        "name": "workerd / AbortSignal",
+                        "selfSize": 432
+                      }
+                    },
+                    {
+                      "holder": {
+                        "index": 558456,
+                        "id": 1440,
+                        "type": "native",
+                        "name": "workerd / AbortSignal",
+                        "selfSize": 432
+                      },
+                      "edge": {
+                        "type": "internal",
+                        "name": "native_to_javascript"
+                      },
+                      "target": {
+                        "index": 549877,
+                        "id": 5740489,
+                        "type": "native",
+                        "name": "CppgcShim",
+                        "selfSize": 72
+                      }
+                    },
+                    {
+                      "holder": {
+                        "index": 549877,
+                        "id": 5740489,
+                        "type": "native",
+                        "name": "CppgcShim",
+                        "selfSize": 72
+                      },
+                      "edge": {
+                        "type": "element",
+                        "name": 4
+                      },
+                      "target": {
+                        "index": 14395,
+                        "id": 4815869,
+                        "type": "closure",
+                        "name": "",
+                        "selfSize": 28
+                      }
+                    },
+                    {
+                      "holder": {
+                        "index": 14395,
+                        "id": 4815869,
+                        "type": "closure",
+                        "name": "",
+                        "selfSize": 28
+                      },
+                      "edge": {
+                        "type": "internal",
+                        "name": "context"
+                      },
+                      "target": {
+                        "index": 548146,
+                        "id": 5737787,
+                        "type": "object",
+                        "name": "system / Context",
+                        "selfSize": 124
+                      }
+                    },
+                    {
+                      "holder": {
+                        "index": 548146,
+                        "id": 5737787,
+                        "type": "object",
+                        "name": "system / Context",
+                        "selfSize": 124
+                      },
+                      "edge": {
+                        "type": "context",
+                        "name": "input"
+                      },
+                      "target": {
+                        "index": 548647,
+                        "id": 5738595,
+                        "type": "closure",
+                        "name": "",
+                        "selfSize": 28
+                      }
+                    },
+                    {
+                      "holder": {
+                        "index": 548647,
+                        "id": 5738595,
+                        "type": "closure",
+                        "name": "",
+                        "selfSize": 28
+                      },
+                      "edge": {
+                        "type": "internal",
+                        "name": "context"
+                      },
+                      "target": {
+                        "index": 548649,
+                        "id": 5738599,
+                        "type": "object",
+                        "name": "system / Context",
+                        "selfSize": 32
+                      }
+                    },
+                    {
+                      "holder": {
+                        "index": 548649,
+                        "id": 5738599,
+                        "type": "object",
+                        "name": "system / Context",
+                        "selfSize": 32
+                      },
+                      "edge": {
+                        "type": "context",
+                        "name": "marker"
+                      },
+                      "target": {
+                        "index": 548139,
+                        "id": 5737779,
+                        "type": "object",
+                        "name": "AbortOwnershipMarker",
+                        "selfSize": 60
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "stage": "settled-retained-turn",
+              "targetObjects": 1,
+              "positiveObjects": 1,
+              "negativeObjects": 0,
+              "controlsValid": true,
+              "stageExpectationsMet": true,
+              "snapshotSha256": "0ba5da46db95300a5650621992db79d3fd27d88ea6969cbfa330f0bd596ecd81",
+              "barrierElapsedMs": null,
+              "semanticBefore": {
+                "sourceSha": "c9303c8637d81c7c688ddba24fc65e58f3fb3e485f9abce4351cb2ff30dcacc5",
+                "variant": "red",
+                "outboundAttempts": 0,
+                "active": {
+                  "id": "red_factory",
+                  "scenario": "factory-success",
+                  "readyStatus": 200,
+                  "eventTypes": [
+                    "response.completed"
+                  ],
+                  "terminalId": "resp_probe",
+                  "factoryCalls": 1,
+                  "drainComplete": true,
+                  "completion": {
+                    "outcome": "completed",
+                    "response": {
+                      "id": "resp_probe",
+                      "object": "response",
+                      "model": "probe",
+                      "status": "completed",
+                      "output": [],
+                      "incomplete_details": null,
+                      "error": null
+                    },
+                    "cleanupComplete": true
+                  }
+                }
+              },
+              "semanticAfter": {
+                "sourceSha": "c9303c8637d81c7c688ddba24fc65e58f3fb3e485f9abce4351cb2ff30dcacc5",
+                "variant": "red",
+                "outboundAttempts": 0,
+                "active": {
+                  "id": "red_factory",
+                  "scenario": "factory-success",
+                  "readyStatus": 200,
+                  "eventTypes": [
+                    "response.completed"
+                  ],
+                  "terminalId": "resp_probe",
+                  "factoryCalls": 1,
+                  "drainComplete": true,
+                  "completion": {
+                    "outcome": "completed",
+                    "response": {
+                      "id": "resp_probe",
+                      "object": "response",
+                      "model": "probe",
+                      "status": "completed",
+                      "output": [],
+                      "incomplete_details": null,
+                      "error": null
+                    },
+                    "cleanupComplete": true
+                  }
+                }
+              },
+              "targetPaths": [
+                {
+                  "objectType": "object",
+                  "objectName": "AbortOwnershipMarker",
+                  "objectId": 5737779,
+                  "payloadType": "Uint8Array",
+                  "directHolders": [
+                    {
+                      "holder": {
+                        "index": 548644,
+                        "id": 5738599,
+                        "type": "object",
+                        "name": "system / Context",
+                        "selfSize": 32
+                      },
+                      "edge": {
+                        "type": "context",
+                        "name": "marker"
+                      }
+                    }
+                  ],
+                  "rootPathIgnoringWeakEdges": [
+                    {
+                      "holder": {
+                        "index": 0,
+                        "id": 1,
+                        "type": "synthetic",
+                        "name": "",
+                        "selfSize": 0
+                      },
+                      "edge": {
+                        "type": "shortcut",
+                        "name": "2"
+                      },
+                      "target": {
+                        "index": 3479,
+                        "id": 6939,
+                        "type": "hidden",
+                        "name": "system / NativeContext",
+                        "selfSize": 1204
+                      }
+                    },
+                    {
+                      "holder": {
+                        "index": 3479,
+                        "id": 6939,
+                        "type": "hidden",
+                        "name": "system / NativeContext",
+                        "selfSize": 1204
+                      },
+                      "edge": {
+                        "type": "internal",
+                        "name": "global_object"
+                      },
+                      "target": {
+                        "index": 41263,
+                        "id": 82221,
+                        "type": "object",
+                        "name": "ServiceWorkerGlobalScope [JSGlobalObject]",
+                        "selfSize": 40
+                      }
+                    },
+                    {
+                      "holder": {
+                        "index": 41263,
+                        "id": 82221,
+                        "type": "object",
+                        "name": "ServiceWorkerGlobalScope [JSGlobalObject]",
+                        "selfSize": 40
+                      },
+                      "edge": {
+                        "type": "property",
+                        "name": "PerformanceMeasure"
+                      },
+                      "target": {
+                        "index": 61000,
+                        "id": 121781,
+                        "type": "closure",
+                        "name": "PerformanceMeasure",
+                        "selfSize": 32
+                      }
+                    },
+                    {
+                      "holder": {
+                        "index": 61000,
+                        "id": 121781,
+                        "type": "closure",
+                        "name": "PerformanceMeasure",
+                        "selfSize": 32
+                      },
+                      "edge": {
+                        "type": "internal",
+                        "name": "context"
+                      },
+                      "target": {
+                        "index": 41960,
+                        "id": 83615,
+                        "type": "object",
+                        "name": "system / Context",
+                        "selfSize": 14956
+                      }
+                    },
+                    {
+                      "holder": {
+                        "index": 41960,
+                        "id": 83615,
+                        "type": "object",
+                        "name": "system / Context",
+                        "selfSize": 14956
+                      },
+                      "edge": {
+                        "type": "context",
+                        "name": "active"
+                      },
+                      "target": {
+                        "index": 334737,
+                        "id": 5340541,
+                        "type": "object",
+                        "name": "Object",
+                        "selfSize": 56
+                      }
+                    },
+                    {
+                      "holder": {
+                        "index": 334737,
+                        "id": 5340541,
+                        "type": "object",
+                        "name": "Object",
+                        "selfSize": 56
+                      },
+                      "edge": {
+                        "type": "property",
+                        "name": "turn"
+                      },
+                      "target": {
+                        "index": 549817,
+                        "id": 5740501,
+                        "type": "object",
+                        "name": "Object",
+                        "selfSize": 12
+                      }
+                    },
+                    {
+                      "holder": {
+                        "index": 549817,
+                        "id": 5740501,
+                        "type": "object",
+                        "name": "Object",
+                        "selfSize": 12
+                      },
+                      "edge": {
+                        "type": "property",
+                        "name": "events"
+                      },
+                      "target": {
+                        "index": 550062,
+                        "id": 5740971,
+                        "type": "object",
+                        "name": "run",
+                        "selfSize": 88
+                      }
+                    },
+                    {
+                      "holder": {
+                        "index": 550062,
+                        "id": 5740971,
+                        "type": "object",
+                        "name": "run",
+                        "selfSize": 88
+                      },
+                      "edge": {
+                        "type": "internal",
+                        "name": "context"
+                      },
+                      "target": {
+                        "index": 548141,
+                        "id": 5737787,
+                        "type": "object",
+                        "name": "system / Context",
+                        "selfSize": 124
+                      }
+                    },
+                    {
+                      "holder": {
+                        "index": 548141,
+                        "id": 5737787,
+                        "type": "object",
+                        "name": "system / Context",
+                        "selfSize": 124
+                      },
+                      "edge": {
+                        "type": "context",
+                        "name": "input"
+                      },
+                      "target": {
+                        "index": 548642,
+                        "id": 5738595,
+                        "type": "closure",
+                        "name": "",
+                        "selfSize": 28
+                      }
+                    },
+                    {
+                      "holder": {
+                        "index": 548642,
+                        "id": 5738595,
+                        "type": "closure",
+                        "name": "",
+                        "selfSize": 28
+                      },
+                      "edge": {
+                        "type": "internal",
+                        "name": "context"
+                      },
+                      "target": {
+                        "index": 548644,
+                        "id": 5738599,
+                        "type": "object",
+                        "name": "system / Context",
+                        "selfSize": 32
+                      }
+                    },
+                    {
+                      "holder": {
+                        "index": 548644,
+                        "id": 5738599,
+                        "type": "object",
+                        "name": "system / Context",
+                        "selfSize": 32
+                      },
+                      "edge": {
+                        "type": "context",
+                        "name": "marker"
+                      },
+                      "target": {
+                        "index": 548134,
+                        "id": 5737779,
+                        "type": "object",
+                        "name": "AbortOwnershipMarker",
+                        "selfSize": 60
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "stage": "forgotten",
+              "targetObjects": 0,
+              "positiveObjects": 0,
+              "negativeObjects": 0,
+              "controlsValid": true,
+              "stageExpectationsMet": true,
+              "snapshotSha256": "8f0edb7283da2422e0adb6b4e8f926270f562aae5fdac711002fdc3b8357ab07",
+              "barrierElapsedMs": null,
+              "semanticBefore": {
+                "sourceSha": "c9303c8637d81c7c688ddba24fc65e58f3fb3e485f9abce4351cb2ff30dcacc5",
+                "variant": "red",
+                "outboundAttempts": 0,
+                "active": null
+              },
+              "semanticAfter": {
+                "sourceSha": "c9303c8637d81c7c688ddba24fc65e58f3fb3e485f9abce4351cb2ff30dcacc5",
+                "variant": "red",
+                "outboundAttempts": 0,
+                "active": null
+              },
+              "targetPaths": []
+            }
+          ]
+        }
+      }
+    },
+    "candidate": {
+      "attempt": "green-03",
+      "sourceHead": "6238ab6ecd0ac8395b330dcb2034afb549f7ed40",
+      "sourceManifestSha256": "b19f70f5e95984adc4fae92d5dd061d04b52a6cd5b870bed0e5ef650233639f8",
+      "productSourceSha256": {
+        "vnext/packages/gateway/src/data-plane/chat-flow/responses/serve.ts": "4412ae757a392579cf89d4f607888e860e8e17131b73e8c2c2bc5c85547a2099",
+        "vnext/packages/gateway/src/data-plane/chat-flow/responses/turn.ts": "bbd84623d7d8946898fb636921efafca82f37a1b0ca2aa99c249d96ed2cd8cc0"
+      },
+      "harnessSha256": {
+        "prepare.py": "617fa3473320baa9eb009eca8949971dedf97aefc5c2652f3f1ea8e54cd7deec",
+        "entry.template.ts": "80b71fee56f0bb3974d9a233c39e9e27b705d0f363e083f34ddb4f8be78fe4d1",
+        "measure.ts": "8c770aa049f31f8ac2b852508fdc582026deea32457dd2b72f36f87ab2bf5410",
+        "analyze.py": "49d65ee3699acbcfb91ff5c0e74509c6ea1d1f721ed5c815685a72f9b9587d95"
+      },
+      "toolchain": {
+        "Wrangler entry": {
+          "sha256": "72d02815cbffc9ad14e1667188296e7126e13f0d90bfbb6046db8e6c4b6ff39a"
+        },
+        "workerd binary": {
+          "sha256": "612ba8ee37c4c15f597e918b9ab641bb7e9e6a4c33bc966f022e3eeff32f89af"
+        },
+        "wrangler package.json": {
+          "sha256": "9d508a0e56dc1f19154483feb3211d437ef116e7eff231487a176a0c23e7fae9",
+          "version": "4.97.0"
+        },
+        "workerd package.json": {
+          "sha256": "aac043954821034e16550ce3df8b192fdb06cad33f84d467e1ed24d439e06ffa",
+          "version": "1.20260601.1"
+        },
+        "Node launcher binary": {
+          "sha256": "08dad0581f00a0cabf4d49ec92ca1f25fdfd01c2c18fa8e92b35f04d4c24c164"
+        }
+      },
+      "runtimeIdentity": "Owned listening workerd pid/executable recorded locally and matched the hashed installed runtime; runtime stopped cleanly.",
+      "prepareExitCode": 0,
+      "runtimeStopExitCode": 0,
+      "scenarios": {
+        "serve": {
+          "scenario": "serve-error",
+          "measureExitCode": 0,
+          "analyzeExitCode": 0,
+          "diagnosticValid": true,
+          "bundleSha256": "e0b7da18c7ac53ee5ce86a1aed25449344d9482a9f94bddcd73f75697b0bba57",
+          "analysisSha256": "290e7ddc395e430147547e476f396b0b3be61ccb4656b0ede223e072570d215a",
+          "stages": [
+            {
+              "stage": "cold",
+              "targetObjects": 0,
+              "positiveObjects": 0,
+              "negativeObjects": 0,
+              "controlsValid": true,
+              "stageExpectationsMet": true,
+              "snapshotSha256": "b4eac91981f5a00300c2b1eb556a4a71dd1b9449253d82028625b2f834e723f8",
+              "barrierElapsedMs": null,
+              "semanticBefore": {
+                "sourceSha": "b19f70f5e95984adc4fae92d5dd061d04b52a6cd5b870bed0e5ef650233639f8",
+                "variant": "green",
+                "outboundAttempts": 0,
+                "active": null
+              },
+              "semanticAfter": {
+                "sourceSha": "b19f70f5e95984adc4fae92d5dd061d04b52a6cd5b870bed0e5ef650233639f8",
+                "variant": "green",
+                "outboundAttempts": 0,
+                "active": null
+              },
+              "targetPaths": []
+            },
+            {
+              "stage": "dump-held",
+              "targetObjects": 0,
+              "positiveObjects": 1,
+              "negativeObjects": 0,
+              "controlsValid": true,
+              "stageExpectationsMet": true,
+              "snapshotSha256": "1896156f7cdcf2dd24a4454cb6cbc97bb6cff9213373fa31eb378ab4df3260da",
+              "barrierElapsedMs": 576.4201669999998,
+              "semanticBefore": {
+                "sourceSha": "b19f70f5e95984adc4fae92d5dd061d04b52a6cd5b870bed0e5ef650233639f8",
+                "variant": "green",
+                "outboundAttempts": 0,
+                "active": {
+                  "id": "green_serve",
+                  "scenario": "serve-error",
+                  "readyStatus": 400,
+                  "eventTypes": [
+                    "error"
+                  ],
+                  "factoryCalls": 0,
+                  "drainComplete": false
+                }
+              },
+              "semanticAfter": {
+                "sourceSha": "b19f70f5e95984adc4fae92d5dd061d04b52a6cd5b870bed0e5ef650233639f8",
+                "variant": "green",
+                "outboundAttempts": 0,
+                "active": {
+                  "id": "green_serve",
+                  "scenario": "serve-error",
+                  "readyStatus": 400,
+                  "eventTypes": [
+                    "error"
+                  ],
+                  "factoryCalls": 0,
+                  "drainComplete": false
+                }
+              },
+              "targetPaths": []
+            },
+            {
+              "stage": "settled-retained-turn",
+              "targetObjects": 0,
+              "positiveObjects": 1,
+              "negativeObjects": 0,
+              "controlsValid": true,
+              "stageExpectationsMet": true,
+              "snapshotSha256": "055deca5023e6548377b571364f366cf24d96c790d2f31f4cc4d7b5fa1b15015",
+              "barrierElapsedMs": null,
+              "semanticBefore": {
+                "sourceSha": "b19f70f5e95984adc4fae92d5dd061d04b52a6cd5b870bed0e5ef650233639f8",
+                "variant": "green",
+                "outboundAttempts": 0,
+                "active": {
+                  "id": "green_serve",
+                  "scenario": "serve-error",
+                  "readyStatus": 400,
+                  "eventTypes": [
+                    "error"
+                  ],
+                  "factoryCalls": 0,
+                  "drainComplete": true,
+                  "completion": {
+                    "outcome": "failed",
+                    "cleanupComplete": true
+                  }
+                }
+              },
+              "semanticAfter": {
+                "sourceSha": "b19f70f5e95984adc4fae92d5dd061d04b52a6cd5b870bed0e5ef650233639f8",
+                "variant": "green",
+                "outboundAttempts": 0,
+                "active": {
+                  "id": "green_serve",
+                  "scenario": "serve-error",
+                  "readyStatus": 400,
+                  "eventTypes": [
+                    "error"
+                  ],
+                  "factoryCalls": 0,
+                  "drainComplete": true,
+                  "completion": {
+                    "outcome": "failed",
+                    "cleanupComplete": true
+                  }
+                }
+              },
+              "targetPaths": []
+            },
+            {
+              "stage": "forgotten",
+              "targetObjects": 0,
+              "positiveObjects": 0,
+              "negativeObjects": 0,
+              "controlsValid": true,
+              "stageExpectationsMet": true,
+              "snapshotSha256": "836f1dcdd35afd800ed5acc43b0ede6fecdca98f78173b5fd08a598c3e721355",
+              "barrierElapsedMs": null,
+              "semanticBefore": {
+                "sourceSha": "b19f70f5e95984adc4fae92d5dd061d04b52a6cd5b870bed0e5ef650233639f8",
+                "variant": "green",
+                "outboundAttempts": 0,
+                "active": null
+              },
+              "semanticAfter": {
+                "sourceSha": "b19f70f5e95984adc4fae92d5dd061d04b52a6cd5b870bed0e5ef650233639f8",
+                "variant": "green",
+                "outboundAttempts": 0,
+                "active": null
+              },
+              "targetPaths": []
+            }
+          ]
+        },
+        "factory": {
+          "scenario": "factory-success",
+          "measureExitCode": 0,
+          "analyzeExitCode": 0,
+          "diagnosticValid": true,
+          "bundleSha256": "e0b7da18c7ac53ee5ce86a1aed25449344d9482a9f94bddcd73f75697b0bba57",
+          "analysisSha256": "9dc5623b7177f2d02b960c9c159cf391b252234dfa931ebe97035cb62f4cc981",
+          "stages": [
+            {
+              "stage": "cold",
+              "targetObjects": 0,
+              "positiveObjects": 0,
+              "negativeObjects": 0,
+              "controlsValid": true,
+              "stageExpectationsMet": true,
+              "snapshotSha256": "f56badbc88e8b2d9a4a493822a9d5749a9f2b0c8eb6a95182e9ea9c43c0c8b72",
+              "barrierElapsedMs": null,
+              "semanticBefore": {
+                "sourceSha": "b19f70f5e95984adc4fae92d5dd061d04b52a6cd5b870bed0e5ef650233639f8",
+                "variant": "green",
+                "outboundAttempts": 0,
+                "active": null
+              },
+              "semanticAfter": {
+                "sourceSha": "b19f70f5e95984adc4fae92d5dd061d04b52a6cd5b870bed0e5ef650233639f8",
+                "variant": "green",
+                "outboundAttempts": 0,
+                "active": null
+              },
+              "targetPaths": []
+            },
+            {
+              "stage": "preparation-held",
+              "targetObjects": 1,
+              "positiveObjects": 1,
+              "negativeObjects": 0,
+              "controlsValid": true,
+              "stageExpectationsMet": true,
+              "snapshotSha256": "3a7795aa880380e88c0496922bc001e56859cb8ee19afac3ed04d2b4b65bcc9c",
+              "barrierElapsedMs": 718.9316250000002,
+              "semanticBefore": {
+                "sourceSha": "b19f70f5e95984adc4fae92d5dd061d04b52a6cd5b870bed0e5ef650233639f8",
+                "variant": "green",
+                "outboundAttempts": 0,
+                "active": {
+                  "id": "green_factory",
+                  "scenario": "factory-success",
+                  "eventTypes": [],
+                  "factoryCalls": 1,
+                  "drainComplete": false
+                }
+              },
+              "semanticAfter": {
+                "sourceSha": "b19f70f5e95984adc4fae92d5dd061d04b52a6cd5b870bed0e5ef650233639f8",
+                "variant": "green",
+                "outboundAttempts": 0,
+                "active": {
+                  "id": "green_factory",
+                  "scenario": "factory-success",
+                  "eventTypes": [],
+                  "factoryCalls": 1,
+                  "drainComplete": false
+                }
+              },
+              "targetPaths": [
+                {
+                  "objectType": "object",
+                  "objectName": "AbortOwnershipMarker",
+                  "objectId": 5738623,
+                  "payloadType": "Uint8Array",
+                  "directHolders": [
+                    {
+                      "holder": {
+                        "index": 548206,
+                        "id": 5737421,
+                        "type": "object",
+                        "name": "system / Context",
+                        "selfSize": 32
+                      },
+                      "edge": {
+                        "type": "context",
+                        "name": "marker"
+                      }
+                    }
+                  ],
+                  "rootPathIgnoringWeakEdges": [
+                    {
+                      "holder": {
+                        "index": 0,
+                        "id": 1,
+                        "type": "synthetic",
+                        "name": "",
+                        "selfSize": 0
+                      },
+                      "edge": {
+                        "type": "element",
+                        "name": 1
+                      },
+                      "target": {
+                        "index": 1,
+                        "id": 3,
+                        "type": "synthetic",
+                        "name": "(GC roots)",
+                        "selfSize": 0
+                      }
+                    },
+                    {
+                      "holder": {
+                        "index": 1,
+                        "id": 3,
+                        "type": "synthetic",
+                        "name": "(GC roots)",
+                        "selfSize": 0
+                      },
+                      "edge": {
+                        "type": "element",
+                        "name": 10
+                      },
+                      "target": {
+                        "index": 11,
+                        "id": 23,
+                        "type": "synthetic",
+                        "name": "(Global handles)",
+                        "selfSize": 0
+                      }
+                    },
+                    {
+                      "holder": {
+                        "index": 11,
+                        "id": 23,
+                        "type": "synthetic",
+                        "name": "(Global handles)",
+                        "selfSize": 0
+                      },
+                      "edge": {
+                        "type": "internal",
+                        "name": "232"
+                      },
+                      "target": {
+                        "index": 3623,
+                        "id": 4815237,
+                        "type": "closure",
+                        "name": "",
+                        "selfSize": 28
+                      }
+                    },
+                    {
+                      "holder": {
+                        "index": 3623,
+                        "id": 4815237,
+                        "type": "closure",
+                        "name": "",
+                        "selfSize": 28
+                      },
+                      "edge": {
+                        "type": "internal",
+                        "name": "context"
+                      },
+                      "target": {
+                        "index": 549234,
+                        "id": 5739077,
+                        "type": "object",
+                        "name": "system / Context",
+                        "selfSize": 24
+                      }
+                    },
+                    {
+                      "holder": {
+                        "index": 549234,
+                        "id": 5739077,
+                        "type": "object",
+                        "name": "system / Context",
+                        "selfSize": 24
+                      },
+                      "edge": {
+                        "type": "hidden",
+                        "name": 0
+                      },
+                      "target": {
+                        "index": 361202,
+                        "id": 5375077,
+                        "type": "object",
+                        "name": "Object",
+                        "selfSize": 56
+                      }
+                    },
+                    {
+                      "holder": {
+                        "index": 361202,
+                        "id": 5375077,
+                        "type": "object",
+                        "name": "Object",
+                        "selfSize": 56
+                      },
+                      "edge": {
+                        "type": "property",
+                        "name": "preparation"
+                      },
+                      "target": {
+                        "index": 549028,
+                        "id": 5738687,
+                        "type": "object",
+                        "name": "Object",
+                        "selfSize": 20
+                      }
+                    },
+                    {
+                      "holder": {
+                        "index": 549028,
+                        "id": 5738687,
+                        "type": "object",
+                        "name": "Object",
+                        "selfSize": 20
+                      },
+                      "edge": {
+                        "type": "property",
+                        "name": "release"
+                      },
+                      "target": {
+                        "index": 549175,
+                        "id": 5738961,
+                        "type": "object",
+                        "name": "Object",
+                        "selfSize": 24
+                      }
+                    },
+                    {
+                      "holder": {
+                        "index": 549175,
+                        "id": 5738961,
+                        "type": "object",
+                        "name": "Object",
+                        "selfSize": 24
+                      },
+                      "edge": {
+                        "type": "property",
+                        "name": "promise"
+                      },
+                      "target": {
+                        "index": 548885,
+                        "id": 5738505,
+                        "type": "object",
+                        "name": "Promise",
+                        "selfSize": 24
+                      }
+                    },
+                    {
+                      "holder": {
+                        "index": 548885,
+                        "id": 5738505,
+                        "type": "object",
+                        "name": "Promise",
+                        "selfSize": 24
+                      },
+                      "edge": {
+                        "type": "internal",
+                        "name": "reactions_or_result"
+                      },
+                      "target": {
+                        "index": 548886,
+                        "id": 5738507,
+                        "type": "hidden",
+                        "name": "system / PromiseReaction",
+                        "selfSize": 24
+                      }
+                    },
+                    {
+                      "holder": {
+                        "index": 548886,
+                        "id": 5738507,
+                        "type": "hidden",
+                        "name": "system / PromiseReaction",
+                        "selfSize": 24
+                      },
+                      "edge": {
+                        "type": "hidden",
+                        "name": 1
+                      },
+                      "target": {
+                        "index": 549882,
+                        "id": 5740137,
+                        "type": "closure",
+                        "name": "",
+                        "selfSize": 28
+                      }
+                    },
+                    {
+                      "holder": {
+                        "index": 549882,
+                        "id": 5740137,
+                        "type": "closure",
+                        "name": "",
+                        "selfSize": 28
+                      },
+                      "edge": {
+                        "type": "internal",
+                        "name": "context"
+                      },
+                      "target": {
+                        "index": 549883,
+                        "id": 5740139,
+                        "type": "object",
+                        "name": "system / Context",
+                        "selfSize": 20
+                      }
+                    },
+                    {
+                      "holder": {
+                        "index": 549883,
+                        "id": 5740139,
+                        "type": "object",
+                        "name": "system / Context",
+                        "selfSize": 20
+                      },
+                      "edge": {
+                        "type": "internal",
+                        "name": "extension"
+                      },
+                      "target": {
+                        "index": 549879,
+                        "id": 5740131,
+                        "type": "object",
+                        "name": "Generator",
+                        "selfSize": 52
+                      }
+                    },
+                    {
+                      "holder": {
+                        "index": 549879,
+                        "id": 5740131,
+                        "type": "object",
+                        "name": "Generator",
+                        "selfSize": 52
+                      },
+                      "edge": {
+                        "type": "internal",
+                        "name": "context"
+                      },
+                      "target": {
+                        "index": 548206,
+                        "id": 5737421,
+                        "type": "object",
+                        "name": "system / Context",
+                        "selfSize": 32
+                      }
+                    },
+                    {
+                      "holder": {
+                        "index": 548206,
+                        "id": 5737421,
+                        "type": "object",
+                        "name": "system / Context",
+                        "selfSize": 32
+                      },
+                      "edge": {
+                        "type": "context",
+                        "name": "marker"
+                      },
+                      "target": {
+                        "index": 548992,
+                        "id": 5738623,
+                        "type": "object",
+                        "name": "AbortOwnershipMarker",
+                        "selfSize": 60
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "stage": "dump-held",
+              "targetObjects": 0,
+              "positiveObjects": 1,
+              "negativeObjects": 0,
+              "controlsValid": true,
+              "stageExpectationsMet": true,
+              "snapshotSha256": "963a964ff483a0da46d82721a404cd856e92e5b5389c84ddf41b37db20549868",
+              "barrierElapsedMs": 1481.332167,
+              "semanticBefore": {
+                "sourceSha": "b19f70f5e95984adc4fae92d5dd061d04b52a6cd5b870bed0e5ef650233639f8",
+                "variant": "green",
+                "outboundAttempts": 0,
+                "active": {
+                  "id": "green_factory",
+                  "scenario": "factory-success",
+                  "readyStatus": 200,
+                  "eventTypes": [
+                    "response.completed"
+                  ],
+                  "terminalId": "resp_probe",
+                  "factoryCalls": 1,
+                  "drainComplete": false
+                }
+              },
+              "semanticAfter": {
+                "sourceSha": "b19f70f5e95984adc4fae92d5dd061d04b52a6cd5b870bed0e5ef650233639f8",
+                "variant": "green",
+                "outboundAttempts": 0,
+                "active": {
+                  "id": "green_factory",
+                  "scenario": "factory-success",
+                  "readyStatus": 200,
+                  "eventTypes": [
+                    "response.completed"
+                  ],
+                  "terminalId": "resp_probe",
+                  "factoryCalls": 1,
+                  "drainComplete": false
+                }
+              },
+              "targetPaths": []
+            },
+            {
+              "stage": "settled-retained-turn",
+              "targetObjects": 0,
+              "positiveObjects": 1,
+              "negativeObjects": 0,
+              "controlsValid": true,
+              "stageExpectationsMet": true,
+              "snapshotSha256": "63a7233abbd78ff90932830841f1b988d0e4c26f4d00e5164674f3e55ba478ca",
+              "barrierElapsedMs": null,
+              "semanticBefore": {
+                "sourceSha": "b19f70f5e95984adc4fae92d5dd061d04b52a6cd5b870bed0e5ef650233639f8",
+                "variant": "green",
+                "outboundAttempts": 0,
+                "active": {
+                  "id": "green_factory",
+                  "scenario": "factory-success",
+                  "readyStatus": 200,
+                  "eventTypes": [
+                    "response.completed"
+                  ],
+                  "terminalId": "resp_probe",
+                  "factoryCalls": 1,
+                  "drainComplete": true,
+                  "completion": {
+                    "outcome": "completed",
+                    "response": {
+                      "id": "resp_probe",
+                      "object": "response",
+                      "model": "probe",
+                      "status": "completed",
+                      "output": [],
+                      "incomplete_details": null,
+                      "error": null
+                    },
+                    "cleanupComplete": true
+                  }
+                }
+              },
+              "semanticAfter": {
+                "sourceSha": "b19f70f5e95984adc4fae92d5dd061d04b52a6cd5b870bed0e5ef650233639f8",
+                "variant": "green",
+                "outboundAttempts": 0,
+                "active": {
+                  "id": "green_factory",
+                  "scenario": "factory-success",
+                  "readyStatus": 200,
+                  "eventTypes": [
+                    "response.completed"
+                  ],
+                  "terminalId": "resp_probe",
+                  "factoryCalls": 1,
+                  "drainComplete": true,
+                  "completion": {
+                    "outcome": "completed",
+                    "response": {
+                      "id": "resp_probe",
+                      "object": "response",
+                      "model": "probe",
+                      "status": "completed",
+                      "output": [],
+                      "incomplete_details": null,
+                      "error": null
+                    },
+                    "cleanupComplete": true
+                  }
+                }
+              },
+              "targetPaths": []
+            },
+            {
+              "stage": "forgotten",
+              "targetObjects": 0,
+              "positiveObjects": 0,
+              "negativeObjects": 0,
+              "controlsValid": true,
+              "stageExpectationsMet": true,
+              "snapshotSha256": "a5d6acd3c3296dfc485d95cb85e8b8c50ae580f81bff0d4ba3cb4594a2246403",
+              "barrierElapsedMs": null,
+              "semanticBefore": {
+                "sourceSha": "b19f70f5e95984adc4fae92d5dd061d04b52a6cd5b870bed0e5ef650233639f8",
+                "variant": "green",
+                "outboundAttempts": 0,
+                "active": null
+              },
+              "semanticAfter": {
+                "sourceSha": "b19f70f5e95984adc4fae92d5dd061d04b52a6cd5b870bed0e5ef650233639f8",
+                "variant": "green",
+                "outboundAttempts": 0,
+                "active": null
+              },
+              "targetPaths": []
+            }
+          ]
+        }
+      }
+    }
+  },
+  "validation": [
+    {
+      "command": "bun test vnext/packages/gateway/tests/data-plane/chat-flow/responses/abort-ownership.test.ts",
+      "phase": "baseline",
+      "exitCode": 0,
+      "passed": 8,
+      "failed": 0,
+      "expects": 36,
+      "log": "baseline-tests.log",
+      "logSha256": "40366fda6bef049ffb3dd36e506479006e4b7e1bb240c2bda8d3c323bda5503b"
+    },
+    {
+      "command": "bun test packages/gateway/tests/data-plane/chat-flow/responses/abort-ownership.test.ts packages/gateway/tests/data-plane/chat-flow/responses/serve.test.ts packages/gateway/tests/data-plane/chat-flow/responses/turn-barrier.test.ts packages/gateway/tests/data-plane/chat-flow/responses/telemetry-lifetime.sqlite.test.ts packages/gateway/tests/data-plane/chat-flow/responses/completion-snapshot.test.ts packages/gateway/tests/data-plane/chat-flow/responses/respond-json.test.ts packages/gateway/tests/data-plane/chat-flow/responses/session.sqlite.test.ts",
+      "phase": "final focused regression",
+      "exitCode": 0,
+      "passed": 100,
+      "failed": 0,
+      "expects": 311,
+      "log": "final-focused-tests.log",
+      "logSha256": "435623a6b7f58c7ffd91fe61a0fe841fc87f031f354a630d3fc821ccee795e2d",
+      "cwd": "vnext"
+    },
+    {
+      "command": "bun run typecheck",
+      "cwd": "vnext",
+      "phase": "workspace typecheck",
+      "exitCode": 0,
+      "log": "final-typecheck.log",
+      "logSha256": "d2b1c7bd0a7ca88590bb46890939730fa9274e25b29f440481338aff5503bc09"
+    },
+    {
+      "command": "bunx --no-install eslint packages/gateway/src/data-plane/chat-flow/responses/serve.ts packages/gateway/src/data-plane/chat-flow/responses/turn.ts packages/gateway/tests/data-plane/chat-flow/responses/abort-ownership.test.ts",
+      "cwd": "vnext",
+      "phase": "changed-file lint",
+      "exitCode": 0,
+      "log": "final-lint.log",
+      "logSha256": "6839ad0642096b6f1a8168fd8940098422a34c6d80129b85dfe7eb3ae24b0942"
+    },
+    {
+      "command": "git diff --check",
+      "phase": "final whitespace",
+      "exitCode": 0
+    }
+  ],
+  "failedOrSupersededAttempts": [
+    {
+      "attempt": "red-01",
+      "exitCode": 1,
+      "stage": "source freeze",
+      "markerRequests": 0,
+      "reason": "An existing installed workspace dependency link was dangling; freezer now preserves installed links without repairing dependencies."
+    },
+    {
+      "attempt": "red-02",
+      "exitCode": 1,
+      "stage": "Bun-launched Wrangler startup",
+      "markerRequests": 0,
+      "reason": "Unexpected server response: 101 before local HTTP listen; switched launcher to Node with identical workerd binary."
+    },
+    {
+      "attempt": "red-03",
+      "exitCode": 1,
+      "stage": "cold HeapProfiler.collectGarbage",
+      "markerRequests": 0,
+      "reason": "Inspector command timeout; valid runs use snapshots without a forced-GC claim."
+    },
+    {
+      "attempt": "red-04",
+      "exitCode": 1,
+      "stage": "release dump barrier",
+      "markerRequests": 1,
+      "reason": "workerd hung detection canceled JS-only cross-request barrier; partial snapshots are invalid RED evidence. Valid runs add an identical bounded native timer."
+    },
+    {
+      "attempt": "green-01",
+      "runtimeStarted": false,
+      "reason": "Replaced non-null slot assertion with explicit invariant guard before runtime."
+    },
+    {
+      "attempt": "green-02",
+      "runtimeStarted": false,
+      "reason": "Added ownership why comment before runtime."
+    }
+  ],
+  "harnessControls": {
+    "outboundFetchAndSocket": "Forbidden and counted; zero attempts in every valid stage.",
+    "productionBindings": false,
+    "nativeBarrierTimerMs": 20000,
+    "heldSnapshotDeadlineMs": 15000,
+    "failureArtifacts": "Preserved; no failed or superseded attempt is counted as RED/GREEN."
+  },
+  "comparison": {
+    "baseline": "red-05",
+    "harnessEqual": true,
+    "toolchainEqual": true,
+    "sourceFilesChanged": [
+      "vnext/docs/superpowers/research/2026-09-30-cfw-resource-remediation/README.md",
+      "vnext/packages/gateway/src/data-plane/chat-flow/responses/serve.ts",
+      "vnext/packages/gateway/src/data-plane/chat-flow/responses/turn.ts"
+    ],
+    "sourceChangeNote": "Only serve/turn product modules and a research README differ; no other runtime source changed."
+  }
+}

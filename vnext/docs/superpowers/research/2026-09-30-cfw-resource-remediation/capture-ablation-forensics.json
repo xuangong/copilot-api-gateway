@@ -1,0 +1,754 @@
+{
+  "experiment": "capture-ablation-main-01",
+  "classification": "permanently_forensics_only",
+  "full_run_pass": false,
+  "capture_cost_conclusion_permitted": false,
+  "product_release_qualification": false,
+  "mode_mapping": {
+    "A": "full",
+    "B": "canonical-only"
+  },
+  "baseline_boundary": "Both arms are diagnostic on the same source; full mode is not the old production baseline",
+  "plan": {
+    "blocks": 5,
+    "offers_per_cell": 200,
+    "rate_per_second": 5,
+    "client_concurrency_cap": 16,
+    "timeout_ms": 120000,
+    "offered_total": 4000
+  },
+  "result": {
+    "launcher_exit_code": 2,
+    "runner_exit_code": 2,
+    "offered": 4000,
+    "attempted": 3288,
+    "unique_attempt_ids": 3288,
+    "unique_attempt_dump_ids": 3288,
+    "http200_headers": 3288,
+    "valid_successes": 3287,
+    "client_cap_drops": 712,
+    "attempted_dump_put_rejections": 1,
+    "exactly_once_dispatch_aggregate": {
+      "observed_logical_ids": 3288,
+      "total_dispatches": 3288,
+      "exactly_once_failures": 0,
+      "missing_count": 0,
+      "duplicate_count": 0
+    }
+  },
+  "cells": [
+    {
+      "block": 0,
+      "variant": "A",
+      "mode": "full",
+      "format": "json",
+      "offered": 200,
+      "attempted": 200,
+      "valid_receipt_successes": 200,
+      "client_cap_drops": 0,
+      "attempted_failures": 0,
+      "observed_client_peak_inflight": 6,
+      "exact_once": {
+        "aggregate_certificate_covers_attempts": true,
+        "attempt_count": 200,
+        "independently_replayed_per_cell_ledger": false,
+        "boundary": "Derived from the once-only aggregate covering every attempted ID; no per-cell raw ledger is archived"
+      }
+    },
+    {
+      "block": 0,
+      "variant": "A",
+      "mode": "full",
+      "format": "sse",
+      "offered": 200,
+      "attempted": 16,
+      "valid_receipt_successes": 16,
+      "client_cap_drops": 184,
+      "attempted_failures": 0,
+      "observed_client_peak_inflight": 5,
+      "exact_once": {
+        "aggregate_certificate_covers_attempts": true,
+        "attempt_count": 16,
+        "independently_replayed_per_cell_ledger": false,
+        "boundary": "Derived from the once-only aggregate covering every attempted ID; no per-cell raw ledger is archived"
+      }
+    },
+    {
+      "block": 0,
+      "variant": "B",
+      "mode": "canonical-only",
+      "format": "json",
+      "offered": 200,
+      "attempted": 200,
+      "valid_receipt_successes": 200,
+      "client_cap_drops": 0,
+      "attempted_failures": 0,
+      "observed_client_peak_inflight": 6,
+      "exact_once": {
+        "aggregate_certificate_covers_attempts": true,
+        "attempt_count": 200,
+        "independently_replayed_per_cell_ledger": false,
+        "boundary": "Derived from the once-only aggregate covering every attempted ID; no per-cell raw ledger is archived"
+      }
+    },
+    {
+      "block": 0,
+      "variant": "B",
+      "mode": "canonical-only",
+      "format": "sse",
+      "offered": 200,
+      "attempted": 200,
+      "valid_receipt_successes": 200,
+      "client_cap_drops": 0,
+      "attempted_failures": 0,
+      "observed_client_peak_inflight": 6,
+      "exact_once": {
+        "aggregate_certificate_covers_attempts": true,
+        "attempt_count": 200,
+        "independently_replayed_per_cell_ledger": false,
+        "boundary": "Derived from the once-only aggregate covering every attempted ID; no per-cell raw ledger is archived"
+      }
+    },
+    {
+      "block": 1,
+      "variant": "A",
+      "mode": "full",
+      "format": "json",
+      "offered": 200,
+      "attempted": 200,
+      "valid_receipt_successes": 200,
+      "client_cap_drops": 0,
+      "attempted_failures": 0,
+      "observed_client_peak_inflight": 5,
+      "exact_once": {
+        "aggregate_certificate_covers_attempts": true,
+        "attempt_count": 200,
+        "independently_replayed_per_cell_ledger": false,
+        "boundary": "Derived from the once-only aggregate covering every attempted ID; no per-cell raw ledger is archived"
+      }
+    },
+    {
+      "block": 1,
+      "variant": "A",
+      "mode": "full",
+      "format": "sse",
+      "offered": 200,
+      "attempted": 200,
+      "valid_receipt_successes": 200,
+      "client_cap_drops": 0,
+      "attempted_failures": 0,
+      "observed_client_peak_inflight": 5,
+      "exact_once": {
+        "aggregate_certificate_covers_attempts": true,
+        "attempt_count": 200,
+        "independently_replayed_per_cell_ledger": false,
+        "boundary": "Derived from the once-only aggregate covering every attempted ID; no per-cell raw ledger is archived"
+      }
+    },
+    {
+      "block": 1,
+      "variant": "B",
+      "mode": "canonical-only",
+      "format": "json",
+      "offered": 200,
+      "attempted": 200,
+      "valid_receipt_successes": 200,
+      "client_cap_drops": 0,
+      "attempted_failures": 0,
+      "observed_client_peak_inflight": 9,
+      "exact_once": {
+        "aggregate_certificate_covers_attempts": true,
+        "attempt_count": 200,
+        "independently_replayed_per_cell_ledger": false,
+        "boundary": "Derived from the once-only aggregate covering every attempted ID; no per-cell raw ledger is archived"
+      }
+    },
+    {
+      "block": 1,
+      "variant": "B",
+      "mode": "canonical-only",
+      "format": "sse",
+      "offered": 200,
+      "attempted": 200,
+      "valid_receipt_successes": 200,
+      "client_cap_drops": 0,
+      "attempted_failures": 0,
+      "observed_client_peak_inflight": 6,
+      "exact_once": {
+        "aggregate_certificate_covers_attempts": true,
+        "attempt_count": 200,
+        "independently_replayed_per_cell_ledger": false,
+        "boundary": "Derived from the once-only aggregate covering every attempted ID; no per-cell raw ledger is archived"
+      }
+    },
+    {
+      "block": 2,
+      "variant": "A",
+      "mode": "full",
+      "format": "json",
+      "offered": 200,
+      "attempted": 200,
+      "valid_receipt_successes": 200,
+      "client_cap_drops": 0,
+      "attempted_failures": 0,
+      "observed_client_peak_inflight": 6,
+      "exact_once": {
+        "aggregate_certificate_covers_attempts": true,
+        "attempt_count": 200,
+        "independently_replayed_per_cell_ledger": false,
+        "boundary": "Derived from the once-only aggregate covering every attempted ID; no per-cell raw ledger is archived"
+      }
+    },
+    {
+      "block": 2,
+      "variant": "A",
+      "mode": "full",
+      "format": "sse",
+      "offered": 200,
+      "attempted": 40,
+      "valid_receipt_successes": 40,
+      "client_cap_drops": 160,
+      "attempted_failures": 0,
+      "observed_client_peak_inflight": 6,
+      "exact_once": {
+        "aggregate_certificate_covers_attempts": true,
+        "attempt_count": 40,
+        "independently_replayed_per_cell_ledger": false,
+        "boundary": "Derived from the once-only aggregate covering every attempted ID; no per-cell raw ledger is archived"
+      }
+    },
+    {
+      "block": 2,
+      "variant": "B",
+      "mode": "canonical-only",
+      "format": "json",
+      "offered": 200,
+      "attempted": 16,
+      "valid_receipt_successes": 16,
+      "client_cap_drops": 184,
+      "attempted_failures": 0,
+      "observed_client_peak_inflight": 5,
+      "exact_once": {
+        "aggregate_certificate_covers_attempts": true,
+        "attempt_count": 16,
+        "independently_replayed_per_cell_ledger": false,
+        "boundary": "Derived from the once-only aggregate covering every attempted ID; no per-cell raw ledger is archived"
+      }
+    },
+    {
+      "block": 2,
+      "variant": "B",
+      "mode": "canonical-only",
+      "format": "sse",
+      "offered": 200,
+      "attempted": 16,
+      "valid_receipt_successes": 16,
+      "client_cap_drops": 184,
+      "attempted_failures": 0,
+      "observed_client_peak_inflight": 4,
+      "exact_once": {
+        "aggregate_certificate_covers_attempts": true,
+        "attempt_count": 16,
+        "independently_replayed_per_cell_ledger": false,
+        "boundary": "Derived from the once-only aggregate covering every attempted ID; no per-cell raw ledger is archived"
+      }
+    },
+    {
+      "block": 3,
+      "variant": "A",
+      "mode": "full",
+      "format": "json",
+      "offered": 200,
+      "attempted": 200,
+      "valid_receipt_successes": 200,
+      "client_cap_drops": 0,
+      "attempted_failures": 0,
+      "observed_client_peak_inflight": 6,
+      "exact_once": {
+        "aggregate_certificate_covers_attempts": true,
+        "attempt_count": 200,
+        "independently_replayed_per_cell_ledger": false,
+        "boundary": "Derived from the once-only aggregate covering every attempted ID; no per-cell raw ledger is archived"
+      }
+    },
+    {
+      "block": 3,
+      "variant": "A",
+      "mode": "full",
+      "format": "sse",
+      "offered": 200,
+      "attempted": 200,
+      "valid_receipt_successes": 200,
+      "client_cap_drops": 0,
+      "attempted_failures": 0,
+      "observed_client_peak_inflight": 6,
+      "exact_once": {
+        "aggregate_certificate_covers_attempts": true,
+        "attempt_count": 200,
+        "independently_replayed_per_cell_ledger": false,
+        "boundary": "Derived from the once-only aggregate covering every attempted ID; no per-cell raw ledger is archived"
+      }
+    },
+    {
+      "block": 3,
+      "variant": "B",
+      "mode": "canonical-only",
+      "format": "json",
+      "offered": 200,
+      "attempted": 200,
+      "valid_receipt_successes": 200,
+      "client_cap_drops": 0,
+      "attempted_failures": 0,
+      "observed_client_peak_inflight": 5,
+      "exact_once": {
+        "aggregate_certificate_covers_attempts": true,
+        "attempt_count": 200,
+        "independently_replayed_per_cell_ledger": false,
+        "boundary": "Derived from the once-only aggregate covering every attempted ID; no per-cell raw ledger is archived"
+      }
+    },
+    {
+      "block": 3,
+      "variant": "B",
+      "mode": "canonical-only",
+      "format": "sse",
+      "offered": 200,
+      "attempted": 200,
+      "valid_receipt_successes": 199,
+      "client_cap_drops": 0,
+      "attempted_failures": 1,
+      "observed_client_peak_inflight": 6,
+      "exact_once": {
+        "aggregate_certificate_covers_attempts": true,
+        "attempt_count": 200,
+        "independently_replayed_per_cell_ledger": false,
+        "boundary": "Derived from the once-only aggregate covering every attempted ID; no per-cell raw ledger is archived"
+      }
+    },
+    {
+      "block": 4,
+      "variant": "A",
+      "mode": "full",
+      "format": "json",
+      "offered": 200,
+      "attempted": 200,
+      "valid_receipt_successes": 200,
+      "client_cap_drops": 0,
+      "attempted_failures": 0,
+      "observed_client_peak_inflight": 6,
+      "exact_once": {
+        "aggregate_certificate_covers_attempts": true,
+        "attempt_count": 200,
+        "independently_replayed_per_cell_ledger": false,
+        "boundary": "Derived from the once-only aggregate covering every attempted ID; no per-cell raw ledger is archived"
+      }
+    },
+    {
+      "block": 4,
+      "variant": "A",
+      "mode": "full",
+      "format": "sse",
+      "offered": 200,
+      "attempted": 200,
+      "valid_receipt_successes": 200,
+      "client_cap_drops": 0,
+      "attempted_failures": 0,
+      "observed_client_peak_inflight": 6,
+      "exact_once": {
+        "aggregate_certificate_covers_attempts": true,
+        "attempt_count": 200,
+        "independently_replayed_per_cell_ledger": false,
+        "boundary": "Derived from the once-only aggregate covering every attempted ID; no per-cell raw ledger is archived"
+      }
+    },
+    {
+      "block": 4,
+      "variant": "B",
+      "mode": "canonical-only",
+      "format": "json",
+      "offered": 200,
+      "attempted": 200,
+      "valid_receipt_successes": 200,
+      "client_cap_drops": 0,
+      "attempted_failures": 0,
+      "observed_client_peak_inflight": 6,
+      "exact_once": {
+        "aggregate_certificate_covers_attempts": true,
+        "attempt_count": 200,
+        "independently_replayed_per_cell_ledger": false,
+        "boundary": "Derived from the once-only aggregate covering every attempted ID; no per-cell raw ledger is archived"
+      }
+    },
+    {
+      "block": 4,
+      "variant": "B",
+      "mode": "canonical-only",
+      "format": "sse",
+      "offered": 200,
+      "attempted": 200,
+      "valid_receipt_successes": 200,
+      "client_cap_drops": 0,
+      "attempted_failures": 0,
+      "observed_client_peak_inflight": 5,
+      "exact_once": {
+        "aggregate_certificate_covers_attempts": true,
+        "attempt_count": 200,
+        "independently_replayed_per_cell_ledger": false,
+        "boundary": "Derived from the once-only aggregate covering every attempted ID; no per-cell raw ledger is archived"
+      }
+    }
+  ],
+  "identity_preflight": {
+    "checks": {
+      "source_commit": true,
+      "same_variant_identity": true,
+      "same_expected_script": true,
+      "unchanged_local_fields": true,
+      "harness_identity": true,
+      "unchanged_active": true,
+      "unchanged_version_resources": true,
+      "unchanged_settings": true,
+      "original_gate_file": true,
+      "before_retention": true,
+      "after_retention": true,
+      "fixed_plan": true,
+      "ten_ordered_windows": true
+    },
+    "execution_check_failures": [
+      "child_exit_zero",
+      "unique_request_ids",
+      "unique_dump_ids",
+      "all_semantic_transport_200",
+      "dispatch_4000_once",
+      "all_observation_receipts_valid"
+    ]
+  },
+  "storage": {
+    "scope": "successful subset only; never an all-offer certificate",
+    "selected_records": 3287,
+    "owned_file_rows": 8230,
+    "first_last_decoded_samples": 40,
+    "independent_checks": 30652,
+    "independent_check_failures": 0,
+    "metadata_batches": 33,
+    "full_mode_sidecar_samples": 20,
+    "canonical_only_null_sidecar_samples": 20,
+    "strict_base64_and_full_sse_projection_checked": true,
+    "request_prefix_bytes": 65536,
+    "failed_put": {
+      "request_count": 1,
+      "dump_metadata_records_found": 0,
+      "retired_file_index_rows": 2,
+      "owner_kinds": [
+        "dump-request",
+        "dump-response"
+      ],
+      "claim_tokens_null": true,
+      "physical_blob_deletion_verified": false,
+      "original_rejection_cause_known": false
+    },
+    "full_run_storage_certificate": false,
+    "private_raw_receipt_hashes_pinned_by_audit_sha256": "5c6a0ca193e4bf15158f23212cbb2d4afe09ba654943f55a65f46d93143ff135"
+  },
+  "metrics_initial": {
+    "schema_valid_windows": 10,
+    "stable_across_collections_verified": false,
+    "sampling": "adaptive invocations; counts are not exact dispatch counts; memory is shared isolate memory",
+    "causal_capture_cpu_memory_conclusion_permitted": false,
+    "windows": [
+      {
+        "block": 0,
+        "variant": "A",
+        "start": "2026-09-30T02:19:29.989Z",
+        "end": "2026-09-30T02:20:50.159Z",
+        "schema_valid": true,
+        "adaptive_requests": 216,
+        "platform_errors": 0,
+        "status_rows": [
+          {
+            "status": "success",
+            "requests": 216,
+            "errors": 0
+          }
+        ],
+        "descriptive_observations": {
+          "cpu_p50_ms": 13.562,
+          "cpu_p95_ms": 28.275,
+          "memory_p99_bytes": 52432576,
+          "memory_p99_MiB": 50.00360107421875,
+          "wall_p50_ms": 595.088
+        },
+        "raw_sha256": "456cf153e6bb180e9df8074001d402e4d1920d498a26f128642e825038f804fa",
+        "causal_comparison_permitted": false
+      },
+      {
+        "block": 0,
+        "variant": "B",
+        "start": "2026-09-30T02:20:50.283Z",
+        "end": "2026-09-30T02:22:11.298Z",
+        "schema_valid": true,
+        "adaptive_requests": 402,
+        "platform_errors": 0,
+        "status_rows": [
+          {
+            "status": "success",
+            "requests": 402,
+            "errors": 0
+          }
+        ],
+        "descriptive_observations": {
+          "cpu_p50_ms": 12.845,
+          "cpu_p95_ms": 26.083,
+          "memory_p99_bytes": 46631936,
+          "memory_p99_MiB": 44.4716796875,
+          "wall_p50_ms": 578.933
+        },
+        "raw_sha256": "ddc562d87700bb9769f41482de19816da6fc16fbe1d768e44b278f03d12e24f6",
+        "causal_comparison_permitted": false
+      },
+      {
+        "block": 1,
+        "variant": "B",
+        "start": "2026-09-30T02:22:11.412Z",
+        "end": "2026-09-30T02:23:32.260Z",
+        "schema_valid": true,
+        "adaptive_requests": 403,
+        "platform_errors": 0,
+        "status_rows": [
+          {
+            "status": "success",
+            "requests": 403,
+            "errors": 0
+          }
+        ],
+        "descriptive_observations": {
+          "cpu_p50_ms": 12.442,
+          "cpu_p95_ms": 24.579,
+          "memory_p99_bytes": 32832098,
+          "memory_p99_MiB": 31.311128616333008,
+          "wall_p50_ms": 575.726
+        },
+        "raw_sha256": "5ba54ab89a6f35a71d8281c9d4d5929438f52a1ab7d9aed4525958965361283c",
+        "causal_comparison_permitted": false
+      },
+      {
+        "block": 1,
+        "variant": "A",
+        "start": "2026-09-30T02:23:32.364Z",
+        "end": "2026-09-30T02:24:53.240Z",
+        "schema_valid": true,
+        "adaptive_requests": 402,
+        "platform_errors": 0,
+        "status_rows": [
+          {
+            "status": "success",
+            "requests": 402,
+            "errors": 0
+          }
+        ],
+        "descriptive_observations": {
+          "cpu_p50_ms": 13.055,
+          "cpu_p95_ms": 24.51,
+          "memory_p99_bytes": 50551510,
+          "memory_p99_MiB": 48.20967674255371,
+          "wall_p50_ms": 573.124
+        },
+        "raw_sha256": "2cbca0e7b4109663fdb151aa9c1951bea34e4fae8ab5012301fb74123963b059",
+        "causal_comparison_permitted": false
+      },
+      {
+        "block": 2,
+        "variant": "A",
+        "start": "2026-09-30T02:24:53.342Z",
+        "end": "2026-09-30T02:26:13.707Z",
+        "schema_valid": true,
+        "adaptive_requests": 241,
+        "platform_errors": 0,
+        "status_rows": [
+          {
+            "status": "success",
+            "requests": 241,
+            "errors": 0
+          }
+        ],
+        "descriptive_observations": {
+          "cpu_p50_ms": 12.068,
+          "cpu_p95_ms": 26.466,
+          "memory_p99_bytes": 41835570,
+          "memory_p99_MiB": 39.89750862121582,
+          "wall_p50_ms": 599.994
+        },
+        "raw_sha256": "9044d385e39d266b79ff8d9eabdb7df053696073a532542153959623aa6595f4",
+        "causal_comparison_permitted": false
+      },
+      {
+        "block": 2,
+        "variant": "B",
+        "start": "2026-09-30T02:26:13.818Z",
+        "end": "2026-09-30T02:27:33.433Z",
+        "schema_valid": true,
+        "adaptive_requests": 35,
+        "platform_errors": 0,
+        "status_rows": [
+          {
+            "status": "success",
+            "requests": 35,
+            "errors": 0
+          }
+        ],
+        "descriptive_observations": {
+          "cpu_p50_ms": 13.319,
+          "cpu_p95_ms": 22.802,
+          "memory_p99_bytes": 35167190,
+          "memory_p99_MiB": 33.53804588317871,
+          "wall_p50_ms": 561.144
+        },
+        "raw_sha256": "132407df637c5c1dca9b2abba9efd8ec34b5a12edc2b242c450841f08c5e3a5d",
+        "causal_comparison_permitted": false
+      },
+      {
+        "block": 3,
+        "variant": "B",
+        "start": "2026-09-30T02:27:33.563Z",
+        "end": "2026-09-30T02:28:54.732Z",
+        "schema_valid": true,
+        "adaptive_requests": 400,
+        "platform_errors": 0,
+        "status_rows": [
+          {
+            "status": "success",
+            "requests": 400,
+            "errors": 0
+          }
+        ],
+        "descriptive_observations": {
+          "cpu_p50_ms": 12.305,
+          "cpu_p95_ms": 24.814,
+          "memory_p99_bytes": 32235200,
+          "memory_p99_MiB": 30.74188232421875,
+          "wall_p50_ms": 572.398
+        },
+        "raw_sha256": "5d10f51ea420aca359add6a5d3ea75dc4fef388ab80fbf80372fd5da240c3245",
+        "causal_comparison_permitted": false
+      },
+      {
+        "block": 3,
+        "variant": "A",
+        "start": "2026-09-30T02:28:54.850Z",
+        "end": "2026-09-30T02:30:15.828Z",
+        "schema_valid": true,
+        "adaptive_requests": 408,
+        "platform_errors": 0,
+        "status_rows": [
+          {
+            "status": "success",
+            "requests": 408,
+            "errors": 0
+          }
+        ],
+        "descriptive_observations": {
+          "cpu_p50_ms": 14.236,
+          "cpu_p95_ms": 27.128,
+          "memory_p99_bytes": 42753896,
+          "memory_p99_MiB": 40.773292541503906,
+          "wall_p50_ms": 607.254
+        },
+        "raw_sha256": "b419328b7b398e69536e938f76b1a3e36ba4d18cca67cafd95722a8fb1be5a36",
+        "causal_comparison_permitted": false
+      },
+      {
+        "block": 4,
+        "variant": "A",
+        "start": "2026-09-30T02:30:15.947Z",
+        "end": "2026-09-30T02:31:36.833Z",
+        "schema_valid": true,
+        "adaptive_requests": 399,
+        "platform_errors": 0,
+        "status_rows": [
+          {
+            "status": "success",
+            "requests": 399,
+            "errors": 0
+          }
+        ],
+        "descriptive_observations": {
+          "cpu_p50_ms": 14.186,
+          "cpu_p95_ms": 28.956,
+          "memory_p99_bytes": 44526628,
+          "memory_p99_MiB": 42.46390151977539,
+          "wall_p50_ms": 617.806
+        },
+        "raw_sha256": "744149c03606144eaaf683682fb3db06901105088048b6ecdebcd31b09f434c1",
+        "causal_comparison_permitted": false
+      },
+      {
+        "block": 4,
+        "variant": "B",
+        "start": "2026-09-30T02:31:36.946Z",
+        "end": "2026-09-30T02:32:57.897Z",
+        "schema_valid": true,
+        "adaptive_requests": 418,
+        "platform_errors": 0,
+        "status_rows": [
+          {
+            "status": "success",
+            "requests": 418,
+            "errors": 0
+          }
+        ],
+        "descriptive_observations": {
+          "cpu_p50_ms": 11.175,
+          "cpu_p95_ms": 25.876,
+          "memory_p99_bytes": 37356824,
+          "memory_p99_MiB": 35.626243591308594,
+          "wall_p50_ms": 583.802
+        },
+        "raw_sha256": "9421b1c6939e6c2fba44f9342ea4f88288aec5094b6bbd6294c29907b0e89e3e",
+        "causal_comparison_permitted": false
+      }
+    ]
+  },
+  "restore": {
+    "scope": "isolated diagnostic D Worker only",
+    "restored_at": "2026-09-30T02:37:50.059954+00:00",
+    "command_exit_code": 0,
+    "ordinary_version": "bd4dd2c5-b806-40c8-b869-a34372919cdf",
+    "traffic_percent": 100,
+    "active_deployment": "f3b873f9-f895-4637-8c7e-b4d2129eec8d",
+    "ordinary_archive_verified": true,
+    "deployment_and_version_readback_verified": true
+  },
+  "raw_sha256": {
+    "main/command.json": "6598076fe600c7a2873ca6870aaa239f896f4b5aacdada634675ad65828c07a0",
+    "main/manifest.json": "b68202f492f52516a74cbc4d441ef97d2672dc9f88047030001812d4f4d6950d",
+    "main/summary.json": "9baab47a393468057e93ddc6ab69e6de0807d465d3984c9c45d34f7dd4aa9e70",
+    "main/dispatch.json": "8a210c5b440dcc314fd9918927522ac8085863107c595c82a105f3c809d15712",
+    "main/requests.jsonl": "bfe93fb49cdc7feb2264b77cb0176833fca5484388946e5b7c68aed00509192b",
+    "main/runner.log": "9a3ad7ad8039b57a7ec97b842b4fb33b3cce1bfb3172e8c393e127f76fe245bd",
+    "main/launch-provenance.json": "1dfc64e9eec54b44800ffb29598bc38a24a800c1c74f86f3fca14129109bf0f5",
+    "launcher-command": "6598076fe600c7a2873ca6870aaa239f896f4b5aacdada634675ad65828c07a0",
+    "after-preflight": "48a2d80f9e8d36ad6e038dcfa06a19250f2d5654809cb41e54dabfcf5d03da3f",
+    "subset-selection": "a66ba498ac1e10783235f792c777889db0f0d598ac6aed72ee9861c4f168df3c",
+    "subset-requests": "3c87ba248ad1852f4094337cbce26b6f8041de6cee7594d3a998f2ce98df2705",
+    "subset-command": "b0bb19b2aa86fa4fd49c725f2043b2aeb2287888590155f3cf442f915a0176ee",
+    "subset-summary": "2ece769998b0ea1f948d196d527a5458abc2f9ca38c9f3d5c3ce5fd9d06d4d23",
+    "failed-put-readback-intent": "20d27cacfb9322aa5bbe1a41a9f9f106cf34e4d20d8a857ab7ff4402b454b6b5",
+    "failed-put-readback-http": "3ea32f08f51f1b1ab6943f4b29b3ebb7325616b680643c0d24d61ae76434cb9e",
+    "failed-put-readback-response": "8081ca355264569cdb6e1859660314e53e886956c1d8f33d5a9a8e84ccc46220",
+    "failed-put-readback-raw": "5b43cb78296002d02b7e2578cec20fa4552f11fe654c0c79fdca3ebf2eb40462",
+    "metrics-initial-collection": "3e3ac8b046be18b350d69b96bc65c767e4d5c1e018030666ab566d0f8269d2ce",
+    "restore-completed": "6be66ba63762c1faee236de502db47472406d0340fe5d8a78b5cbf273379091c",
+    "restore-command": "748491b986383befdba7a36a473f2e620923c79e87dc2d11e88974dd5ef1285d",
+    "restore-after": "aa8660c759d8dcfe04c4ce0275d63d8bc0f9a8bee1747e9f32d82bd0bfde632b",
+    "offline-main-analysis": "48659484cb435d4e5718f1d369a98566e01ddb5e799a1a792d98e3f9a9662a9c",
+    "offline-storage-audit": "5c6a0ca193e4bf15158f23212cbb2d4afe09ba654943f55a65f46d93143ff135"
+  },
+  "limits": [
+    "Client cap drops caused unequal attempted load; retaining all cells does not repair the experiment.",
+    "The dump put rejection is a distinct failure; do not attribute it to scheduler symptoms.",
+    "Success-subset readback does not certify the failed request or 4000 offers.",
+    "The scheduler minimal model passed four bounded local runs; the original driver fault remains unexplained.",
+    "Initial metrics are retained for forensic context only, with no capture cost or release conclusion.",
+    "Retired ownership rows do not establish physical blob cleanup or the original storage rejection cause."
+  ]
+}
