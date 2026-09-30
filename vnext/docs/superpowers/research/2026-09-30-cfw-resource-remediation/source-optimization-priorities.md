@@ -12,7 +12,7 @@ Use three rules for the next changes:
 2. Let downstream demand control streaming reads, with explicit byte budgets for any queue. Background capture must respect the same bound.
 3. Validate and normalize internal data once at a trusted ownership boundary. Preserve full validation for external or borrowed data and preserve independent mutable request graphs for retries.
 
-These are source-supported opportunities, not quantified speed or memory improvements. Fewer owners can shorten object lifetime without immediately reducing retained bytes; immutable strings already share storage in several current copies. The latest ordinary pilot still fails resource thresholds, as recorded in the [evidence overview](./README.md#final-c-ordinary-pilot-and-current-direction).
+These were source-supported opportunities, not quantified speed or memory improvements. Fewer owners can shorten object lifetime without immediately reducing retained bytes; immutable strings already share storage in several current copies. The list is now implemented and its final combined comparison still fails ordinary resource thresholds; see the [final results](./source-optimization-results.md). The numbered source observations below preserve the analysis that led to the implementation.
 
 ## Priority and applicability
 
@@ -104,13 +104,13 @@ These are useful cleanup within the relevant modules, not the main architectural
 
 ## Implementation sequence after this analysis
 
-The following is planned work, not completed optimization:
+The following source changes are implemented and independently reviewed in the [batch plan](../../plans/2026-09-30-cfw-source-optimization-batch.md). Focused correctness checks and frozen combined CI03 pass: 5,384 tests passed, 2 skipped, 0 failed; all CI stages passed and 2,329 source hashes remained stable. Combined cloud resource quantification is complete and fails ordinary CPU, memory and client p95 gates; no per-item benefit is claimed:
 
-- [ ] Separate affinity preparation from shared execution state, including deferred closure captures and unused HTTP history.
-- [ ] Consume owned compression/upload inputs by stage; normalize the internal upstream envelope once and include its small allocation fixes. This provides a parallel focus on ordinary capture-enabled CPU and memory lifetime.
-- [ ] Introduce demand-driven serializers together with the canonical dump completion boundary so an eager tee cannot bypass their backpressure.
-- [ ] Simplify per-frame interruption and byte counting, then index output-item reconciliation where it is independent of the preserved overlay.
+- [x] Separate affinity preparation from shared execution state, including deferred closure captures and unused HTTP history.
+- [x] Consume owned compression/upload inputs by stage; normalize the internal upstream envelope once and include its small allocation fixes. This provides a parallel focus on ordinary capture-enabled CPU and memory lifetime.
+- [x] Introduce demand-driven serializers together with the canonical dump completion boundary so an eager tee cannot bypass their backpressure.
+- [x] Simplify per-frame interruption and byte counting, then index output-item reconciliation where it is independent of the preserved overlay.
 
 Do not add more caches, compression parallelism, background queues or services merely to move work elsewhere. They can increase retained data and introduce authority, completion or rollback complexity. Defer lazy provider construction: it changes error timing/authority boundaries for a small speculative benefit.
 
-No new diagnostic campaign is the immediate next step. Implement bounded changes from the source findings, then use focused semantic checks and the existing qualification gates for the resulting candidate. Resource acceptance, catalog/affinity rollback compatibility and vNext integration remain open. Production has not changed; the completed isolated pilot was restored to its archived ordinary version.
+The reviewed complete candidate is frozen and passed combined CI. Its Node ordinary/large/history runs completed 4,000/80/20 successful requests under unchanged gates; ordinary CPU p50/p95 fail 5/5 pairs, memory p99 fails 2/5 and client p95 fails 6/10. Both metrics collections agree, and the source-batch experiment's isolated Worker has been restored. See the [final report](./source-optimization-results.md) for source/artifact identity and preserved Bun failure boundaries. Do not start per-item diagnostic campaigns. Resource acceptance, catalog/affinity rollback compatibility and vNext integration remain open. Production has not changed.

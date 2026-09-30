@@ -1,0 +1,171 @@
+{
+  "schema": 1,
+  "scope": "Incomplete Bun whole-batch comparison; not resource qualification",
+  "experiment": "source-opt-v1-02",
+  "run": "full-01",
+  "recordedAt": "2026-09-30T06:41:55.492554+00:00",
+  "plannedOffers": 4000,
+  "taskCounters": {
+    "offered": 600,
+    "started": 600,
+    "settled": 600,
+    "deleted": 600,
+    "fulfilled": 597,
+    "rejected": 3,
+    "dropped": 0,
+    "journalStarted": 597,
+    "journalResolved": 597,
+    "journalRejected": 0
+  },
+  "recordedRequests": 597,
+  "recordedSuccessfulRequests": 597,
+  "recordedTransportCompleted": 597,
+  "completedCells": 3,
+  "expectedCells": 20,
+  "runnerExitCode": 2,
+  "qualified": false,
+  "postErrors": [
+    {
+      "phase": "post-run-evidence",
+      "error_type": "RuntimeError"
+    }
+  ],
+  "failedLocalTasks": [
+    {
+      "ordinal": 26,
+      "outcome": "rejected",
+      "requestId": null,
+      "taskErrorName": "Error",
+      "bodyEofAtMs": null,
+      "appendStartedAtMs": null,
+      "requestReadyToReturnAtMs": null
+    },
+    {
+      "ordinal": 27,
+      "outcome": "rejected",
+      "requestId": null,
+      "taskErrorName": "Error",
+      "bodyEofAtMs": null,
+      "appendStartedAtMs": null,
+      "requestReadyToReturnAtMs": null
+    },
+    {
+      "ordinal": 28,
+      "outcome": "rejected",
+      "requestId": null,
+      "taskErrorName": "Error",
+      "bodyEofAtMs": null,
+      "appendStartedAtMs": null,
+      "requestReadyToReturnAtMs": null
+    }
+  ],
+  "dispatch": {
+    "valid": true,
+    "available": true,
+    "exactly_once_failures": 0,
+    "expected_logical_ids": 597,
+    "observed_logical_ids": 597,
+    "observed_rows": 597,
+    "total_dispatches": 597
+  },
+  "partialClientObservations": [
+    {
+      "cell": [
+        "A",
+        0,
+        "responses",
+        "responses",
+        "ok",
+        65536,
+        false
+      ],
+      "offered": 200,
+      "attempted": 200,
+      "completed": 200,
+      "transport_completed": 200,
+      "semantic_success": 200,
+      "timeouts": 0,
+      "passed": 200,
+      "failed": 0,
+      "saturation_drops": 0,
+      "p50_ms": 99.44666700000016,
+      "p95_ms": 189.70650000000023,
+      "p99_ms": null,
+      "p99_available": false,
+      "ttfe_p50_ms": 99.4464579999999,
+      "lateness_p95_ms": 2.6116670000010345
+    },
+    {
+      "cell": [
+        "A",
+        0,
+        "responses",
+        "responses",
+        "ok",
+        65536,
+        true
+      ],
+      "offered": 200,
+      "attempted": 200,
+      "completed": 200,
+      "transport_completed": 200,
+      "semantic_success": 200,
+      "timeouts": 0,
+      "passed": 200,
+      "failed": 0,
+      "saturation_drops": 0,
+      "p50_ms": 127.73029200000019,
+      "p95_ms": 172.5050409999967,
+      "p99_ms": null,
+      "p99_available": false,
+      "ttfe_p50_ms": 110.29249999999593,
+      "lateness_p95_ms": 2.4054160000014235
+    },
+    {
+      "cell": [
+        "B",
+        0,
+        "responses",
+        "responses",
+        "ok",
+        65536,
+        false
+      ],
+      "offered": 197,
+      "attempted": 197,
+      "completed": 197,
+      "transport_completed": 197,
+      "semantic_success": 197,
+      "timeouts": 0,
+      "passed": 197,
+      "failed": 0,
+      "saturation_drops": 0,
+      "p50_ms": 148.64554100000532,
+      "p95_ms": 315.16991700000654,
+      "p99_ms": null,
+      "p99_available": false,
+      "ttfe_p50_ms": 148.64520800000173,
+      "lateness_p95_ms": 2.4235829999961425
+    }
+  ],
+  "runtime": "Bun 1.3.0",
+  "sourceManifestSha256": "0d909fba9d74f67d09d8fdb35ddcb528d2e1dd35f45050d433231d79e368bb01",
+  "inputSha256": {
+    "run-qualification.json": "694b471ba6e7c212b7528c0fcd2a19915277732a2ca94d685673e67f5a0308ef",
+    "command.json": "df006484beb524f7c9fa4ff2c72d6f0bb90afafc2fce8a0b216138ccec3b078e",
+    "summary.json": "5cfd4206fc3c77c30fd6bd659816c32beb07cca65d08cc6e8eaf64b53bd1a08f",
+    "driver-accounting.json": "e43387adc6374a88a0ff88260fa25954946dabf364aa21287ea85cd38a86aef4",
+    "driver-accounting/2.json": "dacebbc437a78e1ccc0486d1698be82fa92a9342f506f81a6b61f1dd32f66010",
+    "dispatch.json": "6c4a6050bdf43e62fc0453f9543b882ab6b675e51bdd5c3f6746c93c28539660",
+    "requests.jsonl": "0316610353009b872eea1fee1957364b05afe52b16aa19a98157d21ce6cb498c",
+    "delayed-counts/result.json": "cea31a8296466288dc3b6dbd843756730fb30847a8f3011825a36b5ba1efc5b7",
+    "delayed-counts/body.bin": "35f8055ff7db96f0e56c8a40ad2270ac82b0aa06d64baa3ca305eed10a4e37c1"
+  },
+  "auditSha256": "bd788b9d0e90b8c1c37d7ffcb210df51a09d9efccb1e8f7d12dac05ce16be8ef",
+  "limitations": [
+    "No complete paired platform window; CPU/memory gates cannot be evaluated.",
+    "Three null IDs create the local duplicate-ID flag; the 597 non-null IDs have no observed duplicate dispatch.",
+    "Only Error names were retained; no exact throwing statement or Bun/JSC/gateway cause is established.",
+    "Partial latency values remain descriptive adverse evidence; do not pool with later Node runs."
+  ]
+}
