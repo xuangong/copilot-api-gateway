@@ -2,6 +2,7 @@ import { queryUsageKeyMetadata, queryUsageAssigneeMetadata } from "../usage-meta
 import { getOrCreateAffinitySecret } from "../affinity-secret.ts"
 import { SharedCatalogRepo } from "./catalogs.ts"
 import { queryUsageOverview, type UsageOverviewQuery } from "../usage-overview"
+import { queryUsageQuota } from "../usage-quota.ts"
 import { SharedAgentRemoteContinuationRepo } from "./agent-remote-continuations.ts"
 import { SharedSetupLeaseRepo } from "./setup-leases.ts"
 import { SharedPerformanceMetricsRepo } from "../performance-metrics"
@@ -40,6 +41,7 @@ import type {
   SessionRepo,
   UsageRecord,
   UsageRepo,
+  UsageQuotaQuery,
   User,
   UserRepo,
   UserSession,
@@ -802,6 +804,7 @@ class SharedUsageRepo implements UsageRepo {
   queryAssigneeMetadata(keyIds: readonly ApiKeyId[]) { return queryUsageAssigneeMetadata(this.x, keyIds) }
 
   queryOverview(opts: UsageOverviewQuery) { return queryUsageOverview(this.x, opts) }
+  queryQuota(opts: UsageQuotaQuery) { return queryUsageQuota(this.x, opts) }
 
   constructor(private x: SqlExecutor) {}
 

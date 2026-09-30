@@ -244,10 +244,38 @@ export interface UsageAssigneeMetadata {
   name: string | null
 }
 
+export interface UsageQuotaQuery {
+  readonly keyId: ApiKeyId
+  readonly start: string
+  /** Exclusive UTC hour boundary. */
+  readonly end: string
+  /** Omit for all metrics. Unrequested totals are zero and do not scan their source. */
+  readonly metrics?: {
+    readonly requests: boolean
+    readonly tokens: boolean
+    readonly cost: boolean
+  }
+}
+
+export interface UsageQuotaProjection {
+  readonly requests: number
+  readonly tokens: Readonly<Record<BillingDimension, number>>
+  /** Known cost after resolving the recorded, bucket-local price fallback. */
+  readonly costUsd: number
+  /** Bounds for detecting thresholds sensitive to reassociated floating-point sums. */
+  readonly roundoff: {
+    readonly dimensionRows: number
+    readonly absoluteTokens: Readonly<Record<BillingDimension, number>>
+    readonly absoluteCostUsd: number
+  }
+}
+
 export interface UsageRepo {
   queryKeyMetadata(keyIds?: readonly ApiKeyId[]): Promise<UsageKeyMetadata[]>
   queryAssigneeMetadata(keyIds: readonly ApiKeyId[]): Promise<UsageAssigneeMetadata[]>
   queryOverview(opts: UsageOverviewQuery): Promise<UsageOverview>
+  /** Fixed-size quota totals; unknown dimensions and unresolved prices contribute zero. */
+  queryQuota(opts: UsageQuotaQuery): Promise<UsageQuotaProjection>
   /** Additive upsert: tokens += excluded.tokens, requests += excluded.requests. */
   record(r: UsageRecord): Promise<void>
   /** Replacement upsert (used by data-transfer import): clears bucket's

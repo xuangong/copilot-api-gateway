@@ -15,6 +15,7 @@ import { getDataPlaneConfiguration, getRepo } from '../../repo/index.ts'
 import { recordCostUsd } from '../../shared/usage-cost.ts'
 import { computeWeightedTokens } from './quota-math.ts'
 import type { ApiKeyId } from '../../repo/branded-ids.ts'
+import type { TokenUsage } from '../../repo/types.ts'
 
 export { computeWeightedTokens }
 
@@ -35,43 +36,74 @@ function utcMonthStartHour(now: Date, monthDelta: number): string {
   return d.toISOString().slice(0, 10) + 'T00'
 }
 
+function weightedTokens(tokens: TokenUsage): number {
+  return computeWeightedTokens(tokens.input_cache_read ?? 0, tokens.input_cache_write ?? 0,
+    (tokens.input ?? 0) + (tokens.input_image ?? 0), (tokens.output ?? 0) + (tokens.output_image ?? 0))
+}
+
+function needsExactQuotaCheck(total: number, limit: number | undefined, absoluteTotal: number, terms: number): boolean {
+  if (limit == null || terms === 0) return false
+  // Both paths use at most a small constant number of arithmetic operations
+  // per known dimension: products, the six-term bucket sum, division, and
+  // accumulation. 16n+64 bounds their combined forward errors, including the
+  // aggregate magnitude estimate. EPSILON (twice unit roundoff) gives margin.
+  // gamma(k) bounds reassociation error against the sum of absolute terms;
+  // the MIN_VALUE allowance covers underflow. Pathological bounds recheck.
+  const operations = 16 * terms + 64
+  const scaledError = operations * Number.EPSILON
+  if (scaledError >= 0.5 || !Number.isFinite(total) || !Number.isFinite(absoluteTotal)) return true
+  const error = scaledError / (1 - scaledError) * Math.max(Math.abs(total), absoluteTotal)
+    + operations * Number.MIN_VALUE
+  return Math.abs(total - limit) <= error
+}
+
 export async function checkQuota(apiKeyId: ApiKeyId): Promise<QuotaResult> {
   const repo = getRepo()
   const key = await getDataPlaneConfiguration().apiKeys.getById(apiKeyId)
   if (!key) return { allowed: true }
 
-  const hasReqQuota = key.quotaRequestsPerMonth != null
-  const hasTokenQuota = key.quotaTokensPerMonth != null
-  const hasCostQuota = key.quotaCostPerMonth != null
-  if (!hasReqQuota && !hasTokenQuota && !hasCostQuota) return { allowed: true }
+  const requestLimit = key.quotaRequestsPerMonth
+  const tokenLimit = key.quotaTokensPerMonth
+  const costLimit = key.quotaCostPerMonth
+  if (requestLimit == null && tokenLimit == null && costLimit == null) return { allowed: true }
 
   const now = new Date()
   const monthStart = utcMonthStartHour(now, 0)
   const nextMonthStart = utcMonthStartHour(now, 1)
 
-  const records = await repo.usage.query({ keyId: apiKeyId, start: monthStart, end: nextMonthStart })
-
-  let totalRequests = 0
-  let totalWeightedTokens = 0
-  let totalCostUsd = 0
-  for (const r of records) {
-    totalRequests += r.requests
-    const cacheRead = r.tokens.input_cache_read ?? 0
-    const cacheWrite = r.tokens.input_cache_write ?? 0
-    const input = (r.tokens.input ?? 0) + (r.tokens.input_image ?? 0)
-    const output = (r.tokens.output ?? 0) + (r.tokens.output_image ?? 0)
-    totalWeightedTokens += computeWeightedTokens(cacheRead, cacheWrite, input, output)
-    totalCostUsd += recordCostUsd(r)
+  const range = { keyId: apiKeyId, start: monthStart, end: nextMonthStart }
+  const totals = await repo.usage.queryQuota({ ...range,
+    metrics: { requests: requestLimit != null, tokens: tokenLimit != null, cost: costLimit != null },
+  })
+  const retryAfterSeconds = secondsUntilNextUtcMonth(now)
+  if (requestLimit != null && totals.requests >= requestLimit) {
+    return { allowed: false, reason: `Monthly request quota exceeded (${totals.requests}/${key.quotaRequestsPerMonth}). Resets at the start of the next UTC month.`, retryAfterSeconds }
+  }
+  let totalRequests = totals.requests
+  let totalWeightedTokens = weightedTokens(totals.tokens)
+  let totalCostUsd = totals.costUsd
+  if (needsExactQuotaCheck(totalWeightedTokens, tokenLimit, weightedTokens(totals.roundoff.absoluteTokens), totals.roundoff.dimensionRows)
+    || needsExactQuotaCheck(totalCostUsd, costLimit, totals.roundoff.absoluteCostUsd, totals.roundoff.dimensionRows)) {
+    // Only rounding-sensitive thresholds retain the legacy ordered JS fold.
+    // Ordinary admissions transfer a single row instead of the full month.
+    const records = await repo.usage.query(range)
+    totalRequests = 0
+    totalWeightedTokens = 0
+    totalCostUsd = 0
+    for (const r of records) {
+      totalRequests += r.requests
+      totalWeightedTokens += weightedTokens(r.tokens)
+      totalCostUsd += recordCostUsd(r)
+    }
   }
 
-  const retryAfterSeconds = secondsUntilNextUtcMonth(now)
-  if (hasReqQuota && totalRequests >= key.quotaRequestsPerMonth!) {
+  if (requestLimit != null && totalRequests >= requestLimit) {
     return { allowed: false, reason: `Monthly request quota exceeded (${totalRequests}/${key.quotaRequestsPerMonth}). Resets at the start of the next UTC month.`, retryAfterSeconds }
   }
-  if (hasTokenQuota && totalWeightedTokens >= key.quotaTokensPerMonth!) {
+  if (tokenLimit != null && totalWeightedTokens >= tokenLimit) {
     return { allowed: false, reason: `Monthly token quota exceeded (${Math.round(totalWeightedTokens)}/${key.quotaTokensPerMonth}). Resets at the start of the next UTC month.`, retryAfterSeconds }
   }
-  if (hasCostQuota && totalCostUsd >= key.quotaCostPerMonth!) {
+  if (costLimit != null && totalCostUsd >= costLimit) {
     return { allowed: false, reason: `Monthly cost quota exceeded ($${totalCostUsd.toFixed(4)}/$${key.quotaCostPerMonth}). Resets at the start of the next UTC month.`, retryAfterSeconds }
   }
 
