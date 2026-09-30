@@ -3,9 +3,10 @@ import { chatReasoningText } from "@vibe-llm/translate/shared/chat-reasoning-tex
 import { decodeOpaqueValue } from "@vibe-llm/protocols/common"
 import { InvalidAffinityStateError, MAX_AFFINITY_PAYLOAD_BYTES } from "./carrier.ts"
 import { JsonStringBudget } from "./json-string-budget.ts"
+import { utf8ByteLength } from "../utf8.ts"
 import type { ProtocolFrame } from "@vibe-core/result"
 import { stampAffinityItem } from "./analysis.ts"
-import type { RequestAffinity } from "./context.ts"
+import type { AffinityExecutionState } from "./context.ts"
 import type { AffinityProtocol } from "./analysis.ts"
 
 function responseOpaqueKeys(item: Record<string, unknown>): string[] {
@@ -45,7 +46,7 @@ function boundedBlock(block: { thinkingBudget: JsonStringBudget; signature: stri
 function object(value: unknown): value is Record<string, unknown> { return !!value && typeof value === "object" && !Array.isArray(value) }
 // Run before translators and JSON reassemblers, which may otherwise hide an
 // unbounded signature/companion buffer. Throwing closes the upstream iterator.
-export async function* guardAffinityFrames<T>(frames: AsyncIterable<ProtocolFrame<T>>, affinity: RequestAffinity | undefined): AsyncGenerator<ProtocolFrame<T>> {
+export async function* guardAffinityFrames<T>(frames: AsyncIterable<ProtocolFrame<T>>, affinity: AffinityExecutionState | undefined): AsyncGenerator<ProtocolFrame<T>> {
   if (!affinity) { yield* frames; return }
   const blocks = new Map<number, { thinkingBudget: JsonStringBudget; signature: string; rawSignature: boolean }>()
   const summaries = new Map<string, JsonStringBudget>()
@@ -54,7 +55,7 @@ export async function* guardAffinityFrames<T>(frames: AsyncIterable<ProtocolFram
     if (value.length > MAX_AFFINITY_PAYLOAD_BYTES || decodeOpaqueValue(value).bytes.length > MAX_AFFINITY_PAYLOAD_BYTES) throw new InvalidAffinityStateError()
   }
   const checkCompanion = (value: unknown): void => {
-    if (new TextEncoder().encode(JSON.stringify(value)).length > MAX_AFFINITY_PAYLOAD_BYTES) throw new InvalidAffinityStateError()
+    if (utf8ByteLength(JSON.stringify(value) ?? "") > MAX_AFFINITY_PAYLOAD_BYTES) throw new InvalidAffinityStateError()
   }
   const checkResponseItem = (value: unknown): void => {
     if (!object(value)) return
@@ -130,9 +131,10 @@ export async function* guardAffinityFrames<T>(frames: AsyncIterable<ProtocolFram
 }
 export class AffinityEgress {
   private readonly closed = new Map<number, { key: string; id?: string }>()
+  private readonly closedIds = new Map<string, number>()
   private readonly finalized = new Map<string, Record<string, unknown>>()
   private readonly items = new Map<string, Promise<Record<string, unknown>>>()
-  constructor(private readonly affinity: RequestAffinity | undefined) {}
+  constructor(private readonly affinity: AffinityExecutionState | undefined) {}
   private async item(protocol: AffinityProtocol, value: Record<string, unknown>): Promise<Record<string, unknown>> {
     const state = this.affinity
     if (!state?.actual) return Promise.resolve(value)
@@ -222,8 +224,12 @@ export class AffinityEgress {
       const index = typeof event.output_index === "number" ? event.output_index : this.closed.size
       const key = itemKey(event.item, index)
       const id = typeof event.item.id === "string" && event.item.id ? event.item.id : undefined
-      if (id) for (const [previous, value] of this.closed) if (value.id === id) this.closed.delete(previous)
+      const previous = id ? this.closedIds.get(id) : undefined
+      if (previous !== undefined) this.closed.delete(previous)
+      const displaced = this.closed.get(index)
+      if (displaced?.id) this.closedIds.delete(displaced.id)
       this.closed.set(index, { key, id })
+      if (id) this.closedIds.set(id, index)
       const item = this.finalized.get(key) ?? await this.item("responses", event.item)
       // Once an authenticated item is emitted, its bound companion cannot change
       // in the terminal envelope or durable snapshot.

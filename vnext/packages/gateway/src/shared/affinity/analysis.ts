@@ -58,11 +58,15 @@ function slots(protocol: AffinityProtocol, item: JsonObject): Slot[] {
     if (["compaction_summary", "context_compaction"].includes(type)) domainType = "compaction"
     if (["reasoning", "compaction", "compaction_summary", "context_compaction", "program", "program_output"].includes(type)) keys = ["encrypted_content"]
     if (type === "program" || type === "program_output") keys.push("fingerprint")
+  }
+  keys = keys.filter(key => typeof item[key] === "string")
+  if (keys.length === 0) return []
+  if (protocol === "responses") {
     // Bind visible companion content, excluding mutable protocol ids and aliases.
     companion = Object.fromEntries(["summary", "content", "code", "result", "call_id"].filter(key => item[key] !== undefined).map(key => [key, item[key]]))
   }
   const block = JSON.stringify(canonical(companion))
-  return keys.filter(key => typeof item[key] === "string").map(key => ({ key, field: { domain: `${protocol}/${domainType}/${key}`, block } }))
+  return keys.map(key => ({ key, field: { domain: `${protocol}/${domainType}/${key}`, block } }))
 }
 
 async function agentField(item: JsonObject, carried: boolean): Promise<AffinityField> {
@@ -115,7 +119,7 @@ async function blocks(protocol: AffinityProtocol, body: JsonObject): Promise<Blo
     if (!Array.isArray(body.input)) return found
     for (const [index, item] of body.input.entries()) {
       if (!object(item)) continue
-      if (item.type === "agent_message" && Array.isArray(item.content)) {
+      if (item.type === "agent_message" && Array.isArray(item.content) && item.content.some(block => object(block) && block.type === "encrypted_content" && typeof block.encrypted_content === "string")) {
         const field = await agentField(item, true)
         item.content.forEach((block, blockIndex) => {
           if (object(block) && block.type === "encrypted_content" && typeof block.encrypted_content === "string") found.push({

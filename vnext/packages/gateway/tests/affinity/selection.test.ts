@@ -11,7 +11,7 @@ function candidate(prepare?: LlmModelProvider["prepareAffinityExecution"], endpo
   const binding: LlmProviderBinding = { kind: "claude-code", upstream: "up", enabledFlags: new Set(), model: { id: "public", endpoints: { [endpoint]: {} } }, provider }
   return { binding, targetEndpoint: endpoint }
 }
-async function affinity(protocol: "responses" | "messages", source: Record<string, unknown>): Promise<RequestAffinity> { return { protocol, codec, analysis: await analyzeAffinityRequest(protocol, source, codec) } }
+async function affinity(protocol: "responses" | "messages", source: Record<string, unknown>): Promise<RequestAffinity> { return { execution: { protocol, codec }, analysis: await analyzeAffinityRequest(protocol, source, codec) } }
 
 test("unknown-target Claude candidate degrades optional state but rejects required native state before dispatch", async () => {
   const unknown = candidate()

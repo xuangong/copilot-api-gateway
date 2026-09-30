@@ -90,7 +90,7 @@ export type PreparedDumpRequestBody = {
 export interface DumpWriteRequest {
   method: string
   path: string
-  headers: Array<[string, string]>
+  headers: readonly (readonly [string, string])[]
   body: PreparedDumpRequestBody
 }
 
@@ -105,6 +105,24 @@ export interface StoredDumpResponse {
   body: StoredDumpResponseBody
 }
 
+export type DumpWriteResponseBody =
+  | { type: "stream"; events: DumpStreamEvent[] }
+  | {
+    type: "bytes"
+    body: Uint8Array
+    // Only freshly owned private bytes may be transferred. The caller must
+    // relinquish all mutable aliases; readonly/frozen wrappers are insufficient.
+    // Omission means borrowed bytes and requires a preparation-time snapshot.
+    ownership?: "transferred"
+  }
+  | { type: "none" }
+
+export interface DumpWriteResponse {
+  status: number | null
+  headers: readonly (readonly [string, string])[]
+  body: DumpWriteResponseBody
+}
+
 export type StoredDumpRecord = {
   meta: DumpMetadata
   request: StoredDumpRequest
@@ -117,7 +135,7 @@ export type StoredDumpRecord = {
 export type DumpWriteRecord = {
   meta: DumpMetadata
   request: DumpWriteRequest
-  response: StoredDumpResponse
+  response: DumpWriteResponse
   upstreamExchanges?: UpstreamExchanges | null
 }
 

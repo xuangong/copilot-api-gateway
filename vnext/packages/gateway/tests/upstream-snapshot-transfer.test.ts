@@ -84,6 +84,29 @@ test("takeSnapshot transfers the exact immutable envelope previously published b
   expectConsumed(collector)
 })
 
+test.each(["transfer", "abandon"] as const)("%s releases every published snapshot object from multiple old captures", mode => {
+  const collector = new UpstreamExchangeCollector(1000)
+  const attempts = [begin(collector), begin(collector)]
+  for (const attempt of attempts) {
+    attempt.observeResponse(200, [["content-type", "text/plain"], ["content-length", "0"]], null)
+  }
+  const snapshot = collector.finish(1040)
+  const original = JSON.stringify(snapshot)
+  expect(collector.finish(1100)).toBe(snapshot)
+  expect(snapshot.attempts.map(item => item.requestHeaders.length)).toEqual([1, 1])
+  expect(snapshot.attempts.map(item => item.responseHeaders.length)).toEqual([2, 2])
+
+  const transferred = seal(collector, mode)
+  if (mode === "transfer") expect(transferred).toBe(snapshot)
+  const retained = reachableObjects([collector, ...attempts])
+  for (const value of reachableObjects(snapshot)) {
+    expect(Object.isFrozen(value)).toBe(true)
+    expect(retained.has(value)).toBe(false)
+  }
+  expect(JSON.stringify(snapshot)).toBe(original)
+  expectConsumed(collector)
+})
+
 test("takeSnapshot finalizes directly at the supplied time before transferring ownership", () => {
   const collector = new UpstreamExchangeCollector(1000)
   const attempt = begin(collector)

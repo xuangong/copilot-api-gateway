@@ -1,5 +1,8 @@
+import { withCanonicalCompletion } from "@vibe-core/chat-flow-kit"
+import { demandSse } from "../shared/demand-sse"
+import { canonicalCancellation, canonicalJsonResponse } from "../shared/canonical-response"
 import { AffinityEgress, guardAffinityFrames } from "../../../shared/affinity/egress"
-import type { RequestAffinity } from "../../shared/affinity-request"
+import type { AffinityExecutionState } from "../../../shared/affinity/context"
 import { translateStream } from "../shared/translate-stream"
 // vnext/packages/gateway/src/data-plane/chat-flow/messages/respond.ts
 /**
@@ -58,13 +61,13 @@ import {
 import type { TelemetryRequestContext } from '../shared/telemetry-ctx.ts'
 import { collectMessagesProtocolEventsToResult } from './events/reassemble.ts'
 import { messagesProtocolFrameToSSEFrame } from './events/to-sse.ts'
-import { MESSAGES_KEEPALIVE_FRAME, startSseKeepalive } from '../shared/sse-keepalive.ts'
+import { MESSAGES_KEEPALIVE_FRAME } from '../shared/sse-keepalive.ts'
 import { collectChatCompletionsProtocolEventsToResult } from '../chat-completions/events/to-result'
 import { collectResponsesProtocolEventsToResult } from '../responses/events/reassemble'
 import type { DumpAccumulator } from '../../../shared/dump/accumulator.ts'
 
 export interface RespondMessagesOptions {
-  readonly affinity?: RequestAffinity
+  readonly affinity?: AffinityExecutionState
   readonly wantsStream: boolean
   /**
    * Optional abort signal used to cancel an in-flight SSE source generator
@@ -84,7 +87,7 @@ export interface RespondMessagesOptions {
    * Optional per-request dump accumulator. When present, respond.ts calls
    * mid-flight hooks (`frame` per protocol frame, `success` on completion,
    * `error` on upstream non-2xx, `failed` on internal/mid-stream errors).
-   * Kit auto-tees the terminal Response into `finalize` outside this layer.
+   * Kit forwards canonical completion to `finalize` without a capture tee.
    */
   readonly dump?: DumpAccumulator | null
 }
@@ -97,13 +100,11 @@ export interface RespondMessagesOptions {
  */
 export type RespondMessagesInput = LlmExecuteResult<ProtocolFrame<MessagesStreamEvent>>
 
-const SSE_TEXT_ENCODER = new TextEncoder()
-
-const encodeSseFrame = (frame: SseFrame): Uint8Array => {
+const encodeSseFrame = (frame: SseFrame): string => {
   const lines: string[] = []
   if (frame.event !== undefined) lines.push(`event: ${frame.event}`)
   lines.push(`data: ${frame.data}`)
-  return SSE_TEXT_ENCODER.encode(lines.join('\n') + '\n\n')
+  return lines.join('\n') + '\n\n'
 }
 
 /**
@@ -164,8 +165,8 @@ async function persistFromEventResult<T>(
   if (state.persisted) return
   state.persisted = true
   telemetryCtx?.metrics?.finish(state.failed ? "error" : "success")
-  const md = await eventResultMetadata(result, telemetryCtx)
-  const finalIdentity = result.finalMetadata
+  const md = await eventResultMetadata(result, telemetryCtx, state.metadataCancellation.signal)
+  const finalIdentity = !state.cancelled && result.finalMetadata
     ? md.modelIdentity
     : finalModelIdentity(md.modelIdentity, state.modelKey, result.resolveModelIdentity)
   if (dump) {
@@ -219,11 +220,6 @@ const renderEventsAsSSE = (
   options: RespondMessagesOptions,
 ): Response => {
   const state = new SourceStreamState(result.modelIdentity.modelKey, result.modelIdentity.model, result.modelIdentity.executedModelKey)
-  const onClientAbort = (): void => {
-    options.telemetryCtx?.metrics?.finish("cancelled")
-    if (options.telemetryCtx || options.dump) waitUntil(persistFromEventResult(result, state, options.telemetryCtx, options.dump))
-  }
-  options.downstreamAbortController?.signal.addEventListener("abort", onClientAbort, { once: true })
   // Cross-protocol streaming: apply translator at SSE-time so the SSE encoder
   // sees source-shape frames; same-protocol falls through unchanged.
   const upstreamFrames: AsyncIterable<ProtocolFrame<MessagesStreamEvent>> = result.translateEvents
@@ -235,44 +231,33 @@ const renderEventsAsSSE = (
       )
     : guardAffinityFrames(result.events, options.affinity)
   const events = consumeWithState(new AffinityEgress(options.affinity).messages(upstreamFrames), state, options.dump)
-  let cancelled = false
-  const body = new ReadableStream<Uint8Array>({
-    async start(controller) {
-      const keepalive = startSseKeepalive(controller, MESSAGES_KEEPALIVE_FRAME)
-      try {
-        for await (const frame of events) {
-          const sse = messagesProtocolFrameToSSEFrame(frame)
-          if (sse !== null && !cancelled) {
-            if (frame.type === "event") options.telemetryCtx?.metrics?.observeOutput("messages", frame.event)
-            if (!cancelled) controller.enqueue(encodeSseFrame(sse))
-          }
-          keepalive.touch()
-        }
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err)
-        options.dump?.failed(message)
-        if (!cancelled) controller.enqueue(
-          encodeSseFrame(
-            sseFrame(JSON.stringify({ type: 'error', error: { type: 'api_error', message } }), 'error'),
-          ),
-        )
-      } finally {
-        keepalive.stop()
-        options.downstreamAbortController?.signal.removeEventListener("abort", onClientAbort)
-        if (!cancelled) controller.close()
-        if (state && (options.telemetryCtx || options.dump)) {
-          waitUntil(persistFromEventResult(result, state, options.telemetryCtx, options.dump))
-        }
-      }
+  const completed = Promise.withResolvers<void>()
+  const cancel = canonicalCancellation(state, options, result.modelIdentity, result.resolveModelIdentity)
+  const body = demandSse({
+    events,
+    background: options.telemetryCtx || options.dump ? waitUntil : undefined,
+    keepalive: MESSAGES_KEEPALIVE_FRAME,
+    signal: options.downstreamAbortController?.signal,
+    serialize(frame) {
+      const sse = messagesProtocolFrameToSSEFrame(frame)
+      if (sse === null) return null
+      if (frame.type === "event") options.telemetryCtx?.metrics?.observeOutput("messages", frame.event)
+      return encodeSseFrame(sse)
     },
-    cancel(_reason) {
-      cancelled = true
-      options.telemetryCtx?.metrics?.finish("cancelled")
-      options.downstreamAbortController?.abort()
-      if (options.telemetryCtx || options.dump) waitUntil(persistFromEventResult(result, state, options.telemetryCtx, options.dump))
+    errorFrame(err) {
+      const message = err instanceof Error ? err.message : String(err)
+      options.dump?.failed(message)
+      return encodeSseFrame(sseFrame(JSON.stringify({ type: 'error', error: { type: 'api_error', message } }), "error"))
+    },
+    onCancel: cancel,
+    onFinish(cancelled) {
+      if (cancelled) cancel()
+      if (!options.telemetryCtx && !options.dump) { completed.resolve(); return }
+      const task = persistFromEventResult(result, state, options.telemetryCtx, options.dump)
+      waitUntil(task.then(completed.resolve, error => { options.dump?.failed(error); completed.resolve() }))
     },
   })
-  return new Response(body, {
+  return withCanonicalCompletion(new Response(body, {
     status: 200,
     headers: {
       'content-type': 'text/event-stream',
@@ -281,7 +266,7 @@ const renderEventsAsSSE = (
       'connection': 'keep-alive',
       'x-accel-buffering': 'no',
     },
-  })
+  }), { settled: completed.promise, cancel })
 }
 
 /**
@@ -300,7 +285,9 @@ const renderEventsAsJson = async (
   result: LlmEventResult<ProtocolFrame<MessagesStreamEvent>>,
   options: RespondMessagesOptions,
 ): Promise<Response> => {
+  let settled = Promise.resolve()
   const state = new SourceStreamState(result.modelIdentity.modelKey, result.modelIdentity.model, result.modelIdentity.executedModelKey)
+  const cancel = canonicalCancellation(state, options, result.modelIdentity, result.resolveModelIdentity)
   const events = consumeWithState(guardAffinityFrames(result.events, options.affinity), state, options.dump)
   try {
     // Dispatch reassembly on hub protocol — same-protocol (or absent) →
@@ -326,18 +313,19 @@ const renderEventsAsJson = async (
         })
       : reassembled
     if (state && (options.telemetryCtx || options.dump)) {
-      waitUntil(persistFromEventResult(result, state, options.telemetryCtx, options.dump))
+      settled = persistFromEventResult(result, state, options.telemetryCtx, options.dump)
+      waitUntil(settled)
     }
-    return Response.json(await new AffinityEgress(options.affinity).body("messages", translatedBody))
+    return canonicalJsonResponse(await new AffinityEgress(options.affinity).body("messages", translatedBody), settled, 200, cancel)
   } catch (err) {
     state.failedAfter()
     if (state && (options.telemetryCtx || options.dump)) {
-      waitUntil(persistFromEventResult(result, state, options.telemetryCtx, options.dump))
+      settled = persistFromEventResult(result, state, options.telemetryCtx, options.dump)
+      waitUntil(settled)
     }
     const message = err instanceof Error ? err.message : String(err)
-    return Response.json(
-      { type: 'error', error: { type: 'api_error', message } },
-      { status: 502 },
+    return canonicalJsonResponse(
+      { type: 'error', error: { type: 'api_error', message } }, settled, 502, cancel,
     )
   }
 }

@@ -34,19 +34,23 @@ export interface SseKeepalive {
 }
 
 export function startSseKeepalive(
-  controller: Pick<ReadableStreamDefaultController<Uint8Array>, 'enqueue'>,
+  controller: Pick<ReadableStreamDefaultController<Uint8Array>, 'enqueue'> & { readonly desiredSize?: number | null },
   frame: string,
   intervalMs: number = SSE_KEEPALIVE_MS,
+  hasCapacity: () => boolean = () => true,
+  onBytes?: (bytes: number) => void,
 ): SseKeepalive {
   const bytes = ENC.encode(frame)
   let lastActivity = Date.now()
   let stopped = false
 
   const timer = setInterval(() => {
-    if (stopped) return
+    if (stopped || !hasCapacity()) return
+    if (controller.desiredSize !== undefined && (controller.desiredSize ?? 0) < bytes.byteLength) return
     if (Date.now() - lastActivity < intervalMs) return
     try {
       controller.enqueue(bytes)
+      onBytes?.(bytes.byteLength)
       lastActivity = Date.now()
     } catch {
       // Client already went away and the controller is closed/errored. Nothing

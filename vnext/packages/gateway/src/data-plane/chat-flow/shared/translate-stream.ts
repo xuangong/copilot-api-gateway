@@ -56,6 +56,7 @@ export async function* translateStream(
     onFailure?.()
     throw error
   } finally {
+    tail.dispose()
     await Promise.all([closeStream(iterator), closeStream(translated)])
   }
 }

@@ -192,6 +192,7 @@ export function createResponsesSession(options: {
         let compactTriggered = false
         const turn = startResponsesTurn({
           raw: message.raw, auth, warmup: message.warmup, localContinuation: local,
+          retainInputHistory: false,
           signal: job.controller.signal, dump,
           obsCtx: { apiKeyId: auth.apiKeyId, userAgent: headers.get("user-agent") ?? undefined, requestId: crypto.randomUUID() },
           userAgent: headers.get("user-agent") ?? undefined,

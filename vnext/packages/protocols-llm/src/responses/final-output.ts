@@ -5,16 +5,18 @@ import { isResponsesTerminalEvent, type ResponsesOutputItem, type ResponsesResul
  * items, so terminal-only extras are appended rather than dropping content. */
 export class ResponsesFinalOutput {
   private readonly closed = new Map<number, ResponsesOutputItem>()
+  private readonly closedIds = new Map<string, number>()
 
   observe(event: ResponsesStreamEvent): ResponsesStreamEvent {
     if (event.type === 'response.output_item.done') {
       const index = Number.isInteger(event.output_index) && event.output_index >= 0 ? event.output_index : this.closed.size
-      if (event.item.id) {
-        for (const [previous, item] of this.closed) {
-          if (item.id === event.item.id) this.closed.delete(previous)
-        }
-      }
+      const id = event.item.id
+      const previous = id ? this.closedIds.get(id) : undefined
+      if (previous !== undefined) this.closed.delete(previous)
+      const displaced = this.closed.get(index)
+      if (displaced?.id) this.closedIds.delete(displaced.id)
       this.closed.set(index, event.item)
+      if (id) this.closedIds.set(id, index)
     }
     if (isResponsesTerminalEvent(event) && 'response' in event) {
       return { ...event, response: this.complete(event.response) }
@@ -24,15 +26,20 @@ export class ResponsesFinalOutput {
 
   complete(response: ResponsesResult): ResponsesResult {
     const items = new Map(this.closed)
+    const ids = new Map(this.closedIds)
     const seen = new Set<string>()
-    let extraIndex = Math.max(-1, ...items.keys()) + 1
+    let extraIndex = 0
+    for (const index of items.keys()) extraIndex = Math.max(extraIndex, index + 1)
     for (const [index, item] of (response.output ?? []).entries()) {
       if (item.id && seen.has(item.id)) continue
       if (item.id) seen.add(item.id)
-      const match = item.id ? [...items].find(([, existing]) => existing.id === item.id) : undefined
+      const match = item.id ? ids.get(item.id) : undefined
       const atIndex = items.get(index)
-      const target = match?.[0] ?? (atIndex && (!atIndex.id || !item.id) ? index : extraIndex++)
+      const target = match ?? (atIndex && (!atIndex.id || !item.id) ? index : extraIndex++)
+      const displaced = items.get(target)
+      if (displaced?.id) ids.delete(displaced.id)
       items.set(target, item)
+      if (item.id) ids.set(item.id, target)
       extraIndex = Math.max(extraIndex, target + 1)
     }
     return { ...response, output: [...items].sort(([a], [b]) => a - b).map(([, item]) => item) }

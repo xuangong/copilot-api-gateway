@@ -174,14 +174,14 @@ test("configured execution targets rank exact then stable declared groups then d
   expect(analysis.rankAuthorizedCandidates(targets, target => target)).toEqual([targets[3], targets[1], targets[2], targets[0]])
   const required = await stampAffinityItem("responses", { type: "compaction", encrypted_content: "required-native-state" }, origin, codec)
   const source = { model: "raw", input: [required] }
-  const state: RequestAffinity = { protocol: "responses", codec, analysis: await analyzeAffinityRequest("responses", source, codec) }
+  const state: RequestAffinity = { execution: { protocol: "responses", codec }, analysis: await analyzeAffinityRequest("responses", source, codec) }
   expect(await selectAffinityCandidate(candidates, state, "raw")).toBe(candidates[3])
   expect(await selectAffinityCandidate(candidates.slice(0, 3), state, "raw")).toBe(candidates[1])
   const chosen = candidates[1]
   if (!chosen) throw new Error("missing candidate")
   const payload = materializeAffinity(state, source, "raw")
   expect(payload.input).toEqual([{ type: "compaction", encrypted_content: "required-native-state" }])
-  await (await chosen.binding.provider.fetch({ ...request(), payload, beforeInference: affinityFence(state) })).body?.cancel()
+  await (await chosen.binding.provider.fetch({ ...request(), payload, beforeInference: affinityFence(state.execution) })).body?.cancel()
   expect(sent).toEqual([payload])
   expect(source.input).toEqual([required])
   const compatible = targets[1]

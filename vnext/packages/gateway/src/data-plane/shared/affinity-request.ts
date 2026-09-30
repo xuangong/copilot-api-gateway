@@ -1,4 +1,4 @@
-import type { RequestAffinity } from "../../shared/affinity/context.ts"
+import { affinityExecutionState, type AffinityExecutionState, type AttemptAffinity, type RequestAffinity } from "../../shared/affinity/context.ts"
 import { allowedInboundHeaders } from "./inbound-headers"
 import { selectedTierRequest } from "../chat-flow/shared/execution-tier"
 import { affinityTargetMatch } from "@vibe-llm/provider-llm"
@@ -14,11 +14,12 @@ import type { AffinityProtocol } from "../../shared/affinity/analysis.ts"
 export async function createRequestAffinity(protocol: AffinityProtocol, source: Record<string, unknown>, auth: { ownerId?: string; apiKeyId?: ApiKeyId }): Promise<RequestAffinity | undefined> {
   if (!auth.ownerId || !auth.apiKeyId) return undefined
   const apiKeyId = auth.apiKeyId
+  const ownerId = auth.ownerId
   const repo = getRepo()
   let loaded: Promise<AffinityCodec | undefined> | undefined
   const loadCodec = () => loaded ??= (async () => {
     const key = await repo.apiKeys.getById(apiKeyId)
-    if (!key?.ownerId || key.ownerId !== auth.ownerId) throw new InvalidAffinityStateError()
+    if (!key?.ownerId || key.ownerId !== ownerId) throw new InvalidAffinityStateError()
     const secret = await repo.apiKeys.getOrCreateAffinitySecret(key.id, key.ownerId)
     if (!secret) throw new InvalidAffinityStateError()
     return new AffinityCodec({ ...secret, apiKeyId: key.id, ownerId: key.ownerId })
@@ -27,42 +28,45 @@ export async function createRequestAffinity(protocol: AffinityProtocol, source: 
   // Ordinary requests need neither key material nor candidate preparation.
   // An owned marker still authenticates eagerly, before any provider I/O.
   const codec = containsAffinityMarker(protocol, source) ? await loadCodec() : undefined
-  return { protocol, codec, loadCodec, analysis: await analyzeAffinityRequest(protocol, source, codec), plaintextCompactions: new Set() }
+  return { analysis: await analyzeAffinityRequest(protocol, source, codec), execution: { protocol, codec, loadCodec, plaintextCompactions: new Set() } }
 
 }
 
 export interface AffinityPreparationOptions { signal?: AbortSignal; inboundHeaders?: Headers; inheritedHeaders?: Record<string, string>; action?: "generate" | "compact" }
 
 interface Candidate { binding: LlmProviderBinding; targetEndpoint: EndpointKey }
-export async function selectAffinityCandidate<T extends Candidate>(candidates: readonly T[], affinity: RequestAffinity | undefined, bareModel: string, options: AffinityPreparationOptions = {}): Promise<T | undefined> {
-  if (!affinity?.analysis.hasOwned) return candidates[0]
+export async function selectAffinityCandidate<T extends Candidate>(candidates: readonly T[], affinity: AttemptAffinity | undefined, bareModel: string, options: AffinityPreparationOptions = {}): Promise<T | undefined> {
+  if (!affinity) return candidates[0]
+  if (!("analysis" in affinity)) throw new AffinityRoutingUnavailableError()
+  if (!affinity.analysis.hasOwned) return candidates[0]
+  const execution = affinity.execution
   const prepared: Array<{ candidate: T; target: AffinityExecutionTarget | undefined }> = []
   for (const candidate of candidates) {
     options.signal?.throwIfAborted()
-    if (["responses", "messages"].includes(affinity.protocol) && candidate.targetEndpoint === "chat_completions") continue
+    if (["responses", "messages"].includes(execution.protocol) && candidate.targetEndpoint === "chat_completions") continue
     // These Chat dialects intentionally erase opaque signatures. Owned source
     // state must never reach that lossy interceptor as an apparently exact route.
     const flags = new Set(candidate.binding.enabledFlags ?? [])
     if (candidate.targetEndpoint === "chat_completions" && (flags.has("reasoning-content-dialect") || flags.has("vendor-deepseek"))) continue
-    if (affinity.analysis.hasRequiredOwned && candidate.targetEndpoint !== affinity.protocol) continue
-    const translator = getTranslator(affinity.protocol, candidate.targetEndpoint)
+    if (affinity.analysis.hasRequiredOwned && candidate.targetEndpoint !== execution.protocol) continue
+    const translator = getTranslator(execution.protocol, candidate.targetEndpoint)
     if (!translator) continue
     try {
       const source: Record<string, unknown> = { ...affinity.analysis.cloneSource(), model: bareModel }
       const translated = await translator.translateRequest(source, { signal: options.signal ?? new AbortController().signal, model: bareModel })
-      const payload = selectedTierRequest(affinity.protocol, candidate.targetEndpoint, source, translated as Record<string, unknown>)
+      const payload = selectedTierRequest(execution.protocol, candidate.targetEndpoint, source, translated as Record<string, unknown>)
       const request: ProviderRequest = {
         endpoint: candidate.targetEndpoint,
         payload,
         headers: new Headers({
-          ...(affinity.protocol === "messages" ? allowedInboundHeaders(options.inboundHeaders, candidate.binding.provider) : {}),
+          ...(execution.protocol === "messages" ? allowedInboundHeaders(options.inboundHeaders, candidate.binding.provider) : {}),
           ...options.inheritedHeaders,
         }),
         action: options.action,
         signal: options.signal,
         flags: { isStreaming: payload.stream === true },
         sourceApi: candidate.targetEndpoint === "messages" ? "anthropic" : "openai",
-        sourceProtocol: affinity.protocol,
+        sourceProtocol: execution.protocol,
       }
       const target = await candidate.binding.provider.prepareAffinityExecution?.(request)
       prepared.push({ candidate, target })
@@ -77,35 +81,37 @@ export async function selectAffinityCandidate<T extends Candidate>(candidates: r
     if (affinity.analysis.hasOwned) throw new AffinityRoutingUnavailableError()
     return candidates[0]
   }
-  affinity.selected = first.target
+  execution.selected = first.target
   return first.candidate
 }
 
-export function materializeAffinity(affinity: RequestAffinity | undefined, payload: Record<string, unknown>, model: string): Record<string, unknown> {
-  return { ...(affinity ? affinity.analysis.materialize(affinity.selected) : structuredClone(payload)), model }
+export function materializeAffinity(affinity: AttemptAffinity | undefined, payload: Record<string, unknown>, model: string): Record<string, unknown> {
+  if (affinity && !("analysis" in affinity)) throw new AffinityRoutingUnavailableError()
+  return { ...(affinity ? affinity.analysis.materialize(affinity.execution.selected) : structuredClone(payload)), model }
 }
 
-export function affinityFence(affinity: RequestAffinity | undefined): ProviderRequest["beforeInference"] {
+export function affinityFence(affinity: AffinityExecutionState | undefined): ProviderRequest["beforeInference"] {
   if (!affinity?.selected) return undefined
   const expected = affinity.selected
   return async target => { if (affinityTargetMatch(expected, target) !== "exact") throw new AffinityRoutingUnavailableError() }
 }
 
-export function acceptAffinityExecution(affinity: RequestAffinity | undefined, response: ProviderResponse): void {
+export function acceptAffinityExecution(affinity: AffinityExecutionState | undefined, response: ProviderResponse): void {
   if (!affinity) return
   if (affinity.selected && (!response.affinityExecution || affinityTargetMatch(affinity.selected, response.affinityExecution) !== "exact")) throw new AffinityRoutingUnavailableError()
   if (affinity.actual && (!response.affinityExecution || affinityTargetMatch(affinity.actual, response.affinityExecution) !== "exact")) throw new AffinityRoutingUnavailableError()
   affinity.actual = response.affinityExecution
 }
 
-export type { RequestAffinity } from "../../shared/affinity/context.ts"
+export { affinityExecutionState }
+export type { AffinityExecutionState, AttemptAffinity, RequestAffinity } from "../../shared/affinity/context.ts"
 
 
 /** Isolate transport cancellation from caller cancellation. Some runtimes keep
  * fetch sockets alive after reader.cancel(), so rejected bodies explicitly abort
  * their own fetch signal while responder error/telemetry signals remain live. */
 export async function fetchAffinityUpstream(
-  affinity: RequestAffinity | undefined,
+  affinity: AffinityExecutionState | undefined,
   request: ProviderRequest,
   fetch: (request: ProviderRequest) => Promise<ProviderResponse>,
 ): Promise<ProviderResponse> {

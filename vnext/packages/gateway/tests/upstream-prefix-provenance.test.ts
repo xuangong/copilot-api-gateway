@@ -1,6 +1,7 @@
 import { expect, spyOn, test } from "bun:test"
 import { UpstreamExchangeCollector, safeUpstreamExchangesForPersistence } from "../src/shared/dump/upstream-attempts.ts"
 import type { CapturedAttemptBody } from "../src/shared/dump/upstream-attempts.ts"
+import type { UpstreamExchanges } from "../src/shared/dump/upstream-attempts.ts"
 
 const begin = (collector: UpstreamExchangeCollector) => collector.begin({
   parentCallId: "call-1", upstreamId: "upstream-1", method: "POST", operation: "responses.create",
@@ -72,13 +73,47 @@ test.each(lookalikes)("%s body identity never inherits internal prefix provenanc
   expect(() => safeUpstreamExchangesForPersistence(replace(malformed))).toThrow("invalid upstream body prefix")
 })
 
-test("safe projection output remains unregistered and receives full validation", () => {
+test("complete internal envelopes reuse the frozen projection by exact identity", () => {
   const snapshot = capturedRequest()
   const projected = safeUpstreamExchangesForPersistence(snapshot)
+  expect(projected).toBe(snapshot)
+  expect(projected.attempts).toBe(snapshot.attempts)
+  expect(projected.attempts[0]?.request).toBe(snapshot.attempts[0]?.request)
+  expect(projected.attempts[0]?.requestHeaders).toBe(snapshot.attempts[0]?.requestHeaders)
+  expect(collectorLookalike(snapshot)).not.toBe(snapshot)
+})
+
+function collectorLookalike(snapshot: ReturnType<UpstreamExchangeCollector["finish"]>) {
+  return safeUpstreamExchangesForPersistence({ ...snapshot })
+}
+
+test("external safe projection output remains unregistered and receives full validation", () => {
+  const snapshot = capturedRequest()
+  const projected = collectorLookalike(snapshot)
   expect(projected.attempts[0]!.request).not.toBe(snapshot.attempts[0]!.request)
   const { value, counts } = countAlphabetScans(() => safeUpstreamExchangesForPersistence(projected))
   expect(value).toEqual(snapshot)
   expect(counts()).toEqual({ calls: 2, units: 6 })
+})
+
+const envelopeLookalikes: Array<[string, (value: UpstreamExchanges) => unknown]> = [
+  ["spread", value => ({ ...value })],
+  ["plain frozen", value => Object.freeze({ ...value })],
+  ["structured clone", value => structuredClone(value)],
+  ["JSON round-trip", value => JSON.parse(JSON.stringify(value)) as unknown],
+  ["Proxy", value => new Proxy(value, {})],
+  ["Object.create", value => Object.create(value) as unknown],
+  ["descriptor copy", value => Object.create(Object.getPrototypeOf(value), Object.getOwnPropertyDescriptors(value)) as unknown],
+]
+
+test.each(envelopeLookalikes)("%s envelope does not inherit complete safety provenance", (_name, wrap) => {
+  const snapshot = capturedRequest()
+  const input = wrap(snapshot)
+  const projected = safeUpstreamExchangesForPersistence(input)
+  expect(projected).not.toBe(input)
+  expect(projected).not.toBe(snapshot)
+  expect(projected).toEqual(snapshot)
+  expect(() => safeUpstreamExchangesForPersistence(wrap({ ...snapshot, capturedBodyBytes: 5 }))).toThrow("upstream exchange budget mismatch")
 })
 
 test("reusing a known body in an external envelope preserves every other validation boundary", () => {

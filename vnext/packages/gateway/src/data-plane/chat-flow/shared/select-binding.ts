@@ -1,4 +1,4 @@
-import { selectAffinityCandidate, type RequestAffinity, type AffinityPreparationOptions } from "../../shared/affinity-request"
+import { selectAffinityCandidate, type AttemptAffinity, type AffinityPreparationOptions } from "../../shared/affinity-request"
 import type { DumpAccumulator } from "../../../shared/dump/accumulator.ts"
 /**
  * Routing helper for the chat-completions handler.
@@ -43,7 +43,7 @@ type EnumerateFn = (args: {
 }) => Promise<EnumerateResult>
 
 export interface SelectBindingArgs {
-  readonly affinity?: RequestAffinity
+  readonly affinity?: AttemptAffinity
   readonly affinityOptions?: AffinityPreparationOptions
   readonly dump?: DumpAccumulator | null
   readonly model: string

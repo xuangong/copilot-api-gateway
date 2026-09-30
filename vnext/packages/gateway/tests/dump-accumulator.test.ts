@@ -41,7 +41,12 @@ import {
   openDumpAccumulator,
 } from "../src/shared/dump/accumulator.ts"
 import type { ApiKey } from "../src/repo/types.ts"
-import type { ProtocolFrame } from "@vibe-core/result"
+import { eventFrame, type ProtocolFrame } from "@vibe-core/result"
+import { serveTemplate } from "@vibe-core/chat-flow-kit"
+import { llmEventResult, type TelemetryModelIdentity } from "@vibe-llm/protocols/common"
+import { respondChatCompletions } from "../src/data-plane/chat-flow/chat-completions/respond"
+import { respondMessages } from "../src/data-plane/chat-flow/messages/respond"
+import { respondGemini } from "../src/data-plane/chat-flow/gemini/respond"
 
 // In-memory FileProvider fake.
 class MemoryFiles implements FileProvider {
@@ -441,3 +446,361 @@ for (const scenario of ["legacy-json", "snapshot-error", "upstream-error"] as co
     }
   })
 }
+
+test("canonical completion keeps dump capture behind client demand and waits for late metadata", async () => {
+  const ctx = await setupCtx()
+  const dump = openDumpAccumulator(await makeContext("/v1/messages"), "POST", apiKey(3600), { bytes: new Uint8Array(), streamError: null })
+  if (!dump) throw new Error("dump expected")
+  const completed = Promise.withResolvers<void>()
+  let pulls = 0
+  const response = dump.finalize(new Response(new ReadableStream<Uint8Array>({
+    pull(controller) {
+      pulls++
+      if (pulls <= 3) {
+        dump.frame({ type: "event", event: { text: "late" } })
+        controller.enqueue(new TextEncoder().encode("abc"))
+      } else controller.close()
+    },
+  }, { highWaterMark: 0 }), { headers: { "content-type": "text/event-stream" } }), { settled: completed.promise })
+  await new Promise(resolve => setTimeout(resolve, 10))
+  const readsBeforeClient = pulls
+  try {
+    expect(await response.text()).toBe("abcabcabc")
+    expect(readsBeforeClient).toBe(0)
+    expect(await ctx.store.get("k1", dump.recordId)).toBeNull()
+    dump.success({ incomingModel: "m", model: "m", modelKey: "m", upstream: "ups-1", cost: null }, { input: 2, output: 4 })
+  } finally { completed.resolve(); await ctx.drain() }
+  const record = await ctx.store.get("k1", dump.recordId)
+  expect(record?.meta.responseBytes).toBe(9)
+  expect(record?.meta.outputTokens).toBe(4)
+  expect(record?.response.body.type).toBe("stream")
+  if (record?.response.body.type === "stream") expect(record.response.body.events).toHaveLength(3)
+})
+
+test("canonical completion preserves transport failure and sent bytes", async () => {
+  const ctx = await setupCtx()
+  const dump = openDumpAccumulator(await makeContext("/v1/messages"), "POST", apiKey(3600), { bytes: new Uint8Array(), streamError: null })
+  if (!dump) throw new Error("dump expected")
+  let pulls = 0
+  const response = dump.finalize(new Response(new ReadableStream<Uint8Array>({
+    pull(controller) {
+      if (pulls++ === 0) { dump.frame({ type: "event", event: { text: "one" } }); controller.enqueue(new Uint8Array(7)) }
+      else controller.error(new Error("transport broke"))
+    },
+  }, { highWaterMark: 0 })), { settled: Promise.resolve() })
+  await expect(response.text()).rejects.toThrow("transport broke")
+  await ctx.drain()
+  const record = await ctx.store.get("k1", dump.recordId)
+  expect(record?.meta.responseBytes).toBe(7)
+  expect(record?.meta.error).toEqual({ kind: "failed", reason: "transport broke" })
+})
+
+
+async function finishViaTemplate(response: Response, dump: DumpAccumulator): Promise<Response> {
+  const served = await serveTemplate({
+    endpointTag: "test",
+    parse: () => ({}), wantsStream: () => true,
+    runAttempt: async () => response,
+    respond: async result => result,
+  }, { raw: {}, auth: {}, obsCtx: {}, extras: {}, dump }, {
+    runQuotaGate: async () => null, jsonErrorWrap: (status, body) => Response.json(body, { status }),
+    buildTelemetryCtx: () => ({}),
+  })
+  return served.response
+}
+
+const canonicalIdentity: TelemetryModelIdentity = { incomingModel: "m", model: "m", modelKey: "m", upstream: "ups-1", cost: null }
+
+for (const protocol of ["chat", "messages", "gemini"] as const) {
+  for (const lateOutcome of ["absent", "resolve", "reject"] as const) {
+    test(`${protocol} canonical in-progress SSE cancellation retains observed scalars (${lateOutcome})`, async () => {
+      const ctx = await setupCtx()
+      let publications = 0
+      initDumpBroker({
+        async publish(keyId, meta) { publications++; await ctx.broker.publish(keyId, meta) },
+        subscribe: ctx.broker.subscribe.bind(ctx.broker),
+        closeChannel: ctx.broker.closeChannel.bind(ctx.broker),
+      })
+      const dump = openDumpAccumulator(await makeContext("/v1/test"), "POST", apiKey(3600), { bytes: new Uint8Array(), streamError: null })
+      if (!dump) throw new Error("dump expected")
+      const metadata = Promise.withResolvers<{ modelIdentity: TelemetryModelIdentity }>()
+      let sourceEnded = false
+      let cleaned = false
+      const text = "prefix".repeat(20_000)
+      async function* events() {
+        try {
+          yield protocol === "gemini"
+            ? { candidates: [{ content: { parts: [{ text }] } }], usageMetadata: { promptTokenCount: 2, candidatesTokenCount: 3, totalTokenCount: 5 } }
+            : eventFrame(protocol === "messages"
+              ? { type: "message_start", message: { id: "x", model: "m", role: "assistant", content: [{ type: "text", text }], usage: { input_tokens: 2, output_tokens: 0 } } }
+              : { id: "x", object: "chat.completion.chunk", created: 0, model: "m", choices: [{ index: 0, delta: { content: text } }], usage: { prompt_tokens: 2, completion_tokens: 3, total_tokens: 5 } })
+          sourceEnded = true
+        } finally { cleaned = true }
+      }
+      const result = {
+        ...llmEventResult(events(), canonicalIdentity),
+        ...(lateOutcome === "absent" ? {} : { finalMetadata: metadata.promise }),
+      }
+      const abort = new AbortController()
+      const options = { wantsStream: true, dump, downstreamAbortController: abort }
+      const rendered = protocol === "chat" ? await respondChatCompletions(result as never, { ...options, includeUsageChunk: true })
+        : protocol === "messages" ? await respondMessages(result as never, options) : await respondGemini(result, options)
+      const response = await finishViaTemplate(rendered, dump)
+      const reader = response.body?.getReader()
+      if (!reader) throw new Error("body expected")
+      try {
+        const first = await reader.read()
+        expect(sourceEnded).toBe(false)
+        await reader.cancel()
+        expect(await Promise.race([ctx.drain().then(() => true), new Promise(resolve => setTimeout(() => resolve(false), 100))])).toBe(true)
+        const record = await ctx.store.get("k1", dump.recordId)
+        expect(record?.meta.model).toBe("m")
+        expect(record?.meta.upstream).toEqual({ id: "ups-1", name: "Copilot A", kind: "copilot" })
+        expect(record?.meta.inputTokens).toBe(2)
+        expect(record?.meta.outputTokens).toBe(protocol === "messages" ? null : 3)
+        expect(record?.meta.responseBytes).toBe(first.value?.byteLength)
+        expect(record?.meta.error).toEqual({ kind: "cancelled", reason: "client_cancelled" })
+        expect(abort.signal.aborted).toBe(true)
+        expect(cleaned).toBe(true)
+        expect(publications).toBe(1)
+        if (lateOutcome === "reject") metadata.reject(new Error("late metadata failure"))
+        else metadata.resolve({ modelIdentity: { ...canonicalIdentity, model: "late", upstream: "late-upstream" } })
+        await new Promise(resolve => setTimeout(resolve, 10))
+        await ctx.drain()
+        expect(await ctx.store.get("k1", dump.recordId)).toEqual(record)
+        expect(publications).toBe(1)
+      } finally {
+        metadata.resolve({ modelIdentity: canonicalIdentity })
+        await reader.cancel()
+        await ctx.drain()
+      }
+    })
+  }
+}
+
+for (const protocol of ["chat", "messages", "gemini"] as const) {
+  test(`${protocol} canonical dump integration preserves demand and cancellation with unresolved metadata`, async () => {
+    const ctx = await setupCtx()
+    const dump = openDumpAccumulator(await makeContext("/v1/test"), "POST", apiKey(3600), { bytes: new Uint8Array(), streamError: null })
+    if (!dump) throw new Error("dump expected")
+    let reads = 0
+    let cleaned = false
+    const text = "large".repeat(20_000)
+    async function* events() {
+      try {
+        for (let i = 0; i < 20; i++) {
+          reads++
+          yield protocol === "gemini" ? { candidates: [{ content: { parts: [{ text }] } }] }
+            : eventFrame(protocol === "messages"
+              ? { type: "content_block_delta", index: 0, delta: { type: "text_delta", text } }
+              : { id: "x", object: "chat.completion.chunk", created: 0, model: "m", choices: [{ index: 0, delta: { content: text } }] })
+        }
+      } finally { cleaned = true }
+    }
+    const result = { ...llmEventResult(events(), canonicalIdentity), finalMetadata: new Promise<never>(() => {}) }
+    const abort = new AbortController()
+    const options = { wantsStream: true, dump, downstreamAbortController: abort }
+    const rendered = protocol === "chat" ? await respondChatCompletions(result as never, { ...options, includeUsageChunk: false })
+      : protocol === "messages" ? await respondMessages(result as never, options) : await respondGemini(result, options)
+    const response = await finishViaTemplate(rendered, dump)
+    await new Promise(resolve => setTimeout(resolve, 10))
+    expect(reads).toBe(1)
+    const reader = response.body?.getReader()
+    if (!reader) throw new Error("body expected")
+    const first = await reader.read()
+    await reader.cancel()
+    const settled = await Promise.race([ctx.drain().then(() => true), new Promise(resolve => setTimeout(() => resolve(false), 100))])
+    expect(settled).toBe(true)
+    expect(abort.signal.aborted).toBe(true)
+    expect(cleaned).toBe(true)
+    const record = await ctx.store.get("k1", dump.recordId)
+    expect(record?.meta.responseBytes).toBe(first.value?.byteLength)
+    expect(record?.meta.error).toEqual({ kind: "cancelled", reason: "client_cancelled" })
+    expect(record?.response.body.type).toBe("stream")
+  })
+
+  test(`${protocol} canonical JSON errors with no frames retain the serialized response body`, async () => {
+    const ctx = await setupCtx()
+    const dump = openDumpAccumulator(await makeContext("/v1/test"), "POST", apiKey(3600), { bytes: new Uint8Array(), streamError: null })
+    if (!dump) throw new Error("dump expected")
+    const failed: AsyncIterable<never> = {
+      [Symbol.asyncIterator]: () => ({ next: async () => { throw new Error("source failed before first frame") } }),
+    }
+    const result = llmEventResult(failed, canonicalIdentity)
+    const options = { wantsStream: false, dump }
+    const rendered = protocol === "chat" ? await respondChatCompletions(result, { ...options, includeUsageChunk: false })
+      : protocol === "messages" ? await respondMessages(result, options) : await respondGemini(result, options)
+    const response = await finishViaTemplate(rendered, dump)
+    const wire = await response.text()
+    expect(response.status).toBe(502)
+    await ctx.drain()
+    const record = await ctx.store.get("k1", dump.recordId)
+    expect(record?.meta.responseBytes).toBe(new TextEncoder().encode(wire).byteLength)
+    expect(record?.response.body.type).toBe("bytes")
+    if (record?.response.body.type === "bytes") expect(new TextDecoder().decode(record.response.body.body)).toBe(wire)
+  })
+}
+
+for (const protocol of ["chat", "messages", "gemini"] as const) {
+  for (const wantsStream of [false, true]) {
+    for (const lateOutcome of ["resolve", "reject"] as const) {
+      test(`${protocol} canonical ${wantsStream ? "SSE after source EOF" : "JSON before bytes"} cancellation settles started metadata wait (${lateOutcome})`, async () => {
+        const ctx = await setupCtx()
+        let publications = 0
+        initDumpBroker({
+          async publish(keyId, meta) { publications++; await ctx.broker.publish(keyId, meta) },
+          subscribe: ctx.broker.subscribe.bind(ctx.broker),
+          closeChannel: ctx.broker.closeChannel.bind(ctx.broker),
+        })
+        const dump = openDumpAccumulator(await makeContext("/v1/test"), "POST", apiKey(3600), { bytes: new Uint8Array(), streamError: null })
+        if (!dump) throw new Error("dump expected")
+        const metadata = Promise.withResolvers<{ modelIdentity: TelemetryModelIdentity }>()
+        const observed = Promise.withResolvers<void>()
+        const eof = Promise.withResolvers<void>()
+        let sourceEnded = false
+        async function* events() {
+          yield protocol === "gemini" ? { candidates: [{ content: { parts: [{ text: "prefix" }] }, finishReason: "STOP" }], usageMetadata: { promptTokenCount: 2, candidatesTokenCount: 3, totalTokenCount: 5 } }
+            : eventFrame(protocol === "messages"
+              ? { type: "message_start", message: { id: "x", model: "m", role: "assistant", content: [], usage: { input_tokens: 2, output_tokens: 0 } } }
+              : { id: "x", object: "chat.completion.chunk", created: 0, model: "m", choices: [{ index: 0, delta: { content: "prefix" }, finish_reason: "stop" }], usage: { prompt_tokens: 2, completion_tokens: 3, total_tokens: 5 } })
+          if (wantsStream) await eof.promise
+          else if (protocol === "chat") { sourceEnded = true; yield { type: "done" as const } }
+          else if (protocol === "messages") yield eventFrame({ type: "message_stop" })
+          sourceEnded = true
+        }
+        const result = {
+          ...llmEventResult(events(), canonicalIdentity),
+          get finalMetadata() { observed.resolve(); return metadata.promise },
+        }
+        const abort = new AbortController()
+        const options = { wantsStream, dump, downstreamAbortController: abort }
+        const rendered = protocol === "chat" ? await respondChatCompletions(result as never, { ...options, includeUsageChunk: false })
+          : protocol === "messages" ? await respondMessages(result as never, options) : await respondGemini(result, options)
+        const response = await finishViaTemplate(rendered, dump)
+        expect(response.status).toBe(200)
+        const reader = response.body?.getReader()
+        if (!reader) throw new Error("body expected")
+        let sentBytes = 0
+        if (wantsStream) {
+          const first = await reader.read()
+          sentBytes = first.value?.byteLength ?? 0
+          eof.resolve()
+        }
+        await observed.promise
+        expect(sourceEnded).toBe(true)
+        try {
+          await reader.cancel()
+          const settled = await Promise.race([ctx.drain().then(() => true), new Promise(resolve => setTimeout(() => resolve(false), 100))])
+          expect(settled).toBe(true)
+          const record = await ctx.store.get("k1", dump.recordId)
+          expect(record?.meta.responseBytes).toBe(sentBytes)
+          expect(record?.meta.error).toEqual({ kind: "cancelled", reason: "client_cancelled" })
+          expect(record?.meta.model).toBe("m")
+          expect(record?.meta.upstream).toEqual({ id: "ups-1", name: "Copilot A", kind: "copilot" })
+          expect(record?.meta.inputTokens).toBe(2)
+          expect(record?.meta.outputTokens).toBe(protocol === "messages" ? null : 3)
+          expect(publications).toBe(1)
+          if (lateOutcome === "reject") metadata.reject(new Error("late metadata failure"))
+          else metadata.resolve({ modelIdentity: { ...canonicalIdentity, model: "late", upstream: "late-upstream" } })
+          await new Promise(resolve => setTimeout(resolve, 10))
+          await ctx.drain()
+          expect(await ctx.store.get("k1", dump.recordId)).toEqual(record)
+          expect(publications).toBe(1)
+        } finally {
+          metadata.resolve({ modelIdentity: canonicalIdentity })
+          eof.resolve()
+          await ctx.drain()
+        }
+      })
+    }
+  }
+}
+
+
+test("Messages JSON cancellation retains metadata already supplied by the producer", async () => {
+  const ctx = await setupCtx()
+  const dump = openDumpAccumulator(await makeContext("/v1/messages"), "POST", apiKey(3600), { bytes: new Uint8Array(), streamError: null })
+  if (!dump) throw new Error("dump expected")
+  async function* events() {
+    yield eventFrame({ type: "message_start", message: { id: "x", model: "m", role: "assistant", content: [], usage: { input_tokens: 2, output_tokens: 0 } } })
+    yield eventFrame({ type: "message_stop" })
+  }
+  const result = {
+    ...llmEventResult(events(), { ...canonicalIdentity, model: "fallback-model", upstream: "fallback-upstream" }),
+    finalMetadata: Promise.resolve({ modelIdentity: { ...canonicalIdentity, model: "ready-authoritative-model" } }),
+    __interceptorReplaced: true as const,
+  }
+  const response = await finishViaTemplate(await respondMessages(result as never, { wantsStream: false, dump }), dump)
+  const reader = response.body?.getReader()
+  if (!reader) throw new Error("body expected")
+  await reader.cancel()
+  await ctx.drain()
+  const record = await ctx.store.get("k1", dump.recordId)
+  expect(record?.meta.model).toBe("ready-authoritative-model")
+  expect(record?.meta.upstream).toEqual({ id: "ups-1", name: "Copilot A", kind: "copilot" })
+  expect(record?.meta.inputTokens).toBe(2)
+  expect(record?.meta.error).toEqual({ kind: "cancelled", reason: "client_cancelled" })
+})
+
+for (const protocol of ["chat", "messages", "gemini"] as const) {
+  for (const wantsStream of [false, true]) {
+    test(`${protocol} canonical ${wantsStream ? "SSE" : "JSON"} keeps successful late metadata authoritative`, async () => {
+      const ctx = await setupCtx()
+      const dump = openDumpAccumulator(await makeContext("/v1/test"), "POST", apiKey(3600), { bytes: new Uint8Array(), streamError: null })
+      if (!dump) throw new Error("dump expected")
+      const metadata = Promise.withResolvers<{ modelIdentity: TelemetryModelIdentity }>()
+      async function* events() {
+        yield protocol === "gemini" ? { candidates: [{ content: { parts: [{ text: "prefix" }] }, finishReason: "STOP" }] }
+          : eventFrame(protocol === "messages"
+            ? { type: "message_start", message: { id: "x", model: "m", role: "assistant", content: [], usage: { input_tokens: 2, output_tokens: 0 } } }
+            : { id: "x", object: "chat.completion.chunk", created: 0, model: "m", choices: [{ index: 0, delta: { content: "prefix" }, finish_reason: "stop" }] })
+        if (protocol === "chat") yield { type: "done" as const }
+        else if (protocol === "messages") yield eventFrame({ type: "message_stop" })
+      }
+      const result = { ...llmEventResult(events(), canonicalIdentity), finalMetadata: metadata.promise, __interceptorReplaced: true }
+      const options = { wantsStream, dump }
+      const rendered = protocol === "chat" ? await respondChatCompletions(result as never, { ...options, includeUsageChunk: false })
+        : protocol === "messages" ? await respondMessages(result as never, options) : await respondGemini(result, options)
+      const response = await finishViaTemplate(rendered, dump)
+      expect(response.status).toBe(200)
+      await response.text()
+      expect(await ctx.store.get("k1", dump.recordId)).toBeNull()
+      metadata.resolve({ modelIdentity: { ...canonicalIdentity, model: "late-authoritative-model" } })
+      await ctx.drain()
+      const record = await ctx.store.get("k1", dump.recordId)
+      expect(record?.meta.model).toBe("late-authoritative-model")
+      expect(record?.meta.error).toBeNull()
+    })
+  }
+}
+
+
+test("canonical cancellation hands off the sent prefix independently of unsettled semantic ownership", async () => {
+  const ctx = await setupCtx()
+  const dump = openDumpAccumulator(await makeContext("/v1/messages"), "POST", apiKey(3600), { bytes: new Uint8Array(), streamError: null })
+  if (!dump) throw new Error("dump expected")
+  const completed = Promise.withResolvers<void>()
+  let cancellations = 0
+  const response = dump.finalize(new Response(new ReadableStream<Uint8Array>({
+    pull(controller) {
+      dump.frame({ type: "event", event: { text: "prefix" } })
+      controller.enqueue(new Uint8Array(7))
+    },
+  }, { highWaterMark: 0 }), { headers: { "content-type": "text/event-stream" } }), {
+    settled: completed.promise, cancel() { cancellations++ },
+  })
+  const reader = response.body?.getReader()
+  if (!reader) throw new Error("body expected")
+  await reader.read()
+  await reader.cancel()
+  try {
+    expect(await Promise.race([ctx.drain().then(() => true), new Promise(resolve => setTimeout(() => resolve(false), 100))])).toBe(true)
+    const record = await ctx.store.get("k1", dump.recordId)
+    expect(record?.meta.responseBytes).toBe(7)
+    expect(record?.meta.error).toEqual({ kind: "cancelled", reason: "client_cancelled" })
+    expect(cancellations).toBe(1)
+    completed.reject(new Error("late semantic rejection"))
+    await Promise.resolve()
+    expect(await ctx.store.get("k1", dump.recordId)).toEqual(record)
+  } finally { completed.resolve(); await ctx.drain() }
+})

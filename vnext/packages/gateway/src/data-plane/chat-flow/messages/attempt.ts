@@ -1,5 +1,5 @@
 import { AffinityRoutingUnavailableError } from "../../../shared/affinity/analysis.ts"
-import { fetchAffinityUpstream, selectAffinityCandidate, materializeAffinity, affinityFence, acceptAffinityExecution, type RequestAffinity, type AffinityPreparationOptions } from "../../shared/affinity-request"
+import { affinityExecutionState, fetchAffinityUpstream, selectAffinityCandidate, materializeAffinity, affinityFence, acceptAffinityExecution, type AttemptAffinity, type AffinityPreparationOptions } from "../../shared/affinity-request"
 import { selectedTierFrames } from "../shared/execution-tier"
 import type { DumpAccumulator } from "../../../shared/dump/accumulator.ts"
 import { responsesFormatGuard, responsesFormatMismatchMessage } from '@vibe-llm/provider-llm'
@@ -82,7 +82,7 @@ export type MessagesAttemptAuth = SelectBindingAuth
  * messages → messages).
  */
 export interface MessagesAttemptArgs {
-  readonly affinity?: RequestAffinity
+  readonly affinity?: AttemptAffinity
   readonly affinityMaterialized?: boolean
   readonly dump?: DumpAccumulator | null
   readonly payload: Record<string, unknown> & { model: string; stream?: boolean }
@@ -132,7 +132,7 @@ export type SelectMessagesBindingResult =
   | { kind: 'no-translator'; bareModel: string; targetEndpoint: EndpointKey }
 
 export type SelectMessagesBinding = (
-  args: { model: string; affinity?: RequestAffinity; affinityOptions?: AffinityPreparationOptions; auth: MessagesAttemptAuth; dump?: DumpAccumulator | null },
+  args: { model: string; affinity?: AttemptAffinity; affinityOptions?: AffinityPreparationOptions; auth: MessagesAttemptAuth; dump?: DumpAccumulator | null },
 ) => Promise<SelectMessagesBindingResult>
 
 const pickTargetForMessages = (endpoints: ModelEndpoints): EndpointKey | null =>
@@ -339,6 +339,11 @@ export const messagesAttempt = {
     if (sel.kind === 'no-eligible-binding') return llmInternalErrorResult(404, new Error(`No messages upstream available for model: ${sel.bareModel}. Run GET /v1/models for available ids.`))
     if (sel.kind === 'no-translator') return llmInternalErrorResult(500, new Error(`no translator for messages → ${sel.targetEndpoint}`))
 
+    const affinityExecution = affinityExecutionState(args.affinity)
+    const requestCtx = args.ctx
+    const { downstreamAbortSignal, abortUpstream } = requestCtx
+    const telemetryCtx = args.telemetryCtx
+
     if (sel.targetEndpoint !== 'messages') {
       // Cross-protocol attempt: delegate to the hub attempt via
       // `traverseTranslation`. The translator shapes the request payload into
@@ -357,11 +362,11 @@ export const messagesAttempt = {
           return (await hubAttempt.generate({
             selectBinding: async () => ({ ...sel, translator: getTranslator(hubProtocol, hubProtocol)! }),
             payload: innerArgs.payload as never,
-              affinity: args.affinity,
-              affinityMaterialized: true,
+            affinity: affinityExecution,
+            affinityMaterialized: true,
             auth: innerArgs.auth as never,
             // Hosted tools in the hub still need this key's search settings.
-            ctx: { ...args.ctx, downstreamAbortSignal: innerArgs.signal },
+            ctx: { ...requestCtx, downstreamAbortSignal: innerArgs.signal },
             dump: innerArgs.dump,
             telemetryCtx: innerArgs.inheritedTelemetryCtx,
             inheritedHeaders: innerArgs.inheritedHeaders,
@@ -404,7 +409,7 @@ export const messagesAttempt = {
 
     const terminal = async (): Promise<LlmExecuteResult<ProtocolFrame<MessagesStreamEvent>>> => {
       const upstreamPayload = await sel.translator.translateRequest(invocation.payload, {
-        signal: args.ctx.downstreamAbortSignal ?? new AbortController().signal,
+        signal: downstreamAbortSignal ?? new AbortController().signal,
       })
       if (!preservesFormat(upstreamPayload)) {
         return llmInternalErrorResult(400, new TranslatorValidationError(responsesFormatMismatchMessage, 'text.format'), undefined, 'translator-validation')
@@ -412,28 +417,28 @@ export const messagesAttempt = {
       const headers = new Headers({ 'content-type': 'application/json' })
       for (const [k, v] of Object.entries(invocation.headers)) headers.set(k, v)
       const providerReq: ProviderRequest = {
-        beforeInference: affinityFence(args.affinity),
+        beforeInference: affinityFence(affinityExecution),
         endpoint: 'messages',
         payload: upstreamPayload,
         headers,
         sourceApi: 'anthropic',
         sourceProtocol: invocation.sourceApi,
         flags: { isStreaming: invocation.payload.stream === true },
-        signal: args.ctx.downstreamAbortSignal,
+        signal: downstreamAbortSignal,
       }
       const bindingForTelemetry = sel.binding as unknown as AttemptBindingShape
       const publicModel = sel.bareModel
-      upstreamResp = await fetchWithPerformance(args.telemetryCtx.metrics, "messages", providerReq, () => fetchAffinityUpstream(args.affinity, providerReq, request => sel.binding.provider.fetch(request)))
-      if (upstreamResp.status >= 200 && upstreamResp.status < 300) acceptAffinityExecution(args.affinity, upstreamResp)
+      upstreamResp = await fetchWithPerformance(telemetryCtx.metrics, "messages", providerReq, () => fetchAffinityUpstream(affinityExecution, providerReq, request => sel.binding.provider.fetch(request)))
+      if (upstreamResp.status >= 200 && upstreamResp.status < 300) acceptAffinityExecution(affinityExecution, upstreamResp)
       const execution = upstreamResp.execution ? Object.freeze({ ...upstreamResp.execution }) : undefined
       const providerModelKey = execution?.modelKey ?? initialProviderModelKey(bindingForTelemetry, publicModel)
       if (upstreamResp.status < 200 || upstreamResp.status >= 300) {
         const errResp = new Response(upstreamResp.body, { status: upstreamResp.status, headers: upstreamResp.headers })
-        const performance = upstreamPerformanceContext(args.telemetryCtx, bindingForTelemetry, providerModelKey, publicModel)
+        const performance = upstreamPerformanceContext(telemetryCtx, bindingForTelemetry, providerModelKey, publicModel)
         return await readUpstreamError(errResp, performance)
       }
       if (!upstreamResp.body) {
-        const performance = upstreamPerformanceContext(args.telemetryCtx, bindingForTelemetry, providerModelKey, publicModel)
+        const performance = upstreamPerformanceContext(telemetryCtx, bindingForTelemetry, providerModelKey, publicModel)
         return llmInternalErrorResult(502, new Error('upstream returned empty body'), performance)
       }
       // Streaming branch: parse the upstream SSE body as messages frames.
@@ -454,17 +459,17 @@ export const messagesAttempt = {
         observeUpstreamJson(upstreamResp, json)
         frames = synthesizeMessagesFramesFromJson(json)
       } else {
-        frames = parseMessagesStream(upstreamResp.body, args.ctx.downstreamAbortSignal !== undefined ? { signal: args.ctx.downstreamAbortSignal } : {})
+        frames = parseMessagesStream(upstreamResp.body, downstreamAbortSignal !== undefined ? { signal: downstreamAbortSignal } : {})
       }
       frames = selectedTierFrames("messages", frames, execution?.serviceTier)
       const { events: decorated } = withUpstreamTelemetry(observeUpstreamFrames(upstreamResp, frames, upstreamLooksJson), {
-        abortSignal: args.ctx.downstreamAbortSignal,
-        onFailure: args.ctx.abortUpstream,
+        abortSignal: downstreamAbortSignal,
+        onFailure: abortUpstream,
         protocol: 'messages',
       })
-      const identityInput = { incomingModel: args.telemetryCtx.incomingModel, publicModel }
+      const identityInput = { incomingModel: telemetryCtx.incomingModel, publicModel }
       const modelIdentity = telemetryModelIdentity(bindingForTelemetry, providerModelKey, identityInput, execution)
-      const performance = upstreamPerformanceContext(args.telemetryCtx, bindingForTelemetry, providerModelKey, publicModel)
+      const performance = upstreamPerformanceContext(telemetryCtx, bindingForTelemetry, providerModelKey, publicModel)
       return llmEventResult(
         decorated,
         modelIdentity,

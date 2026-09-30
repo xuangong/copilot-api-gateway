@@ -67,19 +67,28 @@ const __replacedFlag = '__interceptorReplaced'
 export async function eventResultMetadata<T>(
   result: LlmEventResult<T>,
   telemetryCtx?: TelemetryRequestContext,
+  cancellationSignal?: AbortSignal,
 ): Promise<EventResultMetadata> {
-  let metadata: EventResultMetadata
-  if (result.finalMetadata && telemetryCtx?.metrics?.snapshot().outcome !== "cancelled") {
-    metadata = await result.finalMetadata
-    if (!(__replacedFlag in (result as object))) {
+  const fallback = { modelIdentity: result.modelIdentity, performance: result.performance }
+  const finalMetadata = result.finalMetadata
+  let metadata: EventResultMetadata = fallback
+  if (finalMetadata) {
+    // Observe both outcomes even after cancellation wins, without retaining a
+    // listener or allowing a late value to resume the persistence producer.
+    metadata = await new Promise<EventResultMetadata>((resolve, reject) => {
+      const onAbort = (): void => { finish(); resolve(fallback) }
+      const finish = (): void => { cancellationSignal?.removeEventListener("abort", onAbort) }
+      finalMetadata.then(value => { finish(); resolve(value) }, error => { finish(); reject(error) })
+      cancellationSignal?.addEventListener("abort", onAbort, { once: true })
+      if (cancellationSignal?.aborted || telemetryCtx?.metrics?.snapshot().outcome === "cancelled") {
+        finish()
+        resolve(fallback)
+      }
+    })
+    if (!cancellationSignal?.aborted && !(__replacedFlag in (result as object))) {
       console.warn(
         'eventResultMetadata: finalMetadata set without __interceptorReplaced provenance flag',
       )
-    }
-  } else {
-    metadata = {
-      modelIdentity: result.modelIdentity,
-      performance: result.performance,
     }
   }
   return telemetryCtx
@@ -97,6 +106,7 @@ export class SourceStreamState {
   modelKey: string
   readonly publicModel: string
   cancelled = false
+  readonly metadataCancellation = new AbortController()
   failed = false
   persisted = false
   usage: UsageInfo
@@ -105,6 +115,11 @@ export class SourceStreamState {
     this.modelKey = executedModelKey ?? initialModelKey
     this.publicModel = publicModel
     this.usage = { tokens: {} }
+  }
+
+  cancel(): void {
+    this.cancelled = true
+    this.metadataCancellation.abort()
   }
 
   rememberUsage(parsedEvent: unknown): void {

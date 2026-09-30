@@ -5,6 +5,8 @@
 import { describe, expect, test } from 'bun:test'
 import {
   serveTemplate,
+  withCanonicalCompletion,
+  type KitCanonicalCompletion,
   type KitAuthCtx,
   type PreProcessResult,
   type ServeTemplateDeps,
@@ -458,4 +460,44 @@ describe('serveTemplate — respond ctx', () => {
     expect(observedExtra).toBeUndefined()
     expect(result.extra).toBeUndefined()
   })
+})
+
+
+test("canonical completion follows the exact response without delaying serve", async () => {
+  const settled = Promise.withResolvers<void>()
+  const completion = { settled: settled.promise }
+  let received: KitCanonicalCompletion | undefined
+  const source = withCanonicalCompletion(new Response("canonical"), completion)
+  const result = await serveTemplate(defaultHooks({ respond: async () => source }), defaultInput({ dump: {
+    requestedModel() {},
+    finalize(response, canonical) { received = canonical; return response },
+  } }), defaultDeps())
+  expect(result.response).toBe(source)
+  expect(received).toBe(completion)
+  settled.resolve()
+})
+
+test("an unregistered error response retains byte-capture mode", async () => {
+  let received: KitCanonicalCompletion | undefined | null = null
+  const result = await serveTemplate(defaultHooks({ parse() { throw new Error("bad input") } }), defaultInput({ dump: {
+    requestedModel() {},
+    finalize(response, canonical) { received = canonical; return response },
+  } }), defaultDeps())
+  expect(result.response.status).toBe(400)
+  expect(received).toBeUndefined()
+})
+
+
+test("canonical registration transfers once even when the caller retains the response", async () => {
+  const completion = { settled: Promise.resolve(), fallbackBody: "one-use" }
+  const response = withCanonicalCompletion(new Response("body"), completion)
+  const observed: Array<KitCanonicalCompletion | undefined> = []
+  const input = defaultInput({ dump: {
+    requestedModel() {},
+    finalize(body, canonical) { observed.push(canonical); return body },
+  } })
+  const hooks = defaultHooks({ respond: async () => response })
+  await serveTemplate(hooks, input, defaultDeps())
+  await serveTemplate(hooks, input, defaultDeps())
+  expect(observed).toEqual([completion, undefined])
 })

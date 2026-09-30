@@ -10,4 +10,4 @@ export const RESPONSES_WS_UNOBSERVABLE_LIFETIME_BYTES = 16_777_216
 export const RESPONSES_WS_MAX_CONTROL_BYTES = 65_536
 export const RESPONSES_WS_CLEANUP_TIMEOUT_MS = 25_000
 
-export const utf8Bytes = (text: string): number => new TextEncoder().encode(text).byteLength
+export { utf8ByteLength as utf8Bytes } from "../../../shared/utf8.ts"

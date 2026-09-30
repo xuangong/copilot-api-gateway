@@ -52,6 +52,7 @@ async function responsesHandlerCore(
   const disconnect = new ClientDisconnect(c.req.raw.signal)
   const { response } = await serveResponses({
     raw,
+    retainInputHistory: false,
     auth,
     obsCtx,
     signal: disconnect.controller.signal,

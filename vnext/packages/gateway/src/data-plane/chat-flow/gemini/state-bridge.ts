@@ -117,8 +117,8 @@ export async function persistFromEventResult(
   if (state.persisted) return
   state.persisted = true
   telemetryCtx?.metrics?.finish(state.failed ? "error" : "success")
-  const md = await eventResultMetadata(result, telemetryCtx)
-  const finalIdentity = result.finalMetadata
+  const md = await eventResultMetadata(result, telemetryCtx, state.metadataCancellation.signal)
+  const finalIdentity = !state.cancelled && result.finalMetadata
     ? md.modelIdentity
     : finalModelIdentity(md.modelIdentity, state.modelKey, result.resolveModelIdentity)
   if (dump) {

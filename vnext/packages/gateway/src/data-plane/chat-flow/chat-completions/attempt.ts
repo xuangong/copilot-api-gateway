@@ -1,5 +1,5 @@
 import { AffinityRoutingUnavailableError } from "../../../shared/affinity/analysis.ts"
-import { materializeAffinity, fetchAffinityUpstream, affinityFence, acceptAffinityExecution, type RequestAffinity } from "../../shared/affinity-request"
+import { affinityExecutionState, materializeAffinity, fetchAffinityUpstream, affinityFence, acceptAffinityExecution, type AttemptAffinity } from "../../shared/affinity-request"
 import { selectedTierFrames } from "../shared/execution-tier"
 import type { DumpAccumulator } from "../../../shared/dump/accumulator.ts"
 import { invocationSourceApi } from '../shared/invocation-source-api'
@@ -52,7 +52,7 @@ export type ChatCompletionsAttemptResult = LlmExecuteResult<ProtocolFrame<ChatCo
 export type ChatCompletionsAttemptAuth = SelectBindingAuth
 
 export interface ChatCompletionsAttemptArgs {
-  readonly affinity?: RequestAffinity
+  readonly affinity?: AttemptAffinity
   readonly affinityMaterialized?: boolean
   readonly dump?: DumpAccumulator | null
   readonly payload: Record<string, unknown> & { model: string; stream?: boolean }
@@ -117,6 +117,9 @@ export const chatCompletionsAttempt = {
     if (sel.kind === 'no-translator') return llmInternalErrorResult(500, new Error(`no translator for chat_completions → ${sel.targetEndpoint}`))
 
     const payload = args.affinityMaterialized ? args.payload : materializeAffinity(args.affinity, args.payload, sel.bareModel)
+    const affinityExecution = affinityExecutionState(args.affinity)
+    const { downstreamAbortSignal, abortUpstream } = args.ctx
+    const telemetryCtx = args.telemetryCtx
 
     if (sel.targetEndpoint !== 'chat_completions') {
       // Cross-protocol attempt: delegate to the hub attempt via
@@ -142,10 +145,10 @@ export const chatCompletionsAttempt = {
           return (await hubAttempt.generate({
             selectBinding: async () => ({ ...sel, translator: getTranslator(hubProtocol, hubProtocol)! }),
             payload: innerArgs.payload as never,
-            affinity: args.affinity,
+            affinity: affinityExecution,
             affinityMaterialized: true,
             auth: innerArgs.auth as never,
-            ctx: { downstreamAbortSignal: innerArgs.signal, abortUpstream: args.ctx.abortUpstream } as never,
+            ctx: { downstreamAbortSignal: innerArgs.signal, abortUpstream } as never,
             dump: innerArgs.dump,
             telemetryCtx: innerArgs.inheritedTelemetryCtx,
             inheritedHeaders: innerArgs.inheritedHeaders,
@@ -179,7 +182,7 @@ export const chatCompletionsAttempt = {
 
     const terminal = async (): Promise<LlmExecuteResult<ProtocolFrame<ChatCompletionsStreamEvent>>> => {
       const upstreamPayload = await sel.translator.translateRequest(invocation.payload, {
-        signal: args.ctx.downstreamAbortSignal ?? new AbortController().signal,
+        signal: downstreamAbortSignal ?? new AbortController().signal,
       })
       if (!preservesFormat(upstreamPayload)) {
         return llmInternalErrorResult(400, new TranslatorValidationError(responsesFormatMismatchMessage, 'text.format'), undefined, 'translator-validation')
@@ -187,14 +190,14 @@ export const chatCompletionsAttempt = {
       const headers = new Headers({ 'content-type': 'application/json' })
       for (const [k, v] of Object.entries(invocation.headers)) headers.set(k, v)
       const providerReq: ProviderRequest = {
-        beforeInference: affinityFence(args.affinity),
+        beforeInference: affinityFence(affinityExecution),
         endpoint: 'chat_completions',
         payload: upstreamPayload,
         headers,
         sourceApi: 'openai',
         sourceProtocol: invocation.sourceApi,
         flags: { isStreaming: invocation.payload.stream === true },
-        signal: args.ctx.downstreamAbortSignal,
+        signal: downstreamAbortSignal,
       }
       const binding = sel.binding as unknown as AttemptBinding
       // Cast once to the shape the telemetry helpers consume (provider.fetch
@@ -202,8 +205,8 @@ export const chatCompletionsAttempt = {
       // upstream.name + upstreamModel.id + provider.getPricingForModelKey).
       const bindingForTelemetry = sel.binding as unknown as AttemptBindingShape
       const publicModel = sel.bareModel
-      upstreamResp = await fetchWithPerformance(args.telemetryCtx.metrics, "chat_completions", providerReq, () => fetchAffinityUpstream(args.affinity, providerReq, request => binding.provider.fetch(request)))
-      if (upstreamResp.status >= 200 && upstreamResp.status < 300) acceptAffinityExecution(args.affinity, upstreamResp)
+      upstreamResp = await fetchWithPerformance(telemetryCtx.metrics, "chat_completions", providerReq, () => fetchAffinityUpstream(affinityExecution, providerReq, request => binding.provider.fetch(request)))
+      if (upstreamResp.status >= 200 && upstreamResp.status < 300) acceptAffinityExecution(affinityExecution, upstreamResp)
       const execution = upstreamResp.execution ? Object.freeze({ ...upstreamResp.execution }) : undefined
       const providerModelKey = execution?.modelKey ?? initialProviderModelKey(bindingForTelemetry, publicModel)
       if (upstreamResp.status < 200 || upstreamResp.status >= 300) {
@@ -212,11 +215,11 @@ export const chatCompletionsAttempt = {
         // ctx flows through so respond.ts can write a `failed=true` perf row
         // without losing keyId/upstream/runtime.
         const errResp = new Response(upstreamResp.body, { status: upstreamResp.status, headers: upstreamResp.headers })
-        const performance = upstreamPerformanceContext(args.telemetryCtx, bindingForTelemetry, providerModelKey, publicModel)
+        const performance = upstreamPerformanceContext(telemetryCtx, bindingForTelemetry, providerModelKey, publicModel)
         return await readUpstreamError(errResp, performance)
       }
       if (!upstreamResp.body) {
-        const performance = upstreamPerformanceContext(args.telemetryCtx, bindingForTelemetry, providerModelKey, publicModel)
+        const performance = upstreamPerformanceContext(telemetryCtx, bindingForTelemetry, providerModelKey, publicModel)
         return llmInternalErrorResult(502, new Error('upstream returned empty body'), performance)
       }
       // Non-streaming requests (or unexpectedly-JSON responses) need to be
@@ -235,16 +238,16 @@ export const chatCompletionsAttempt = {
       )
       const stream = upstreamIsJson
         ? await readUpstreamJsonAsFrames(upstreamResp.body, upstreamResp)
-        : parseChatCompletionsStream(upstreamResp.body, { signal: args.ctx.downstreamAbortSignal })
+        : parseChatCompletionsStream(upstreamResp.body, { signal: downstreamAbortSignal })
       const { events: decorated } = withUpstreamTelemetry(observeUpstreamFrames(upstreamResp, selectedTierFrames("chat_completions", stream, execution?.serviceTier), upstreamIsJson), {
-        abortSignal: args.ctx.downstreamAbortSignal,
-        onFailure: args.ctx.abortUpstream,
+        abortSignal: downstreamAbortSignal,
+        onFailure: abortUpstream,
         protocol: 'chat_completions',
         expectedChoices: typeof invocation.payload.n === 'number' ? invocation.payload.n : 1,
       })
-      const identityInput = { incomingModel: args.telemetryCtx.incomingModel, publicModel }
+      const identityInput = { incomingModel: telemetryCtx.incomingModel, publicModel }
       const modelIdentity = telemetryModelIdentity(bindingForTelemetry, providerModelKey, identityInput, execution)
-      const performance = upstreamPerformanceContext(args.telemetryCtx, bindingForTelemetry, providerModelKey, publicModel)
+      const performance = upstreamPerformanceContext(telemetryCtx, bindingForTelemetry, providerModelKey, publicModel)
       return llmEventResult(
         decorated,
         modelIdentity,

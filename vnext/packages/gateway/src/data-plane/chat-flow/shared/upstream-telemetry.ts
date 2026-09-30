@@ -94,6 +94,20 @@ export function withUpstreamTelemetry<T>(
     const tail = new StreamTail()
     const finishedChoices = new Set<number>()
     let chatFinished = false
+    // Every retained frame has already passed tail.observe's shared frame/byte
+    // budget. Validate upstream to EOF before exposing post-finish usage to
+    // downstream demand, so a paused client never spends the upstream deadline.
+    const chatUsageTail: Array<ProtocolFrame<T> | undefined> = []
+    let usageIndex = 0
+    function* takeChatUsage(): Generator<ProtocolFrame<T>> {
+      while (usageIndex < chatUsageTail.length) {
+        const frame = chatUsageTail[usageIndex]
+        chatUsageTail[usageIndex++] = undefined
+        if (frame) yield frame
+      }
+      chatUsageTail.length = 0
+      usageIndex = 0
+    }
     try {
       if (ctx.abortSignal?.aborted) return
       while (true) {
@@ -109,6 +123,8 @@ export function withUpstreamTelemetry<T>(
         if (failed) {
           failureEmitted = true
           settle(true)
+          tail.dispose()
+          yield* takeChatUsage()
           yield frame
           return
         }
@@ -118,7 +134,10 @@ export function withUpstreamTelemetry<T>(
           tail.start()
         } else if (frame.type !== "done") {
           const isChatUsage = isOpenAIUsageOnlyEventShape(frame.event)
-          if (!successfulTerminal && (!chatFinished || isChatUsage)) yield frame
+          if (!successfulTerminal) {
+            if (!chatFinished) yield frame
+            else if (isChatUsage) chatUsageTail.push(frame)
+          }
           if (ctx.protocol === "chat_completions") {
             const choices = (frame.event as { choices?: Array<{ index?: number; finish_reason?: unknown }> }).choices
             for (const choice of choices ?? []) if (choice.finish_reason != null) finishedChoices.add(choice.index ?? 0)
@@ -129,13 +148,20 @@ export function withUpstreamTelemetry<T>(
       if (ctx.abortSignal?.aborted) return
       if (!successfulTerminal) throw new Error(`Upstream ${ctx.protocol} stream ended without a terminal event.`)
       settle(false)
+      tail.dispose()
+      yield* takeChatUsage()
       yield successfulTerminal
     } catch (err) {
       if (ctx.abortSignal?.aborted || failureEmitted) return
       settle(true)
       ctx.onFailure?.()
+      tail.dispose()
+      // A late error invalidates success, but cannot erase accepted usage.
+      yield* takeChatUsage()
       throw err
     } finally {
+      chatUsageTail.length = 0
+      tail.dispose()
       // Consumer return/break is cancellation even without an AbortSignal.
       settle(false, true)
       await closeStream(iterator)

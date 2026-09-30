@@ -3,12 +3,12 @@ import { eventFrame } from "@vibe-core/result"
 import { AffinityEgress, guardAffinityFrames } from "../../src/shared/affinity/egress.ts"
 import { InvalidAffinityStateError, MAX_AFFINITY_PAYLOAD_BYTES } from "../../src/shared/affinity/carrier.ts"
 import { JsonStringBudget } from "../../src/shared/affinity/json-string-budget.ts"
-import type { RequestAffinity } from "../../src/shared/affinity/context.ts"
+import type { AffinityExecutionState } from "../../src/shared/affinity/context.ts"
 
 const affinity = {
   protocol: "responses",
   actual: { provider: "custom", upstreamId: "up", upstreamIncarnation: "inc", credentialSubject: "subject", credentialRevision: "rev", model: "m" },
-} as RequestAffinity
+} as AffinityExecutionState
 
 async function* frames(events: Record<string, unknown>[]) {
   for (const event of events) yield eventFrame(event)

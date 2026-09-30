@@ -1,3 +1,5 @@
+import { utf8ByteLength } from "../../../shared/utf8.ts"
+
 /** Bounds are absolute from the first terminal candidate, never idle resets. */
 export const STREAM_TAIL_TIMEOUT_MS = 1_000
 export const STREAM_TAIL_MAX_FRAMES = 256
@@ -12,32 +14,73 @@ export class StreamTail {
   private deadline: number | undefined
   private frames = 0
   private bytes = 0
+  private signal: AbortSignal | undefined
+  private timer: ReturnType<typeof setTimeout> | undefined
+  private pending: { reject: (error: Error) => void } | undefined
+  private failure: Error | undefined
+  private disposed = false
+  private readonly onAbort = (): void => this.interrupt(new Error("Response cancelled."))
 
-  start(): void { this.deadline ??= Date.now() + STREAM_TAIL_TIMEOUT_MS }
+  start(): void {
+    if (this.deadline !== undefined || this.disposed || this.failure) return
+    this.deadline = Date.now() + STREAM_TAIL_TIMEOUT_MS
+    this.timer = setTimeout(() => this.interrupt(new StreamTailError()), STREAM_TAIL_TIMEOUT_MS)
+  }
 
   observe(value: unknown): void {
     if (this.deadline === undefined) return
     this.frames++
-    this.bytes += new TextEncoder().encode(JSON.stringify(value) ?? "").byteLength
+    this.bytes += utf8ByteLength(JSON.stringify(value) ?? "")
     if (this.frames > STREAM_TAIL_MAX_FRAMES || this.bytes > STREAM_TAIL_MAX_BYTES || Date.now() >= this.deadline) throw new StreamTailError()
   }
 
-  async next<T>(iterator: AsyncIterator<T>, signal?: AbortSignal): Promise<IteratorResult<T>> {
-    if (signal?.aborted) throw new Error("Response cancelled.")
-    let timer: ReturnType<typeof setTimeout> | undefined
-    let onAbort: (() => void) | undefined
-    const interrupted = new Promise<never>((_resolve, reject) => {
-      if (this.deadline !== undefined) timer = setTimeout(() => reject(new StreamTailError()), Math.max(0, this.deadline - Date.now()))
-      if (signal) {
-        onAbort = () => reject(new Error("Response cancelled."))
-        signal.addEventListener("abort", onAbort, { once: true })
+  next<T>(iterator: AsyncIterator<T>, signal?: AbortSignal): Promise<IteratorResult<T>> {
+    if (this.disposed || signal?.aborted) return Promise.reject(new Error("Response cancelled."))
+    if (this.deadline !== undefined && Date.now() >= this.deadline && !this.failure) this.interrupt(new StreamTailError())
+    if (this.failure) return Promise.reject(this.failure)
+    if (this.pending) return Promise.reject(new Error("Concurrent stream reads are not supported."))
+    if (this.signal !== signal) {
+      this.signal?.removeEventListener("abort", this.onAbort)
+      this.signal = signal
+      signal?.addEventListener("abort", this.onAbort, { once: true })
+    }
+    return new Promise<IteratorResult<T>>((resolve, reject) => {
+      const pending = { reject: (error: Error) => { this.pending = undefined; reject(error) } }
+      this.pending = pending
+      try {
+        // Each read has one settlement pair. A shared never-settling abort
+        // Promise would retain one reaction for every completed stream frame.
+        Promise.resolve(iterator.next()).then(value => {
+          if (this.pending !== pending) return
+          this.pending = undefined
+          resolve(value)
+        }, error => {
+          if (this.pending !== pending) return
+          this.pending = undefined
+          reject(error)
+        })
+      } catch (error) {
+        if (this.pending === pending) { this.pending = undefined; reject(error) }
       }
     })
-    try { return await Promise.race([iterator.next(), interrupted]) }
-    finally {
-      if (timer !== undefined) clearTimeout(timer)
-      if (onAbort) signal?.removeEventListener("abort", onAbort)
-    }
+  }
+
+  dispose(): void {
+    this.disposed = true
+    this.clearObservation()
+    if (this.pending) this.pending.reject(new Error("Response cancelled."))
+  }
+
+  private clearObservation(): void {
+    if (this.timer !== undefined) { clearTimeout(this.timer); this.timer = undefined }
+    this.signal?.removeEventListener("abort", this.onAbort)
+    this.signal = undefined
+  }
+
+  private interrupt(error: Error): void {
+    this.failure ??= error
+    this.clearObservation()
+    this.pending?.reject(this.failure)
   }
 }
 

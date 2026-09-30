@@ -1,5 +1,5 @@
 import { AffinityRoutingUnavailableError } from "../../../shared/affinity/analysis.ts"
-import { fetchAffinityUpstream, selectAffinityCandidate, materializeAffinity, affinityFence, acceptAffinityExecution, type RequestAffinity, type AffinityPreparationOptions } from "../../shared/affinity-request"
+import { affinityExecutionState, fetchAffinityUpstream, selectAffinityCandidate, materializeAffinity, affinityFence, acceptAffinityExecution, type AttemptAffinity, type AffinityPreparationOptions } from "../../shared/affinity-request"
 import { selectedTierFrames } from "../shared/execution-tier"
 import type { GatewayRequestContext } from "../shared/gateway-ctx.ts"
 import type { DumpAccumulator } from "../../../shared/dump/accumulator.ts"
@@ -92,7 +92,7 @@ export type ResponsesAttemptResult =
 export type ResponsesAttemptAuth = SelectBindingAuth
 
 export interface ResponsesAttemptArgs {
-  readonly affinity?: RequestAffinity
+  readonly affinity?: AttemptAffinity
   readonly affinityMaterialized?: boolean
   readonly dump?: DumpAccumulator | null
   readonly payload: Record<string, unknown> & { model: string; stream?: boolean; input?: unknown; tools?: unknown }
@@ -140,7 +140,7 @@ export type SelectResponsesBindingResult =
   | { kind: 'no-translator'; bareModel: string; targetEndpoint: EndpointKey }
 
 export type SelectResponsesBinding = (
-  args: { model: string; affinity?: RequestAffinity; affinityOptions?: AffinityPreparationOptions; auth: ResponsesAttemptAuth; dump?: DumpAccumulator | null },
+  args: { model: string; affinity?: AttemptAffinity; affinityOptions?: AffinityPreparationOptions; auth: ResponsesAttemptAuth; dump?: DumpAccumulator | null },
 ) => Promise<SelectResponsesBindingResult>
 
 const pickTargetForResponses = (endpoints: ModelEndpoints): EndpointKey | null =>
@@ -275,6 +275,8 @@ export const responsesAttempt = {
       payload: materializeAffinity(args.affinityMaterialized ? undefined : args.affinity, args.payload, sel.bareModel),
       headers: { ...(args.inheritedHeaders ?? {}) },
     }
+    const affinity = affinityExecutionState(args.affinity)
+    const { ctx, dump, telemetryCtx, auth, requestId, userAgent, hubAttemptOverride } = args
     // Provider-declared interceptors go last, i.e. innermost: they wrap the
     // terminal directly and so never observe frames synthesized by the shims
     // above them (the server-tool ReAct loop mints `image_generation_call` /
@@ -302,9 +304,9 @@ export const responsesAttempt = {
         // image-gen + telemetry correlation. The image-generation shortcut already
         // ran before this point, so these are safe to pass through.
         const hubProtocol = sel.targetEndpoint as HubAttemptProtocol
-        const hubAttempt = (args.hubAttemptOverride ?? pickHubAttempt)(hubProtocol)
+        const hubAttempt = (hubAttemptOverride ?? pickHubAttempt)(hubProtocol)
         return await traverseTranslation({
-          dump: args.dump,
+          dump,
           sourcePayload: invocation.payload,
           sourceProtocol: 'responses',
           hubProtocol,
@@ -313,10 +315,10 @@ export const responsesAttempt = {
             return (await hubAttempt.generate({
               selectBinding: async () => ({ ...sel, translator: getTranslator(hubProtocol, hubProtocol)! }),
               payload: innerArgs.payload as never,
-              affinity: args.affinity,
+              affinity,
               affinityMaterialized: true,
               auth: innerArgs.auth as never,
-              ctx: { downstreamAbortSignal: innerArgs.signal, abortUpstream: args.ctx.abortUpstream } as never,
+              ctx: { downstreamAbortSignal: innerArgs.signal, abortUpstream: ctx.abortUpstream } as never,
               dump: innerArgs.dump,
               telemetryCtx: innerArgs.inheritedTelemetryCtx,
               inheritedHeaders: innerArgs.inheritedHeaders,
@@ -326,45 +328,45 @@ export const responsesAttempt = {
             } as never)) as never
           },
           inheritedHeaders: invocation.headers,
-          inheritedTelemetryCtx: args.telemetryCtx,
-          auth: args.auth,
-          requestId: args.requestId,
-          userAgent: args.userAgent,
-          signal: args.ctx.downstreamAbortSignal,
+          inheritedTelemetryCtx: telemetryCtx,
+          auth,
+          requestId,
+          userAgent,
+          signal: ctx.downstreamAbortSignal,
           fallbackMaxOutputTokens: (sel.binding as { upstreamMaxOutputTokens?: number }).upstreamMaxOutputTokens,
           model: sel.bareModel,
         })
       }
 
       const upstreamPayload = await sel.translator.translateRequest(invocation.payload, {
-        signal: args.ctx.downstreamAbortSignal ?? new AbortController().signal,
+        signal: ctx.downstreamAbortSignal ?? new AbortController().signal,
       })
       const headers = new Headers({ 'content-type': 'application/json' })
       for (const [k, v] of Object.entries(invocation.headers)) headers.set(k, v)
       const providerReq: ProviderRequest = {
-        beforeInference: affinityFence(args.affinity),
+        beforeInference: affinityFence(affinity),
         endpoint: 'responses',
         payload: upstreamPayload,
         headers,
         sourceApi: 'openai',
         sourceProtocol: invocation.sourceApi,
         flags: { isStreaming: invocation.payload.stream === true },
-        signal: args.ctx.downstreamAbortSignal,
+        signal: ctx.downstreamAbortSignal,
         action: invocation.action,
       }
       const bindingForTelemetry = sel.binding as unknown as AttemptBindingShape
       const publicModel = sel.bareModel
-      upstreamResp = await fetchWithPerformance(args.telemetryCtx.metrics, "responses", providerReq, () => fetchAffinityUpstream(args.affinity, providerReq, request => sel.binding.provider.fetch(request)))
-      if (upstreamResp.status >= 200 && upstreamResp.status < 300) acceptAffinityExecution(args.affinity, upstreamResp)
+      upstreamResp = await fetchWithPerformance(telemetryCtx.metrics, "responses", providerReq, () => fetchAffinityUpstream(affinity, providerReq, request => sel.binding.provider.fetch(request)))
+      if (upstreamResp.status >= 200 && upstreamResp.status < 300) acceptAffinityExecution(affinity, upstreamResp)
       const execution = upstreamResp.execution ? Object.freeze({ ...upstreamResp.execution }) : undefined
       const providerModelKey = execution?.modelKey ?? initialProviderModelKey(bindingForTelemetry, publicModel)
       if (upstreamResp.status < 200 || upstreamResp.status >= 300) {
         const errResp = new Response(upstreamResp.body, { status: upstreamResp.status, headers: upstreamResp.headers })
-        const performance = upstreamPerformanceContext(args.telemetryCtx, bindingForTelemetry, providerModelKey, publicModel)
+        const performance = upstreamPerformanceContext(telemetryCtx, bindingForTelemetry, providerModelKey, publicModel)
         return await readUpstreamError(errResp, performance)
       }
       if (!upstreamResp.body) {
-        const performance = upstreamPerformanceContext(args.telemetryCtx, bindingForTelemetry, providerModelKey, publicModel)
+        const performance = upstreamPerformanceContext(telemetryCtx, bindingForTelemetry, providerModelKey, publicModel)
         return llmInternalErrorResult(502, new Error('upstream returned empty body'), performance)
       }
       // Streaming branch: parse the upstream SSE body as Responses frames.
@@ -390,19 +392,19 @@ export const responsesAttempt = {
         frames = synthesizeResponsesFramesFromJson(json)
       } else {
         frames = adaptResponsesFrames(
-          parseResponsesStream(upstreamResp.body, args.ctx.downstreamAbortSignal !== undefined ? { signal: args.ctx.downstreamAbortSignal } : {}),
+          parseResponsesStream(upstreamResp.body, ctx.downstreamAbortSignal !== undefined ? { signal: ctx.downstreamAbortSignal } : {}),
           upstreamResp.responsesAdapter,
         )
       }
       frames = selectedTierFrames("responses", frames, execution?.serviceTier)
       const { events: decorated } = withUpstreamTelemetry(observeUpstreamFrames(upstreamResp, frames, upstreamLooksJson), {
-        abortSignal: args.ctx.downstreamAbortSignal,
-        onFailure: args.ctx.abortUpstream,
+        abortSignal: ctx.downstreamAbortSignal,
+        onFailure: ctx.abortUpstream,
         protocol: 'responses',
       })
-      const identityInput = { incomingModel: args.telemetryCtx.incomingModel, publicModel }
+      const identityInput = { incomingModel: telemetryCtx.incomingModel, publicModel }
       const modelIdentity = telemetryModelIdentity(bindingForTelemetry, providerModelKey, identityInput, execution)
-      const performance = upstreamPerformanceContext(args.telemetryCtx, bindingForTelemetry, providerModelKey, publicModel)
+      const performance = upstreamPerformanceContext(telemetryCtx, bindingForTelemetry, providerModelKey, publicModel)
       return llmEventResult(
         decorated,
         modelIdentity,
@@ -422,17 +424,17 @@ export const responsesAttempt = {
       // different model. Without the caller's scope that enumeration sees only
       // globally-owned upstreams and mis-reports a reachable model as absent.
       const chainCtx: GatewayRequestContext = {
-        ...args.ctx,
+        ...ctx,
         registerPlaintextCompaction: item => {
-          if (item.id && item.encrypted_content) args.affinity?.plaintextCompactions?.add(JSON.stringify([item.id, item.encrypted_content]))
+          if (item.id && item.encrypted_content) affinity?.plaintextCompactions?.add(JSON.stringify([item.id, item.encrypted_content]))
         },
-        dump: args.dump,
-        incomingModel: args.telemetryCtx.incomingModel,
+        dump,
+        incomingModel: telemetryCtx.incomingModel,
         targetEndpoint: sel.targetEndpoint,
         bindingScope: {
-          ...(args.auth.ownerId !== undefined ? { ownerId: args.auth.ownerId } : {}),
-          ...(args.auth.copilot !== undefined ? { copilot: args.auth.copilot } : {}),
-          ...(args.auth.pin !== undefined ? { pin: args.auth.pin } : {}),
+          ...(auth.ownerId !== undefined ? { ownerId: auth.ownerId } : {}),
+          ...(auth.copilot !== undefined ? { copilot: auth.copilot } : {}),
+          ...(auth.pin !== undefined ? { pin: auth.pin } : {}),
         },
       }
       return await runInterceptors(invocation, chainCtx, chain, terminal)
@@ -441,7 +443,7 @@ export const responsesAttempt = {
       const bindingForTelemetry = sel.binding as unknown as AttemptBindingShape
       const publicModel = sel.bareModel
       const providerModelKey = initialProviderModelKey(bindingForTelemetry, publicModel)
-      const performance = upstreamPerformanceContext(args.telemetryCtx, bindingForTelemetry, providerModelKey, publicModel)
+      const performance = upstreamPerformanceContext(telemetryCtx, bindingForTelemetry, providerModelKey, publicModel)
       // HTTPError is the legacy provider contract for upstream non-2xx; the
       // ProviderResponse-based branch above already covers the new contract,
       // but we keep this guard for providers that still throw.

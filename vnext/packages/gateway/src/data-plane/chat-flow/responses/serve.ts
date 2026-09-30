@@ -71,6 +71,8 @@ import type { DumpAccumulator } from '../../../shared/dump/accumulator.ts'
 export interface ResponsesServeArgs {
   readonly localContinuation?: ResponsesLocalContinuationResolver
   readonly warmup?: boolean
+  /** Keep expanded history for callers that consume the compatibility result. */
+  readonly retainInputHistory?: boolean
   /** Source create state after expansion, before routing. Never an auth context. */
   readonly onPrepared?: (payload: Record<string, unknown>, compactTriggered: boolean) => void
   /** Pre-parsed JSON body from http.ts (`await c.req.json()`). */
@@ -111,7 +113,7 @@ type ResponsesPayload = Record<string, unknown> & {
 
 type ResponsesServeAuth = ResponsesAttemptAuth & KitAuthCtx & Pick<DataPlaneAuthCtx, 'routingPolicy' | 'responsesRetentionSeconds'>
 
-type ResponsesExtra = { readonly affinity?: RequestAffinity; readonly mergedInputItems: unknown[]; readonly incomingModel: string; readonly upstreamPin?: string; readonly onCompleted?: ResponsesCompletionWriter }
+type ResponsesExtra = { readonly affinity?: RequestAffinity; readonly mergedInputItems?: unknown[]; readonly incomingModel: string; readonly upstreamPin?: string; readonly onCompleted?: ResponsesCompletionWriter }
 
 const responsesHooks: ServeTemplateHooks<
   ResponsesPayload,
@@ -169,7 +171,7 @@ const responsesHooks: ServeTemplateHooks<
         ? createResponseSnapshotWriter({ store, apiKeyId: ctx.auth.apiKeyId as ApiKeyId, retentionSeconds, fallbackModel: payload.model, compactTriggered })
         : undefined
       const inputItems = Array.isArray(expanded) ? expanded : []
-      const mergedInputItems = onCompleted ? structuredClone(inputItems) : inputItems
+      const mergedInputItems = onCompleted ? structuredClone(inputItems) : ctx.extras.retainInputHistory ? inputItems : undefined
       const onPrepared = ctx.extras.onPrepared as ResponsesServeArgs["onPrepared"]
       onPrepared?.(payload, compactTriggered)
       const resolved = resolveKeyModel(payload.model, ctx.auth.routingPolicy)
@@ -222,7 +224,7 @@ const responsesHooks: ServeTemplateHooks<
 
   respond: (r, c) => respondResponses(r, {
     wantsStream: c.wantsStream,
-    affinity: c.extra?.affinity,
+    affinity: c.extra?.affinity?.execution,
     onCompleted: c.extra?.onCompleted,
     mergedInputItems: c.extra?.mergedInputItems,
     downstreamAbortController: c.downstreamAbortController,
@@ -243,14 +245,15 @@ export function startResponsesTurn(args: ResponsesServeArgs): ResponsesTurn {
   const abortController = new AbortController()
   const upstreamAbortController = new AbortController()
   const unlinkAbort = linkResponsesAbort(args.signal, abortController)
-  const raw = args.raw as { stream?: unknown } | null
+  const wantsStream = args.action !== "compact" && (args.raw as { stream?: unknown } | null)?.stream === true
+  const warmup = args.warmup
+  const common = { wantsStream, downstreamAbortController: abortController, upstreamAbortController, finalizeDump: true, dump: args.dump as DumpAccumulator | null }
   const turn = createResponsesTurn(async () => {
     const prepared = await prepareResponses(args, upstreamAbortController)
-    const common = { wantsStream: args.action !== "compact" && raw?.stream === true, downstreamAbortController: abortController, upstreamAbortController, finalizeDump: true, dump: args.dump as DumpAccumulator | null }
     if (prepared.kind === "response") return { result: { kind: "bridged-response" as const, response: prepared.response }, options: common }
     const c = prepared.context
-    return { result: prepared.result, options: { ...common, affinity: c.extra?.affinity, onCompleted: c.extra?.onCompleted, mergedInputItems: c.extra?.mergedInputItems, telemetryCtx: args.warmup ? undefined : c.telemetryCtx } }
-  }, { wantsStream: args.action !== "compact" && raw?.stream === true, downstreamAbortController: abortController, upstreamAbortController, finalizeDump: true, dump: args.dump as DumpAccumulator | null })
+    return { result: prepared.result, options: { ...common, affinity: c.extra?.affinity?.execution, onCompleted: c.extra?.onCompleted, mergedInputItems: c.extra?.mergedInputItems, telemetryCtx: warmup ? undefined : c.telemetryCtx } }
+  }, common)
   void turn.completion.finally(unlinkAbort)
   return turn
 }
@@ -275,7 +278,7 @@ async function prepareResponses(args: ResponsesServeArgs, upstreamAbortControlle
       // image calls. They were dedicated args on the old serve; the
       // kit's RunAttemptArgs only standardises payload/auth/telemetry,
       // so per-endpoint passthroughs live in `extras`.
-      extras: { localContinuation: args.localContinuation, warmup: args.warmup, onPrepared: args.onPrepared, requestId: args.requestId, userAgent: args.userAgent, action: args.action, abortUpstream: () => upstreamAbortController.abort() },
+      extras: { retainInputHistory: args.retainInputHistory !== false, localContinuation: args.localContinuation, warmup: args.warmup, onPrepared: args.onPrepared, requestId: args.requestId, userAgent: args.userAgent, action: args.action, abortUpstream: () => upstreamAbortController.abort() },
       dump: args.dump ?? null,
     },
     kitDeps,
@@ -283,6 +286,7 @@ async function prepareResponses(args: ResponsesServeArgs, upstreamAbortControlle
 }
 
 export async function serveResponses(args: ResponsesServeArgs): Promise<ResponsesServeResult> {
-  const turn = startResponsesTurn(args)
-  return { response: await renderResponsesTurn(turn), mergedInputItems: [...turn.mergedInputItems] }
+  const retainInputHistory = args.retainInputHistory !== false
+  const turn = startResponsesTurn({ ...args, retainInputHistory })
+  return { response: await renderResponsesTurn(turn), mergedInputItems: retainInputHistory ? [...turn.mergedInputItems] : [] }
 }

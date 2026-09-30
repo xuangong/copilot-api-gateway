@@ -1,5 +1,9 @@
+import { withCanonicalCompletion } from "@vibe-core/chat-flow-kit"
+import { demandSse } from "../shared/demand-sse"
+import { COMMENT_KEEPALIVE_FRAME } from "../shared/sse-keepalive"
+import { canonicalCancellation, canonicalJsonResponse } from "../shared/canonical-response"
 import { AffinityEgress, guardAffinityFrames } from "../../../shared/affinity/egress"
-import type { RequestAffinity } from "../../shared/affinity-request"
+import type { AffinityExecutionState } from "../../../shared/affinity/context"
 import { translateStream } from "../shared/translate-stream"
 // vnext/packages/gateway/src/data-plane/chat-flow/gemini/respond.ts
 /**
@@ -42,7 +46,6 @@ import {
   type UpstreamErrorResult,
 } from '@vibe-llm/protocols/common'
 import { forwardUpstreamError, geminiErrorBody } from '../../errors/forward'
-import { encodeClientSSE } from '../../dispatch/sse-writers.ts'
 import { SourceStreamState, recordPerformance } from '../shared/respond-telemetry.ts'
 import type { TelemetryRequestContext } from '../shared/telemetry-ctx.ts'
 import type { DumpAccumulator } from '../../../shared/dump/accumulator.ts'
@@ -56,7 +59,7 @@ import { collectMessagesProtocolEventsToResult } from '../messages/events/reasse
 import { collectResponsesProtocolEventsToResult } from '../responses/events/reassemble'
 
 export interface RespondGeminiOptions {
-  readonly affinity?: RequestAffinity
+  readonly affinity?: AffinityExecutionState
   /**
    * True when the URL verb was `streamGenerateContent` (client wants SSE).
    * False when it was `generateContent` (client wants a single JSON envelope).
@@ -109,32 +112,14 @@ async function* applyTranslatorEventsForStreaming(
   }
 }
 
-/**
- * SSE rendering branch. Data-only frames per gemini convention. Telemetry
- * observation happens inline via `consumeWithState`; on stream close we
- * `waitUntil` the persistence helper so the client response isn't blocked.
- *
- * `encodeClientSSE('gemini', …)` already handles the data-only frame shape
- * (no `event:` prefix, no `[DONE]`) and emits an `{error: {message}}` frame
- * on translator throws — matching the legacy dispatch behaviour. We wrap
- * that ReadableStream in an outer stream so we can hook the `cancel` for
- * downstream-abort propagation and run telemetry persistence on close.
- *
- * Cross-protocol attempts (Spec 6 Part 4): when `translateEvents` is set,
- * `result.events` carries HUB-shape frames from traverseTranslation. We
- * apply `applyTranslatorEventsForStreaming` to convert them to bare gemini
- * events before passing to `consumeWithState` + `encodeClientSSE`.
- */
+/** Data-only SSE encoding observes canonical frames before translation.
+ * Both the serializer and dump byte accounting follow downstream demand;
+ * telemetry and dump persistence complete independently of HTTP close. */
 const renderEventsAsSSE = (
   result: LlmEventResult<unknown>,
   options: RespondGeminiOptions,
 ): Response => {
   const state = new SourceStreamState(result.modelIdentity.modelKey, result.modelIdentity.model, result.modelIdentity.executedModelKey)
-  const onClientAbort = (): void => {
-    options.telemetryCtx?.metrics?.finish("cancelled")
-    if (options.telemetryCtx || options.dump) waitUntil(persistFromEventResult(result, state, options.telemetryCtx, options.dump))
-  }
-  options.downstreamAbortController?.signal.addEventListener("abort", onClientAbort, { once: true })
   const hubProtocol = result.modelIdentity.translatorPair?.hub
   const isHubProtocol = hubProtocol === 'responses' ||
     hubProtocol === 'messages' ||
@@ -162,31 +147,28 @@ const renderEventsAsSSE = (
       yield event
     }
   }
-  const inner = encodeClientSSE('gemini', observedEvents())
-  const reader = inner.getReader()
-  const body = new ReadableStream<Uint8Array>({
-    async pull(controller) {
-      const { value, done } = await reader.read()
-      if (done) {
-        options.downstreamAbortController?.signal.removeEventListener("abort", onClientAbort)
-        controller.close()
-        if (options.telemetryCtx || options.dump) {
-          waitUntil(persistFromEventResult(result, state, options.telemetryCtx, options.dump))
-        }
-        return
-      }
-      controller.enqueue(value)
+  const completed = Promise.withResolvers<void>()
+  const cancel = canonicalCancellation(state, options, result.modelIdentity, result.resolveModelIdentity)
+  const body = demandSse({
+    events: observedEvents(),
+    background: options.telemetryCtx || options.dump ? waitUntil : undefined,
+    keepalive: COMMENT_KEEPALIVE_FRAME,
+    signal: options.downstreamAbortController?.signal,
+    serialize: event => `data: ${JSON.stringify(event)}\n\n`,
+    errorFrame(error) {
+      state.failedAfter()
+      const message = error instanceof Error ? error.message : String(error)
+      return `data: ${JSON.stringify({ error: { message } })}\n\n`
     },
-    async cancel(_reason) {
-      options.telemetryCtx?.metrics?.finish("cancelled")
-      options.downstreamAbortController?.abort()
-      try { await reader.cancel() } catch { /* swallow */ }
-      if (options.telemetryCtx || options.dump) {
-        waitUntil(persistFromEventResult(result, state, options.telemetryCtx, options.dump))
-      }
+    onCancel: cancel,
+    onFinish(cancelled) {
+      if (cancelled) cancel()
+      if (!options.telemetryCtx && !options.dump) { completed.resolve(); return }
+      const task = persistFromEventResult(result, state, options.telemetryCtx, options.dump)
+      waitUntil(task.then(completed.resolve, error => { options.dump?.failed(error); completed.resolve() }))
     },
   })
-  return new Response(body, {
+  return withCanonicalCompletion(new Response(body, {
     status: 200,
     headers: {
       'content-type': 'text/event-stream',
@@ -195,7 +177,7 @@ const renderEventsAsSSE = (
       'connection': 'keep-alive',
       'x-accel-buffering': 'no',
     },
-  })
+  }), { settled: completed.promise, cancel })
 }
 
 /**
@@ -342,7 +324,9 @@ const renderEventsAsJson = async (
   result: LlmEventResult<unknown>,
   options: RespondGeminiOptions,
 ): Promise<Response> => {
+  let settled = Promise.resolve()
   const state = new SourceStreamState(result.modelIdentity.modelKey, result.modelIdentity.model, result.modelIdentity.executedModelKey)
+  const cancel = canonicalCancellation(state, options, result.modelIdentity, result.resolveModelIdentity)
   // Cross-protocol buffered results contain hub ProtocolFrames. Preserve those
   // frames for the hub reassembler while observing their contained events;
   // the streaming path remains on the bare Gemini bridge above.
@@ -384,17 +368,19 @@ const renderEventsAsJson = async (
         })
       : reassembled
     if (options.telemetryCtx || options.dump) {
-      waitUntil(persistFromEventResult(result, state, options.telemetryCtx, options.dump))
+      settled = persistFromEventResult(result, state, options.telemetryCtx, options.dump)
+      waitUntil(settled)
     }
-    return Response.json(await new AffinityEgress(options.affinity).body("gemini", finalBody))
+    return canonicalJsonResponse(await new AffinityEgress(options.affinity).body("gemini", finalBody), settled, 200, cancel)
   } catch (err) {
     state.failedAfter()
     if (options.telemetryCtx || options.dump) {
-      waitUntil(persistFromEventResult(result, state, options.telemetryCtx, options.dump))
+      settled = persistFromEventResult(result, state, options.telemetryCtx, options.dump)
+      waitUntil(settled)
     }
     const message = err instanceof Error ? err.message : String(err)
     options.dump?.failed(message)
-    return Response.json(geminiErrorBody(502, message), { status: 502 })
+    return canonicalJsonResponse(geminiErrorBody(502, message), settled, 502, cancel)
   }
 }
 

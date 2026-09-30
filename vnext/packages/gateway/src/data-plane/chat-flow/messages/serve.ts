@@ -115,7 +115,7 @@ const messagesHooks: ServeTemplateHooks<
 
   respond: (r, c) => respondMessages(r, {
     wantsStream: c.wantsStream,
-    affinity: c.extra?.affinity,
+    affinity: c.extra?.affinity?.execution,
     downstreamAbortController: c.downstreamAbortController,
     telemetryCtx: c.telemetryCtx,
     ...(c.dump !== undefined && c.dump !== null && { dump: c.dump as DumpAccumulator }),

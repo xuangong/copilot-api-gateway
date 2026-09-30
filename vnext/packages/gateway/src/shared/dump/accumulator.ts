@@ -13,6 +13,7 @@
 //   - `TelemetryModelIdentity` imported from `@vibe-llm/protocols/common`.
 
 import type { Context } from "hono"
+import type { KitCanonicalCompletion } from "@vibe-core/chat-flow-kit"
 import { waitUntil } from "@vibe-core/platform"
 import type { ProtocolFrame } from "@vibe-core/result"
 import type { TelemetryModelIdentity } from "@vibe-llm/protocols/common"
@@ -29,7 +30,7 @@ import type {
   DumpUpstreamRef,
   DumpWriteRecord,
   PreparedDumpRequestBody,
-  StoredDumpResponseBody,
+  DumpWriteResponseBody,
 } from "./types.ts"
 import { getRepo } from "../../repo/index.ts"
 import type { ApiKey, TokenUsage } from "../../repo/types.ts"
@@ -50,7 +51,7 @@ interface ResponseSnapshot {
   readonly status: number
   readonly headers: ReadonlyArray<readonly [string, string]>
   readonly isStream: boolean
-  readonly bytes: Uint8Array
+  bytes: Uint8Array
   readonly payloadBytes: number
   readonly streamError: string | null
 }
@@ -71,10 +72,13 @@ const oneLineError = (err: unknown): string => {
   return msg.length > 500 ? `${msg.slice(0, 497)}…` : msg
 }
 
-const headerPairs = (headers: Headers): Array<[string, string]> => {
-  const pairs: Array<[string, string]> = []
-  headers.forEach((value, name) => { pairs.push([name, value]) })
-  return pairs
+const ownHeaderPairs = (pairs: ReadonlyArray<readonly [string, string]>): ReadonlyArray<readonly [string, string]> =>
+  Object.freeze(pairs.map(([name, value]) => Object.freeze([name, value] as const)))
+
+const headerPairs = (headers: Headers): ReadonlyArray<readonly [string, string]> => {
+  const pairs: Array<readonly [string, string]> = []
+  headers.forEach((value, name) => { pairs.push(Object.freeze([name, value] as const)) })
+  return Object.freeze(pairs)
 }
 
 const resolveUpstreamRef = async (id: string | null): Promise<DumpUpstreamRef | null> => {
@@ -202,15 +206,26 @@ export class DumpAccumulator {
   }
 
   error(kind: "upstream" | "gateway", upstream?: string): void {
+    if (this.canonicalCancelled) return
     this.errorMeta = { kind }
     if (upstream !== undefined) this.upstreamId = upstream
   }
 
-  cancelled(): void {
+  cancelled(identity?: TelemetryModelIdentity, usage: TokenUsage | null = null): void {
+    if (this.canonicalCancelled) return
     this.errorMeta = { kind: "cancelled", reason: "client_cancelled" }
+    // Synchronous producer fallback must reach the transport handoff without
+    // replacing authoritative scalars that semantic completion already supplied.
+    if (identity) {
+      this.model ??= identity.model
+      this.upstreamId ??= identity.upstream
+      this.inputTokens ??= tokenUsageInput(usage)
+      this.outputTokens ??= usage?.output ?? null
+    }
   }
 
   failed(reason: unknown): void {
+    if (this.canonicalCancelled) return
     if (this.errorMeta?.kind === "cancelled") return
     this.errorMeta = { kind: "failed", reason: typeof reason === "string" ? reason : oneLineError(reason) }
   }
@@ -226,6 +241,7 @@ export class DumpAccumulator {
   }
 
   success(identity: TelemetryModelIdentity, usage: TokenUsage | null): void {
+    if (this.canonicalCancelled) return
     // `requestedModel` is the client-facing identity and must survive key
     // routing. Successful handlers still supply the resolved identity below
     // for upstream/cost metadata, but only use its model when no request
@@ -259,7 +275,7 @@ export class DumpAccumulator {
       const hasFrames = (this.events?.length ?? 0) > 0
       const bytes = !hasFrames && canonicalBody !== undefined
         ? new TextEncoder().encode(JSON.stringify(canonicalBody)) : new Uint8Array()
-      return this.write({ status, headers: headers.map(([k, v]) => [k, v]), isStream: hasFrames,
+      return this.write({ status, headers: ownHeaderPairs(headers), isStream: hasFrames,
         bytes, payloadBytes: this.sentPayloadBytes, streamError: null })
     } catch (error) {
       // This API formerly used an async frame: stringify failures must still
@@ -276,14 +292,14 @@ export class DumpAccumulator {
   }
 
   finalize(status: number, headers: ReadonlyArray<readonly [string, string]>): void
-  finalize(response: Response): Response
-  finalize(...args: [number, ReadonlyArray<readonly [string, string]>] | [Response]): void | Response {
-    if (args.length === 2) {
+  finalize(response: Response, completion?: KitCanonicalCompletion): Response
+  finalize(...args: [number, ReadonlyArray<readonly [string, string]>] | [Response, KitCanonicalCompletion?]): void | Response {
+    if (typeof args[0] === "number") {
       if (this.terminalWrite !== null) return
-      const [status, headers] = args
+      const [status, headers] = args as [number, ReadonlyArray<readonly [string, string]>]
       waitUntil(this.write({
         status,
-        headers: headers.map(([k, v]) => [k, v]),
+        headers: ownHeaderPairs(headers),
         isStream: (this.events?.length ?? 0) > 0,
         bytes: new Uint8Array(),
         payloadBytes: this.sentPayloadBytes,
@@ -292,12 +308,13 @@ export class DumpAccumulator {
       return
     }
 
-    const [response] = args
+    const [response, completion] = args as [Response, KitCanonicalCompletion?]
     if (this.terminalWrite !== null) {
       return new Response(response.body, {
         status: response.status, statusText: response.statusText, headers: this.withDumpHeaders(response.headers),
       })
     }
+    if (completion) return this.finalizeCanonical(response, completion)
     const responseStatus = response.status
     const responseHeaders = headerPairs(response.headers)
 
@@ -323,6 +340,72 @@ export class DumpAccumulator {
       status: response.status,
       statusText: response.statusText,
       headers: this.withDumpHeaders(response.headers),
+    })
+  }
+
+  // Cancellation seals scalar metadata at the transport boundary. Ordinary
+  // terminal assembly retains its existing late-scalar observation contract.
+  private canonicalCancelled = false
+
+  private finalizeCanonical(response: Response, completion: KitCanonicalCompletion): Response {
+    const status = response.status
+    const headers = headerPairs(response.headers)
+    const isStream = (response.headers.get("content-type") ?? "").startsWith("text/event-stream")
+    const transport = Promise.withResolvers<{ payloadBytes: number; streamError: string | null; cancelled: boolean }>()
+    const semantic = completion.settled.then(() => null, oneLineError)
+    const cancelCompletion = completion.cancel
+    let fallbackBody = completion.fallbackBody
+    this.terminalWrite = transport.promise.then(async snapshot => {
+      const semanticError = snapshot.cancelled ? null : await semantic
+      const bytes = (this.events?.length ?? 0) === 0 && fallbackBody !== undefined
+        ? new TextEncoder().encode(fallbackBody) : new Uint8Array()
+      fallbackBody = undefined
+      return this.buildTerminalRecord({ status, headers, isStream, bytes, ...snapshot,
+        streamError: snapshot.streamError ?? semanticError })
+    }).then(persistTerminalRecord)
+    waitUntil(this.terminalWrite)
+    let payloadBytes = 0
+    let finished = false
+    const complete = (streamError: string | null, cancelled = false): void => {
+      if (finished) return
+      finished = true
+      transport.resolve({ payloadBytes, streamError, cancelled })
+    }
+    const reader = response.body?.getReader()
+    if (!reader) complete(null)
+    const body = reader ? new ReadableStream<Uint8Array>({
+      async pull(controller) {
+        try {
+          const next = await reader.read()
+          if (finished) return
+          if (next.done) {
+            reader.releaseLock()
+            controller.close()
+            complete(null)
+          } else {
+            controller.enqueue(next.value)
+            payloadBytes += next.value.byteLength
+          }
+        } catch (error) {
+          if (finished) return
+          reader.releaseLock()
+          controller.error(error)
+          complete(oneLineError(error))
+        }
+      },
+      cancel: reason => {
+        this.cancelled()
+        cancelCompletion?.()
+        this.canonicalCancelled = true
+        // Source cleanup and already-started writes retain background ownership;
+        // an unresolved semantic observer cannot hold the cancelled dump open.
+        const cleanup = reader.cancel(reason).catch(() => {}).finally(() => reader.releaseLock())
+        waitUntil(cleanup)
+        complete(null, true)
+      },
+    }, { highWaterMark: 0 }) : null
+    return new Response(body, {
+      status, statusText: response.statusText, headers: this.withDumpHeaders(response.headers),
     })
   }
 
@@ -374,13 +457,14 @@ export class DumpAccumulator {
     // Prefer the accumulator's frame log so dumps reflect the gateway's
     // frame sequence regardless of negotiated wire shape; passthrough
     // endpoints with no frames fall back to captured bytes.
-    const responseBody: StoredDumpResponseBody = events !== null && events.length > 0
+    const responseBody: DumpWriteResponseBody = events !== null && events.length > 0
       ? { type: "stream", events }
-      : response.bytes.byteLength > 0 || response.streamError !== null
+      : response.bytes.byteLength > 0 || response.streamError !== null || response.isStream && response.payloadBytes > 0
         ? response.isStream
           ? { type: "stream", events: [] }
-          : { type: "bytes", body: response.bytes }
+          : { type: "bytes", body: response.bytes, ownership: "transferred" }
         : { type: "none" }
+    response.bytes = new Uint8Array()
 
     const meta: DumpMetadata = {
       id: recordId as DumpRecordId,
@@ -413,12 +497,12 @@ export class DumpAccumulator {
         request: {
           method: this.requestSnapshot.method,
           path: this.requestSnapshot.path,
-          headers: this.requestSnapshot.headers.map(([k, v]) => [k, v]),
+          headers: this.requestSnapshot.headers,
           body: await preparedRequestBody,
         },
         response: {
           status: response.status,
-          headers: response.headers.map(([k, v]) => [k, v]),
+          headers: response.headers,
           body: responseBody,
         },
       }

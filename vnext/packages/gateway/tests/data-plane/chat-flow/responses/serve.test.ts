@@ -50,3 +50,11 @@ test('compact dump retains source while previous response is expanded and model 
   ])
   expect(response.status).toBe(404)
 })
+
+test('HTTP callers can omit returned history while internal callers retain expanded items', async () => {
+  initResponsesStore(new InMemoryResponsesSnapshotStore())
+  const raw = { model: 'source', input: [{ type: 'message', role: 'user', content: 'current work' }] }
+  const result = await serveResponses({ raw, auth, obsCtx, action: 'compact', retainInputHistory: false })
+  expect(result.response.status).toBe(404)
+  expect(result.mergedInputItems).toEqual([])
+})

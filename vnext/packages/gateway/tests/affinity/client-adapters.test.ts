@@ -130,7 +130,7 @@ test("required Gemini tool state cannot use any existing hub and never prepares 
   let prepares = 0
   const part = await stampAffinityItem("gemini", { functionCall: { id: "a", name: "f", args: {} }, thoughtSignature: "sig" }, target, codec)
   const source = { contents: [{ role: "model", parts: [part] }] }
-  const context = { protocol: "gemini" as const, codec, analysis: await analyzeAffinityRequest("gemini", source, codec) }
+  const context = { execution: { protocol: "gemini" as const, codec }, analysis: await analyzeAffinityRequest("gemini", source, codec) }
   for (const endpoint of ["chat_completions", "messages", "responses"] as const) {
     const provider: LlmModelProvider = { name: "fixture", kind: "custom", supportedEndpoints: [endpoint], getPricingForModelKey: () => null, getModels: async () => ({ object: "list", data: [] }), probe: async () => ({ ok: true }), fetch: async () => { throw new Error("must not infer") }, prepareAffinityExecution: async () => { prepares++; return target } }
     const binding: LlmProviderBinding = { kind: "custom", upstream: "up", enabledFlags: new Set(), model: { id: "m", endpoints: { [endpoint]: {} } }, provider }
@@ -285,7 +285,7 @@ test("foreign Gemini signatures on non-thought Parts reject unrepresentable stat
 test("opaque Chat input cannot select a dialect interceptor that discards its signature", async () => {
   const message = await stampAffinityItem("chat_completions", { role: "assistant", content: "answer", reasoning_text: "thought", reasoning_opaque: "sig" }, target, codec)
   const source = { messages: [message] }
-  const context = { protocol: "chat_completions" as const, codec, analysis: await analyzeAffinityRequest("chat_completions", source, codec) }
+  const context = { execution: { protocol: "chat_completions" as const, codec }, analysis: await analyzeAffinityRequest("chat_completions", source, codec) }
   const provider: LlmModelProvider = { name: "fixture", kind: "custom", supportedEndpoints: ["chat_completions"], getPricingForModelKey: () => null, getModels: async () => ({ object: "list", data: [] }), probe: async () => ({ ok: true }), fetch: async () => { throw new Error("must not infer") }, prepareAffinityExecution: async () => target }
   const binding: LlmProviderBinding = { kind: "custom", upstream: "up", enabledFlags: new Set(["reasoning-content-dialect"]), model: { id: "m", endpoints: { chat_completions: {} } }, provider }
   await expect(selectAffinityCandidate([{ binding, targetEndpoint: "chat_completions" }], context, "m")).rejects.toBeInstanceOf(AffinityRoutingUnavailableError)

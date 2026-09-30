@@ -30,6 +30,9 @@ export interface CapturedAttemptBody {
 // Only successful collector publication registers these frozen body objects.
 // Identity proves native Base64 encoding, not the validity of other fields.
 const internallyEncodedBodies = new WeakSet<object>()
+// Only the complete validated projection of an internally owned frozen graph
+// may bypass the storage boundary. Body encoding alone does not confer trust.
+const persistenceSafeEnvelopes = new WeakSet<UpstreamExchanges>()
 
 export interface UpstreamAttemptSnapshot {
   readonly id: string
@@ -83,14 +86,16 @@ const SAFE_MEDIA_TYPES = new Set([
   "application/json", "application/octet-stream", "text/event-stream", "text/plain",
   "application/x-www-form-urlencoded", "application/xml", "text/xml",
 ])
-const textEncoder = new TextEncoder()
-const byteLength = (value: string): number => textEncoder.encode(value).byteLength
 // Fixed field names, numeric counters, delimiters and envelope keys stay
 // below this reservation per attempt. Header charges use their serialized
 // UTF-8 size, including the array separator. This deliberately overcounts
 // the emitted metadata so it cannot cross the 64 KiB budget.
 const METADATA_FIXED_RESERVATION_BYTES = 1024
-const headerBudgetBytes = (name: string, value: string): number => byteLength(JSON.stringify([name, value])) + 1
+// Safe names, allowlisted media types and normalized decimal lengths are ASCII
+// without JSON escapes. Include tuple punctuation, quotes and its separator.
+const headerBudgetBytes = (name: string, value: string): number => name.length + value.length + 8
+const freezePairs = (pairs: SafeAttemptHeader[]): readonly SafeAttemptHeader[] =>
+  Object.freeze(pairs.map(pair => Object.freeze(pair)))
 const safeCount = (value: number): number => Math.min(Number.MAX_SAFE_INTEGER, Math.max(0, value))
 const safeOffset = (now: number, start: number): number =>
   Number.isFinite(now) && Number.isFinite(start) ? safeCount(Math.floor(now - start)) : 0
@@ -385,8 +390,6 @@ export class UpstreamExchangeCollector {
         truncated: item.responseObserved > item.responsePrefix.byteLength,
         terminal: item.terminal ?? "not_consumed",
       })
-      const freezePairs = (pairs: SafeAttemptHeader[]): readonly SafeAttemptHeader[] =>
-        Object.freeze(pairs.map(pair => Object.freeze([...pair]) as SafeAttemptHeader))
       return Object.freeze({
         id: item.id, parentCallId: item.parentCallId, upstreamId: item.upstreamId,
         order: item.order, startedOffsetMs: item.startedOffsetMs,
@@ -408,11 +411,21 @@ export class UpstreamExchangeCollector {
       internallyEncodedBodies.add(item.request)
       internallyEncodedBodies.add(item.response)
     }
+    try {
+      projectUpstreamExchanges(this.finished, this.finished)
+      persistenceSafeEnvelopes.add(this.finished)
+    } catch {
+      // Public capture methods can form inconsistent surrounding counts. Keep
+      // finish() compatible; such snapshots still fail the storage projection.
+    }
     // Publish only after every conversion succeeds. Captures and pending stream
-    // callbacks can still retain an item, so release its pages in place.
+    // callbacks can still retain an item, so release its pages and references
+    // to the published header tuples without mutating the frozen snapshot.
     for (const item of this.attempts) {
       item.requestPrefix.release()
       item.responsePrefix.release()
+      item.requestHeaders.length = 0
+      item.responseHeaders.length = 0
     }
     return this.finished
   }
@@ -433,6 +446,8 @@ export class UpstreamExchangeCollector {
     for (const item of this.attempts) {
       item.requestPrefix.release()
       item.responsePrefix.release()
+      item.requestHeaders.length = 0
+      item.responseHeaders.length = 0
     }
   }
 }
@@ -457,66 +472,71 @@ export class UpstreamAttemptCapture {
 // The storage boundary rebuilds the envelope from known fields. A caller
 // cannot smuggle arbitrary object keys, headers, URL components or messages
 // into the file by constructing a lookalike TypeScript value.
-export function safeUpstreamExchangesForPersistence(input: unknown): UpstreamExchanges {
-  const object = (value: unknown): Record<string, unknown> => {
-    if (value === null || typeof value !== "object" || Array.isArray(value)) throw new Error("invalid upstream exchange shape")
-    return value as Record<string, unknown>
+const object = (value: unknown): Record<string, unknown> => {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) throw new Error("invalid upstream exchange shape")
+  return value as Record<string, unknown>
+}
+const count = (value: unknown, maximum: number): number => {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0 || value > maximum) throw new Error("invalid upstream exchange count")
+  return value
+}
+const optionalCount = (value: unknown, maximum: number): number | null => value === null ? null : count(value, maximum)
+const token = (value: unknown, omitted: string): string => {
+  if (typeof value !== "string" || (value !== omitted && !/^[A-Za-z0-9_-]{1,64}$/.test(value))) throw new Error("invalid upstream exchange token")
+  return value
+}
+const headers = (value: unknown, reuse: boolean): { pairs: readonly SafeAttemptHeader[]; bytes: number } => {
+  if (!Array.isArray(value)) throw new Error("invalid upstream headers")
+  const pairs: SafeAttemptHeader[] | null = reuse ? null : []
+  let bytes = 0
+  for (const pair of value) {
+    if (!Array.isArray(pair) || pair.length !== 2 || typeof pair[0] !== "string" || typeof pair[1] !== "string") throw new Error("invalid upstream header")
+    const [name, content] = pair
+    if (name === "content-type") {
+      if (!SAFE_MEDIA_TYPES.has(content)) throw new Error("unsafe upstream content type")
+    } else if (name === "content-length") {
+      if (!/^\d{1,15}$/.test(content) || String(Number(content)) !== content) throw new Error("unsafe upstream content length")
+    } else throw new Error("unsafe upstream header")
+    bytes += headerBudgetBytes(name, content)
+    if (bytes > UPSTREAM_ATTEMPT_LIMITS.headersPerAttempt) throw new Error("upstream header budget exceeded")
+    pairs?.push([name, content] as SafeAttemptHeader)
   }
-  const count = (value: unknown, maximum: number): number => {
-    if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0 || value > maximum) throw new Error("invalid upstream exchange count")
-    return value
+  return { pairs: pairs ?? value as readonly SafeAttemptHeader[], bytes }
+}
+const body = (value: unknown, side: "request" | "response", reuse: boolean) => {
+  const raw = object(value)
+  const source = raw.source
+  if (side === "request" ? source !== "prepared" && source !== "unobserved" : source !== "fetch-body") throw new Error("invalid upstream body source")
+  const observedBytes = optionalCount(raw.observedBytes, Number.MAX_SAFE_INTEGER)
+  const totalBytes = optionalCount(raw.totalBytes, Number.MAX_SAFE_INTEGER)
+  const capturedBytes = count(raw.capturedBytes, side === "request" ? UPSTREAM_ATTEMPT_LIMITS.requestPrefix : UPSTREAM_ATTEMPT_LIMITS.responsePrefix)
+  const prefixBase64 = raw.prefixBase64
+  const maxEncoded = Math.ceil(capturedBytes / 3) * 4
+  if (typeof prefixBase64 !== "string" || prefixBase64.length !== maxEncoded) throw new Error("invalid upstream body prefix")
+  const padding = prefixBase64.endsWith("==") ? 2 : prefixBase64.endsWith("=") ? 1 : 0
+  if (prefixBase64.length / 4 * 3 - padding !== capturedBytes
+    || (!internallyEncodedBodies.has(raw) && /[^A-Za-z0-9+/]/.test(prefixBase64.slice(0, prefixBase64.length - padding)))) throw new Error("invalid upstream body prefix")
+  if (raw.truncated !== (observedBytes !== null && observedBytes > capturedBytes)) throw new Error("invalid upstream truncation")
+  if (side === "request") {
+    if (source === "unobserved" && (observedBytes !== null || totalBytes !== null || capturedBytes !== 0)) throw new Error("unobserved request has bytes")
+    if (source === "prepared" && totalBytes !== observedBytes) throw new Error("prepared request count mismatch")
+    if (reuse) return raw as unknown as CapturedAttemptBody
+    return { source: source as "prepared" | "unobserved", observedBytes, totalBytes, capturedBytes, prefixBase64, truncated: raw.truncated as boolean }
   }
-  const optionalCount = (value: unknown, maximum: number): number | null => value === null ? null : count(value, maximum)
-  const token = (value: unknown, omitted: string): string => {
-    if (typeof value !== "string" || (value !== omitted && !/^[A-Za-z0-9_-]{1,64}$/.test(value))) throw new Error("invalid upstream exchange token")
-    return value
-  }
-  const headers = (value: unknown): { pairs: SafeAttemptHeader[]; bytes: number } => {
-    if (!Array.isArray(value)) throw new Error("invalid upstream headers")
-    const pairs: SafeAttemptHeader[] = []
-    let bytes = 0
-    for (const pair of value) {
-      if (!Array.isArray(pair) || pair.length !== 2 || typeof pair[0] !== "string" || typeof pair[1] !== "string") throw new Error("invalid upstream header")
-      const [name, content] = pair
-      if (name === "content-type") {
-        if (!SAFE_MEDIA_TYPES.has(content)) throw new Error("unsafe upstream content type")
-      } else if (name === "content-length") {
-        if (!/^\d{1,15}$/.test(content) || String(Number(content)) !== content) throw new Error("unsafe upstream content length")
-      } else throw new Error("unsafe upstream header")
-      bytes += headerBudgetBytes(name, content)
-      if (bytes > UPSTREAM_ATTEMPT_LIMITS.headersPerAttempt) throw new Error("upstream header budget exceeded")
-      pairs.push([name, content] as SafeAttemptHeader)
-    }
-    return { pairs, bytes }
-  }
-  const body = (value: unknown, side: "request" | "response") => {
-    const raw = object(value)
-    const source = raw.source
-    if (side === "request" ? source !== "prepared" && source !== "unobserved" : source !== "fetch-body") throw new Error("invalid upstream body source")
-    const observedBytes = optionalCount(raw.observedBytes, Number.MAX_SAFE_INTEGER)
-    const totalBytes = optionalCount(raw.totalBytes, Number.MAX_SAFE_INTEGER)
-    const capturedBytes = count(raw.capturedBytes, side === "request" ? UPSTREAM_ATTEMPT_LIMITS.requestPrefix : UPSTREAM_ATTEMPT_LIMITS.responsePrefix)
-    const prefixBase64 = raw.prefixBase64
-    const maxEncoded = Math.ceil(capturedBytes / 3) * 4
-    if (typeof prefixBase64 !== "string" || prefixBase64.length !== maxEncoded) throw new Error("invalid upstream body prefix")
-    const padding = prefixBase64.endsWith("==") ? 2 : prefixBase64.endsWith("=") ? 1 : 0
-    if (prefixBase64.length / 4 * 3 - padding !== capturedBytes
-      || (!internallyEncodedBodies.has(raw) && /[^A-Za-z0-9+/]/.test(prefixBase64.slice(0, prefixBase64.length - padding)))) throw new Error("invalid upstream body prefix")
-    if (raw.truncated !== (observedBytes !== null && observedBytes > capturedBytes)) throw new Error("invalid upstream truncation")
-    if (side === "request") {
-      if (source === "unobserved" && (observedBytes !== null || totalBytes !== null || capturedBytes !== 0)) throw new Error("unobserved request has bytes")
-      if (source === "prepared" && totalBytes !== observedBytes) throw new Error("prepared request count mismatch")
-      return { source: source as "prepared" | "unobserved", observedBytes, totalBytes, capturedBytes, prefixBase64, truncated: raw.truncated as boolean }
-    }
-    const terminal = raw.terminal
-    if (terminal !== "eof" && terminal !== "cancelled" && terminal !== "read_error" && terminal !== "fetch_error" && terminal !== "not_consumed") throw new Error("invalid upstream terminal")
-    if (observedBytes === null || capturedBytes > observedBytes || (terminal === "eof" ? totalBytes !== observedBytes : totalBytes !== null)) throw new Error("invalid upstream response count")
-    return { source: "fetch-body" as const, observedBytes, totalBytes, capturedBytes, prefixBase64, truncated: raw.truncated as boolean, terminal }
-  }
+  const terminal = raw.terminal
+  if (terminal !== "eof" && terminal !== "cancelled" && terminal !== "read_error" && terminal !== "fetch_error" && terminal !== "not_consumed") throw new Error("invalid upstream terminal")
+  if (observedBytes === null || capturedBytes > observedBytes || (terminal === "eof" ? totalBytes !== observedBytes : totalBytes !== null)) throw new Error("invalid upstream response count")
+  if (reuse) return raw as unknown as CapturedAttemptBody & { readonly terminal: UpstreamAttemptTerminal }
+  return { source: "fetch-body" as const, observedBytes, totalBytes, capturedBytes, prefixBase64, truncated: raw.truncated as boolean, terminal }
+}
+// The reuse argument is private and only receives this module's frozen,
+// known-field collector graph. Unknown callers always get rebuilt containers.
+function projectUpstreamExchanges(input: unknown, owned?: UpstreamExchanges): UpstreamExchanges {
   const raw = object(input)
   if (raw.version !== 1 || raw.representation !== "fetch-body" || !Array.isArray(raw.attempts)
     || raw.attempts.length > UPSTREAM_ATTEMPT_LIMITS.attempts) throw new Error("invalid upstream exchange version")
-  const attempts: UpstreamAttemptSnapshot[] = []
+  const attempts: UpstreamAttemptSnapshot[] | null = owned ? null : []
+  let attemptCount = 0
   let capturedBodyBytes = 0
   let metadataBytes = 0
   for (const value of raw.attempts) {
@@ -527,26 +547,26 @@ export function safeUpstreamExchangesForPersistence(input: unknown): UpstreamExc
     const order = count(item.order, UPSTREAM_ATTEMPT_LIMITS.attempts)
     const startedOffsetMs = count(item.startedOffsetMs, Number.MAX_SAFE_INTEGER)
     const completedOffsetMs = optionalCount(item.completedOffsetMs, Number.MAX_SAFE_INTEGER)
-    if (order !== attempts.length + 1 || id !== `attempt-${order}`) throw new Error("invalid upstream attempt order")
+    if (order !== ++attemptCount || id !== `attempt-${order}`) throw new Error("invalid upstream attempt order")
     const method = item.method
     if (typeof method !== "string" || safeMethod(method) !== method) throw new Error("invalid upstream method")
     const operation = item.operation
     if (typeof operation !== "string" || (operation !== "url_omitted" && !SAFE_OPERATIONS.has(operation))) throw new Error("unsafe upstream operation")
     if (item.url !== "url_omitted" || item.representation !== "fetch-body") throw new Error("unsafe upstream URL")
-    const requestHeaders = headers(item.requestHeaders)
-    const responseHeaders = headers(item.responseHeaders)
+    const requestHeaders = headers(item.requestHeaders, owned !== undefined)
+    const responseHeaders = headers(item.responseHeaders, owned !== undefined)
     if (requestHeaders.bytes + responseHeaders.bytes > UPSTREAM_ATTEMPT_LIMITS.headersPerAttempt) throw new Error("upstream header budget exceeded")
     const omittedRequestHeaders = count(item.omittedRequestHeaders, Number.MAX_SAFE_INTEGER)
     const omittedResponseHeaders = count(item.omittedResponseHeaders, Number.MAX_SAFE_INTEGER)
     const status = optionalCount(item.status, 599)
     if (status !== null && status < 100) throw new Error("invalid upstream status")
-    const request = body(item.request, "request") as CapturedAttemptBody
-    const response = body(item.response, "response") as CapturedAttemptBody & { terminal: UpstreamAttemptTerminal }
+    const request = body(item.request, "request", owned !== undefined) as CapturedAttemptBody
+    const response = body(item.response, "response", owned !== undefined) as CapturedAttemptBody & { terminal: UpstreamAttemptTerminal }
     capturedBodyBytes += request.capturedBytes + response.capturedBytes
     const errorCategory = item.errorCategory
     if (errorCategory !== null && errorCategory !== "network" && errorCategory !== "abort" && errorCategory !== "read" && errorCategory !== "unknown") throw new Error("unsafe upstream error")
     metadataBytes += METADATA_FIXED_RESERVATION_BYTES + requestHeaders.bytes + responseHeaders.bytes
-    attempts.push({
+    attempts?.push({
       id, parentCallId, upstreamId, order, startedOffsetMs, completedOffsetMs, method, operation,
       url: "url_omitted", requestHeaders: requestHeaders.pairs, responseHeaders: responseHeaders.pairs,
       omittedRequestHeaders, omittedResponseHeaders, status, representation: "fetch-body",
@@ -557,8 +577,15 @@ export function safeUpstreamExchangesForPersistence(input: unknown): UpstreamExc
     || metadataBytes > UPSTREAM_ATTEMPT_LIMITS.metadataBytes || raw.metadataBytes !== metadataBytes) throw new Error("upstream exchange budget mismatch")
   const omittedAttempts = count(raw.omittedAttempts, Number.MAX_SAFE_INTEGER)
   if (typeof raw.metadataTruncated !== "boolean") throw new Error("invalid upstream metadata truncation")
+  if (owned) return owned
   return {
-    version: 1, representation: "fetch-body", attempts, omittedAttempts,
+    version: 1, representation: "fetch-body", attempts: attempts ?? [], omittedAttempts,
     capturedBodyBytes, metadataBytes, metadataTruncated: raw.metadataTruncated,
   }
+}
+
+export function safeUpstreamExchangesForPersistence(input: unknown): UpstreamExchanges {
+  if (typeof input === "object" && input !== null
+    && persistenceSafeEnvelopes.has(input as UpstreamExchanges)) return input as UpstreamExchanges
+  return projectUpstreamExchanges(input)
 }

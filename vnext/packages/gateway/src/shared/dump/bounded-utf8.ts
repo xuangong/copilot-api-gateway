@@ -1,21 +1,11 @@
 import { Buffer } from "node:buffer"
+import { utf8ByteLength } from "../utf8.ts"
 
 const textEncoder = new TextEncoder()
 // Bun 1.3 undercounts lone surrogates and splits pairs in short encodeInto
 // destinations. Probe once; affected runtimes keep the bounded JS path.
 const nativeUtf8Exact = Buffer.byteLength("\ud800", "utf8") === 3
   && textEncoder.encodeInto("😀", new Uint8Array(3)).read === 0
-const utf8ByteLength = nativeUtf8Exact
-  ? (text: string): number => Buffer.byteLength(text, "utf8")
-  : (text: string): number => {
-    let total = 0
-    for (let index = 0; index < text.length; index++) {
-      const point = text.codePointAt(index) ?? 0xfffd
-      if (point > 0xffff) { total += 4; index++ }
-      else total += point < 0x80 ? 1 : point < 0x800 ? 2 : 3
-    }
-    return total
-  }
 
 function encodePrefixCompat(text: string, prefix: Uint8Array): void {
   let copied = 0
@@ -56,4 +46,3 @@ export function boundedUtf8(text: string, limit: number): { prefix: Uint8Array; 
   }
   return { prefix, totalBytes }
 }
-

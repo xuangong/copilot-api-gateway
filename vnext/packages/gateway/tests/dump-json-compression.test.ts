@@ -64,7 +64,7 @@ function uploaded(input: DumpWriteRecord, side: Side): Uint8Array {
 
 // This transparent stream isolates the real store's Blob/input decisions.
 // Actual gzip behavior is checked with Bun below and separately in workerd.
-async function withBranch<T>(branch: Branch, run: (parts: BlobPart[][]) => Promise<T>): Promise<T> {
+async function withBranch<T>(branch: Branch, run: (parts: BlobPart[][]) => Promise<T>, onCompression?: () => void): Promise<T> {
   const compressionDescriptor = Object.getOwnPropertyDescriptor(globalThis, "CompressionStream")
   const blobDescriptor = Object.getOwnPropertyDescriptor(globalThis, "Blob")
   if (!blobDescriptor) throw new Error("Blob is unavailable")
@@ -80,6 +80,7 @@ async function withBranch<T>(branch: Branch, run: (parts: BlobPart[][]) => Promi
     constructor(format: CompressionFormat) {
       if (format !== "gzip") throw new Error("unexpected compression format")
       super()
+      onCompression?.()
     }
   }
   Object.defineProperty(globalThis, "CompressionStream", { configurable: true, writable: true, value: branch === "stream" ? TransparentCompressionStream : undefined })
@@ -93,6 +94,57 @@ async function withBranch<T>(branch: Branch, run: (parts: BlobPart[][]) => Promi
 }
 
 const decoded = (branch: Branch, bytes: Uint8Array): Uint8Array => branch === "bun" ? Bun.gunzipSync(bytes) : bytes
+
+test.each(["stream", "bun"] as const)("%s transferred response bytes preserve storage content without a Blob snapshot", async branch => {
+  const input = record()
+  const responseBytes = Uint8Array.of(255, 0, 192, 128)
+  input.response.body = { type: "bytes", body: responseBytes, ownership: "transferred" }
+  await withBranch(branch, async parts => {
+    await store.put(keyId, input)
+    expect(parts).toEqual([])
+    expect(decoded(branch, uploaded(input, "resp"))).toEqual(Uint8Array.of(255, 0, 192, 128))
+    const stored = raw.query<{ response_body_descriptor: string; meta_json: string }, [string]>("SELECT response_body_descriptor, meta_json FROM dump_records WHERE id = ?").get(input.meta.id)
+    expect(stored?.response_body_descriptor).toContain('"type":"bytes"')
+    expect(JSON.stringify(stored)).not.toContain("transferred")
+  })
+})
+
+test.each(["stream", "bun"] as const)("%s preparation snapshots borrowed bytes before the optional sidecar await", async branch => {
+  const input = record()
+  const request = Uint8Array.of(1, 2, 3)
+  const response = Uint8Array.of(4, 5, 6)
+  input.request.body = { encoding: "identity", bytes: request, decodedByteLength: 3 }
+  input.response.body = { type: "bytes", body: response }
+  input.upstreamExchanges = snapshot()
+  await withBranch(branch, async () => {
+    const writing = store.put(keyId, input)
+    request.fill(77)
+    response.fill(88)
+    await writing
+    expect(decoded(branch, uploaded(input, "req"))).toEqual(Uint8Array.of(1, 2, 3))
+    expect(decoded(branch, uploaded(input, "resp"))).toEqual(Uint8Array.of(4, 5, 6))
+  })
+})
+
+test("compression stages consume a private packet without revisiting the raw record", async () => {
+  const input = record([{ ts: 0, frame: eventFrame({ text: "event" }) }])
+  input.request.body = { encoding: "identity", bytes: Uint8Array.of(3), decodedByteLength: 1 }
+  input.upstreamExchanges = snapshot()
+  let started = false
+  const reads: string[] = []
+  const guarded = new Proxy(input, {
+    get(target, property, receiver) {
+      if (started) { reads.push(String(property)); throw new Error("raw record read after compression began") }
+      return Reflect.get(target, property, receiver)
+    },
+  })
+  await withBranch("stream", async () => {
+    await store.put(keyId, guarded)
+    expect(reads).toEqual([])
+    expect(uploaded(input, "req")).toEqual(Uint8Array.of(3))
+    expect(new TextDecoder().decode(uploaded(input, "resp"))).toBe('[{"ts":0,"frame":{"type":"event","event":{"text":"event"}}}]')
+  }, () => { started = true })
+})
 
 test("JSON sidecar and event compression enter Blob without explicit UTF-8 arrays", async () => {
   const events = [{ ts: 0, frame: eventFrame({ text: "control\u0000\n\"\\ 中文😀\ud800".repeat(128) }) }]
@@ -161,9 +213,10 @@ test.each(["stream", "bun"] as const)("%s branch preserves prepared-byte ownersh
     expect(uploaded(input, "req")).toBe(prepared.bytes)
     expect(decoded(branch, uploaded(input, "resp"))).toEqual(responseBytes)
     if (branch === "stream") {
-      expect(parts).toHaveLength(2)
+      // Borrowed preparation still snapshots through Blob. The write packet
+      // already owns the response snapshot and streams it directly.
+      expect(parts).toHaveLength(1)
       expect(parts[0]?.[0]).toBe(requestBytes)
-      expect(parts[1]?.[0]).toBe(responseBytes)
     }
   })
 })

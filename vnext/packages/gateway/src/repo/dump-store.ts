@@ -14,6 +14,7 @@
 
 import { DUMP_FILE_PREFIX, SPILLED_FILE_STAGE_GRACE_MS } from "../shared/dump/spilled-files-policy.ts"
 import { safeUpstreamExchangesForPersistence } from "../shared/dump/upstream-attempts.ts"
+import type { UpstreamExchanges } from "../shared/dump/upstream-attempts.ts"
 import type { DumpListOptions, DumpStore } from "../shared/dump/store-contract.ts"
 import type {
   DumpMetadata,
@@ -21,6 +22,7 @@ import type {
   DumpStreamEvent,
   DumpUpstreamRef,
   DumpWriteRecord,
+  DumpWriteResponseBody,
   PreparedDumpRequestBody,
   StoredDumpRecord,
   StoredDumpRequest,
@@ -81,12 +83,17 @@ const bodyPath = (keyId: string, bucket: string, recordId: string, side: "req" |
 // CompressionStream globally). Cloudflare Workers do expose CompressionStream;
 // when this runs there we'd wrap that instead — for the Bun runtime we take
 // the direct route.
-const gzip = async (input: Uint8Array | string): Promise<Uint8Array> => {
+const gzip = async (input: Uint8Array | string, ownership: "borrowed" | "transferred" = "borrowed"): Promise<Uint8Array> => {
   // Both sinks below reject a SharedArrayBuffer-backed view; nothing in the
   // gateway ever produces one, so narrow once here instead of at each call.
   const part = input as Uint8Array<ArrayBuffer> | string
   if (typeof CompressionStream !== "undefined") {
-    const stream = new Response(new Blob([part]).stream().pipeThrough(new CompressionStream("gzip")))
+    // Transferred byte inputs are private immutable snapshots or fresh owned
+    // buffers. Borrowed bytes retain Blob's synchronous input snapshot.
+    const source = typeof part === "string" || ownership === "borrowed"
+      ? new Blob([part]).stream()
+      : new ReadableStream<Uint8Array<ArrayBuffer>>({ start(controller) { controller.enqueue(part); controller.close() } })
+    const stream = new Response(source.pipeThrough(new CompressionStream("gzip")))
     return new Uint8Array(await stream.arrayBuffer())
   }
   const bytes = typeof part === "string" ? new TextEncoder().encode(part) : part
@@ -100,14 +107,6 @@ const gunzip = async (input: Uint8Array): Promise<Uint8Array> => {
     return new Uint8Array(await stream.arrayBuffer())
   }
   return Bun.gunzipSync(bytes)
-}
-
-const putPreparedBody = async (
-  files: FileProvider,
-  key: string | null,
-  bytes: Uint8Array | null,
-): Promise<void> => {
-  if (key !== null && bytes !== null) await files.put(key, bytes)
 }
 
 interface PreparedDumpWrite {
@@ -129,56 +128,120 @@ interface PreparedDumpWrite {
 
 type StagedDumpFile = { fileKey: string; ownerKind: string }
 
-// This async scope is the only persistence preparation scope that sees the
-// caller's record. Its result contains no events, headers, envelope or raw
-// request object; downstream callbacks are created in a separate scope.
-const prepareDumpWrite = async (keyId: ApiKeyId, record: DumpWriteRecord): Promise<PreparedDumpWrite> => {
+interface DumpPreparation {
+  prepared: PreparedDumpWrite
+  upstreamExchanges: UpstreamExchanges | null
+  requestBody: PreparedDumpRequestBody | null
+  responseBody: DumpWriteResponseBody | null
+}
+
+// This synchronous boundary is the only preparation scope that sees the raw
+// record. Snapshot borrowed identity bytes before any asynchronous sidecar work;
+// prepared gzip bytes already follow the immutable preparation contract.
+const createDumpPreparation = (keyId: ApiKeyId, record: DumpWriteRecord): DumpPreparation => {
   const { upstream, ...metaToStore } = record.meta
   const recordId = metaToStore.id
   const completedAt = metaToStore.completedAt
   const bucket = hourBucket(completedAt)
+  const requestBody = record.request.body
+  const responseBody = record.response.body
   const metaJson = JSON.stringify(metaToStore)
   const requestHeadersJson = JSON.stringify(record.request.headers)
-  const responseHeadersJson = record.response.body.type === "none" ? null : JSON.stringify(record.response.headers)
-  const requestFileKey = record.request.body.decodedByteLength === 0 ? null : bodyPath(keyId, bucket, recordId, "req")
-  const responseFileKey = record.response.body.type === "none"
-    || (record.response.body.type === "bytes" && record.response.body.body.byteLength === 0)
+  const responseHeadersJson = responseBody.type === "none" ? null : JSON.stringify(record.response.headers)
+  const requestFileKey = requestBody.decodedByteLength === 0 ? null : bodyPath(keyId, bucket, recordId, "req")
+  const responseFileKey = responseBody.type === "none"
+    || (responseBody.type === "bytes" && responseBody.body.byteLength === 0)
     ? null : bodyPath(keyId, bucket, recordId, "resp")
-
-  // Preserve the serial compression order and the optional safe projection.
-  // Every mandatory serialization/compression finishes before staging begins.
-  let upstreamBytes: Uint8Array | null = null
-  if (record.upstreamExchanges != null) {
-    try {
-      const safe = safeUpstreamExchangesForPersistence(record.upstreamExchanges)
-      upstreamBytes = await gzip(JSON.stringify(safe) ?? "")
-    } catch { /* optional sidecar */ }
-  }
-  const upstreamFileKey = upstreamBytes === null ? null : bodyPath(keyId, bucket, recordId, "up")
-  const requestBytes = requestFileKey === null ? null
-    : record.request.body.encoding === "gzip" ? record.request.body.bytes : await gzip(record.request.body.bytes)
-  let responseBytes: Uint8Array | null = null
-  if (record.response.body.type === "bytes" && responseFileKey !== null) {
-    responseBytes = await gzip(record.response.body.body)
-  } else if (record.response.body.type === "stream") {
-    responseBytes = await gzip(JSON.stringify(record.response.body.events) ?? "")
-  }
   return {
-    keyId, recordId, completedAt, upstreamId: upstream?.id ?? null,
-    metaJson, requestHeadersJson, responseHeadersJson,
-    requestFileKey, responseFileKey, upstreamFileKey,
-    requestDescriptorJson: requestFileKey === null ? null : JSON.stringify({ key: requestFileKey, type: "bytes" }),
-    responseDescriptorJson: responseFileKey === null ? null
-      : JSON.stringify({ key: responseFileKey, type: record.response.body.type === "stream" ? "events" : "bytes" }),
-    upstreamDescriptorJson: upstreamFileKey === null ? null
-      : JSON.stringify({ key: upstreamFileKey, type: "upstreamExchanges", version: 1 }),
-    bodies: [requestBytes, responseBytes, upstreamBytes],
+    prepared: {
+      keyId, recordId, completedAt, upstreamId: upstream?.id ?? null,
+      metaJson, requestHeadersJson, responseHeadersJson,
+      requestFileKey, responseFileKey, upstreamFileKey: null,
+      requestDescriptorJson: requestFileKey === null ? null : JSON.stringify({ key: requestFileKey, type: "bytes" }),
+      responseDescriptorJson: responseFileKey === null ? null
+        : JSON.stringify({ key: responseFileKey, type: responseBody.type === "stream" ? "events" : "bytes" }),
+      upstreamDescriptorJson: null,
+      bodies: [null, null, null],
+    },
+    upstreamExchanges: record.upstreamExchanges ?? null,
+    requestBody: requestFileKey === null ? null : {
+      encoding: requestBody.encoding,
+      bytes: requestBody.encoding === "gzip" ? requestBody.bytes : new Uint8Array(requestBody.bytes),
+      decodedByteLength: requestBody.decodedByteLength,
+    },
+    responseBody: responseFileKey === null ? null : responseBody.type === "bytes"
+      ? { type: "bytes", body: responseBody.ownership === "transferred" ? responseBody.body : new Uint8Array(responseBody.body), ownership: "transferred" }
+      : responseBody.type === "stream" ? { type: "stream", events: responseBody.events } : null,
   }
+}
+
+const omitOptionalBody = (): null => null
+
+const consumeUpstreamBody = (packet: DumpPreparation): Promise<Uint8Array | null> => {
+  const envelope = packet.upstreamExchanges
+  packet.upstreamExchanges = null
+  if (envelope === null) return Promise.resolve(null)
+  try {
+    return gzip(JSON.stringify(safeUpstreamExchangesForPersistence(envelope)) ?? "").catch(omitOptionalBody)
+  } catch { return Promise.resolve(null) }
+}
+
+const consumeRequestBody = (packet: DumpPreparation): Promise<Uint8Array | null> => {
+  const body = packet.requestBody
+  packet.requestBody = null
+  if (body === null) return Promise.resolve(null)
+  return body.encoding === "gzip" ? Promise.resolve(body.bytes) : gzip(body.bytes, "transferred")
+}
+
+const consumeResponseBody = (packet: DumpPreparation): Promise<Uint8Array | null> => {
+  const body = packet.responseBody
+  packet.responseBody = null
+  if (body === null || body.type === "none") return Promise.resolve(null)
+  return body.type === "bytes" ? gzip(body.body, "transferred") : gzip(JSON.stringify(body.events) ?? "")
+}
+
+const consumeDumpPreparation = async (packet: DumpPreparation): Promise<PreparedDumpWrite> => {
+  const prepared = packet.prepared
+  try {
+    // Keep serial compression and lazy JSON serialization. Each helper takes
+    // its raw input out of the packet before entering asynchronous compression.
+    prepared.bodies[2] = await consumeUpstreamBody(packet)
+    if (prepared.bodies[2] !== null) {
+      prepared.upstreamFileKey = bodyPath(prepared.keyId, hourBucket(prepared.completedAt), prepared.recordId, "up")
+      prepared.upstreamDescriptorJson = JSON.stringify({ key: prepared.upstreamFileKey, type: "upstreamExchanges", version: 1 })
+    }
+    prepared.bodies[0] = await consumeRequestBody(packet)
+    prepared.bodies[1] = await consumeResponseBody(packet)
+    return prepared
+  } catch (error) {
+    releasePreparedBodies(prepared)
+    throw error
+  } finally {
+    packet.upstreamExchanges = packet.requestBody = packet.responseBody = null
+  }
+}
+
+const prepareDumpWrite = (keyId: ApiKeyId, record: DumpWriteRecord): Promise<PreparedDumpWrite> => {
+  try { return consumeDumpPreparation(createDumpPreparation(keyId, record)) }
+  catch (error) { return Promise.reject(error) }
 }
 
 const releasePreparedBodies = (prepared: PreparedDumpWrite): void => {
   // Only clear this private packet's slots; never mutate caller bytes/arrays.
   prepared.bodies[0] = prepared.bodies[1] = prepared.bodies[2] = null
+}
+
+const putPreparedBody = async (
+  files: FileProvider,
+  key: string | null,
+  prepared: PreparedDumpWrite,
+  slot: 0 | 1 | 2,
+): Promise<void> => {
+  const bytes = prepared.bodies[slot]
+  // Each sibling takes its own upload input. A completed fast put must not
+  // retain its bytes in the packet while a slower sibling remains in flight.
+  prepared.bodies[slot] = null
+  if (key !== null && bytes !== null) return files.put(key, bytes)
 }
 
 const putPreparedDumpBodies = async (
@@ -190,9 +253,9 @@ const putPreparedDumpBodies = async (
     // The async put wrapper converts synchronous provider throws into
     // rejections, so every sibling starts and settles before retirement.
     const [requestPut, responsePut, upstreamPut] = await Promise.allSettled([
-      putPreparedBody(files, prepared.requestFileKey, prepared.bodies[0]),
-      putPreparedBody(files, prepared.responseFileKey, prepared.bodies[1]),
-      putPreparedBody(files, upstreamFileKey, prepared.bodies[2]),
+      putPreparedBody(files, prepared.requestFileKey, prepared, 0),
+      putPreparedBody(files, prepared.responseFileKey, prepared, 1),
+      putPreparedBody(files, upstreamFileKey, prepared, 2),
     ])
     if (requestPut.status === "rejected") throw requestPut.reason
     if (responsePut.status === "rejected") throw responsePut.reason
@@ -311,12 +374,11 @@ const fetchBody = async (files: FileProvider, descriptor: BodyDescriptor): Promi
 export class FileDumpStore implements DumpStore {
   constructor(private readonly db: SqlDatabase, private readonly files: FileProvider) {}
 
-  async prepareRequestBody(body: Uint8Array): Promise<PreparedDumpRequestBody> {
-    return {
-      encoding: "gzip",
-      bytes: await gzip(body),
-      decodedByteLength: body.byteLength,
-    }
+  prepareRequestBody(body: Uint8Array): Promise<PreparedDumpRequestBody> {
+    try {
+      const decodedByteLength = body.byteLength
+      return gzip(body).then(bytes => ({ encoding: "gzip", bytes, decodedByteLength }))
+    } catch (error) { return Promise.reject(error) }
   }
 
   put(keyId: ApiKeyId, record: DumpWriteRecord): Promise<void> {

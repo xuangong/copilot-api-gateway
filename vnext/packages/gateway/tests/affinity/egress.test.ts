@@ -3,12 +3,12 @@ import { eventFrame } from "@vibe-core/result"
 import { AffinityCodec, InvalidAffinityStateError, MAX_AFFINITY_PAYLOAD_BYTES } from "../../src/shared/affinity/carrier.ts"
 import { analyzeAffinityRequest } from "../../src/shared/affinity/analysis.ts"
 import { AffinityEgress } from "../../src/shared/affinity/egress.ts"
-import type { RequestAffinity } from "../../src/data-plane/shared/affinity-request.ts"
+import type { AffinityExecutionState } from "../../src/data-plane/shared/affinity-request.ts"
 import type { AffinityExecutionTarget } from "@vibe-llm/provider-llm"
 
 const target: AffinityExecutionTarget = { provider: "custom", upstreamId: "up", upstreamIncarnation: "inc", credentialSubject: "subject", credentialRevision: "rev", model: "executed" }
 const codec = new AffinityCodec({ ownerId: "owner", apiKeyId: "key", version: 1, keyId: "kid", secret: new Uint8Array(32).fill(3) })
-async function state(): Promise<RequestAffinity> { return { protocol: "responses", codec, analysis: await analyzeAffinityRequest("responses", {}, codec), actual: target, plaintextCompactions: new Set() } }
+async function state(): Promise<AffinityExecutionState> { return { protocol: "responses", codec, actual: target, plaintextCompactions: new Set() } }
 async function* frames(events: Array<Record<string, unknown>>) { for (const event of events) yield eventFrame(event) }
 async function collect<T>(source: AsyncIterable<T>): Promise<T[]> { const values: T[] = []; for await (const item of source) values.push(item); return values }
 

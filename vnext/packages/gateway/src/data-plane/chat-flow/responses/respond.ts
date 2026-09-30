@@ -1,11 +1,11 @@
+import { demandSse } from "../shared/demand-sse"
 import { Buffer } from "node:buffer"
 import type { ResponsesStreamEvent } from "@vibe-llm/protocols/responses"
 import { createResponsesTurn, isResponsesTurnTerminal, responsesTerminalBody, type ResponsesTurn, type ResponsesTurnOptions, type RespondResponsesInput } from "./turn"
-import { COMMENT_KEEPALIVE_FRAME, startSseKeepalive } from "../shared/sse-keepalive"
+import { COMMENT_KEEPALIVE_FRAME } from "../shared/sse-keepalive"
 
 export type { CompletedResponsesSnapshot, ResponsesCompletionWriter, RespondResponsesInput } from "./turn"
 export type RespondResponsesOptions = ResponsesTurnOptions
-const encoder = new TextEncoder()
 
 /** HTTP is only a consumer of the canonical source. WS can consume turn.events
  * directly, without going through this serialization boundary. */
@@ -52,38 +52,20 @@ export async function renderResponsesTurn(turn: ResponsesTurn): Promise<Response
   headers.set("cache-control", "no-cache")
   headers.set("connection", "keep-alive")
   headers.set("x-accel-buffering", "no")
-  let cancelled = false
-  const body = new ReadableStream<Uint8Array>({
-    async start(controller) {
-      const keepalive = startSseKeepalive(controller, COMMENT_KEEPALIVE_FRAME)
-      let closed = false
-      const close = (): void => { if (!closed && !cancelled) { closed = true; controller.close() } }
-      const onAbort = (): void => { keepalive.stop(); close() }
-      turn.abortController.signal.addEventListener("abort", onAbort, { once: true })
-      if (turn.abortController.signal.aborted) onAbort()
-      try {
-        for await (const event of turn.events) {
-          if (cancelled || turn.abortController.signal.aborted) break
-          if (isResponsesTurnTerminal(event)) keepalive.stop()
-          const bytes = encode(event)
-          turn.recordSentPayloadBytes(bytes.byteLength)
-          controller.enqueue(bytes)
-          keepalive.touch()
-          if (isResponsesTurnTerminal(event)) close()
-        }
-      } finally {
-        keepalive.stop()
-        turn.abortController.signal.removeEventListener("abort", onAbort)
-        close()
-      }
-    },
-    cancel() { cancelled = true; turn.abortController.abort() },
+  const body = demandSse({
+    events: turn.events,
+    keepalive: COMMENT_KEEPALIVE_FRAME,
+    signal: turn.abortController.signal,
+    serialize: encode,
+    terminal: isResponsesTurnTerminal,
+    onBytes: bytes => turn.recordSentPayloadBytes(bytes),
+    onCancel: () => turn.abortController.abort(),
   })
   return new Response(body, { status: metadata.status, headers })
 }
 
-function encode(event: ResponsesStreamEvent): Uint8Array {
-  return encoder.encode(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`)
+function encode(event: ResponsesStreamEvent): string {
+  return `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`
 }
 
 export async function respondResponses(result: RespondResponsesInput, options: ResponsesTurnOptions): Promise<Response> {

@@ -1,9 +1,8 @@
 import { expect, spyOn, test } from "bun:test"
 import { fetchAffinityUpstream } from "../../src/data-plane/shared/affinity-request.ts"
-import { analyzeAffinityRequest } from "../../src/shared/affinity/analysis.ts"
 import type { ProviderRequest, ProviderResponse } from "@vibe-llm/provider-llm"
-import type { RequestAffinity } from "../../src/shared/affinity/context.ts"
-const state = async (): Promise<RequestAffinity> => ({ protocol: "responses", analysis: await analyzeAffinityRequest("responses", {}) })
+import type { AffinityExecutionState } from "../../src/shared/affinity/context.ts"
+const state = async (): Promise<AffinityExecutionState> => ({ protocol: "responses" })
 const request = (signal: AbortSignal): ProviderRequest => ({ endpoint: "responses", payload: {}, headers: new Headers(), signal })
 const response = (body: ReadableStream<Uint8Array> | null): ProviderResponse => ({ status: 200, headers: new Headers(), body })
 

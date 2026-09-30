@@ -1,6 +1,7 @@
 import { afterEach, expect, test } from "bun:test"
 import { setupTestPlatform } from "../_setup-platform.ts"
-import { createRequestAffinity, materializeAffinity, selectAffinityCandidate } from "../../src/data-plane/shared/affinity-request.ts"
+import { acceptAffinityExecution, createRequestAffinity, materializeAffinity, selectAffinityCandidate } from "../../src/data-plane/shared/affinity-request.ts"
+import { AffinityEgress } from "../../src/shared/affinity/egress.ts"
 import { AffinityCodec, InvalidAffinityStateError } from "../../src/shared/affinity/carrier.ts"
 import { stampAffinityItem } from "../../src/shared/affinity/analysis.ts"
 import type { AffinityExecutionTarget, LlmProviderBinding } from "@vibe-llm/provider-llm"
@@ -43,7 +44,7 @@ test("ordinary affinity captures its input once and isolates nested provider mut
 test("owned candidate preparation gets independent carrier copies while inference receives decoded state", async () => {
   const auth = setup()
   const state = await createRequestAffinity("responses", {}, auth)
-  const codec = await state?.loadCodec?.()
+  const codec = await state?.execution.loadCodec?.()
   if (!codec) throw new Error("missing codec")
   const signed = await stampAffinityItem("responses", { type: "compaction", encrypted_content: "native" }, target, codec)
   const source = { input: [signed] }
@@ -72,4 +73,20 @@ test("owned markers authenticate before any candidate preparation", async () => 
   const foreign = new AffinityCodec({ ownerId: "other", apiKeyId: "other", version: 1, keyId: "other", secret: new Uint8Array(32).fill(3) })
   const signed = await stampAffinityItem("responses", { type: "compaction", encrypted_content: "native" }, target, foreign)
   await expect(createRequestAffinity("responses", { input: [signed] }, auth)).rejects.toBeInstanceOf(InvalidAffinityStateError)
+})
+
+test("execution-only egress observes later identity and plaintext compaction registration", async () => {
+  const preparation = await createRequestAffinity("responses", { input: "large preparation input" }, setup())
+  const execution = preparation?.execution
+  expect(execution).toBeDefined()
+  if (!execution) throw new Error("missing execution state")
+  const egress = new AffinityEgress(execution)
+  acceptAffinityExecution(execution, { status: 200, headers: new Headers(), body: null, affinityExecution: target })
+  execution.plaintextCompactions?.add(JSON.stringify(["plain", "summary"]))
+  const result = await egress.body("responses", { output: [
+    { id: "plain", type: "compaction", encrypted_content: "summary" },
+    { id: "native", type: "reasoning", encrypted_content: "opaque" },
+  ] })
+  expect(result.output[0]?.encrypted_content).toBe("summary")
+  expect(result.output[1]?.encrypted_content).toStartWith("vnext-affinity:1:")
 })

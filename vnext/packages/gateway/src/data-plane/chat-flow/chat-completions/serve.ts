@@ -107,7 +107,7 @@ const chatCompletionsHooks: ServeTemplateHooks<
 
   respond: (r, c) => respondChatCompletions(r, {
     wantsStream: c.wantsStream,
-    affinity: c.extra?.affinity,
+    affinity: c.extra?.affinity?.execution,
     includeUsageChunk: c.payload.stream_options?.include_usage === true,
     downstreamAbortController: c.downstreamAbortController,
     telemetryCtx: c.telemetryCtx,

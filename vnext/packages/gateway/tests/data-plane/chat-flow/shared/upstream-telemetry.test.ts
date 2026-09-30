@@ -1,5 +1,6 @@
 import { test, expect } from 'bun:test'
 import { withUpstreamTelemetry } from '../../../../src/data-plane/chat-flow/shared/upstream-telemetry.ts'
+import { STREAM_TAIL_MAX_FRAMES } from "../../../../src/data-plane/chat-flow/shared/stream-tail"
 import type { ProtocolFrame } from '@vibe-core/result'
 
 async function* gen<T>(items: ProtocolFrame<T>[]): AsyncGenerator<ProtocolFrame<T>> {
@@ -75,4 +76,62 @@ test('eof without terminal frame throws and marks failed=true', async () => {
   await expect((async () => { for await (const frame of events) void frame })()).rejects.toThrow("without a terminal")
   const md = await finalMetadata
   expect(md.failed).toBe(true)
+})
+
+
+for (const failure of ["throw", "frames", "bytes"] as const) {
+  test(`chat post-finish usage survives terminal ${failure} rejection within shared tail bounds`, async () => {
+    const finish = { type: "event" as const, event: { choices: [{ index: 0, delta: {}, finish_reason: "stop" }] } }
+    const usage = { type: "event" as const, event: { choices: [], usage: { prompt_tokens: 3, completion_tokens: 4 } } }
+    let closed = false
+    let failures = 0
+    async function* source(): AsyncGenerator<ProtocolFrame<unknown>> {
+      try {
+        yield finish
+        yield usage
+        if (failure === "throw") throw new Error("late source failure")
+        if (failure === "bytes") yield { type: "event", event: { text: "x".repeat(1_100_000) } }
+        else for (let i = 0; i < STREAM_TAIL_MAX_FRAMES; i++) yield { type: "event", event: {} }
+      } finally { closed = true }
+    }
+    const output = withUpstreamTelemetry(source(), { protocol: "chat_completions", onFailure: () => { failures++ } })
+    const seen: ProtocolFrame<unknown>[] = []
+    await expect((async () => { for await (const frame of output.events) seen.push(frame) })()).rejects.toThrow(failure === "throw" ? "late source failure" : "terminal observation limit")
+    expect(seen).toEqual([finish, usage])
+    expect(await output.finalMetadata).toMatchObject({ failed: true, usage: usage.event.usage })
+    expect(failures).toBe(1)
+    expect(closed).toBe(true)
+  })
+}
+
+test("cancellation during buffered Chat tail interrupts the pending read and consumes its late rejection", async () => {
+  const abort = new AbortController()
+  const pending = Promise.withResolvers<IteratorResult<ProtocolFrame<unknown>>>()
+  const waiting = Promise.withResolvers<void>()
+  let reads = 0
+  let returned = false
+  const source: AsyncIterable<ProtocolFrame<unknown>> = {
+    [Symbol.asyncIterator]() {
+      return {
+        async next() {
+          reads++
+          if (reads === 1) return { done: false, value: { type: "event", event: { choices: [{ index: 0, delta: {}, finish_reason: "stop" }] } } }
+          if (reads === 2) return { done: false, value: { type: "event", event: { choices: [], usage: { completion_tokens: 4 } } } }
+          waiting.resolve()
+          return pending.promise
+        },
+        async return() { returned = true; return { done: true, value: undefined } },
+      }
+    },
+  }
+  const output = withUpstreamTelemetry(source, { protocol: "chat_completions", abortSignal: abort.signal })
+  await output.events.next()
+  const next = output.events.next()
+  await waiting.promise
+  abort.abort()
+  expect((await next).done).toBe(true)
+  expect(await output.finalMetadata).toMatchObject({ failed: false, cancelled: true, usage: { completion_tokens: 4 } })
+  expect(returned).toBe(true)
+  pending.reject(new Error("late read failure"))
+  await Promise.resolve()
 })

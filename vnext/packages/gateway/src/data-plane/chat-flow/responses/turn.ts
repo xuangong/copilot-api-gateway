@@ -1,5 +1,5 @@
 import { AffinityEgress, guardAffinityFrames } from "../../../shared/affinity/egress"
-import type { RequestAffinity } from "../../shared/affinity-request"
+import type { AffinityExecutionState } from "../../shared/affinity-request"
 import { translateStream } from "../shared/translate-stream"
 import { StreamTail, closeStream, settleStreamMetadata } from "../shared/stream-tail"
 import { parseSSEStream } from "@vibe-core/result/parse"
@@ -24,7 +24,7 @@ export interface CompletedResponsesSnapshot {
 export type ResponsesCompletionWriter = (response: CompletedResponsesSnapshot, inputItems: readonly unknown[]) => Promise<void>
 
 export interface ResponsesTurnOptions {
-  readonly affinity?: RequestAffinity
+  readonly affinity?: AffinityExecutionState
   readonly onCompleted?: ResponsesCompletionWriter
   readonly mergedInputItems?: readonly unknown[]
   readonly wantsStream: boolean
@@ -60,8 +60,9 @@ const reusableResponse = (body: unknown): body is CompletedResponsesSnapshot => 
 async function persistCompleted(body: unknown, options: ResponsesTurnOptions, trackSave: (save: Promise<void>) => void): Promise<void> {
   const signal = options.downstreamAbortController?.signal
   if (signal?.aborted) throw new Error("Response cancelled.")
-  if (!options.onCompleted || !reusableResponse(body)) return
-  const save = Promise.resolve().then(() => options.onCompleted?.(body, options.mergedInputItems ?? []))
+  const { onCompleted, mergedInputItems = [] } = options
+  if (!onCompleted || !reusableResponse(body)) return
+  const save = Promise.resolve().then(() => onCompleted(body, mergedInputItems))
   trackSave(save)
   let onAbort: (() => void) | undefined
   try {
@@ -447,6 +448,7 @@ export function createResponsesTurn(
         yield failure
       }
     } finally {
+      tail.dispose()
       if (!terminal && !upstreamAbortController.signal.aborted) upstreamAbortController.abort()
       await finalize()
     }

@@ -1,5 +1,5 @@
 import { AffinityRoutingUnavailableError } from "../../../shared/affinity/analysis.ts"
-import { materializeAffinity, selectAffinityCandidate, type RequestAffinity, type AffinityPreparationOptions } from "../../shared/affinity-request"
+import { affinityExecutionState, materializeAffinity, selectAffinityCandidate, type AttemptAffinity, type AffinityPreparationOptions } from "../../shared/affinity-request"
 import type { DumpAccumulator } from "../../../shared/dump/accumulator.ts"
 // vnext/packages/gateway/src/data-plane/chat-flow/gemini/attempt.ts
 /**
@@ -80,7 +80,7 @@ export type GeminiAttemptResult = LlmExecuteResult<ProtocolFrame<unknown>>
 export type GeminiAttemptAuth = SelectBindingAuth
 
 export interface GeminiAttemptArgs {
-  readonly affinity?: RequestAffinity
+  readonly affinity?: AttemptAffinity
   readonly dump?: DumpAccumulator | null
   readonly payload: Record<string, unknown> & { stream?: boolean }
   /**
@@ -134,7 +134,7 @@ export type SelectGeminiBindingResult =
   | { kind: 'no-translator'; bareModel: string; targetEndpoint: EndpointKey }
 
 export type SelectGeminiBinding = (
-  args: { model: string; auth: GeminiAttemptAuth; dump?: DumpAccumulator | null; affinity?: RequestAffinity; affinityOptions?: AffinityPreparationOptions },
+  args: { model: string; auth: GeminiAttemptAuth; dump?: DumpAccumulator | null; affinity?: AttemptAffinity; affinityOptions?: AffinityPreparationOptions },
 ) => Promise<SelectGeminiBindingResult>
 
 const pickTargetForGemini = (endpoints: ModelEndpoints): EndpointKey | null =>
@@ -199,6 +199,9 @@ export const geminiAttempt = {
       headers: {},
     }
     const chain: ReadonlyArray<GeminiInterceptor> = args.interceptors ?? geminiInterceptors
+    const affinityExecution = affinityExecutionState(args.affinity)
+    const { dump, inheritedHeaders, telemetryCtx, auth } = args
+    const { downstreamAbortSignal } = args.ctx
 
     const bindingForTelemetry = sel.binding as unknown as AttemptBindingShape
     const publicModel = sel.bareModel
@@ -206,7 +209,7 @@ export const geminiAttempt = {
 
     const terminal = async (): Promise<GeminiAttemptResult> => {
       return await traverseTranslation({
-        dump: args.dump,
+        dump,
         sourcePayload: invocation.payload,
         sourceProtocol: 'gemini',
         hubProtocol,
@@ -215,7 +218,7 @@ export const geminiAttempt = {
           return (await hubAttempt.generate({
             selectBinding: async () => ({ ...sel, translator: getTranslator(hubProtocol, hubProtocol)! }),
             payload: innerArgs.payload as never,
-            affinity: args.affinity,
+            affinity: affinityExecution,
             affinityMaterialized: true,
             auth: innerArgs.auth as never,
             ctx: { downstreamAbortSignal: innerArgs.signal } as never,
@@ -225,10 +228,10 @@ export const geminiAttempt = {
             snapshotMode: innerArgs.snapshotMode,
           } as never)) as never
         },
-        inheritedHeaders: args.inheritedHeaders ?? {},
-        inheritedTelemetryCtx: args.telemetryCtx,
-        auth: args.auth,
-        signal: args.ctx.downstreamAbortSignal,
+        inheritedHeaders: inheritedHeaders ?? {},
+        inheritedTelemetryCtx: telemetryCtx,
+        auth,
+        signal: downstreamAbortSignal,
         fallbackMaxOutputTokens: (sel.binding as { upstreamMaxOutputTokens?: number }).upstreamMaxOutputTokens,
         model: sel.bareModel,
       }) as GeminiAttemptResult

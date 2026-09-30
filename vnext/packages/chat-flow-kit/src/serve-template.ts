@@ -26,20 +26,26 @@ export interface KitObsCtx {
   readonly [extra: string]: unknown
 }
 
-/**
- * Opaque per-request sink for the request-dump pipeline (Spec 14). The kit
- * knows nothing about dump internals — it only invokes the two lifecycle
- * hooks it owns: `requestedModel` (stamped after `parse` succeeds so an
- * outright-error turn still carries model attribution) and `finalize`
- * (auto-tee'd on the returned Response so every endpoint gets the same
- * exit seam). All mid-flight calls (`frame`, `success`, `error`, `failed`,
- * `recordSentPayloadBytes`) are the respond hook's responsibility — it
- * receives the same object via `RespondCtx.dump` and can cast to the
- * concrete accumulator type it imported.
- */
+/** Canonical producers retain frame ownership until metadata observation
+ * settles. Transport byte accounting never needs a second body consumer. */
+export interface KitCanonicalCompletion {
+  readonly settled: Promise<void>
+  /** Synchronously hand off available dump scalars and interrupt semantic observation on cancellation. */
+  cancel?(): void
+  /** Already serialized JSON, used only if the canonical source had no frames. */
+  readonly fallbackBody?: string
+}
+
+const canonicalResponses = new WeakMap<Response, KitCanonicalCompletion>()
+
+export function withCanonicalCompletion(response: Response, completion: KitCanonicalCompletion): Response {
+  canonicalResponses.set(response, completion)
+  return response
+}
+
 export interface KitDumpSink {
   requestedModel(model: string): void
-  finalize(response: Response): Response
+  finalize(response: Response, completion?: KitCanonicalCompletion): Response
 }
 
 export interface ServeTemplateInput<TAuth extends KitAuthCtx = KitAuthCtx> {
@@ -51,8 +57,8 @@ export interface ServeTemplateInput<TAuth extends KitAuthCtx = KitAuthCtx> {
    *  model name + verb, or per-request passthrough fields). Opaque to the kit. */
   readonly extras: Record<string, unknown>
   /** Opaque request-dump sink. When present, the kit calls
-   *  `requestedModel` after `parse` and `finalize` on the returned
-   *  Response; respond hooks pick it up off `RespondCtx.dump`. Null when
+   *  `requestedModel` after `parse` and `finalize` with an optional canonical
+   *  completion on the returned Response. Null when
    *  the api key has no retention configured. */
   readonly dump?: KitDumpSink | null
 }
@@ -269,5 +275,7 @@ export async function serveTemplate<TPayload, TAttemptResult, TExtra = undefined
 ): Promise<ServeTemplateResult<TExtra>> {
   const prepared = await prepareTemplate(hooks, input, deps)
   const response = prepared.kind === 'response' ? prepared.response : await hooks.respond(prepared.result, prepared.context)
-  return { response: input.dump ? input.dump.finalize(response) : response, extra: prepared.extra }
+  const completion = canonicalResponses.get(response)
+  canonicalResponses.delete(response)
+  return { response: input.dump ? input.dump.finalize(response, completion) : response, extra: prepared.extra }
 }
