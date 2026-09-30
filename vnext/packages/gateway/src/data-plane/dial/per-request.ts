@@ -13,7 +13,7 @@
  * `preFetchedUpstreams` lets a caller reuse a list it already loaded on this
  * request instead of paying a second `upstreams.list()` round-trip.
  */
-import { getDataPlaneRepo as getRepo } from '../../repo/index.ts'
+import { getDataPlaneConfiguration, getProxyHealth } from '../../repo/index.ts'
 import { createFetcher, loadProxyCatalog, type DialObserver } from '@vibe-core/dial'
 import { getSocketDial } from '@vibe-core/platform'
 import { isDirectFallbackId } from '@vibe-core/proxy-repo'
@@ -35,8 +35,8 @@ export async function createPerRequestFetcher(
   preFetchedUpstreams?: readonly DialableUpstream[],
   source?: { proxies: Pick<ProxyRepo, "list">; proxyBackoffs: Repo["proxyBackoffs"] },
 ): Promise<(upstreamId: string, observer?: DialObserver) => Fetcher> {
-  const repo = getRepo()
-  const upstreams = preFetchedUpstreams ?? (await repo.upstreams.list())
+  const configuration = getDataPlaneConfiguration()
+  const upstreams = preFetchedUpstreams ?? (await configuration.upstreams.list())
   const fallbackById = new Map(upstreams.map((u) => [u.id, u.proxyFallbackList] as const))
 
   const referencedProxyIds = new Set<string>()
@@ -46,7 +46,7 @@ export async function createPerRequestFetcher(
     }
   }
 
-  const { proxyById, parseErrors } = await loadProxyCatalog(source?.proxies ?? repo.proxies, referencedProxyIds)
+  const { proxyById, parseErrors } = await loadProxyCatalog(source?.proxies ?? configuration.proxies, referencedProxyIds)
 
   return (upstreamId, observer) => {
     // Fail loud on an unknown upstream id. Silently substituting `[]` would
@@ -66,7 +66,7 @@ export async function createPerRequestFetcher(
       }
     }
     return createFetcher({
-      proxyBackoffs: source?.proxyBackoffs ?? repo.proxyBackoffs,
+      proxyBackoffs: source?.proxyBackoffs ?? getProxyHealth(),
       upstreamId,
       observer,
       fallbackList: list,
@@ -87,7 +87,7 @@ export function createObservedDirectFetcher(upstreamId: string, observer: DialOb
     observer,
     fallbackList: [{ id: 'direct_fetch' }],
     proxyById: new Map(),
-    proxyBackoffs: getRepo().proxyBackoffs,
+    proxyBackoffs: getProxyHealth(),
     runtimeLocation: '',
     runProxied: runProxiedRequest,
     runDirectFetch: directFetcher,

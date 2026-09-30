@@ -11,7 +11,7 @@
  * `getById(unknownId)` resolves to null → allowed: true. That covers the dev
  * auth path (`apiKeyId === 'dev-user'`, no row in `api_keys`).
  */
-import { getDataPlaneRepo as getRepo } from '../../repo/index.ts'
+import { getDataPlaneConfiguration, getRepo } from '../../repo/index.ts'
 import { recordCostUsd } from '../../shared/usage-cost.ts'
 import { computeWeightedTokens } from './quota-math.ts'
 import type { ApiKeyId } from '../../repo/branded-ids.ts'
@@ -37,7 +37,7 @@ function utcMonthStartHour(now: Date, monthDelta: number): string {
 
 export async function checkQuota(apiKeyId: ApiKeyId): Promise<QuotaResult> {
   const repo = getRepo()
-  const key = await repo.apiKeys.getById(apiKeyId)
+  const key = await getDataPlaneConfiguration().apiKeys.getById(apiKeyId)
   if (!key) return { allowed: true }
 
   const hasReqQuota = key.quotaRequestsPerMonth != null

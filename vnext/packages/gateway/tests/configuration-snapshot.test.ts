@@ -1,13 +1,13 @@
 import { expect, test } from 'bun:test'
 import { setupTestPlatform } from './_setup-platform.ts'
-import { getDataPlaneRepo } from '../src/repo/index.ts'
+import { getDataPlaneConfiguration, getProxyHealth } from '../src/repo/index.ts'
 
 test('warm key and owner configuration is shared without SQL and updates after local rotation', async () => {
   const { repo, db } = setupTestPlatform()
   const key = { id: 'key-1', name: 'one', key: 'first', createdAt: '2026-09-09', ownerId: 'owner', modelMappingsEnabled: false, modelMappings: [] }
   await repo.apiKeys.save(key as never)
   await repo.apiKeys.save({ ...key, id: 'key-2', key: 'second' } as never)
-  const view = getDataPlaneRepo()
+  const view = getDataPlaneConfiguration()
   expect((await view.apiKeys.findByRawKey('first'))?.id).toBe('key-1')
   const executor = (repo.apiKeys as unknown as { x: { all: (...args: unknown[]) => unknown; first: (...args: unknown[]) => unknown } }).x
   const originals = { all: executor.all, first: executor.first }
@@ -120,16 +120,16 @@ test('usage timestamps do not change configuration revision; proxy changes do', 
 
 test('warm proxy health checks and already healthy successful dials do not touch storage', async () => {
   const { repo, db } = setupTestPlatform()
-  const view = getDataPlaneRepo()
-  await view.proxyBackoffs.listForUpstream('upstream')
+  const health = getProxyHealth()
+  await health.listForUpstream('upstream')
   const executor = (repo.apiKeys as unknown as { x: Record<string, (...args: unknown[]) => unknown> }).x
   const originalAll = executor.all!
   const originalRun = executor.run!
   let calls = 0
   executor.all = (...args) => { calls++; return originalAll.apply(executor, args) }
   executor.run = (...args) => { calls++; return originalRun.apply(executor, args) }
-  await view.proxyBackoffs.listForUpstream('upstream')
-  await view.proxyBackoffs.recordDialSuccess('proxy', 'upstream')
+  await health.listForUpstream('upstream')
+  await health.recordDialSuccess('proxy', 'upstream')
   expect(calls).toBe(0)
   db.close()
 })
@@ -138,7 +138,7 @@ test('session authentication reuses a bounded entry and invalidates on logout', 
   const { repo, db } = setupTestPlatform()
   await repo.users.create({ id: 'user', name: 'user', createdAt: '2026-09-09', disabled: false } as never)
   await repo.sessions.create({ token: 'ses_fixture', userId: 'user', createdAt: '2026-09-09', expiresAt: '2099-01-01' } as never)
-  const view = getDataPlaneRepo()
+  const view = getDataPlaneConfiguration()
   expect((await view.sessions.findByToken('ses_fixture' as never))?.userId).toBe('user')
   const executor = (repo.apiKeys as unknown as { x: Record<string, (...args: unknown[]) => unknown> }).x
   const original = executor.first!
@@ -178,12 +178,12 @@ import { devAuthMiddleware } from '../src/control-plane/auth/dev-auth.ts'
 test('control-plane authentication reads authoritative keys and sessions', async () => {
   const { repo, db } = setupTestPlatform()
   await repo.apiKeys.save(fixtureKey as never)
-  await getDataPlaneRepo().apiKeys.findByRawKey('fixture')
+  await getDataPlaneConfiguration().apiKeys.findByRawKey('fixture')
   db.exec("DELETE FROM api_keys WHERE id = 'key'")
   expect(await validateApiKey('fixture')).toBeNull()
   await repo.users.create({ id: 'user', name: 'user', createdAt: '2026-09-09', disabled: false } as never)
   await repo.sessions.create({ token: 'ses_control', userId: 'user', createdAt: '2026-09-09', expiresAt: '2099-01-01' } as never)
-  await getDataPlaneRepo().sessions.findByToken('ses_control' as never)
+  await getDataPlaneConfiguration().sessions.findByToken('ses_control' as never)
   db.exec("DELETE FROM user_sessions WHERE token = 'ses_control'")
   const app = new Hono()
   app.use('*', sessionAuthMiddleware)
@@ -216,12 +216,51 @@ test('explicit development auth still accepts smoke test bearer after snapshot m
 })
 
 import { app as gatewayApp } from '../src/app.ts'
+import { authRouter } from '../src/control-plane/auth/routes.ts'
+
+test('logout revokes a cached session before the next data-plane admission', async () => {
+  const { repo, db } = setupTestPlatform()
+  try {
+    await repo.users.create({ id: 'logout-user', name: 'user', createdAt: '2026-09-30', disabled: false } as never)
+    await repo.sessions.create({ token: 'ses_logout', userId: 'logout-user', createdAt: '2026-09-30', expiresAt: '2099-01-01' } as never)
+    const app = new Hono()
+    app.route('/api/auth', authRouter)
+    app.use('/admission', (_c, next) => withConfigurationSnapshot(next))
+    app.use('/admission', sessionAuthMiddleware)
+    app.get('/admission', c => c.json({ authenticated: Boolean(c.get('auth' as never)) }))
+    const headers = { authorization: 'Bearer ses_logout' }
+    const admitted = await app.request('/admission', { headers })
+    expect(admitted.status).toBe(200)
+    expect(await admitted.json()).toEqual({ authenticated: true })
+    const logout = await app.request('/api/auth/logout', { method: 'POST', headers })
+    expect(logout.status).toBe(200)
+    expect(await logout.json()).toEqual({ ok: true })
+    expect(await repo.sessions.findByToken('ses_logout' as never)).toBeNull()
+    const rejected = await app.request('/admission', { headers })
+    expect(rejected.status).toBe(401)
+    await rejected.text()
+  } finally { db.close() }
+})
+
+test('pinned configuration exposes reads without commands or live data stores', async () => {
+  const { repo, db } = setupTestPlatform()
+  try {
+    const pinned = await new ConfigurationCache(repo).pinnedView()
+    expect(Reflect.has(pinned.apiKeys, 'save')).toBe(false)
+    expect(Reflect.has(pinned.apiKeys, 'touchLastUsed')).toBe(false)
+    expect(Reflect.has(pinned.sessions, 'deleteByToken')).toBe(false)
+    expect(Reflect.has(pinned.upstreams, 'saveState')).toBe(false)
+    expect(Reflect.has(pinned, 'usage')).toBe(false)
+    expect(Reflect.has(pinned, 'catalogs')).toBe(false)
+    expect(Reflect.has(pinned, 'proxyBackoffs')).toBe(false)
+  } finally { db.close() }
+})
 
 test('real management model route does not pin stale session authorization', async () => {
   const { repo, db } = setupTestPlatform()
   await repo.users.create({ id: 'user', name: 'user', email: 'test@local.dev', createdAt: '2026-09-09', disabled: false } as never)
   await repo.sessions.create({ token: 'ses_management', userId: 'user', createdAt: '2026-09-09', expiresAt: '2099-01-01' } as never)
-  await getDataPlaneRepo().sessions.findByToken('ses_management' as never)
+  await getDataPlaneConfiguration().sessions.findByToken('ses_management' as never)
   db.exec("DELETE FROM user_sessions WHERE token = 'ses_management'")
   const findSession = repo.sessions.findByToken.bind(repo.sessions)
   let authoritativeReads = 0

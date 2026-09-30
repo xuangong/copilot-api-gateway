@@ -1,10 +1,10 @@
 /** Credential resolution shared by HTTP middleware and connection-scoped sessions. */
-import { getDataPlaneRepo, getRepo as getRawRepo, hasConfigurationSnapshot } from "../repo/index.ts"
+import { getDataPlaneConfiguration, getRepo, hasConfigurationSnapshot, type DataPlaneConfiguration } from "../repo/index.ts"
 import type { ApiKeyId, SessionToken, UserId } from "../repo/branded-ids.ts"
 import { ADMIN_EMAILS, type AccountType } from "./config/constants.ts"
 import type { ApiKeyRoutingPolicy } from "./api-key-model-mappings.ts"
 
-const getRepo = () => hasConfigurationSnapshot() ? getDataPlaneRepo() : getRawRepo()
+const getCredentialConfiguration = (): DataPlaneConfiguration => hasConfigurationSnapshot() ? getDataPlaneConfiguration() : getRepo()
 
 export interface FullAuthCtx {
   userId?: UserId
@@ -28,7 +28,7 @@ export interface ValidatedApiKey {
 }
 
 export async function validateApiKey(rawKey: string): Promise<ValidatedApiKey | null> {
-  const repo = getRepo()
+  const repo = getCredentialConfiguration()
   const key = await repo.apiKeys.findByRawKey(rawKey)
   if (!key) return null
   const routingPolicy: ApiKeyRoutingPolicy = key.modelMappingsInvalid
@@ -44,7 +44,7 @@ export async function validateApiKey(rawKey: string): Promise<ValidatedApiKey | 
 export async function resolveCredential(key: string, options: { requireEnabledOwner?: boolean } = {}): Promise<FullAuthCtx | undefined> {
   let ctx: FullAuthCtx | undefined
   if (key.startsWith("ses_")) {
-    const repo = getRepo()
+    const repo = getCredentialConfiguration()
     const session = await repo.sessions.findByToken(key as SessionToken)
     if (session && new Date(session.expiresAt) > new Date()) {
       const user = await repo.users.getById(session.userId)
@@ -72,7 +72,7 @@ export async function resolveCredential(key: string, options: { requireEnabledOw
       }
     } else {
       // Try User Key (legacy: users.user_key column) for llm-relay / older clients.
-      const user = await getRepo().users.findByKey(key)
+      const user = await getCredentialConfiguration().users.findByKey(key)
       if (user && !user.disabled) {
         const isAdmin = !!(user.email && ADMIN_EMAILS.includes(user.email.toLowerCase()))
         ctx = {
@@ -85,7 +85,7 @@ export async function resolveCredential(key: string, options: { requireEnabledOw
     }
   }
   if (ctx?.userId && options.requireEnabledOwner) {
-    const owner = await getRepo().users.getById(ctx.userId)
+    const owner = await getCredentialConfiguration().users.getById(ctx.userId)
     if (!owner || owner.disabled) return undefined
   }
   return ctx

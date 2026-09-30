@@ -22,7 +22,7 @@ import type { Env } from '../../app.ts'
 import type { DumpAccumulator } from '../../shared/dump/accumulator.ts'
 import { openRequestDump, parseJsonBody } from '../chat-flow/shared/dump-open.ts'
 import type { ApiKeyId } from '../../repo/branded-ids.ts'
-import { getDataPlaneRepo as getRepo } from '../../repo/index.ts'
+import { getDataPlaneConfiguration } from '../../repo/index.ts'
 import { readAuth } from '../chat-flow/shared/gateway-ctx.ts'
 import { providerNameFor } from '../tools/web-search/key-config.ts'
 import { resolveWebSearchForKey } from '../tools/web-search/resolve-for-key.ts'
@@ -129,7 +129,7 @@ const runAlphaSearch = async (
   // upstream, and upstreams are owner-scoped. Both fields set means relay;
   // otherwise the search runs locally on this key's own engines.
   const callerKey = auth.apiKeyId
-    ? await getRepo().apiKeys.getById(auth.apiKeyId as ApiKeyId).catch(() => null)
+    ? await getDataPlaneConfiguration().apiKeys.getById(auth.apiKeyId as ApiKeyId).catch(() => null)
     : null
   const passthroughUpstream = callerKey?.webSearchPassthroughUpstream ?? ''
   const passthroughModel = callerKey?.webSearchPassthroughModel ?? ''

@@ -19,7 +19,7 @@ import { ModelCatalogUnavailableError } from '../errors/model-catalog.ts'
 import { listUpstreamModels, type CreateProviderOptions, type ListUpstreamModelsOptions } from '../providers/registry.ts'
 import type { ApiKeyId, UserId } from '../../repo/branded-ids.ts'
 import type { ApiKeyRoutingPolicy } from '../../shared/api-key-model-mappings.ts'
-import { getDataPlaneRepo as getRepo } from '../../repo/index.ts'
+import { getDataPlaneConfiguration, getRepo } from '../../repo/index.ts'
 import { isCodexUserAgent } from '../codex/catalog.ts'
 import { loadCodexCatalog } from '../codex/models.ts'
 import { currentResponsesWebSocketIngress } from '../../shared/ingress-capability.ts'
@@ -124,7 +124,7 @@ export const modelsRouter = new Hono<{ Bindings: Env; Variables: Vars }>()
  * from the client would let anyone enumerate another user's models.
  */
 async function keyCatalogContextVisibleTo(keyId: ApiKeyId, auth: DataPlaneAuthCtx): Promise<DataPlaneAuthCtx | null> {
-  const key = await getRepo().apiKeys.getById(keyId)
+  const key = await getDataPlaneConfiguration().apiKeys.getById(keyId)
   if (!key?.ownerId) return null
   if (!auth.isAdmin && key.ownerId !== auth.userId) {
     if (!auth.userId) return null

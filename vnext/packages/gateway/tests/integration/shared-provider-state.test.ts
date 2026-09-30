@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import { setupTestPlatform } from '../_setup-platform.ts'
-import { getDataPlaneRepo } from '../../src/repo/index.ts'
+import { getDataPlaneConfiguration } from '../../src/repo/index.ts'
 import { ensureCodexAccessToken, CodexOAuthSessionTerminatedError, putCodexQuota, readCodexUpstreamState, readCodexCredential } from '@vibe-llm/provider-codex'
 import { ensureClaudeCodeAccessToken, putClaudeCodeQuota, readClaudeCodeUpstreamState, parseClaudeCodeQuotaHeaders } from '@vibe-llm/provider-claude-code'
 import { readCachedModels, listUpstreamModels, MODEL_CATALOG_REVISION } from '../../src/data-plane/providers/registry.ts'
@@ -27,7 +27,7 @@ for (const siblingHasAccessToken of [true, false]) test(`Codex refresh race rere
   if (!initial) throw new Error('missing fixture account')
   initial.accessToken = null
   await repo.upstreams.save(row('codex', state) as never)
-  await getDataPlaneRepo().upstreams.getById('codex')
+  await getDataPlaneConfiguration().upstreams.getById('codex')
   const minted = { token: 'winner-access', expiresAt: Date.now() + 3_600_000, refreshedAt: new Date().toISOString() }
   const calls: string[] = []
   try {
@@ -53,7 +53,7 @@ for (const siblingHasAccessToken of [true, false]) test(`Codex refresh race rere
 test('Claude refresh race reads the authoritative sibling token without terminalizing the account', async () => {
   const { repo, db } = setupTestPlatform()
   await repo.upstreams.save(row('claude-code', claudeState()) as never)
-  await getDataPlaneRepo().upstreams.getById('claude-code')
+  await getDataPlaneConfiguration().upstreams.getById('claude-code')
   try {
     const result = await ensureClaudeCodeAccessToken({ upstreamId: 'claude-code', fetcher: async () => {
       const winner = claudeState()
@@ -75,7 +75,7 @@ for (const provider of ['codex', 'claude-code']) test(`${provider} quota writes 
   const originalFetch = globalThis.fetch
   try {
     await repo.upstreams.save(row(provider, provider === 'codex' ? codexState() : claudeState()) as never)
-    const view = getDataPlaneRepo()
+    const view = getDataPlaneConfiguration()
     const upstream = await view.upstreams.getById(provider)
     if (!upstream) throw new Error('missing fixture upstream')
     const observation = await repo.catalogs.read(provider, MODEL_CATALOG_REVISION)
@@ -111,7 +111,7 @@ for (const sameUpstream of [false, true]) test(`concurrent state writes retain h
   const { repo, db } = setupTestPlatform()
   await repo.upstreams.save(row('codex', codexState()) as never)
   await repo.upstreams.save(row('claude-code', claudeState()) as never)
-  const view = getDataPlaneRepo()
+  const view = getDataPlaneConfiguration()
   await view.upstreams.list()
   const observation = await codexObservation()
   const getById = repo.upstreams.getById.bind(repo.upstreams)
@@ -171,7 +171,7 @@ test('remote quota changes refresh in background without configuration revision 
 test('state write discovering remote proxy references reloads one coherent configuration', async () => {
   const { repo, db } = setupTestPlatform()
   await repo.upstreams.save(row('codex', codexState()) as never)
-  const view = getDataPlaneRepo()
+  const view = getDataPlaneConfiguration()
   await view.upstreams.list()
   // Same DB, bypass local mutation hooks to model another instance's edit.
   db.query("INSERT INTO proxies (id, name, url, created_at, updated_at) VALUES (?, ?, ?, ?, ?)").run('remote-proxy', 'remote', 'http://localhost:1234', '2026-01-01', '2026-01-01')

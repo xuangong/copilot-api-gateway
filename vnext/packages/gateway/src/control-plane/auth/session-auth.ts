@@ -12,7 +12,7 @@
  */
 import type { Context, MiddlewareHandler } from 'hono'
 import { getRuntimeLocation } from '@vibe-core/platform'
-import { getDataPlaneRepo, getRepo as getRawRepo, hasConfigurationSnapshot } from '../../repo/index.ts'
+import { getRepo, hasConfigurationSnapshot } from '../../repo/index.ts'
 import type { AccountType } from '../../shared/config/constants.ts'
 import { extractHeaderCredential, resolveCredential, type FullAuthCtx } from '../../shared/credential-auth.ts'
 import { getCachedCopilotToken } from '../../shared/copilot-token-cache.ts'
@@ -22,8 +22,6 @@ import { dmrBoundKey, isDmrCompatEnabled, isDmrPath } from '../../data-plane/dmr
 import { isDevAuthEnabled } from './dev-auth.ts'
 
 export type { FullAuthCtx } from '../../shared/credential-auth.ts'
-
-const getRepo = () => hasConfigurationSnapshot() ? getDataPlaneRepo() : getRawRepo()
 
 function extractKey(c: Context): string | null {
   const url = new URL(c.req.url)

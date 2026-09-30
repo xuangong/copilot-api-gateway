@@ -6,9 +6,13 @@ import { join } from "node:path"
 import { BunSqliteRepo } from "@vibe-llm/platform-bun/src/bun-sqlite-repo.ts"
 import { ConfigurationCache } from "../src/repo/configuration-cache.ts"
 import type { ApiKeyId, SessionToken, UserId } from "../src/repo/branded-ids.ts"
+import { getDataPlaneConfiguration, initRepo, withConfigurationSnapshot, withFreshConfigurationSnapshot } from "../src/repo/index.ts"
+import { getAuthoritativeUpstreamRepo, getUpstreamRepo } from "@vibe-core/upstream-repo"
+import { __resetPlatformForTests } from "@vibe-core/platform"
+import { resolveCredential } from "../src/shared/credential-auth.ts"
 
 const cleanup: Array<() => void> = []
-afterEach(() => { for (const close of cleanup.splice(0)) close() })
+afterEach(() => { __resetPlatformForTests(); for (const close of cleanup.splice(0)) close() })
 function fixture() {
   const dir = mkdtempSync(join(tmpdir(), "c12-fresh-"))
   const path = join(dir, "db.sqlite")
@@ -87,4 +91,42 @@ test("fresh token resolution does not join a pre-revocation pending session look
     expect(await fresh.sessions.findByToken(token)).toBeNull()
     expect(reads).toBe(2)
   } finally { gate.resolve(); await old }
+})
+
+test("provider credential commands and recovery stay live while routing reads remain pinned", async () => {
+  const { repo, external } = fixture()
+  await repo.upstreams.save({
+    id: "renewable", provider: "custom", name: "fixture", enabled: true, sortOrder: 0,
+    config: {}, state: { bearer: "initial" }, flagOverrides: {}, disabledPublicModelIds: [],
+    proxyFallbackList: [], createdAt: "now", updatedAt: "now",
+  })
+  initRepo(repo)
+  await withConfigurationSnapshot(async () => {
+    const pinned = getDataPlaneConfiguration()
+    expect((await pinned.upstreams.getById("renewable"))?.state).toEqual({ bearer: "initial" })
+    await getUpstreamRepo().saveState("renewable", () => ({ bearer: "rotated" }))
+    expect((await getUpstreamRepo().getById("renewable"))?.state).toEqual({ bearer: "rotated" })
+    expect((await pinned.upstreams.getById("renewable"))?.state).toEqual({ bearer: "initial" })
+    external.query("UPDATE upstreams SET state_json = ? WHERE id = ?").run(JSON.stringify({ bearer: "sibling" }), "renewable")
+    expect((await getAuthoritativeUpstreamRepo().getById("renewable"))?.state).toEqual({ bearer: "sibling" })
+    expect((await getUpstreamRepo().getById("renewable"))?.state).toEqual({ bearer: "sibling" })
+    expect((await pinned.upstreams.getById("renewable"))?.state).toEqual({ bearer: "initial" })
+  })
+  await withConfigurationSnapshot(async () => {
+    expect((await getDataPlaneConfiguration().upstreams.getById("renewable"))?.state).toEqual({ bearer: "sibling" })
+  })
+})
+
+test("HTTP API-key owner compatibility remains distinct from fresh socket owner enforcement", async () => {
+  const { repo } = fixture()
+  const owner = "disabled-owner" as UserId
+  await repo.users.create({ id: owner, name: "fixture", disabled: true, createdAt: "now" })
+  await repo.apiKeys.save({ id: "owned-key" as ApiKeyId, key: "owned-secret", name: "fixture", ownerId: owner, createdAt: "now", modelMappingsEnabled: false, modelMappings: [] })
+  initRepo(repo)
+  await withConfigurationSnapshot(async () => {
+    expect(await resolveCredential("owned-secret")).toMatchObject({ apiKeyId: "owned-key", userId: owner })
+  })
+  await withFreshConfigurationSnapshot(async () => {
+    expect(await resolveCredential("owned-secret", { requireEnabledOwner: true })).toBeUndefined()
+  })
 })

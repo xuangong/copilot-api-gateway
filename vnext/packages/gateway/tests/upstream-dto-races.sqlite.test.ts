@@ -7,7 +7,7 @@ import { Hono } from "hono"
 import { BunSqliteRepo } from "@vibe-llm/platform-bun/src/bun-sqlite-repo.ts"
 import { __resetPlatformForTests } from "@vibe-core/platform"
 import { getAuthoritativeUpstreamRepo } from "@vibe-core/upstream-repo"
-import { initRepo, getDataPlaneRepo } from "../src/repo/index.ts"
+import { initRepo, getDataPlaneConfiguration } from "../src/repo/index.ts"
 import { upstreamsRouter, type AuthCtx } from "../src/control-plane/upstreams/routes.ts"
 import { addGithubAccount, copilotUpstreamRowId } from "../src/control-plane/lib/github.ts"
 import type { GitHubUser, UpstreamRecord } from "../src/repo/types.ts"
@@ -207,7 +207,7 @@ test("metadata mutations invalidate configuration views and authoritative state 
   const { repo, sibling } = fixture()
   const stored = await repo.upstreams.createIfAbsent(upstream())
   if (!stored) throw new Error("fixture absent")
-  const view = getDataPlaneRepo()
+  const view = getDataPlaneConfiguration()
   expect((await view.upstreams.getById(stored.id))?.name).toBe("custom")
   await repo.upstreams.patchMetadata(stored, row => ({ ...row, name: "new" }))
   expect((await view.upstreams.getById(stored.id))?.name).toBe("new")

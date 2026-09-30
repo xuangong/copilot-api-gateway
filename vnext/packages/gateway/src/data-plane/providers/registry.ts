@@ -12,7 +12,7 @@ import type { AccountType } from '../../shared/config/constants.ts'
 import { defaultsForUpstream, resolveEffectiveFlags } from '../flags/index.ts'
 import type { Repo, StoredUpstreamRecord, UpstreamRecord } from '../../repo/types.ts'
 import type { UserId } from '../../repo/branded-ids.ts'
-import { getDataPlaneRepo as getRepo, getRepo as getAuthoritativeRepo } from '../../repo/index.ts'
+import { getDataPlaneConfiguration, getRepo as getAuthoritativeRepo } from '../../repo/index.ts'
 import { __registerPlatformReset, captureBackgroundExecutor, getRuntimeLocation } from '@vibe-core/platform'
 import type { Model, ModelsResponse } from '@vibe-llm/provider-copilot'
 import { copilotModelEndpoints, copilotPublicModelId } from '@vibe-llm/provider-copilot'
@@ -260,16 +260,16 @@ function sortUpstreams(upstreams: StoredUpstreamRecord[]): StoredUpstreamRecord[
 }
 
 async function listVisibleUpstreams(ownerId?: UserId, allOwners = false): Promise<StoredUpstreamRecord[]> {
-  if (allOwners) return sortUpstreams(await getRepo().upstreams.list({}))
+  if (allOwners) return sortUpstreams(await getDataPlaneConfiguration().upstreams.list({}))
   if (ownerId !== undefined) {
     const [globalUpstreams, ownerUpstreams] = await Promise.all([
-      getRepo().upstreams.list({ ownerId: '' as UserId }),
-      getRepo().upstreams.list({ ownerId }),
+      getDataPlaneConfiguration().upstreams.list({ ownerId: '' as UserId }),
+      getDataPlaneConfiguration().upstreams.list({ ownerId }),
     ])
     const byId = new Map([...globalUpstreams, ...ownerUpstreams].map((u) => [u.id, u]))
     return sortUpstreams([...byId.values()])
   }
-  return getRepo().upstreams.list({ ownerId: '' as UserId })
+  return getDataPlaneConfiguration().upstreams.list({ ownerId: '' as UserId })
 }
 
 export interface RoutingBindings {

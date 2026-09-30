@@ -1,5 +1,5 @@
 import { upstreamConfiguration } from "./upstream-configuration.ts"
-import { cachedProxyHealth } from "./proxy-health-cache.ts"
+import type { DataPlaneConfiguration } from "./configuration-ports.ts"
 import { waitUntil } from '@vibe-core/platform'
 import type { Repo, ApiKey, User, UserSession, StoredUpstreamRecord as UpstreamRecord } from './types.ts'
 import type { UpstreamId } from './branded-ids.ts'
@@ -67,11 +67,9 @@ export class ConfigurationCache {
   private dirty = true
   private confirmedAt = 0
   private checkAfter = 0
-  readonly view: Repo
-  private readonly proxyHealth: Repo["proxyBackoffs"]
+  readonly view: DataPlaneConfiguration
 
   constructor(private readonly raw: Repo, private readonly now = () => Date.now()) {
-    this.proxyHealth = cachedProxyHealth(raw.proxyBackoffs)
     this.view = this.createView(() => this.get())
   }
 
@@ -153,7 +151,7 @@ export class ConfigurationCache {
     return this.snapshot
   }
 
-  async pinnedView(): Promise<Repo> {
+  async pinnedView(): Promise<DataPlaneConfiguration> {
     const snapshot = await this.get()
     return this.createView(async () => snapshot)
   }
@@ -161,7 +159,7 @@ export class ConfigurationCache {
   /** Socket messages need a revision read begun for this turn, not an older
    * coalesced refresh or the HTTP authorization lease. Session revocation is
    * authoritative even on repositories whose revision excludes session rows. */
-  async freshPinnedView(): Promise<Repo> {
+  async freshPinnedView(): Promise<DataPlaneConfiguration> {
     await this.pending?.catch(() => {})
     const snapshot = await this.load()
     return this.createView(async () => snapshot, true)
@@ -227,33 +225,23 @@ export class ConfigurationCache {
     throw new ConfigurationUnavailableError()
   }
 
-  private createView(get: () => Promise<Snapshot>, freshSessions = false): Repo {
+  private createView(get: () => Promise<Snapshot>, freshSessions = false): DataPlaneConfiguration {
     const raw = this.raw
-    // Proxy fallback methods stay bound to the authoritative repo, particularly
-    // compare-and-swap credential writes. Never mutate a cached entity in place.
-    const overlay = <T extends object>(target: T, overrides: Partial<T>): T => new Proxy(target, {
-      get(obj, name) {
-        if (name in overrides) return Reflect.get(overrides, name)
-        const value = Reflect.get(obj, name)
-        return typeof value === 'function' ? value.bind(obj) : value
-      },
-    })
-    return overlay(raw, {
-      proxyBackoffs: this.proxyHealth,
-      apiKeys: overlay(raw.apiKeys, {
+    return {
+      apiKeys: {
         findByRawKey: async key => copy((await get()).rawKeys.get(key) ?? null),
         getById: async id => copy((await get()).keys.get(id) ?? null),
         list: async () => copy([...(await get()).keys.values()]),
         listByOwner: async id => copy([...(await get()).keys.values()].filter(k => k.ownerId === id)),
-      }),
-      sessions: overlay(raw.sessions, {
+      },
+      sessions: {
         findByToken: async token => freshSessions ? raw.sessions.findByToken(token) : this.findSession(token, await get()),
-      }),
-      users: overlay(raw.users, {
+      },
+      users: {
         getById: async id => copy((await get()).users.get(id) ?? null),
         findByKey: async key => copy((await get()).userKeys.get(key) ?? null),
-      }),
-      upstreams: overlay(raw.upstreams, {
+      },
+      upstreams: {
         list: async (opts = {}) => {
           const s = await get()
           const rows = opts.ownerId === undefined ? s.upstreams : (s.byOwner.get(opts.ownerId) ?? [])
@@ -269,14 +257,53 @@ export class ConfigurationCache {
           }
           return copy(row ?? null) as UpstreamRecord<T> | null
         },
-      }),
-      proxies: overlay(raw.proxies, {
+      },
+      proxies: {
         list: async () => copy((await get()).proxies),
         getById: async id => copy((await get()).proxies.find(p => p.id === id) ?? null),
-      }),
-    })
+      },
+    }
   }
 }
+
+type ConfigurationRepositories = Pick<Repo, "apiKeys" | "users" | "sessions" | "upstreams" | "proxies">
+type ConfigurationMethodEffect = "read" | "configuration-write" | "state-write"
+type ConfigurationMethodEffects = {
+  [Group in keyof ConfigurationRepositories]: {
+    [Method in keyof ConfigurationRepositories[Group]]: ConfigurationMethodEffect
+  }
+}
+
+// Exhaustive by repository method: adding an entry point requires choosing its
+// consistency effect. Operational writes must not invalidate warm auth reads.
+const configurationMethodEffects = {
+  apiKeys: {
+    getOrCreateAffinitySecret: "state-write", // Private material is never in the configuration snapshot.
+    touchLastUsed: "state-write",
+    listAccessibleIds: "read", list: "read", listByOwner: "read", findByRawKey: "read", getById: "read",
+    save: "configuration-write", patchModelMappings: "configuration-write",
+    delete: "configuration-write", deleteAll: "configuration-write",
+    ensureAgentHostKey: "configuration-write", revokeAgentHostKey: "configuration-write",
+  },
+  users: {
+    getById: "read", findByKey: "read", findByEmail: "read", list: "read",
+    create: "configuration-write", update: "configuration-write", delete: "configuration-write",
+  },
+  sessions: {
+    findByToken: "read", create: "configuration-write", deleteByToken: "configuration-write",
+    deleteByUserId: "configuration-write", deleteExpired: "configuration-write",
+  },
+  upstreams: {
+    list: "read", getById: "read", saveState: "state-write", // Refreshed row-by-row below.
+    save: "configuration-write", createIfAbsent: "configuration-write", replaceCredentials: "configuration-write",
+    patchMetadata: "configuration-write", delete: "configuration-write", deleteAll: "configuration-write",
+  },
+  proxies: {
+    list: "read", getById: "read", findUpstreamsReferencing: "read",
+    insert: "configuration-write", save: "configuration-write", patch: "configuration-write",
+    delete: "configuration-write", deleteAll: "configuration-write",
+  },
+} as const satisfies ConfigurationMethodEffects
 
 /** Decorate the actual mutation entry points, including provider OAuth writes.
  * The DB revision also catches writes made by other processes/direct SQL. */
@@ -289,16 +316,10 @@ export function observeConfigurationWrites(repo: Repo, changed: () => void, stat
       else changed()
     } catch (error) { changed(); throw error }
   }
-  const methods = {
-    apiKeys: ['save', 'patchModelMappings', 'delete', 'deleteAll', 'ensureAgentHostKey', 'revokeAgentHostKey'],
-    users: ['create', 'update', 'delete'],
-    sessions: ['create', 'deleteByUserId', 'deleteExpired'],
-    upstreams: ['save', 'createIfAbsent', 'replaceCredentials', 'patchMetadata', 'delete', 'deleteAll'],
-    proxies: ['insert', 'save', 'patch', 'delete', 'deleteAll'],
-  } as const
-  for (const [group, names] of Object.entries(methods)) {
-    const target = repo[group as keyof typeof methods] as unknown as Record<string, (...args: unknown[]) => Promise<unknown>>
-    for (const name of names) {
+  for (const [group, effects] of Object.entries(configurationMethodEffects)) {
+    const target = repo[group as keyof ConfigurationRepositories] as unknown as Record<string, (...args: unknown[]) => Promise<unknown>>
+    for (const [name, effect] of Object.entries(effects)) {
+      if (effect !== "configuration-write") continue
       const original = target[name]
       if (!original) continue
       target[name] = async (...args) => {

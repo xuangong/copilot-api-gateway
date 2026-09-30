@@ -6,7 +6,7 @@ import { join } from "node:path"
 import { tmpdir } from "node:os"
 import { BunSqliteRepo } from "../../../apps/platform-bun/src/bun-sqlite-repo.ts"
 import { ConfigurationCache } from "../src/repo/configuration-cache.ts"
-import { initRepo, getDataPlaneRepo } from "../src/repo/index.ts"
+import { initRepo, getDataPlaneConfiguration } from "../src/repo/index.ts"
 import { __resetPlatformForTests } from "@vibe-core/platform"
 import { migrationsDir } from "../src/migrations-dir.ts"
 import { catalogFingerprint } from "../src/repo/catalogs.ts"
@@ -285,9 +285,9 @@ test("explicit replacement invalidates the local configuration cache even for id
   await first.upstreams.save(upstream())
   initRepo(first)
   try {
-    const target = present(await getDataPlaneRepo().upstreams.getById("catalog"))
+    const target = present(await getDataPlaneConfiguration().upstreams.getById("catalog"))
     await first.upstreams.replaceCredentials(target, { config: target.config, state: target.state })
-    expect(present(await getDataPlaneRepo().upstreams.getById("catalog")).catalogGeneration).toBe(target.catalogGeneration + 1)
+    expect(present(await getDataPlaneConfiguration().upstreams.getById("catalog")).catalogGeneration).toBe(target.catalogGeneration + 1)
   } finally { __resetPlatformForTests() }
 })
 

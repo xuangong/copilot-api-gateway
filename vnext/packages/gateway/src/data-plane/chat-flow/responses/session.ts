@@ -1,6 +1,6 @@
 import { withBackground, type BackgroundExecutor } from "@vibe-core/platform"
 import { extractHeaderCredential, resolveCredential, type FullAuthCtx } from "../../../shared/credential-auth.ts"
-import { getDataPlaneRepo, withFreshConfigurationSnapshot } from "../../../repo/index.ts"
+import { getDataPlaneConfiguration, withFreshConfigurationSnapshot } from "../../../repo/index.ts"
 import { ConfigurationUnavailableError } from "../../../repo/configuration-cache.ts"
 import { withRequestSignal } from "../../../shared/request-signal.ts"
 import { openTransportDump } from "../../../shared/dump/accumulator.ts"
@@ -186,7 +186,7 @@ export function createResponsesSession(options: {
         if (!auth || (!auth.userId && !auth.apiKeyId)) throw invalidAuth()
         if (auth.userId !== identity.userId || auth.apiKeyId !== identity.apiKeyId || auth.authKind !== identity.authKind) throw invalidAuth()
         job.controller.signal.throwIfAborted()
-        const apiKey = auth.apiKeyId ? await getDataPlaneRepo().apiKeys.getById(auth.apiKeyId) : null
+        const apiKey = auth.apiKeyId ? await getDataPlaneConfiguration().apiKeys.getById(auth.apiKeyId) : null
         const dump = apiKey ? openTransportDump({ method: "WS", path, headers }, apiKey, { bytes: new TextEncoder().encode(text), streamError: null }, background) : null
         let sourceJson: string | undefined
         let compactTriggered = false

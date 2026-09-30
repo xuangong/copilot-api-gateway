@@ -7,7 +7,7 @@
  * copilot engine searches with.
  */
 
-import { getDataPlaneRepo as getRepo } from '../../../repo/index.ts'
+import { getDataPlaneConfiguration } from '../../../repo/index.ts'
 import type { ApiKeyId } from '../../../repo/branded-ids.ts'
 import { pickCopilotSearchToken, resolveKeyWebSearch, type KeyWebSearchResolution } from './key-config.ts'
 
@@ -22,7 +22,7 @@ export const resolveWebSearchForKey = async (
   apiKeyId: ApiKeyId | undefined,
 ): Promise<KeyWebSearchResolution> => {
   if (!apiKeyId) return { type: 'disabled' }
-  const repo = getRepo()
+  const repo = getDataPlaneConfiguration()
   const key = await repo.apiKeys.getById(apiKeyId).catch(() => null)
   if (!key) return { type: 'disabled' }
 
