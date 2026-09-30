@@ -179,13 +179,15 @@ interface MutableAttempt {
   errorCategory: UpstreamAttemptErrorCategory | null
 }
 
+const CONSUMED_SNAPSHOT = Symbol("consumed upstream snapshot")
+
 export class UpstreamExchangeCollector {
   private readonly attempts: MutableAttempt[] = []
   private omittedAttempts = 0
   private capturedBodyBytes = 0
   private metadataBytes = 0
   private metadataTruncated = false
-  private finished: UpstreamExchanges | null = null
+  private finished: UpstreamExchanges | typeof CONSUMED_SNAPSHOT | null = null
 
   constructor(private readonly startedAt = Date.now()) {}
 
@@ -364,6 +366,7 @@ export class UpstreamExchangeCollector {
   }
 
   finish(at = Date.now()): UpstreamExchanges {
+    if (this.finished === CONSUMED_SNAPSHOT) throw new Error("upstream snapshot ownership was transferred or abandoned")
     if (this.finished !== null) return this.finished
     for (const item of this.attempts) {
       if (item.terminal === null) this.end(item, "not_consumed", at)
@@ -412,6 +415,25 @@ export class UpstreamExchangeCollector {
       item.responsePrefix.release()
     }
     return this.finished
+  }
+
+  // Only owned capture may transfer; borrowed callers retain finish() identity.
+  takeSnapshot(at = Date.now()): UpstreamExchanges {
+    const snapshot = this.finish(at)
+    // A failed finish must retain its prefixes and remain exactly retryable.
+    this.finished = CONSUMED_SNAPSHOT
+    return snapshot
+  }
+
+  // Terminal discard must work even when snapshot conversion failed. Old stream
+  // callbacks keep their transport ownership but cannot resume body capture.
+  abandon(): void {
+    if (this.finished === CONSUMED_SNAPSHOT) return
+    this.finished = CONSUMED_SNAPSHOT
+    for (const item of this.attempts) {
+      item.requestPrefix.release()
+      item.responsePrefix.release()
+    }
   }
 }
 

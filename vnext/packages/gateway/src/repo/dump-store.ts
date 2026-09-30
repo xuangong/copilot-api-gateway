@@ -110,6 +110,197 @@ const putPreparedBody = async (
   if (key !== null && bytes !== null) await files.put(key, bytes)
 }
 
+interface PreparedDumpWrite {
+  keyId: ApiKeyId
+  recordId: DumpRecordId
+  completedAt: number
+  upstreamId: UpstreamId | null
+  metaJson: string
+  requestHeadersJson: string
+  responseHeadersJson: string | null
+  requestFileKey: string | null
+  responseFileKey: string | null
+  upstreamFileKey: string | null
+  requestDescriptorJson: string | null
+  responseDescriptorJson: string | null
+  upstreamDescriptorJson: string | null
+  bodies: [Uint8Array | null, Uint8Array | null, Uint8Array | null]
+}
+
+type StagedDumpFile = { fileKey: string; ownerKind: string }
+
+// This async scope is the only persistence preparation scope that sees the
+// caller's record. Its result contains no events, headers, envelope or raw
+// request object; downstream callbacks are created in a separate scope.
+const prepareDumpWrite = async (keyId: ApiKeyId, record: DumpWriteRecord): Promise<PreparedDumpWrite> => {
+  const { upstream, ...metaToStore } = record.meta
+  const recordId = metaToStore.id
+  const completedAt = metaToStore.completedAt
+  const bucket = hourBucket(completedAt)
+  const metaJson = JSON.stringify(metaToStore)
+  const requestHeadersJson = JSON.stringify(record.request.headers)
+  const responseHeadersJson = record.response.body.type === "none" ? null : JSON.stringify(record.response.headers)
+  const requestFileKey = record.request.body.decodedByteLength === 0 ? null : bodyPath(keyId, bucket, recordId, "req")
+  const responseFileKey = record.response.body.type === "none"
+    || (record.response.body.type === "bytes" && record.response.body.body.byteLength === 0)
+    ? null : bodyPath(keyId, bucket, recordId, "resp")
+
+  // Preserve the serial compression order and the optional safe projection.
+  // Every mandatory serialization/compression finishes before staging begins.
+  let upstreamBytes: Uint8Array | null = null
+  if (record.upstreamExchanges != null) {
+    try {
+      const safe = safeUpstreamExchangesForPersistence(record.upstreamExchanges)
+      upstreamBytes = await gzip(JSON.stringify(safe) ?? "")
+    } catch { /* optional sidecar */ }
+  }
+  const upstreamFileKey = upstreamBytes === null ? null : bodyPath(keyId, bucket, recordId, "up")
+  const requestBytes = requestFileKey === null ? null
+    : record.request.body.encoding === "gzip" ? record.request.body.bytes : await gzip(record.request.body.bytes)
+  let responseBytes: Uint8Array | null = null
+  if (record.response.body.type === "bytes" && responseFileKey !== null) {
+    responseBytes = await gzip(record.response.body.body)
+  } else if (record.response.body.type === "stream") {
+    responseBytes = await gzip(JSON.stringify(record.response.body.events) ?? "")
+  }
+  return {
+    keyId, recordId, completedAt, upstreamId: upstream?.id ?? null,
+    metaJson, requestHeadersJson, responseHeadersJson,
+    requestFileKey, responseFileKey, upstreamFileKey,
+    requestDescriptorJson: requestFileKey === null ? null : JSON.stringify({ key: requestFileKey, type: "bytes" }),
+    responseDescriptorJson: responseFileKey === null ? null
+      : JSON.stringify({ key: responseFileKey, type: record.response.body.type === "stream" ? "events" : "bytes" }),
+    upstreamDescriptorJson: upstreamFileKey === null ? null
+      : JSON.stringify({ key: upstreamFileKey, type: "upstreamExchanges", version: 1 }),
+    bodies: [requestBytes, responseBytes, upstreamBytes],
+  }
+}
+
+const releasePreparedBodies = (prepared: PreparedDumpWrite): void => {
+  // Only clear this private packet's slots; never mutate caller bytes/arrays.
+  prepared.bodies[0] = prepared.bodies[1] = prepared.bodies[2] = null
+}
+
+const putPreparedDumpBodies = async (
+  files: FileProvider,
+  prepared: PreparedDumpWrite,
+  upstreamFileKey: string | null,
+): Promise<boolean> => {
+  try {
+    // The async put wrapper converts synchronous provider throws into
+    // rejections, so every sibling starts and settles before retirement.
+    const [requestPut, responsePut, upstreamPut] = await Promise.allSettled([
+      putPreparedBody(files, prepared.requestFileKey, prepared.bodies[0]),
+      putPreparedBody(files, prepared.responseFileKey, prepared.bodies[1]),
+      putPreparedBody(files, upstreamFileKey, prepared.bodies[2]),
+    ])
+    if (requestPut.status === "rejected") throw requestPut.reason
+    if (responsePut.status === "rejected") throw responsePut.reason
+    // Do not carry an optional provider's rejection object into row I/O.
+    return upstreamPut.status === "fulfilled"
+  } finally {
+    releasePreparedBodies(prepared)
+  }
+}
+
+const stageDumpFiles = async (db: SqlDatabase, prepared: PreparedDumpWrite, keys: StagedDumpFile[]): Promise<void> => {
+  await db.prepare(
+    `INSERT INTO spilled_files (file_key, owner_kind, owner_key, state, collect_after)
+     SELECT
+       json_extract(value, '$.fileKey'),
+       json_extract(value, '$.ownerKind'),
+       json_array(?, ?),
+       'staged',
+       ?
+     FROM json_each(?)`,
+  ).bind(prepared.keyId, prepared.recordId, Date.now() + SPILLED_FILE_STAGE_GRACE_MS, JSON.stringify(keys)).run()
+}
+
+const retireUpstreamFile = async (db: SqlDatabase, prepared: PreparedDumpWrite, fileKey: string): Promise<void> => {
+  // Repair a late put's tombstone even when collection removed its stage, and
+  // fence the old collector's pending SQL delete without retiring owned data.
+  await db.prepare(`INSERT INTO spilled_files (file_key, owner_kind, owner_key, state, collect_after)
+    VALUES (?, 'dump-upstream', json_array(?, ?), 'retired', 0)
+    ON CONFLICT(file_key) DO UPDATE SET state = 'retired', collect_after = 0, claim_token = NULL, claimed_at = NULL
+    WHERE spilled_files.state != 'owned'`)
+    .bind(fileKey, prepared.keyId, prepared.recordId).run()
+}
+
+const retireDumpFiles = async (db: SqlDatabase, prepared: PreparedDumpWrite, keys: StagedDumpFile[]): Promise<void> => {
+  if (keys.length === 0) return
+  await db.prepare(`INSERT INTO spilled_files (file_key, owner_kind, owner_key, state, collect_after)
+    SELECT json_extract(value, '$.fileKey'), json_extract(value, '$.ownerKind'), json_array(?, ?), 'retired', 0
+    FROM json_each(?) WHERE true
+    ON CONFLICT(file_key) DO UPDATE SET state = 'retired', collect_after = 0, claim_token = NULL, claimed_at = NULL
+    WHERE spilled_files.state != 'owned'`)
+    .bind(prepared.keyId, prepared.recordId, JSON.stringify(keys)).run()
+}
+
+const insertPreparedDumpRow = async (db: SqlDatabase, prepared: PreparedDumpWrite, sidecar: string | null): Promise<void> => {
+  await db.prepare(
+    `INSERT INTO dump_records
+     (key_id, id, created_at, upstream_id, meta_json, request_headers_json, response_headers_json, request_body_descriptor, response_body_descriptor, upstream_exchanges_descriptor)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).bind(
+    prepared.keyId, prepared.recordId, prepared.completedAt, prepared.upstreamId,
+    prepared.metaJson, prepared.requestHeadersJson, prepared.responseHeadersJson,
+    prepared.requestDescriptorJson, prepared.responseDescriptorJson, sidecar,
+  ).run()
+}
+
+const persistPreparedDump = async (db: SqlDatabase, files: FileProvider, prepared: PreparedDumpWrite): Promise<void> => {
+  const coreStaged: StagedDumpFile[] = [
+    ...(prepared.requestFileKey === null ? [] : [{ fileKey: prepared.requestFileKey, ownerKind: "dump-request" }]),
+    ...(prepared.responseFileKey === null ? [] : [{ fileKey: prepared.responseFileKey, ownerKind: "dump-response" }]),
+  ]
+  let upstreamFileKey = prepared.upstreamFileKey
+  let staged = [...coreStaged, ...(upstreamFileKey === null ? [] : [{ fileKey: upstreamFileKey, ownerKind: "dump-upstream" }])]
+  try {
+    if (staged.length > 0) {
+      try {
+        await stageDumpFiles(db, prepared, staged)
+      } catch (error) {
+        if (upstreamFileKey === null) throw error
+        // The stage statement is atomic. Retry core staging without the
+        // optional key; core staging errors still propagate without uploads.
+        upstreamFileKey = null
+        prepared.bodies[2] = null
+        staged = coreStaged
+        if (staged.length > 0) await stageDumpFiles(db, prepared, staged)
+      }
+    }
+    try {
+      const upstreamUploaded = await putPreparedDumpBodies(files, prepared, upstreamFileKey)
+      let upstreamDescriptor = upstreamFileKey === null ? null : prepared.upstreamDescriptorJson
+      if (upstreamFileKey !== null && !upstreamUploaded) {
+        upstreamDescriptor = null
+        try { await retireUpstreamFile(db, prepared, upstreamFileKey) }
+        catch { /* keep the canonical dump independent of the sidecar */ }
+      }
+      // Files precede the row; after all puts settle this scope retains only
+      // descriptor/metadata strings, never body bytes or the caller's record.
+      try {
+        await insertPreparedDumpRow(db, prepared, upstreamDescriptor)
+      } catch (error) {
+        if (upstreamDescriptor === null || upstreamFileKey === null) throw error
+        // A slow optional put can outlive its stage. Retry the canonical row
+        // without that descriptor and keep the orphan sidecar collectible.
+        try { await retireUpstreamFile(db, prepared, upstreamFileKey) } catch { /* optional cleanup */ }
+        await insertPreparedDumpRow(db, prepared, null)
+      }
+    } catch (error) {
+      await retireDumpFiles(db, prepared, staged)
+      throw error
+    }
+  } finally {
+    // Also release prepared bytes if staging itself fails before any upload.
+    releasePreparedBodies(prepared)
+  }
+}
+
+const persistDumpWith = (db: SqlDatabase, files: FileProvider) =>
+  (prepared: PreparedDumpWrite): Promise<void> => persistPreparedDump(db, files, prepared)
+
 const fetchBody = async (files: FileProvider, descriptor: BodyDescriptor): Promise<Uint8Array> => {
   const got = await files.get(descriptor.key)
   if (!got) throw new Error(`dump body missing for key=${descriptor.key}`)
@@ -128,165 +319,8 @@ export class FileDumpStore implements DumpStore {
     }
   }
 
-  async put(keyId: ApiKeyId, record: DumpWriteRecord): Promise<void> {
-    const bucket = hourBucket(record.meta.completedAt)
-    const requestFileKey = record.request.body.decodedByteLength === 0
-      ? null
-      : bodyPath(keyId, bucket, record.meta.id, "req")
-    const responseFileKey = record.response.body.type === "bytes" && record.response.body.body.byteLength === 0
-      ? null
-      : record.response.body.type === "none"
-        ? null
-        : bodyPath(keyId, bucket, record.meta.id, "resp")
-    // Validate and encode from a strict safe-field projection before a file
-    // key is staged or a sidecar is created. A malformed optional capture
-    // cannot prevent the canonical dump from being written.
-    let upstreamBytes: Uint8Array | null = null
-    if (record.upstreamExchanges != null) {
-      try {
-        const safe = safeUpstreamExchangesForPersistence(record.upstreamExchanges)
-        upstreamBytes = await gzip(JSON.stringify(safe) ?? "")
-      } catch { /* optional sidecar */ }
-    }
-    let upstreamFileKey = upstreamBytes === null ? null : bodyPath(keyId, bucket, record.meta.id, "up")
-    const coreStaged = [
-      ...(requestFileKey === null ? [] : [{ fileKey: requestFileKey, ownerKind: "dump-request" }]),
-      ...(responseFileKey === null ? [] : [{ fileKey: responseFileKey, ownerKind: "dump-response" }]),
-    ]
-    let staged = [
-      ...coreStaged,
-      ...(upstreamFileKey === null ? [] : [{ fileKey: upstreamFileKey, ownerKind: "dump-upstream" }]),
-    ]
-    const stage = async (keys: typeof staged): Promise<void> => {
-      await this.db
-        .prepare(
-          `INSERT INTO spilled_files (file_key, owner_kind, owner_key, state, collect_after)
-           SELECT
-             json_extract(value, '$.fileKey'),
-             json_extract(value, '$.ownerKind'),
-             json_array(?, ?),
-             'staged',
-             ?
-           FROM json_each(?)`,
-        )
-        .bind(keyId, record.meta.id, Date.now() + SPILLED_FILE_STAGE_GRACE_MS, JSON.stringify(keys))
-        .run()
-    }
-    if (staged.length > 0) {
-      try {
-        await stage(staged)
-      } catch (error) {
-        if (upstreamFileKey === null) throw error
-        // The batch statement is atomic. Retry core staging without the
-        // optional key if only sidecar staging was rejected.
-        upstreamFileKey = null
-        upstreamBytes = null
-        staged = coreStaged
-        if (staged.length > 0) await stage(staged)
-      }
-    }
-    const retireUpstreamStage = async (): Promise<void> => {
-      if (upstreamFileKey === null) return
-      // A late external put can finish after the stage was collected. Upsert
-      // a retired tombstone and fence the old collector's pending SQL delete.
-      await this.db.prepare(`INSERT INTO spilled_files (file_key, owner_kind, owner_key, state, collect_after)
-        VALUES (?, 'dump-upstream', json_array(?, ?), 'retired', 0)
-        ON CONFLICT(file_key) DO UPDATE SET state = 'retired', collect_after = 0, claim_token = NULL, claimed_at = NULL
-        WHERE spilled_files.state != 'owned'`)
-        .bind(upstreamFileKey, keyId, record.meta.id).run()
-    }
-    try {
-      const requestDescriptor: BodyDescriptor | null = requestFileKey === null ? null : { key: requestFileKey, type: "bytes" }
-      let requestBytes = requestFileKey === null
-        ? null
-        : record.request.body.encoding === "gzip" ? record.request.body.bytes : await gzip(record.request.body.bytes)
-
-      // Prepare serially before starting any uploads. A preparation failure
-      // cannot leave a sibling write running outside the cleanup barrier.
-      let responseDescriptor: BodyDescriptor | null = null
-      let responseBytes: Uint8Array | null = null
-      if (record.response.body.type === "bytes") {
-        if (responseFileKey !== null) {
-          responseBytes = await gzip(record.response.body.body)
-          responseDescriptor = { key: responseFileKey, type: "bytes" }
-        }
-      } else if (record.response.body.type === "stream") {
-        responseBytes = await gzip(JSON.stringify(record.response.body.events) ?? "")
-        responseDescriptor = { key: responseFileKey!, type: "events" }
-      }
-
-      // Fixed three-slot batch: only already prepared bytes are uploaded in
-      // parallel. All started writes settle before publication or retirement,
-      // including late/partial writes after an early sibling rejection.
-      const [requestPut, responsePut, upstreamPut] = await Promise.allSettled([
-        putPreparedBody(this.files, requestFileKey, requestBytes),
-        putPreparedBody(this.files, responseFileKey, responseBytes),
-        putPreparedBody(this.files, upstreamFileKey, upstreamBytes),
-      ])
-      requestBytes = responseBytes = upstreamBytes = null
-      if (requestPut.status === "rejected") throw requestPut.reason
-      if (responsePut.status === "rejected") throw responsePut.reason
-
-      let upstreamDescriptor: { key: string; type: "upstreamExchanges"; version: 1 } | null = null
-      if (upstreamFileKey !== null) {
-        if (upstreamPut.status === "fulfilled") {
-          upstreamDescriptor = { key: upstreamFileKey, type: "upstreamExchanges", version: 1 }
-        } else {
-          // Even a partially successful external put remains collectible.
-          try { await retireUpstreamStage() }
-          catch { /* keep the canonical dump independent of the sidecar */ }
-        }
-      }
-
-      // Strip the in-memory `upstream` field; the ref is rebuilt from the join
-      // at read time so renames and deletes are honored on historical rows.
-      const { upstream: _upstream, ...metaToStore } = record.meta
-
-      // Files before row — a partial failure leaves orphan files the sweep
-      // collects, never an orphan row whose detail fetch would 404.
-      const insertRow = async (sidecar: typeof upstreamDescriptor): Promise<void> => {
-        await this.db.prepare(
-          `INSERT INTO dump_records
-           (key_id, id, created_at, upstream_id, meta_json, request_headers_json, response_headers_json, request_body_descriptor, response_body_descriptor, upstream_exchanges_descriptor)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        ).bind(
-          keyId,
-          record.meta.id,
-          record.meta.completedAt,
-          record.meta.upstream?.id ?? null,
-          JSON.stringify(metaToStore),
-          JSON.stringify(record.request.headers),
-          record.response.body.type === "none" ? null : JSON.stringify(record.response.headers),
-          requestDescriptor === null ? null : JSON.stringify(requestDescriptor),
-          responseDescriptor === null ? null : JSON.stringify(responseDescriptor),
-          sidecar === null ? null : JSON.stringify(sidecar),
-        ).run()
-      }
-      try {
-        await insertRow(upstreamDescriptor)
-      } catch (error) {
-        if (upstreamDescriptor === null) throw error
-        // A slow sidecar put may outlive its stage's grace period while core
-        // body stages remain valid. Retry only the canonical row without the
-        // optional descriptor, then collect the orphan sidecar.
-        try { await retireUpstreamStage() } catch { /* optional cleanup */ }
-        await insertRow(null)
-      }
-    } catch (error) {
-      // A put can outlive staging grace: collection may have already removed
-      // its file/metadata before the put finishes and INSERT is rejected.
-      // Recreate a retired tombstone and fence any collector still finishing
-      // its SQL delete. Unique file keys prevent touching another writer.
-      if (staged.length > 0) {
-        await this.db.prepare(`INSERT INTO spilled_files (file_key, owner_kind, owner_key, state, collect_after)
-          SELECT json_extract(value, '$.fileKey'), json_extract(value, '$.ownerKind'), json_array(?, ?), 'retired', 0
-          FROM json_each(?) WHERE true
-          ON CONFLICT(file_key) DO UPDATE SET state = 'retired', collect_after = 0, claim_token = NULL, claimed_at = NULL
-          WHERE spilled_files.state != 'owned'`)
-          .bind(keyId, record.meta.id, JSON.stringify(staged)).run()
-      }
-      throw error
-    }
+  put(keyId: ApiKeyId, record: DumpWriteRecord): Promise<void> {
+    return prepareDumpWrite(keyId, record).then(persistDumpWith(this.db, this.files))
   }
 
   async list(keyId: ApiKeyId, opts: DumpListOptions): Promise<DumpMetadata[]> {

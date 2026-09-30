@@ -33,7 +33,7 @@ import type {
 } from "./types.ts"
 import { getRepo } from "../../repo/index.ts"
 import type { ApiKey, TokenUsage } from "../../repo/types.ts"
-import type { DumpRecordId, UpstreamId } from "../../repo/branded-ids.ts"
+import type { ApiKeyId, DumpRecordId, UpstreamId } from "../../repo/branded-ids.ts"
 import { ulid } from "../ulid.ts"
 
 // Frozen at ctx construction so `finalize` never has to re-read a stream
@@ -84,17 +84,76 @@ const resolveUpstreamRef = async (id: string | null): Promise<DumpUpstreamRef | 
   return { id: upstream.id as UpstreamId, name: upstream.name, kind: upstream.provider }
 }
 
+const inactiveCall = { beginAttempt: () => undefined }
+const inactiveObserver = { beginCall: () => inactiveCall }
+const inactiveObservation: ReturnType<typeof createUpstreamDialObservationContext> = {
+  forOperation: () => inactiveObserver,
+}
+
+interface TerminalRecord {
+  keyId: ApiKeyId
+  record: DumpWriteRecord
+}
+
+const writeFailureFor = (keyId: ApiKeyId, recordId: DumpRecordId) => (error: unknown): void => {
+  console.error(`[dump] write failed for key=${keyId} record=${recordId}`, oneLineError(error))
+}
+
+const publicationFor = (keyId: ApiKeyId, meta: DumpMetadata) => (): Promise<void> =>
+  getDumpBroker().publish(keyId, meta)
+
+// These reactions own only metadata. Their lexical scopes must not keep the
+// raw record or the record-building frame alive through storage/publication.
+function persistTerminalRecord(input: TerminalRecord | null): Promise<void> {
+  if (input === null) return Promise.resolve()
+  const failed = writeFailureFor(input.keyId, input.record.meta.id)
+  try {
+    return getDumpStore().put(input.keyId, input.record)
+      .then(publicationFor(input.keyId, input.record.meta))
+      .catch(failed)
+  } catch (error) {
+    failed(error)
+    return Promise.resolve()
+  }
+}
+
+async function drainResponse(
+  body: ReadableStream<Uint8Array>, status: number,
+  headers: ReadonlyArray<readonly [string, string]>, isStream: boolean,
+): Promise<ResponseSnapshot> {
+  const reader = body.getReader()
+  const chunks: Uint8Array[] = []
+  let total = 0
+  let streamError: string | null = null
+  try {
+    for (;;) {
+      const { value, done } = await reader.read()
+      if (done) break
+      chunks.push(value)
+      total += value.byteLength
+    }
+  } catch (error) {
+    streamError = oneLineError(error)
+  } finally { reader.releaseLock() }
+  const bytes = new Uint8Array(total)
+  let offset = 0
+  for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength }
+  return { status, headers, isStream, bytes, payloadBytes: bytes.byteLength, streamError }
+}
+
 export class DumpAccumulator {
-  private readonly events: DumpStreamEvent[] = []
+  private events: DumpStreamEvent[] | null = []
   private sentPayloadBytes = 0
   private model: string | null = null
   private upstreamId: string | null = null
   private inputTokens: number | null = null
   private outputTokens: number | null = null
   private errorMeta: DumpErrorMeta | null = null
-  private readonly preparedRequestBody: Promise<PreparedDumpRequestBody>
+  private preparedRequestBody: Promise<PreparedDumpRequestBody> | null
   private upstreamExchangeCollector: UpstreamExchangeCollector | null = null
+  private ownsUpstreamCollector = false
   private upstreamObservation: ReturnType<typeof createUpstreamDialObservationContext> | null = null
+  private terminalWrite: Promise<void> | null = null
   // Pre-allocated at construction so `finalize(Response)` can echo it as an
   // `X-Dump-Record-Id` header before the write completes. The write path
   // uses this same id to persist the dump row.
@@ -128,11 +187,16 @@ export class DumpAccumulator {
   }
 
   attachUpstreamExchangeCollector(collector: UpstreamExchangeCollector): void {
+    if (this.events === null) return
     this.upstreamExchangeCollector ??= collector
   }
 
   upstreamDialObservation(): ReturnType<typeof createUpstreamDialObservationContext> {
-    this.upstreamExchangeCollector ??= new UpstreamExchangeCollector(this.startedAt)
+    if (this.events === null) return inactiveObservation
+    if (this.upstreamExchangeCollector === null) {
+      this.upstreamExchangeCollector = new UpstreamExchangeCollector(this.startedAt)
+      this.ownsUpstreamCollector = true
+    }
     this.upstreamObservation ??= createUpstreamDialObservationContext(this.upstreamExchangeCollector)
     return this.upstreamObservation
   }
@@ -154,7 +218,7 @@ export class DumpAccumulator {
   // Records one protocol frame. Stored as the canonical ProtocolFrame so
   // neither serialization nor parsing happens on this path.
   frame(frame: ProtocolFrame<unknown>): void {
-    this.events.push({ frame, ts: Date.now() - this.startedAt })
+    this.events?.push({ frame, ts: Date.now() - this.startedAt })
   }
 
   recordSentPayloadBytes(byteLength: number): void {
@@ -189,22 +253,38 @@ export class DumpAccumulator {
   // successful upstream call into a 502.
   // The turn supplies its canonical body when no provider frame log exists.
   // This fallback never reads or tees a transport response.
-  async finalizeTurn(status: number, headers: ReadonlyArray<readonly [string, string]>, canonicalBody?: unknown): Promise<void> {
-    const bytes = this.events.length === 0 && canonicalBody !== undefined
-      ? new TextEncoder().encode(JSON.stringify(canonicalBody)) : new Uint8Array()
-    await this.write({ status, headers: headers.map(([k, v]) => [k, v]), isStream: this.events.length > 0,
-      bytes, payloadBytes: this.sentPayloadBytes, streamError: null })
+  finalizeTurn(status: number, headers: ReadonlyArray<readonly [string, string]>, canonicalBody?: unknown): Promise<void> {
+    if (this.terminalWrite !== null) return this.terminalWrite
+    try {
+      const hasFrames = (this.events?.length ?? 0) > 0
+      const bytes = !hasFrames && canonicalBody !== undefined
+        ? new TextEncoder().encode(JSON.stringify(canonicalBody)) : new Uint8Array()
+      return this.write({ status, headers: headers.map(([k, v]) => [k, v]), isStream: hasFrames,
+        bytes, payloadBytes: this.sentPayloadBytes, streamError: null })
+    } catch (error) {
+      // This API formerly used an async frame: stringify failures must still
+      // reject its completion instead of escaping synchronously to the caller.
+      this.terminalWrite = Promise.reject(error)
+      this.events = null
+      this.preparedRequestBody = null
+      if (this.ownsUpstreamCollector) this.upstreamExchangeCollector?.abandon()
+      this.upstreamExchangeCollector = null
+      this.upstreamObservation = null
+      this.ownsUpstreamCollector = false
+      return this.terminalWrite
+    }
   }
 
   finalize(status: number, headers: ReadonlyArray<readonly [string, string]>): void
   finalize(response: Response): Response
   finalize(...args: [number, ReadonlyArray<readonly [string, string]>] | [Response]): void | Response {
     if (args.length === 2) {
+      if (this.terminalWrite !== null) return
       const [status, headers] = args
       waitUntil(this.write({
         status,
         headers: headers.map(([k, v]) => [k, v]),
-        isStream: this.events.length > 0,
+        isStream: (this.events?.length ?? 0) > 0,
         bytes: new Uint8Array(),
         payloadBytes: this.sentPayloadBytes,
         streamError: null,
@@ -213,6 +293,11 @@ export class DumpAccumulator {
     }
 
     const [response] = args
+    if (this.terminalWrite !== null) {
+      return new Response(response.body, {
+        status: response.status, statusText: response.statusText, headers: this.withDumpHeaders(response.headers),
+      })
+    }
     const responseStatus = response.status
     const responseHeaders = headerPairs(response.headers)
 
@@ -227,33 +312,12 @@ export class DumpAccumulator {
 
     const isStream = (response.headers.get("content-type") ?? "").startsWith("text/event-stream")
     const [forClient, forCapture] = response.body.tee()
-    waitUntil((async () => {
-      const reader = forCapture.getReader()
-      const chunks: Uint8Array[] = []
-      let total = 0
-      let streamError: string | null = null
-      try {
-        for (;;) {
-          const { value, done } = await reader.read()
-          if (done) break
-          chunks.push(value)
-          total += value.byteLength
-        }
-      } catch (err) {
-        streamError = oneLineError(err)
-      }
-      const bytes = new Uint8Array(total)
-      let offset = 0
-      for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength }
-      await this.write({
-        status: responseStatus,
-        headers: responseHeaders,
-        isStream,
-        bytes,
-        payloadBytes: bytes.byteLength,
-        streamError,
-      })
-    })())
+    // Register the first finalization immediately, while frames may still
+    // arrive during the drain. Body ownership seals only in the builder.
+    this.terminalWrite = drainResponse(forCapture, responseStatus, responseHeaders, isStream)
+      .then(this.buildTerminalRecord.bind(this))
+      .then(persistTerminalRecord)
+    waitUntil(this.terminalWrite)
 
     return new Response(forClient, {
       status: response.status,
@@ -275,23 +339,43 @@ export class DumpAccumulator {
 
   // --- private: persist ---
 
-  private async write(response: ResponseSnapshot): Promise<void> {
+  private write(response: ResponseSnapshot): Promise<void> {
+    this.terminalWrite ??= this.buildTerminalRecord(response).then(persistTerminalRecord)
+    return this.terminalWrite
+  }
+
+  private async buildTerminalRecord(response: ResponseSnapshot): Promise<TerminalRecord | null> {
     // Use the record id allocated at ctx construction so the
     // `X-Dump-Record-Id` header the client already received matches the row
     // this write persists.
     const completedAt = Date.now()
     const recordId = this.recordId
+    const events = this.events
+    const preparedRequestBody = this.preparedRequestBody
+    const collector = this.upstreamExchangeCollector
+    const ownsCollector = this.ownsUpstreamCollector
+    // Transfer references without mutating arrays or byte views the next
+    // stage still needs. Old observation handles may retain the collector.
+    this.events = null
+    this.preparedRequestBody = null
+    this.upstreamExchangeCollector = null
+    this.upstreamObservation = null
+    this.ownsUpstreamCollector = false
     let upstreamExchanges: UpstreamExchanges | null = null
-    if (this.upstreamExchangeCollector !== null) {
-      try { upstreamExchanges = this.upstreamExchangeCollector.finish(completedAt) }
-      catch { /* optional capture cannot fail the canonical dump */ }
+    if (collector !== null) {
+      try { upstreamExchanges = ownsCollector ? collector.takeSnapshot(completedAt) : collector.finish(completedAt) }
+      catch {
+        // Only the internally created collector belongs to this terminal
+        // writer. Borrowed collectors retain ordinary finish/retry ownership.
+        if (ownsCollector) collector.abandon()
+      }
     }
 
     // Prefer the accumulator's frame log so dumps reflect the gateway's
     // frame sequence regardless of negotiated wire shape; passthrough
     // endpoints with no frames fall back to captured bytes.
-    const responseBody: StoredDumpResponseBody = this.events.length > 0
-      ? { type: "stream", events: this.events }
+    const responseBody: StoredDumpResponseBody = events !== null && events.length > 0
+      ? { type: "stream", events }
       : response.bytes.byteLength > 0 || response.streamError !== null
         ? response.isStream
           ? { type: "stream", events: [] }
@@ -322,6 +406,7 @@ export class DumpAccumulator {
 
     // Commit the row before publishing so subscribers fetching detail off the meta frame find it.
     try {
+      if (preparedRequestBody === null) throw new Error("Dump request body already transferred")
       const record: DumpWriteRecord = {
         meta,
         upstreamExchanges,
@@ -329,7 +414,7 @@ export class DumpAccumulator {
           method: this.requestSnapshot.method,
           path: this.requestSnapshot.path,
           headers: this.requestSnapshot.headers.map(([k, v]) => [k, v]),
-          body: await this.preparedRequestBody,
+          body: await preparedRequestBody,
         },
         response: {
           status: response.status,
@@ -337,10 +422,10 @@ export class DumpAccumulator {
           body: responseBody,
         },
       }
-      await getDumpStore().put(this.apiKey.id, record)
-      await getDumpBroker().publish(this.apiKey.id, meta)
+      return { keyId: this.apiKey.id, record }
     } catch (err) {
-      console.error(`[dump] write failed for key=${this.apiKey.id} record=${recordId}`, oneLineError(err))
+      writeFailureFor(this.apiKey.id, recordId)(err)
+      return null
     }
   }
 }

@@ -186,7 +186,7 @@ test("Bun fallback still receives encoded byte arrays for JSON strings and undef
   })
 })
 
-test.each(["stream", "bun"] as const)("%s branch preserves serialization errors before uploads and retires staged files", async branch => {
+test.each(["stream", "bun"] as const)("%s branch preserves serialization errors before any file staging", async branch => {
   await withBranch(branch, async () => {
     const thrown = new Error("toJSON failed")
     const circular: unknown[] = []
@@ -203,7 +203,7 @@ test.each(["stream", "bun"] as const)("%s branch preserves serialization errors 
       expect(files.size).toBe(before)
       expect(raw.query("SELECT id FROM dump_records WHERE id = ?").get(input.meta.id)).toBeNull()
       const states = raw.query<{ state: string }, [string]>("SELECT state FROM spilled_files WHERE json_extract(owner_key, '$[1]') = ?").all(input.meta.id)
-      expect(states.map(item => item.state)).toEqual(["retired", "retired"])
+      expect(states).toEqual([])
     }
   })
 })

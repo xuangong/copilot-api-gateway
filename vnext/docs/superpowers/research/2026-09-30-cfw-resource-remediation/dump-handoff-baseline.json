@@ -1,0 +1,388 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-09-30",
+  "scope": "Actual local workerd baseline ownership through acknowledged local D1/R2/broker stages",
+  "variant": "before dump handoff repair; includes preparation ownership repair A",
+  "sourceManifestSha256": "916be583043ecb348d7a5c21afdeb624bc7987c1bf038abee90d3fd8b1e4fa69",
+  "measurement": "Snapshot-perturbed; no explicit collectGarbage; acknowledgement gates follow successful real delegates",
+  "scenarios": {
+    "owned": {
+      "sourceHead": "a1fcdb450476d06c2ade4c748f647766458ee6ee",
+      "analysisSha256": "1f0227920939dc14b07cfede35d4e8f4fac63aee2f8a1e9a2daa8e6b213f56e3",
+      "bundleSha256": "9cc19679868366ee20c91601138c7b5cc1e4d2838dffed0c1e7ccfb8a65fbac3",
+      "measurementExitCode": 0,
+      "originalAnalysisExitCode": 2,
+      "correctedAnalysisExitCode": 0,
+      "diagnosticValid": true,
+      "anchors": {
+        "event": {
+          "heapId": 770833,
+          "stage": "capture-ready"
+        },
+        "accumulator": {
+          "heapId": 806689,
+          "stage": "capture-ready"
+        },
+        "preparedPromise": {
+          "heapId": 806695,
+          "stage": "capture-ready"
+        },
+        "preparedResult": {
+          "heapId": 806709,
+          "stage": "capture-ready"
+        },
+        "preparedGzipView": {
+          "heapId": 770821,
+          "stage": "capture-ready"
+        },
+        "nativeEnvelope": {
+          "heapId": 1003739,
+          "stage": "stage-ack-held"
+        }
+      },
+      "stages": [
+        {
+          "stage": "cold",
+          "snapshotSha256": "27ed4e377e8b2d9718f5054e090d39cacd28a8c9e5762837ada9a4e9d76f06f1",
+          "positiveControls": 0,
+          "negativeControls": 0,
+          "originalsPresent": {}
+        },
+        {
+          "stage": "capture-ready",
+          "snapshotSha256": "aff5d18b54b940fb95aa541394b62ba725e131860c0da34c187a206b79bdb61c",
+          "positiveControls": 1,
+          "negativeControls": 0,
+          "originalsPresent": {
+            "event": true,
+            "accumulator": true,
+            "preparedPromise": true,
+            "preparedResult": true,
+            "preparedGzipView": true
+          }
+        },
+        {
+          "stage": "stage-ack-held",
+          "snapshotSha256": "d8d86ff18abc0259bdae01045a75df86ccd96cb506639d043621bfecf7f784b8",
+          "positiveControls": 1,
+          "negativeControls": 0,
+          "originalsPresent": {
+            "event": true,
+            "accumulator": true,
+            "preparedPromise": true,
+            "preparedResult": true,
+            "preparedGzipView": true,
+            "nativeEnvelope": true
+          }
+        },
+        {
+          "stage": "r2-acks-held",
+          "snapshotSha256": "29d7a70335f2330c9e46b53decf18a2b03f11af61d10f785a490cf454472e0cb",
+          "positiveControls": 1,
+          "negativeControls": 0,
+          "originalsPresent": {
+            "event": true,
+            "accumulator": true,
+            "preparedPromise": true,
+            "preparedResult": true,
+            "preparedGzipView": true,
+            "nativeEnvelope": true
+          }
+        },
+        {
+          "stage": "row-ack-held",
+          "snapshotSha256": "9ee3bd841a54ae38672314ce9902d50ab73c23bd4cafd20157d91015f0075032",
+          "positiveControls": 1,
+          "negativeControls": 0,
+          "originalsPresent": {
+            "event": true,
+            "accumulator": true,
+            "preparedPromise": true,
+            "preparedResult": true,
+            "preparedGzipView": true,
+            "nativeEnvelope": true
+          }
+        },
+        {
+          "stage": "broker-ack-held",
+          "snapshotSha256": "f3245d29b8b1cbaab6f7714a7a80aa2b28398182263cd6497fea393be7534c07",
+          "positiveControls": 1,
+          "negativeControls": 0,
+          "originalsPresent": {
+            "event": true,
+            "accumulator": true,
+            "preparedPromise": true,
+            "preparedResult": true,
+            "preparedGzipView": true,
+            "nativeEnvelope": true
+          }
+        },
+        {
+          "stage": "settled-retained-handles",
+          "snapshotSha256": "efbeda0a597f2f4e2ea88a458f98f1958cd2f57bd76adadcdadca847e5b9f0d1",
+          "positiveControls": 1,
+          "negativeControls": 0,
+          "originalsPresent": {
+            "event": true,
+            "accumulator": true,
+            "preparedPromise": true,
+            "preparedResult": true,
+            "preparedGzipView": true,
+            "nativeEnvelope": true
+          }
+        },
+        {
+          "stage": "forgotten",
+          "snapshotSha256": "cd72c63452b0d0ed996de6e5e919080636441b5f423045dd7c41e781a5825083",
+          "positiveControls": 0,
+          "negativeControls": 0,
+          "originalsPresent": {
+            "event": false,
+            "accumulator": false,
+            "preparedPromise": false,
+            "preparedResult": false,
+            "preparedGzipView": false,
+            "nativeEnvelope": false
+          }
+        }
+      ],
+      "postStorageOriginalsRetained": {
+        "row-ack-held": {
+          "event": true,
+          "preparedPromise": true,
+          "preparedResult": true,
+          "preparedGzipView": true,
+          "nativeEnvelope": true
+        },
+        "broker-ack-held": {
+          "event": true,
+          "preparedPromise": true,
+          "preparedResult": true,
+          "preparedGzipView": true,
+          "nativeEnvelope": true
+        },
+        "settled-retained-handles": {
+          "event": true,
+          "preparedPromise": true,
+          "preparedResult": true,
+          "preparedGzipView": true,
+          "nativeEnvelope": true
+        }
+      },
+      "readback": {
+        "requestBytes": 65564,
+        "canonicalEvents": 1,
+        "upstreamAttempts": 1,
+        "publicationCount": 1,
+        "storage": {
+          "rows": 1,
+          "staged": 0,
+          "owned": 3,
+          "retired": 0
+        }
+      },
+      "outboundAttempts": 0
+    },
+    "borrowed": {
+      "sourceHead": "a1fcdb450476d06c2ade4c748f647766458ee6ee",
+      "analysisSha256": "c30ad5c300fc377befb4f1fe9a9fc91ae415fdf885bbbf497458cfd33c63a738",
+      "bundleSha256": "9cc19679868366ee20c91601138c7b5cc1e4d2838dffed0c1e7ccfb8a65fbac3",
+      "measurementExitCode": 0,
+      "originalAnalysisExitCode": 2,
+      "correctedAnalysisExitCode": 0,
+      "diagnosticValid": true,
+      "anchors": {
+        "event": {
+          "heapId": 3761827,
+          "stage": "capture-ready"
+        },
+        "accumulator": {
+          "heapId": 3761857,
+          "stage": "capture-ready"
+        },
+        "preparedPromise": {
+          "heapId": 3949033,
+          "stage": "capture-ready"
+        },
+        "preparedResult": {
+          "heapId": 3943637,
+          "stage": "capture-ready"
+        },
+        "preparedGzipView": {
+          "heapId": 3940191,
+          "stage": "capture-ready"
+        },
+        "nativeEnvelope": {
+          "heapId": 4335723,
+          "stage": "stage-ack-held"
+        }
+      },
+      "stages": [
+        {
+          "stage": "cold",
+          "snapshotSha256": "a3aa5c1bfd7f82926b6bc39adba39e93a76192bb43d92d3c3caf369f7b37d36f",
+          "positiveControls": 0,
+          "negativeControls": 0,
+          "originalsPresent": {}
+        },
+        {
+          "stage": "capture-ready",
+          "snapshotSha256": "861b33bb0ce7521af321031990bde0f892f9da10a22028100fbfd4dae950cb08",
+          "positiveControls": 1,
+          "negativeControls": 0,
+          "originalsPresent": {
+            "event": true,
+            "accumulator": true,
+            "preparedPromise": true,
+            "preparedResult": true,
+            "preparedGzipView": true
+          }
+        },
+        {
+          "stage": "stage-ack-held",
+          "snapshotSha256": "cd1d318a30496a6ea51d2f40645516ae0a8a95b4408157d219be3c09b279e511",
+          "positiveControls": 1,
+          "negativeControls": 0,
+          "originalsPresent": {
+            "event": true,
+            "accumulator": true,
+            "preparedPromise": true,
+            "preparedResult": true,
+            "preparedGzipView": true,
+            "nativeEnvelope": true
+          }
+        },
+        {
+          "stage": "r2-acks-held",
+          "snapshotSha256": "006838f1f432943da1feac878f3469da778bfcfae4f0547d48e420b572a8b617",
+          "positiveControls": 1,
+          "negativeControls": 0,
+          "originalsPresent": {
+            "event": true,
+            "accumulator": true,
+            "preparedPromise": true,
+            "preparedResult": true,
+            "preparedGzipView": true,
+            "nativeEnvelope": true
+          }
+        },
+        {
+          "stage": "row-ack-held",
+          "snapshotSha256": "564c34159a38ae0fc765466e65016d3ff304ee6ece1b0bf5a5665e8ccebbd5fa",
+          "positiveControls": 1,
+          "negativeControls": 0,
+          "originalsPresent": {
+            "event": true,
+            "accumulator": true,
+            "preparedPromise": true,
+            "preparedResult": true,
+            "preparedGzipView": true,
+            "nativeEnvelope": true
+          }
+        },
+        {
+          "stage": "broker-ack-held",
+          "snapshotSha256": "7c510bfd26f1a93a8744beebd947b25e0770bd4713ca16d83567c98c7b7f120a",
+          "positiveControls": 1,
+          "negativeControls": 0,
+          "originalsPresent": {
+            "event": true,
+            "accumulator": true,
+            "preparedPromise": true,
+            "preparedResult": true,
+            "preparedGzipView": true,
+            "nativeEnvelope": true
+          }
+        },
+        {
+          "stage": "settled-retained-handles",
+          "snapshotSha256": "36baa9ce969a911a58825342e56d51acebfbad4787f2c2a7405417f45c1bbca9",
+          "positiveControls": 1,
+          "negativeControls": 0,
+          "originalsPresent": {
+            "event": true,
+            "accumulator": true,
+            "preparedPromise": true,
+            "preparedResult": true,
+            "preparedGzipView": true,
+            "nativeEnvelope": true
+          }
+        },
+        {
+          "stage": "forgotten",
+          "snapshotSha256": "701e310a94f2baf8d609e2f9b3eefc2323863065b4c79ee9714eef121d073a83",
+          "positiveControls": 0,
+          "negativeControls": 0,
+          "originalsPresent": {
+            "event": false,
+            "accumulator": false,
+            "preparedPromise": false,
+            "preparedResult": false,
+            "preparedGzipView": false,
+            "nativeEnvelope": false
+          }
+        }
+      ],
+      "postStorageOriginalsRetained": {
+        "row-ack-held": {
+          "event": true,
+          "preparedPromise": true,
+          "preparedResult": true,
+          "preparedGzipView": true,
+          "nativeEnvelope": true
+        },
+        "broker-ack-held": {
+          "event": true,
+          "preparedPromise": true,
+          "preparedResult": true,
+          "preparedGzipView": true,
+          "nativeEnvelope": true
+        },
+        "settled-retained-handles": {
+          "event": true,
+          "preparedPromise": true,
+          "preparedResult": true,
+          "preparedGzipView": true,
+          "nativeEnvelope": true
+        }
+      },
+      "readback": {
+        "requestBytes": 65564,
+        "canonicalEvents": 1,
+        "upstreamAttempts": 1,
+        "publicationCount": 1,
+        "storage": {
+          "rows": 1,
+          "staged": 0,
+          "owned": 3,
+          "retired": 0
+        }
+      },
+      "outboundAttempts": 0
+    }
+  },
+  "rootAudit": {
+    "passed": true,
+    "checks": 7141,
+    "snapshots": 16,
+    "rootPaths": 82,
+    "rootPathEdges": 627,
+    "frozenSources": 2310
+  },
+  "rootAuditSha256": "570fd2045682088172a90e84477f0830035bd5a7e888885858acc50844871969",
+  "rootAuditScriptSha256": "2ce5a52f894ef61a5432141e6fa31af1d59327db0d20e74c2169588f6146924b",
+  "analyzerCorrection": {
+    "originalExitCode": 2,
+    "cause": "Frozen V8 Array stores elements behind an internal elements backing store; the original graph query only read direct element edges. Original native envelope objects were present.",
+    "originalAnalyzerSha256": "20d762f580af4a324a3e31e2ef4623bdc06e717c476155e2d765a2acf2ed7d16",
+    "postprocessSha256": "8d6292c9823536f01eb2edbb29e482055e147025aa3fc2205f8ed1c5209d3b98",
+    "scope": "Offline adapter follows only the observed Array -> internal elements -> numeric internal path; original failed analysis and raw snapshots remain unchanged."
+  },
+  "boundaries": [
+    "Only object identity and strong retaining paths are established; no heap saved-byte, per-request peak, CPU, latency or cloud-resource improvement follows.",
+    "Storage content equality and timestamps are verified by the hashed fixture; the independent audit checks the raw identity paths, sources, receipts and scalar readbacks.",
+    "Borrowed capture has an intentional external owner; the owned production case motivates snapshot transfer.",
+    "Original baseline staging precedes canonical preparation, and the R2 barrier holds acknowledgements after real local puts complete.",
+    "Cloud joint resource qualification and C candidate comparison remain pending."
+  ]
+}

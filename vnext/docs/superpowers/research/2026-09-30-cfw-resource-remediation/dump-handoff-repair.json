@@ -1,0 +1,811 @@
+{
+  "schema": 1,
+  "date": "2026-09-30",
+  "status": "LOCAL_OWNERSHIP_AND_SEMANTICS_QUALIFIED_CLOUD_RESOURCES_PENDING",
+  "changes": [
+    "Transfer terminal events and prepared request ownership once, preserving terminal idempotence, HTTP drain frames and error behavior.",
+    "Transfer an owned immutable upstream snapshot without clearing caller-owned borrowed snapshots.",
+    "Prepare raw data and compressed bodies before persistence staging, then release upload packet slots after every started write settles."
+  ],
+  "source": {
+    "parentCommit": "6acf49c924f933db31b022f4b3bc590887ac31e7",
+    "greenManifestSha256": "347606ac74a3e912a111c68a15e8c95be3f7ba69751733f60bc36adf06dbbedc",
+    "baselineManifestSha256": "916be583043ecb348d7a5c21afdeb624bc7987c1bf038abee90d3fd8b1e4fa69",
+    "changedFiles": {
+      "src/shared/dump/accumulator.ts": "5c7ef745f7019fcce072ebc68d1372ff7091952016bd35d17e1f38a184ea6167",
+      "src/shared/dump/upstream-attempts.ts": "b8142d879aa14a44a48ec085c895c68fe105979d7589a9e59c60bf0e5953197c",
+      "src/repo/dump-store.ts": "e976aebca955aa42f61f854caa840e159e365096093deb662dae5a81b0419285",
+      "tests/dump-terminal-handoff.test.ts": "aaf00e29236f89c540f449d21f92c4cb4a2127d777a798e588baf4216c367bcb",
+      "tests/upstream-snapshot-transfer.test.ts": "b66c0b6b973b8fcb195c7130bef0d252afaa06d39f12a1ea0aab1fafef5ebb16",
+      "tests/dump-persistence-handoff.test.ts": "a7af9fb1ce8423b0f60d017dd11aeeb5ad61c8951f2a891dc4a5cc2e04093a67",
+      "tests/dump-prepared-uploads.test.ts": "fa2ef0483710ac6918482828f8fd493d5bb8502d1b6ad5932e0738b00f7c909f",
+      "tests/dump-json-compression.test.ts": "cec0ef56b9b189b8f8f450827270bbdef74bf423c9127a06ff251f39b59e700b"
+    }
+  },
+  "focused": {
+    "testsPassed": 288,
+    "testsFailed": 0,
+    "assertions": 50533,
+    "files": 25,
+    "evidence": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-09-30-cfw-p0-resource-rollback-fixes/L/dump-handoff-product/green-02/receipt.json"
+  },
+  "static": {
+    "workspaceTypecheck": "passed",
+    "changedFileLint": "passed",
+    "evidence": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-09-30-cfw-p0-resource-rollback-fixes/L/dump-handoff-product/static-01"
+  },
+  "fullCi": {
+    "testsPassed": 5287,
+    "testsSkipped": 2,
+    "testsFailed": 0,
+    "assertions": 227951,
+    "exitCode": 0,
+    "sourceFilesStable": 2315,
+    "otherStages": "purity, typecheck, lint, UI build and Worker deploy dry-run passed",
+    "freeze": {
+      "path": "/Users/zhangxian/.local/share/copilot-gateway-backups/cfw-p0-20260930/dump-handoff-ci-02-freeze.json",
+      "sha256": "52b3f7e84ff66aeb644bcdfccef1fb8e82817d3317f78302dd6713db4b950ec7"
+    },
+    "command": {
+      "path": "/Users/zhangxian/.local/share/copilot-gateway-backups/cfw-p0-20260930/dump-handoff-ci-02-ci-command.json",
+      "sha256": "8191bd46ec26a52da5c7d7b1498ae005e63bd7d35eb3e39f54d133f6dcd397f9"
+    },
+    "logSha256": "2b9c6af88f1031f5b7c2a41e9d0f63c0a9efae96736a29bdd6157262489dd6af",
+    "gaps": [
+      "Same-lock dependencies reused; clean install not verified.",
+      "Ignored Dashboard dist was prebuilt before ci:local; cold CI needs this preparation."
+    ]
+  },
+  "preservedFailures": [
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-09-30-cfw-p0-resource-rollback-fixes/L/dump-handoff-product/green-01",
+      "reason": "120-second timeout in a new test: invoking the async matcher before rejecting the pending producer prevented the rejection. Product source unchanged by test fix."
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-09-30-cfw-p0-resource-rollback-fixes/L/dump-handoff-product/assertion-order-red-01",
+      "reason": "Independent eight-second timeout reproduced the assertion-order deadlock."
+    },
+    {
+      "path": "/Users/zhangxian/.local/share/copilot-gateway-backups/cfw-p0-20260930/dump-handoff-ci-command.json",
+      "reason": "First frozen CI omitted ignored Dashboard generated assets. 4759 passed, 2 skipped, 62 failed, 58 errors; no product or CI script change made to hide this preparation failure."
+    }
+  ],
+  "ownership": {
+    "pairPath": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-09-30-cfw-p0-resource-rollback-fixes/L/dump-handoff-probe-v2/runs/pair-01",
+    "comparison": {
+      "schema": 1,
+      "probeVersion": "dump-handoff-probe-v2",
+      "pairId": "pair-01",
+      "pairSha256": "2bfbf84a1e4a6e5c4da38bd3ae036e013353238d621555d1a96b5607c20aee78",
+      "sourceDifference": [
+        {
+          "file": "vnext/docs/superpowers/plans/2026-09-30-cfw-p0-resource-rollback-fixes.md",
+          "kind": "documentation",
+          "baselineSha256": "7fd019e7c0a8da052b06f7ad5e5bf30b4a69402c1fd48d9625a96e38b1d6d01b",
+          "greenSha256": "25cb1c250d5f5c85d1eac718b1c689b3ce2681b68de3f310077f4a07b4a500fc"
+        },
+        {
+          "file": "vnext/docs/superpowers/research/2026-09-30-cfw-resource-remediation/README.md",
+          "kind": "documentation",
+          "baselineSha256": "f739477f20d11b3eb757f2b16eebbfd4f9ad33ff551f549a50db1c85fbaaedba",
+          "greenSha256": "72eaafc1baf3ca2c02fad648a5fbfe3a0cd93a41d4a04b9230b11e7a9e4fd9e4"
+        },
+        {
+          "file": "vnext/docs/superpowers/research/2026-09-30-cfw-resource-remediation/capture-driver-qualification.json",
+          "kind": "documentation",
+          "baselineSha256": null,
+          "greenSha256": "f1fed5a63b0a477ac3a17b3cafcedc755fd9188f0ade1a54399d993b402489f1"
+        },
+        {
+          "file": "vnext/docs/superpowers/research/2026-09-30-cfw-resource-remediation/dump-handoff-baseline.json",
+          "kind": "documentation",
+          "baselineSha256": null,
+          "greenSha256": "8194683f0e3832366fc413baa78a862fbf1f7e1b2019702bbab5018a775b9aba"
+        },
+        {
+          "file": "vnext/packages/gateway/src/repo/dump-store.ts",
+          "kind": "product",
+          "baselineSha256": "c8275bb33265a029235bfb6abf89b40881f6030744a2fc9543fc05fbdf60f464",
+          "greenSha256": "e976aebca955aa42f61f854caa840e159e365096093deb662dae5a81b0419285"
+        },
+        {
+          "file": "vnext/packages/gateway/src/shared/dump/accumulator.ts",
+          "kind": "product",
+          "baselineSha256": "3b1d4689fbae15d405ebdf8e4b84e4d86070dd9f9f12a8a41b03847c80671616",
+          "greenSha256": "5c7ef745f7019fcce072ebc68d1372ff7091952016bd35d17e1f38a184ea6167"
+        },
+        {
+          "file": "vnext/packages/gateway/src/shared/dump/upstream-attempts.ts",
+          "kind": "product",
+          "baselineSha256": "bbf11089808a8152d1850a75054dbc8d96bbccd83751acc3ae6367e872d0ebc6",
+          "greenSha256": "b8142d879aa14a44a48ec085c895c68fe105979d7589a9e59c60bf0e5953197c"
+        },
+        {
+          "file": "vnext/packages/gateway/tests/dump-json-compression.test.ts",
+          "kind": "test",
+          "baselineSha256": "0299bd3415d0d21d3e7f30e3e8aba33545745e4b9bfc35983bec6765b8f7f2b7",
+          "greenSha256": "cec0ef56b9b189b8f8f450827270bbdef74bf423c9127a06ff251f39b59e700b"
+        },
+        {
+          "file": "vnext/packages/gateway/tests/dump-persistence-handoff.test.ts",
+          "kind": "test",
+          "baselineSha256": null,
+          "greenSha256": "a7af9fb1ce8423b0f60d017dd11aeeb5ad61c8951f2a891dc4a5cc2e04093a67"
+        },
+        {
+          "file": "vnext/packages/gateway/tests/dump-prepared-uploads.test.ts",
+          "kind": "test",
+          "baselineSha256": "6e5b9fd19a26ecd710c403577b21246f013b1b80f646ed3b6c195c7dbc2f4e47",
+          "greenSha256": "fa2ef0483710ac6918482828f8fd493d5bb8502d1b6ad5932e0738b00f7c909f"
+        },
+        {
+          "file": "vnext/packages/gateway/tests/dump-terminal-handoff.test.ts",
+          "kind": "test",
+          "baselineSha256": null,
+          "greenSha256": "aaf00e29236f89c540f449d21f92c4cb4a2127d777a798e588baf4216c367bcb"
+        },
+        {
+          "file": "vnext/packages/gateway/tests/upstream-snapshot-transfer.test.ts",
+          "kind": "test",
+          "baselineSha256": null,
+          "greenSha256": "b66c0b6b973b8fcb195c7130bef0d252afaa06d39f12a1ea0aab1fafef5ebb16"
+        }
+      ],
+      "results": [
+        {
+          "variant": "baseline",
+          "scenario": "owned",
+          "analysisSha256": "ddffe0c4e2c10b4ece0bac3dff06646df3c64d2855e643de66d9c0e55546b791",
+          "diagnosticValid": true,
+          "expectedHandoffObserved": true,
+          "bundleSha256": "8b9eb32275a3f643a5d8a54393f4cd9e7f79b4599582d3b2af2b85975a6dc36d",
+          "commandReceipts": {
+            "migration": {
+              "exitCode": 0,
+              "receiptSha256": "4527ff303b3710f8239c872ffca02b31ea93f6c9dd97fe55a757e62d6cbf7795",
+              "logSha256": "de0b5034a8abb95097a6844b5d2d91199969f1b1a08df8d598a79677e06e4024"
+            },
+            "typecheck": {
+              "exitCode": 0,
+              "receiptSha256": "16b863604ec131a2de1053c72b8113d48224b08e30945695dc4f96607d8b3185",
+              "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "runtimeStartSha256": "5ccad9c2371df9bc587f95bf73eef7c1300470039598b474f509cbcb5c8e9443",
+            "runtimeReceiptSha256": "f716d384b9a14a222e409f02941f5c8d3707b21686940d9433e65edb56ff9666"
+          },
+          "observations": [
+            {
+              "stage": "row-ack-held",
+              "role": "event",
+              "expected": "rooted",
+              "matches": true,
+              "present": true,
+              "rooted": true
+            },
+            {
+              "stage": "row-ack-held",
+              "role": "preparedPromise",
+              "expected": "rooted",
+              "matches": true,
+              "present": true,
+              "rooted": true
+            },
+            {
+              "stage": "row-ack-held",
+              "role": "preparedResult",
+              "expected": "rooted",
+              "matches": true,
+              "present": true,
+              "rooted": true
+            },
+            {
+              "stage": "row-ack-held",
+              "role": "preparedGzipView",
+              "expected": "rooted",
+              "matches": true,
+              "present": true,
+              "rooted": true
+            },
+            {
+              "stage": "row-ack-held",
+              "role": "nativeEnvelope",
+              "expected": "rooted",
+              "matches": true,
+              "present": true,
+              "rooted": true
+            },
+            {
+              "stage": "broker-ack-held",
+              "role": "event",
+              "expected": "rooted",
+              "matches": true,
+              "present": true,
+              "rooted": true
+            },
+            {
+              "stage": "broker-ack-held",
+              "role": "preparedPromise",
+              "expected": "rooted",
+              "matches": true,
+              "present": true,
+              "rooted": true
+            },
+            {
+              "stage": "broker-ack-held",
+              "role": "preparedResult",
+              "expected": "rooted",
+              "matches": true,
+              "present": true,
+              "rooted": true
+            },
+            {
+              "stage": "broker-ack-held",
+              "role": "preparedGzipView",
+              "expected": "rooted",
+              "matches": true,
+              "present": true,
+              "rooted": true
+            },
+            {
+              "stage": "broker-ack-held",
+              "role": "nativeEnvelope",
+              "expected": "rooted",
+              "matches": true,
+              "present": true,
+              "rooted": true
+            },
+            {
+              "stage": "settled-retained-handles",
+              "role": "event",
+              "expected": "rooted",
+              "matches": true,
+              "present": true,
+              "rooted": true
+            },
+            {
+              "stage": "settled-retained-handles",
+              "role": "preparedPromise",
+              "expected": "rooted",
+              "matches": true,
+              "present": true,
+              "rooted": true
+            },
+            {
+              "stage": "settled-retained-handles",
+              "role": "preparedResult",
+              "expected": "rooted",
+              "matches": true,
+              "present": true,
+              "rooted": true
+            },
+            {
+              "stage": "settled-retained-handles",
+              "role": "preparedGzipView",
+              "expected": "rooted",
+              "matches": true,
+              "present": true,
+              "rooted": true
+            },
+            {
+              "stage": "settled-retained-handles",
+              "role": "nativeEnvelope",
+              "expected": "rooted",
+              "matches": true,
+              "present": true,
+              "rooted": true
+            }
+          ]
+        },
+        {
+          "variant": "baseline",
+          "scenario": "borrowed",
+          "analysisSha256": "fc6b9bdac85f42b332d0d7fba8e72f870c48ff572543f78096ed602ea97a9dc8",
+          "diagnosticValid": true,
+          "expectedHandoffObserved": true,
+          "bundleSha256": "8b9eb32275a3f643a5d8a54393f4cd9e7f79b4599582d3b2af2b85975a6dc36d",
+          "commandReceipts": {
+            "migration": {
+              "exitCode": 0,
+              "receiptSha256": "4527ff303b3710f8239c872ffca02b31ea93f6c9dd97fe55a757e62d6cbf7795",
+              "logSha256": "de0b5034a8abb95097a6844b5d2d91199969f1b1a08df8d598a79677e06e4024"
+            },
+            "typecheck": {
+              "exitCode": 0,
+              "receiptSha256": "16b863604ec131a2de1053c72b8113d48224b08e30945695dc4f96607d8b3185",
+              "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "runtimeStartSha256": "5ccad9c2371df9bc587f95bf73eef7c1300470039598b474f509cbcb5c8e9443",
+            "runtimeReceiptSha256": "f716d384b9a14a222e409f02941f5c8d3707b21686940d9433e65edb56ff9666"
+          },
+          "observations": [
+            {
+              "stage": "row-ack-held",
+              "role": "event",
+              "expected": "rooted",
+              "matches": true,
+              "present": true,
+              "rooted": true
+            },
+            {
+              "stage": "row-ack-held",
+              "role": "preparedPromise",
+              "expected": "rooted",
+              "matches": true,
+              "present": true,
+              "rooted": true
+            },
+            {
+              "stage": "row-ack-held",
+              "role": "preparedResult",
+              "expected": "rooted",
+              "matches": true,
+              "present": true,
+              "rooted": true
+            },
+            {
+              "stage": "row-ack-held",
+              "role": "preparedGzipView",
+              "expected": "rooted",
+              "matches": true,
+              "present": true,
+              "rooted": true
+            },
+            {
+              "stage": "row-ack-held",
+              "role": "nativeEnvelope",
+              "expected": "rooted",
+              "matches": true,
+              "present": true,
+              "rooted": true
+            },
+            {
+              "stage": "broker-ack-held",
+              "role": "event",
+              "expected": "rooted",
+              "matches": true,
+              "present": true,
+              "rooted": true
+            },
+            {
+              "stage": "broker-ack-held",
+              "role": "preparedPromise",
+              "expected": "rooted",
+              "matches": true,
+              "present": true,
+              "rooted": true
+            },
+            {
+              "stage": "broker-ack-held",
+              "role": "preparedResult",
+              "expected": "rooted",
+              "matches": true,
+              "present": true,
+              "rooted": true
+            },
+            {
+              "stage": "broker-ack-held",
+              "role": "preparedGzipView",
+              "expected": "rooted",
+              "matches": true,
+              "present": true,
+              "rooted": true
+            },
+            {
+              "stage": "broker-ack-held",
+              "role": "nativeEnvelope",
+              "expected": "rooted",
+              "matches": true,
+              "present": true,
+              "rooted": true
+            },
+            {
+              "stage": "settled-retained-handles",
+              "role": "event",
+              "expected": "rooted",
+              "matches": true,
+              "present": true,
+              "rooted": true
+            },
+            {
+              "stage": "settled-retained-handles",
+              "role": "preparedPromise",
+              "expected": "rooted",
+              "matches": true,
+              "present": true,
+              "rooted": true
+            },
+            {
+              "stage": "settled-retained-handles",
+              "role": "preparedResult",
+              "expected": "rooted",
+              "matches": true,
+              "present": true,
+              "rooted": true
+            },
+            {
+              "stage": "settled-retained-handles",
+              "role": "preparedGzipView",
+              "expected": "rooted",
+              "matches": true,
+              "present": true,
+              "rooted": true
+            },
+            {
+              "stage": "settled-retained-handles",
+              "role": "nativeEnvelope",
+              "expected": "rooted",
+              "matches": true,
+              "present": true,
+              "rooted": true
+            }
+          ]
+        },
+        {
+          "variant": "green",
+          "scenario": "owned",
+          "analysisSha256": "e199594f777d9cbbc69fc20e457368ac8a229fd46e4b142a20a3f4148e086df0",
+          "diagnosticValid": true,
+          "expectedHandoffObserved": true,
+          "bundleSha256": "72af8dc8aa44154b00c1eb116a18926d8d13d4969db01094dc132e3134bd2ea7",
+          "commandReceipts": {
+            "migration": {
+              "exitCode": 0,
+              "receiptSha256": "713dabfc6a831c3b51ee304f5b4b518c35d816d39480922633123ed79186a75d",
+              "logSha256": "de0b5034a8abb95097a6844b5d2d91199969f1b1a08df8d598a79677e06e4024"
+            },
+            "typecheck": {
+              "exitCode": 0,
+              "receiptSha256": "7a0a97edd0b3f16972d22bb97aa2b653f9b71cb97c927439945dbbd476a2a312",
+              "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "runtimeStartSha256": "4a489af08f0f3f21a204c49ad7b05670570a772e6a1227ec3d396e13be890478",
+            "runtimeReceiptSha256": "6ac7aed6cdfddca12c17e9932e25098e866284db5e0832c3a166c93da3687995"
+          },
+          "observations": [
+            {
+              "stage": "row-ack-held",
+              "role": "event",
+              "expected": "absent",
+              "matches": true,
+              "present": false,
+              "rooted": false
+            },
+            {
+              "stage": "row-ack-held",
+              "role": "preparedPromise",
+              "expected": "absent",
+              "matches": true,
+              "present": false,
+              "rooted": false
+            },
+            {
+              "stage": "row-ack-held",
+              "role": "preparedResult",
+              "expected": "absent",
+              "matches": true,
+              "present": false,
+              "rooted": false
+            },
+            {
+              "stage": "row-ack-held",
+              "role": "preparedGzipView",
+              "expected": "absent",
+              "matches": true,
+              "present": false,
+              "rooted": false
+            },
+            {
+              "stage": "row-ack-held",
+              "role": "nativeEnvelope",
+              "expected": "absent",
+              "matches": true,
+              "present": false,
+              "rooted": false
+            },
+            {
+              "stage": "broker-ack-held",
+              "role": "event",
+              "expected": "absent",
+              "matches": true,
+              "present": false,
+              "rooted": false
+            },
+            {
+              "stage": "broker-ack-held",
+              "role": "preparedPromise",
+              "expected": "absent",
+              "matches": true,
+              "present": false,
+              "rooted": false
+            },
+            {
+              "stage": "broker-ack-held",
+              "role": "preparedResult",
+              "expected": "absent",
+              "matches": true,
+              "present": false,
+              "rooted": false
+            },
+            {
+              "stage": "broker-ack-held",
+              "role": "preparedGzipView",
+              "expected": "absent",
+              "matches": true,
+              "present": false,
+              "rooted": false
+            },
+            {
+              "stage": "broker-ack-held",
+              "role": "nativeEnvelope",
+              "expected": "absent",
+              "matches": true,
+              "present": false,
+              "rooted": false
+            },
+            {
+              "stage": "settled-retained-handles",
+              "role": "event",
+              "expected": "absent",
+              "matches": true,
+              "present": false,
+              "rooted": false
+            },
+            {
+              "stage": "settled-retained-handles",
+              "role": "preparedPromise",
+              "expected": "absent",
+              "matches": true,
+              "present": false,
+              "rooted": false
+            },
+            {
+              "stage": "settled-retained-handles",
+              "role": "preparedResult",
+              "expected": "absent",
+              "matches": true,
+              "present": false,
+              "rooted": false
+            },
+            {
+              "stage": "settled-retained-handles",
+              "role": "preparedGzipView",
+              "expected": "absent",
+              "matches": true,
+              "present": false,
+              "rooted": false
+            },
+            {
+              "stage": "settled-retained-handles",
+              "role": "nativeEnvelope",
+              "expected": "absent",
+              "matches": true,
+              "present": false,
+              "rooted": false
+            }
+          ]
+        },
+        {
+          "variant": "green",
+          "scenario": "borrowed",
+          "analysisSha256": "2296aca00ef1bac6edcbfaa43da35fd6354f88e67a3a3a8682fd3e45f8bdf9ae",
+          "diagnosticValid": true,
+          "expectedHandoffObserved": true,
+          "bundleSha256": "72af8dc8aa44154b00c1eb116a18926d8d13d4969db01094dc132e3134bd2ea7",
+          "commandReceipts": {
+            "migration": {
+              "exitCode": 0,
+              "receiptSha256": "713dabfc6a831c3b51ee304f5b4b518c35d816d39480922633123ed79186a75d",
+              "logSha256": "de0b5034a8abb95097a6844b5d2d91199969f1b1a08df8d598a79677e06e4024"
+            },
+            "typecheck": {
+              "exitCode": 0,
+              "receiptSha256": "7a0a97edd0b3f16972d22bb97aa2b653f9b71cb97c927439945dbbd476a2a312",
+              "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "runtimeStartSha256": "4a489af08f0f3f21a204c49ad7b05670570a772e6a1227ec3d396e13be890478",
+            "runtimeReceiptSha256": "6ac7aed6cdfddca12c17e9932e25098e866284db5e0832c3a166c93da3687995"
+          },
+          "observations": [
+            {
+              "stage": "row-ack-held",
+              "role": "event",
+              "expected": "absent",
+              "matches": true,
+              "present": false,
+              "rooted": false
+            },
+            {
+              "stage": "row-ack-held",
+              "role": "preparedPromise",
+              "expected": "absent",
+              "matches": true,
+              "present": false,
+              "rooted": false
+            },
+            {
+              "stage": "row-ack-held",
+              "role": "preparedResult",
+              "expected": "absent",
+              "matches": true,
+              "present": false,
+              "rooted": false
+            },
+            {
+              "stage": "row-ack-held",
+              "role": "preparedGzipView",
+              "expected": "absent",
+              "matches": true,
+              "present": false,
+              "rooted": false
+            },
+            {
+              "stage": "row-ack-held",
+              "role": "nativeEnvelope",
+              "expected": "rooted",
+              "matches": true,
+              "present": true,
+              "rooted": true
+            },
+            {
+              "stage": "broker-ack-held",
+              "role": "event",
+              "expected": "absent",
+              "matches": true,
+              "present": false,
+              "rooted": false
+            },
+            {
+              "stage": "broker-ack-held",
+              "role": "preparedPromise",
+              "expected": "absent",
+              "matches": true,
+              "present": false,
+              "rooted": false
+            },
+            {
+              "stage": "broker-ack-held",
+              "role": "preparedResult",
+              "expected": "absent",
+              "matches": true,
+              "present": false,
+              "rooted": false
+            },
+            {
+              "stage": "broker-ack-held",
+              "role": "preparedGzipView",
+              "expected": "absent",
+              "matches": true,
+              "present": false,
+              "rooted": false
+            },
+            {
+              "stage": "broker-ack-held",
+              "role": "nativeEnvelope",
+              "expected": "rooted",
+              "matches": true,
+              "present": true,
+              "rooted": true
+            },
+            {
+              "stage": "settled-retained-handles",
+              "role": "event",
+              "expected": "absent",
+              "matches": true,
+              "present": false,
+              "rooted": false
+            },
+            {
+              "stage": "settled-retained-handles",
+              "role": "preparedPromise",
+              "expected": "absent",
+              "matches": true,
+              "present": false,
+              "rooted": false
+            },
+            {
+              "stage": "settled-retained-handles",
+              "role": "preparedResult",
+              "expected": "absent",
+              "matches": true,
+              "present": false,
+              "rooted": false
+            },
+            {
+              "stage": "settled-retained-handles",
+              "role": "preparedGzipView",
+              "expected": "absent",
+              "matches": true,
+              "present": false,
+              "rooted": false
+            },
+            {
+              "stage": "settled-retained-handles",
+              "role": "nativeEnvelope",
+              "expected": "rooted",
+              "matches": true,
+              "present": true,
+              "rooted": true
+            }
+          ]
+        }
+      ],
+      "ownershipComparisonQualified": true,
+      "scope": "Original object identity within each uninterrupted local snapshot sequence; no cross-isolate numeric ID comparison.",
+      "limits": "No retained-byte savings, physical memory, CFW CPU/latency, or production release qualification."
+    },
+    "independentAudit": {
+      "schema": 1,
+      "passed": true,
+      "checks": 382066,
+      "snapshots": 36,
+      "rootPaths": 207,
+      "rootPathEdges": 1735,
+      "frozenSources": 4625,
+      "pairSha256": "2bfbf84a1e4a6e5c4da38bd3ae036e013353238d621555d1a96b5607c20aee78",
+      "comparisonSha256": "6943c2e5aa189c87e281af60db4c3189847c9748917d1f807108976570b19069",
+      "analysisSha256": {
+        "baseline/owned": "ddffe0c4e2c10b4ece0bac3dff06646df3c64d2855e643de66d9c0e55546b791",
+        "baseline/borrowed": "fc6b9bdac85f42b332d0d7fba8e72f870c48ff572543f78096ed602ea97a9dc8",
+        "green/owned": "e199594f777d9cbbc69fc20e457368ac8a229fd46e4b142a20a3f4148e086df0",
+        "green/borrowed": "2296aca00ef1bac6edcbfaa43da35fd6354f88e67a3a3a8682fd3e45f8bdf9ae"
+      },
+      "boundaries": [
+        "Independent raw heap/ID/path/control and command receipt audit; no runtime rerun.",
+        "Actual content equality is checked by the hashed runtime fixture, not reconstructed here.",
+        "Local snapshot-perturbed object lifetime only; no saved-byte or cloud CPU/memory/latency claim."
+      ]
+    },
+    "independentAuditCommand": {
+      "command": [
+        "/opt/homebrew/opt/python@3.14/bin/python3.14",
+        "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-09-30-cfw-p0-resource-rollback-fixes/task-1-dump-handoff-v2-root-audit.py"
+      ],
+      "startedAt": "2026-09-30T03:59:13.785436+00:00",
+      "finishedAt": "2026-09-30T03:59:21.044938+00:00",
+      "exitCode": 0,
+      "scriptSha256": "52598e76e278e1e23bd4d333580e9313463c1793d6e725eb723d1bfb5527191d",
+      "sourceStable": true,
+      "logSha256": "fcdc4561df88d592939ab4062e70deb9e0c4ad2dff1164f77946bf186f689eb4"
+    },
+    "realRuntime": "workerd with local D1Repo, FileDumpStore, R2, event broker and fresh synthetic bindings",
+    "retentionSeconds": 86400,
+    "readbackPerScenario": {
+      "rows": 1,
+      "ownedFiles": 3,
+      "publications": 1,
+      "outboundAttempts": 0
+    },
+    "observations": "Both baselines retain original event/prepared Promise/result/gzip view/native envelope at row, broker and settled-with-handles. Both GREEN scenarios release event/prepared Promise/result/gzip view at these stages; owned envelope is absent and borrowed envelope remains through the external collector. All tracked originals are absent after forget.",
+    "supplementalReceiptValidation": {
+      "tests": 13,
+      "passed": true,
+      "receipt": {
+        "command": [
+          "/opt/homebrew/opt/python@3.14/bin/python3.14",
+          "-B",
+          "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-09-30-cfw-p0-resource-rollback-fixes/task-1-dump-v2-receipt-status-tests.py"
+        ],
+        "startedAt": "2026-09-30T04:03:51.768575+00:00",
+        "finishedAt": "2026-09-30T04:03:52.044810+00:00",
+        "exitCode": 0,
+        "sourceStable": true,
+        "scriptSha256": "6d58be9e885ba1ceb4d48bcbd86c6a1f66cb169cf19e36d3e06cf89a79b9b392",
+        "logSha256": "c4ff7106f7450f3f2fc302fdd4ca8372ce4918e3dc7d39990721e65dd3f59987"
+      },
+      "characterizations": [
+        "Frozen analyzer accepts noninteger zero runtime exits; independent strict validation rejects them.",
+        "Frozen analyzer omits runtime finish-time validation; independent strict validation rejects missing/invalid/inverted/unzoned/noncovering times."
+      ],
+      "actualEvidence": "All four actual runtime/measurement intervals and integer-zero exits pass the supplemental strict checks. Frozen tools and original receipts remain unchanged."
+    }
+  },
+  "remainingGaps": [
+    "No new cloud CPU, shared-isolate memory or ordinary client latency acceptance result.",
+    "Last full ordinary 4000-request candidate remains resource-failing; no gate relaxed.",
+    "A bounded same-C cloud driver/storage canary is next; it cannot replace old/new ordinary paired resource measurement.",
+    "Qualified capture v2.2 is same-deployment only; the ordinary cross-version runner requires separately verified accounting adaptation.",
+    "Fault/cancellation/slow-reader coverage, one-hour mixed soak and catalog/affinity rollback compatibility remain open."
+  ],
+  "productionDeployment": "unchanged",
+  "push": "not performed"
+}

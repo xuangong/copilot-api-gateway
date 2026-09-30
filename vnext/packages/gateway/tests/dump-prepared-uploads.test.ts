@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, test } from "bun:test"
 import { Database } from "bun:sqlite"
-import { mkdtemp, rm } from "node:fs/promises"
+import { mkdtemp, readdir, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { BunSqliteDatabase } from "@vibe-llm/platform-bun/src/bun-sqlite-database.ts"
@@ -164,20 +164,74 @@ test("early optional rejection waits for both core writes and retires only the s
   expect(stored?.response.body).toEqual({ type: "bytes", body: Uint8Array.of(2) })
 })
 
-test("preparation failure starts no uploads and retires all staged keys", async () => {
+test.each(["request-bytes", "response-events", "request-headers", "response-headers", "metadata"] as const)("mandatory %s preparation failure creates no stages, files, or rows", async part => {
   const puts: string[] = []
   const files: FileProvider = {
     async put(key, body, options) { puts.push(key); await realFiles.put(key, body, options) },
     get: realFiles.get.bind(realFiles), delete: realFiles.delete.bind(realFiles),
   }
   const input = record(snapshot())
-  const events: unknown[] = []
-  events.push(events)
-  input.response.body = { type: "stream", events: events as never[] }
+  const fail = () => { throw new Error(`mandatory ${part} preparation failed`) }
+  if (part === "request-bytes") {
+    Object.defineProperty(input.request.body, "bytes", { get: fail })
+  } else if (part === "response-events") {
+    const event: Record<string, unknown> = {}
+    event.self = event
+    input.response.body = { type: "stream", events: [{ frame: { type: "event", event }, ts: 1 }] }
+  } else if (part === "metadata") {
+    Object.defineProperty(input.meta, "model", { get: fail, enumerable: true })
+  } else {
+    Object.defineProperty(part === "request-headers" ? input.request.headers : input.response.headers, "toJSON", { value: fail })
+  }
   await expect(new FileDumpStore(db, files).put(keyId, input)).rejects.toThrow()
   expect(puts).toEqual([])
   expect(rowCount()).toBe(0)
-  expect(states()).toEqual(["retired", "retired", "retired"])
+  expect(states()).toEqual([])
+  expect(await readdir(join(root, "files"))).toEqual([])
+})
+
+test.each(["req", "resp", "up"] as const)("synchronous %s put failure still waits for every started sibling", async failedSide => {
+  const entered = gate(), release = gate(), started: Side[] = []
+  const files: FileProvider = {
+    put(key, body, options) {
+      const side = sideOf(key)
+      started.push(side)
+      entered.resolve()
+      if (side === failedSide) throw new Error(`synchronous ${side} failure`)
+      return (async () => {
+        await release.promise
+        await realFiles.put(key, body, options)
+      })()
+    },
+    get: realFiles.get.bind(realFiles), delete: realFiles.delete.bind(realFiles),
+  }
+  const store = new FileDumpStore(db, files)
+  let settled = false
+  const writing = store.put(keyId, record(snapshot())).then(
+    () => { settled = true; return null }, error => { settled = true; return error as Error },
+  )
+  try {
+    await Promise.race([entered.promise, writing])
+    expect(started.toSorted()).toEqual(["req", "resp", "up"])
+    await Bun.sleep(0)
+    expect(settled).toBe(false)
+    expect(rowCount()).toBe(0)
+    expect(states()).toEqual(["staged", "staged", "staged"])
+  } finally { release.resolve(); await writing }
+  if (failedSide === "up") {
+    expect(await writing).toBeNull()
+    expect(states()).toEqual(["owned", "owned", "retired"])
+    expect(descriptor()).toBeNull()
+    const stored = await store.get(keyId, recordId)
+    expect(stored?.request.body).toEqual(Uint8Array.of(1))
+    expect(stored?.response.body).toEqual({ type: "bytes", body: Uint8Array.of(2) })
+    expect(await collectDumpFiles(db, realFiles, Date.now() + 1)).toBe(1)
+  } else {
+    expect((await writing)?.message).toBe(`synchronous ${failedSide} failure`)
+    expect(rowCount()).toBe(0)
+    expect(states()).toEqual(["retired", "retired", "retired"])
+    expect(await collectDumpFiles(db, realFiles, Date.now() + 1)).toBe(3)
+  }
 })
 
 test("optional stage fallback excludes its key from the upload batch", async () => {
