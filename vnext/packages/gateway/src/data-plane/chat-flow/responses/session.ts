@@ -187,7 +187,7 @@ export function createResponsesSession(options: {
         if (auth.userId !== identity.userId || auth.apiKeyId !== identity.apiKeyId || auth.authKind !== identity.authKind) throw invalidAuth()
         job.controller.signal.throwIfAborted()
         const apiKey = auth.apiKeyId ? await getDataPlaneRepo().apiKeys.getById(auth.apiKeyId) : null
-        const dump = apiKey ? openTransportDump({ method: "WS", path, headers }, apiKey, { bytes: new TextEncoder().encode(text), streamError: null }) : null
+        const dump = apiKey ? openTransportDump({ method: "WS", path, headers }, apiKey, { bytes: new TextEncoder().encode(text), streamError: null }, background) : null
         let sourceJson: string | undefined
         let compactTriggered = false
         const turn = startResponsesTurn({

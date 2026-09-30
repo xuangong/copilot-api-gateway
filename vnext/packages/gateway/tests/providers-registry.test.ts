@@ -10,6 +10,7 @@ import {
   createProviderFromUpstream,
   _clearModelsMemoForTest,
   refreshModelsCache,
+  readCachedModels,
 } from '../src/data-plane/providers/registry.ts'
 import type { Model, ModelsResponse } from '@vibe-llm/provider-copilot'
 import type { ModelEndpoints } from '@vibe-llm/protocols/common'
@@ -90,6 +91,47 @@ afterEach(async () => {
   __resetPlatformForTests()
   _clearModelsMemoForTest()
   for (const db of databases.splice(0)) db.close()
+})
+
+test('empty routing enumeration does not require background initialization', async () => {
+  __resetPlatformForTests()
+  initRuntimeLocation('bun')
+  initRepo(await stubRepo([]))
+  expect(await listProviderBindings()).toEqual([])
+})
+
+test('cold and fresh automatic catalog reads do not require background initialization', async () => {
+  __resetPlatformForTests()
+  initRuntimeLocation('bun')
+  initRepo(await stubRepo([customUpstream()]))
+  let calls = 0
+  globalThis.fetch = (async () => { calls++; return Response.json({ data: [stubModel('known')] }) }) as typeof fetch
+  expect((await listUpstreamModels({ strictCatalog: true })).data.map(model => model.id)).toEqual(['known'])
+  expect((await listUpstreamModels({ strictCatalog: true })).data.map(model => model.id)).toEqual(['known'])
+  expect(calls).toBe(1)
+})
+
+test('cache-only catalog miss does not require background initialization or discover', async () => {
+  __resetPlatformForTests()
+  initRuntimeLocation('bun')
+  initRepo(await stubRepo([customUpstream()]))
+  const stored = await getRepo().upstreams.getById('up_custom_a')
+  if (!stored) throw new Error('missing stored row')
+  globalThis.fetch = (async () => { throw new Error('cache-only must not discover') }) as typeof fetch
+  expect(await readCachedModels(stored)).toBeNull()
+})
+
+test('explicit and cached catalog reads preserve discovery outcomes without background initialization', async () => {
+  __resetPlatformForTests()
+  initRuntimeLocation('bun')
+  initRepo(await stubRepo([customUpstream()]))
+  const stored = await getRepo().upstreams.getById('up_custom_a')
+  if (!stored) throw new Error('missing stored row')
+  globalThis.fetch = (async () => Response.json({ data: [stubModel('known')] })) as typeof fetch
+  expect((await refreshModelsCache(stored))?.snapshot.models.data.map(model => model.id)).toEqual(['known'])
+  globalThis.fetch = (async () => new Response('discovery failed', { status: 400 })) as typeof fetch
+  await expect(refreshModelsCache(stored)).rejects.toThrow('upstream_error')
+  expect((await readCachedModels(stored))?.snapshot.models.data.map(model => model.id)).toEqual(['known'])
 })
 
 test('listProviderBindings expands stored Copilot upstream into per-model bindings', async () => {

@@ -5,6 +5,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { BunSqliteRepo } from "../../../apps/platform-bun/src/bun-sqlite-repo.ts"
 import { CatalogCoordinator } from "../src/data-plane/providers/catalog-coordinator.ts"
+import { getBackgroundExecutor, withBackground } from "@vibe-core/platform"
 import type { CatalogModels, CatalogObservation } from "../src/repo/catalogs.ts"
 
 const close: Array<() => void> = []
@@ -21,10 +22,11 @@ async function fixture() {
     config: { baseUrl: "https://old.invalid", apiKey: "fixture" }, state: {}, flagOverrides: {}, disabledPublicModelIds: [],
     proxyFallbackList: [{ id: "direct_fetch" }], createdAt: "same", updatedAt: "same" })
   const expected = present(await first.upstreams.getById("up"))
-  const request = { expected, mode: "automatic" as const, isVisible: (row: typeof expected) => row.ownerId === "owner" && row.enabled }
-  const background: Promise<void>[] = []
+  const background: Promise<unknown>[] = []
+  const request = { expected, mode: "automatic" as const, isVisible: (row: typeof expected) => row.ownerId === "owner" && row.enabled,
+    background: { waitUntil: (work: Promise<unknown>) => { background.push(work) } } }
   const make = (repo: BunSqliteRepo, discover: (o: CatalogObservation, s: AbortSignal) => Promise<CatalogModels>, budget = 1000) => new CatalogCoordinator({
-    catalogs: repo.catalogs, catalogRevision: 5, discover, background: p => { background.push(p) }, policy: { totalBudgetMs: budget, pollMs: 5 },
+    catalogs: repo.catalogs, catalogRevision: 5, discover, policy: { totalBudgetMs: budget, pollMs: 5 },
   })
   return { a, b, first, second, request, make, background }
 }
@@ -111,7 +113,7 @@ for (const overwrite of [false, true]) test(`explicit joined failure ${overwrite
     const value: unknown = Reflect.get(target, key)
     return typeof value === "function" ? value.bind(target) : value
   } })
-  const c = new CatalogCoordinator({ catalogs, catalogRevision: 5, discover: async () => models(), background: () => {}, policy: { pollMs: 5 } })
+  const c = new CatalogCoordinator({ catalogs, catalogRevision: 5, discover: async () => models(), policy: { pollMs: 5 } })
   const joined = c.read({ ...f.request, mode: "explicit" })
   await seen.promise
   await f.first.catalogs.recordFailure(a, "invalid_catalog")
@@ -156,7 +158,7 @@ test("L1 eviction does not permit a delayed old-incarnation observation to reins
     const value: unknown = Reflect.get(target, key)
     return typeof value === "function" ? value.bind(target) : value
   } })
-  const c = new CatalogCoordinator({ catalogs, catalogRevision: 5, discover: async () => models("new"), background: () => {} })
+  const c = new CatalogCoordinator({ catalogs, catalogRevision: 5, discover: async () => models("new") })
   const pending = c.read({ ...f.request, mode: "cache-only" })
   await read.promise
   await f.second.upstreams.delete("up")
@@ -196,7 +198,7 @@ test("stale background work detaches from the served request and never exceeds i
   let calls = 0
   const c = new CatalogCoordinator({ catalogs: f.first.catalogs, catalogRevision: 5,
     discover: async (_, signal) => { calls++; await held.promise; expect(signal.aborted).toBe(false); return models("new") },
-    background: p => { f.background.push(p) }, policy: { totalBudgetMs: 5000 } })
+    policy: { totalBudgetMs: 5000 } })
   const controller = new AbortController()
   for (let i = 0; i < 513; i++) {
     const id = `stale-${i}`
@@ -213,13 +215,47 @@ test("stale background work detaches from the served request and never exceeds i
   expect(calls).toBe(512)
 }, 15_000)
 
+test("overlapping stale reads schedule refreshes on their captured request executors", async () => {
+  const f = await fixture(), held = barrier()
+  const first = { pending: [] as Promise<unknown>[], waitUntil(work: Promise<unknown>) { this.pending.push(work) } }
+  const second = { pending: [] as Promise<unknown>[], waitUntil(work: Promise<unknown>) { this.pending.push(work) } }
+  await f.first.upstreams.save({ ...f.request.expected, id: "other" })
+  const other = present(await f.first.upstreams.getById("other"))
+  for (const row of [f.request.expected, other]) {
+    const observation = present(await f.first.catalogs.read(row.id, 5))
+    await f.first.catalogs.publish(present(await f.first.catalogs.tryAcquire(observation.identity)), models("old"))
+  }
+  f.a.exec("UPDATE model_catalogs SET refreshed_at_ms = 1, refresh_after_ms = 2")
+  const calls: string[] = []
+  const c = f.make(f.first, async observation => { calls.push(observation.upstream.id); await held.promise; return models("new") })
+  const requestA = withBackground(first, () => ({ ...f.request, background: getBackgroundExecutor() }))
+  const requestB = withBackground(second, () => ({ ...f.request, expected: other, background: getBackgroundExecutor() }))
+  try {
+    const served = await Promise.all([
+      withBackground(second, () => c.read(requestA)),
+      withBackground(first, () => c.read(requestB)),
+    ])
+    expect(served.map(result => result?.snapshot.models)).toEqual([models("old"), models("old")])
+    await withBackground(second, () => c.read(requestA))
+    expect(first.pending).toHaveLength(1)
+    expect(second.pending).toHaveLength(1)
+    expect(f.background).toHaveLength(0)
+  } finally {
+    held.release()
+    await Promise.all([...first.pending, ...second.pending, ...f.background])
+  }
+  expect(calls.sort()).toEqual(["other", "up"])
+  expect((await f.first.catalogs.read("up", 5))?.snapshot?.models).toEqual(models("new"))
+  expect((await f.first.catalogs.read("other", 5))?.snapshot?.models).toEqual(models("new"))
+})
+
 test("same-second versions and independently deployed revisions remain ordered", async () => {
   const f = await fixture()
   const c = f.make(f.first, async () => models("v5"))
   const first = present(await c.read(f.request))
   const second = present(await c.read({ ...f.request, mode: "explicit" }))
   expect(second.snapshot.publicationVersion).toBe(first.snapshot.publicationVersion + 1)
-  const other = new CatalogCoordinator({ catalogs: f.second.catalogs, catalogRevision: 6, discover: async () => models("v6"), background: () => {} })
+  const other = new CatalogCoordinator({ catalogs: f.second.catalogs, catalogRevision: 6, discover: async () => models("v6") })
   expect((await other.read(f.request))?.snapshot.models).toEqual(models("v6"))
   expect((await c.read(f.request))?.snapshot.models).toEqual(models("v5"))
 })
@@ -241,14 +277,15 @@ for (const scenario of ["cold", "cold-failing-discovery", "stale-background", "e
       const value: unknown = Reflect.get(target, key)
       return typeof value === "function" ? value.bind(target) : value
     } })
-    const background: Promise<void>[] = []
+    const background: Promise<unknown>[] = []
     const delayed = new CatalogCoordinator({ catalogs, catalogRevision: 5,
       discover: async () => {
         calls++
         if (scenario === "cold-failing-discovery") throw new Error("redundant fetch failed")
         return models("delayed")
-      }, background: p => { background.push(p) }, policy: { pollMs: 5 } })
-    const pending = delayed.read({ ...f.request, mode: scenario === "explicit" ? "explicit" : "automatic" })
+      }, policy: { pollMs: 5 } })
+    const pending = delayed.read({ ...f.request, mode: scenario === "explicit" ? "explicit" : "automatic",
+      background: { waitUntil: (work: Promise<unknown>) => { background.push(work) } } })
     await waiting.promise
     const winner = await f.make(f.first, async () => { calls++; return models("winner") }).read({ ...f.request, mode: "explicit" })
     expect(winner?.snapshot.publicationVersion).toBe(before + 1)

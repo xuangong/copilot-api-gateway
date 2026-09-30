@@ -21,6 +21,40 @@ test("waitUntil delegates to injected executor", () => {
   expect(seen).toEqual([p])
 })
 
+test("capturing an absent executor preserves its bootstrap error after later initialization", async () => {
+  const { captureBackgroundExecutor, withBackground } = await import("../src/background.ts")
+  expect(typeof captureBackgroundExecutor).toBe("function")
+  const captured = captureBackgroundExecutor()
+  const later = { pending: [] as Promise<unknown>[], waitUntil(work: Promise<unknown>) { this.pending.push(work) } }
+  initBackground(later)
+  const work = Promise.resolve()
+  expect(() => captured.waitUntil(work)).toThrow(/Background not initialized/)
+  withBackground(later, () => {
+    expect(() => captured.waitUntil(work)).toThrow(/Background not initialized/)
+  })
+  expect(later.pending).toEqual([])
+})
+
+test("captured global and scoped executors retain their receiver outside their originating scope", async () => {
+  const { captureBackgroundExecutor, withBackground } = await import("../src/background.ts")
+  expect(typeof captureBackgroundExecutor).toBe("function")
+  const global = { pending: [] as Promise<unknown>[], waitUntil(work: Promise<unknown>) { this.pending.push(work) } }
+  const scoped = { pending: [] as Promise<unknown>[], waitUntil(work: Promise<unknown>) { this.pending.push(work) } }
+  const consumer = { pending: [] as Promise<unknown>[], waitUntil(work: Promise<unknown>) { this.pending.push(work) } }
+  initBackground(global)
+  const globalCapture = captureBackgroundExecutor()
+  const scopedCapture = withBackground(scoped, captureBackgroundExecutor)
+  const a = Promise.resolve('global'), b = Promise.resolve('scoped')
+  initBackground(consumer)
+  withBackground(consumer, () => {
+    globalCapture.waitUntil(a)
+    scopedCapture.waitUntil(b)
+  })
+  expect(global.pending).toEqual([a])
+  expect(scoped.pending).toEqual([b])
+  expect(consumer.pending).toEqual([])
+})
+
 test("interleaved requests retain their own background executor across awaits", async () => {
   const { withBackground } = await import("../src/background.ts")
   const first: Promise<unknown>[] = []

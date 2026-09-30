@@ -5,8 +5,7 @@
 // cost.
 //
 // vNext adaptations vs reference (copilot-gateway/src/dump/accumulator.ts):
-//   - `BackgroundScheduler` parameter dropped; uses `waitUntil` from
-//     `@vibe-core/platform` directly (see spec14 §BackgroundScheduler).
+//   - The request's background executor is captured when the dump opens.
 //   - `DumpUpstreamRef` has no `color` — vNext upstreams row has no color.
 //   - `UpstreamRecord.provider` in vNext (not `.kind`) supplies the
 //     upstream's `UpstreamKind`.
@@ -14,7 +13,7 @@
 
 import type { Context } from "hono"
 import type { KitCanonicalCompletion } from "@vibe-core/chat-flow-kit"
-import { waitUntil } from "@vibe-core/platform"
+import { getBackgroundExecutor, type BackgroundExecutor } from "@vibe-core/platform"
 import type { ProtocolFrame } from "@vibe-core/result"
 import type { TelemetryModelIdentity } from "@vibe-llm/protocols/common"
 
@@ -168,6 +167,7 @@ export class DumpAccumulator {
     private readonly requestSnapshot: RequestSnapshot,
     requestBody: Uint8Array,
     private readonly startedAt: number,
+    private readonly background: BackgroundExecutor = getBackgroundExecutor(),
   ) {
     this.recordId = ulid(startedAt) as DumpRecordId
     this.preparedRequestBody = getDumpStore().prepareRequestBody(requestBody)
@@ -297,7 +297,7 @@ export class DumpAccumulator {
     if (typeof args[0] === "number") {
       if (this.terminalWrite !== null) return
       const [status, headers] = args as [number, ReadonlyArray<readonly [string, string]>]
-      waitUntil(this.write({
+      this.background.waitUntil(this.write({
         status,
         headers: ownHeaderPairs(headers),
         isStream: (this.events?.length ?? 0) > 0,
@@ -334,7 +334,7 @@ export class DumpAccumulator {
     this.terminalWrite = drainResponse(forCapture, responseStatus, responseHeaders, isStream)
       .then(this.buildTerminalRecord.bind(this))
       .then(persistTerminalRecord)
-    waitUntil(this.terminalWrite)
+    this.background.waitUntil(this.terminalWrite)
 
     return new Response(forClient, {
       status: response.status,
@@ -363,7 +363,7 @@ export class DumpAccumulator {
       return this.buildTerminalRecord({ status, headers, isStream, bytes, ...snapshot,
         streamError: snapshot.streamError ?? semanticError })
     }).then(persistTerminalRecord)
-    waitUntil(this.terminalWrite)
+    this.background.waitUntil(this.terminalWrite)
     let payloadBytes = 0
     let finished = false
     const complete = (streamError: string | null, cancelled = false): void => {
@@ -400,7 +400,7 @@ export class DumpAccumulator {
         // Source cleanup and already-started writes retain background ownership;
         // an unresolved semantic observer cannot hold the cancelled dump open.
         const cleanup = reader.cancel(reason).catch(() => {}).finally(() => reader.releaseLock())
-        waitUntil(cleanup)
+        this.background.waitUntil(cleanup)
         complete(null, true)
       },
     }, { highWaterMark: 0 }) : null
@@ -523,15 +523,18 @@ export const openDumpAccumulator = (
   method: string,
   apiKey: ApiKey,
   requestBody: RequestBody,
+  background?: BackgroundExecutor,
 ): DumpAccumulator | null => {
-  return openTransportDump({ method, path: c.req.path, headers: c.req.raw.headers }, apiKey, requestBody)
+  return openTransportDump({ method, path: c.req.path, headers: c.req.raw.headers }, apiKey, requestBody, background)
 }
 
 /** Plain metadata boundary shared by HTTP and per-message transports. */
 export function openTransportDump(
   request: { method: string; path: string; headers: Headers }, apiKey: ApiKey, requestBody: RequestBody,
+  background?: BackgroundExecutor,
 ): DumpAccumulator | null {
   if (apiKey.dumpRetentionSeconds === null) return null
+  const executor = background ?? getBackgroundExecutor()
   const requestSnapshot: RequestSnapshot = {
     method: request.method,
     path: request.path,
@@ -539,5 +542,5 @@ export function openTransportDump(
     bodyByteLength: requestBody.bytes.byteLength,
     streamError: requestBody.streamError,
   }
-  return new DumpAccumulator(apiKey, requestSnapshot, requestBody.bytes, Date.now())
+  return new DumpAccumulator(apiKey, requestSnapshot, requestBody.bytes, Date.now(), executor)
 }

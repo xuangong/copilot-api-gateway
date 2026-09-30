@@ -3,7 +3,7 @@ import { Database } from "bun:sqlite"
 import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { __resetPlatformForTests, initBackground, type FileProvider } from "@vibe-core/platform"
+import { __resetPlatformForTests, initBackground, withBackground, type FileProvider } from "@vibe-core/platform"
 import { BunSqliteDatabase } from "@vibe-llm/platform-bun/src/bun-sqlite-database.ts"
 import { BunSqliteRepo } from "@vibe-llm/platform-bun/src/bun-sqlite-repo.ts"
 import { FsFileProvider } from "@vibe-llm/platform-bun/src/fs-file-provider.ts"
@@ -11,7 +11,7 @@ import { initRepo } from "../src/repo/index.ts"
 import type { ApiKeyId, UpstreamId } from "../src/repo/branded-ids.ts"
 import type { ApiKey } from "../src/repo/types.ts"
 import { FileDumpStore } from "../src/repo/dump-store.ts"
-import { DumpAccumulator } from "../src/shared/dump/accumulator.ts"
+import { DumpAccumulator, openTransportDump } from "../src/shared/dump/accumulator.ts"
 import { dumpCodec } from "../src/shared/dump/codec.ts"
 import { initDumpBroker, initDumpStore, resetDumpRegistryForTests } from "../src/shared/dump/registry.ts"
 import type { DumpMetadata, PreparedDumpRequestBody } from "../src/shared/dump/types.ts"
@@ -101,6 +101,51 @@ function beginAttempt(acc: DumpAccumulator) {
       requestHeaders: undefined, body: { kind: "text", text: "captured request" }, startedAt: Date.now(),
     })
 }
+
+for (const mode of ["status", "tee", "canonical", "cancel"] as const) {
+  test(`${mode} dump finalization retains the executor captured at construction`, async () => {
+    const origin = { pending: [] as Promise<unknown>[], waitUntil(work: Promise<unknown>) { this.pending.push(work); background.push(work) } }
+    const consumer = { pending: [] as Promise<unknown>[], waitUntil(work: Promise<unknown>) { this.pending.push(work); background.push(work) } }
+    const acc = withBackground(origin, accumulator)
+    await withBackground(consumer, async () => {
+      if (mode === "status") acc.finalize(201, [])
+      else if (mode === "tee") await acc.finalize(new Response("answer", { status: 201 })).text()
+      else {
+        const response = acc.finalize(new Response("answer", { status: 201 }), {
+          settled: mode === "cancel" ? new Promise<void>(() => {}) : Promise.resolve(),
+          fallbackBody: "answer",
+        })
+        if (mode === "cancel") await response.body?.cancel()
+        else await response.text()
+      }
+    })
+    await Promise.all(background)
+    expect(origin.pending).toHaveLength(mode === "cancel" ? 2 : 1)
+    expect(consumer.pending).toHaveLength(0)
+    const stored = await store.get(keyId, acc.recordId)
+    expect(stored?.meta.status).toBe(201)
+    if (mode === "cancel") expect(stored?.meta.error?.kind).toBe("cancelled")
+    expect(raw.query("SELECT id FROM dump_records").all()).toHaveLength(1)
+  })
+}
+
+test("disabled transport dumps need neither a scheduler nor initialized storage", () => {
+  __resetPlatformForTests()
+  resetDumpRegistryForTests()
+  expect(openTransportDump({ method: "WS", path: "/v1/responses", headers: new Headers() },
+    { ...key, dumpRetentionSeconds: null }, { bytes: new Uint8Array(), streamError: null })).toBeNull()
+})
+
+test("zero retention transport dumps remain enabled with an explicit executor", async () => {
+  const origin = { pending: [] as Promise<unknown>[], waitUntil(work: Promise<unknown>) { this.pending.push(work); background.push(work) } }
+  const acc = openTransportDump({ method: "WS", path: "/v1/responses", headers: new Headers() },
+    { ...key, dumpRetentionSeconds: 0 }, { bytes: new Uint8Array(), streamError: null }, origin)
+  if (!acc) throw new Error("zero retention dump expected")
+  acc.finalize(201, [])
+  await Promise.all(background)
+  expect(origin.pending).toHaveLength(1)
+  expect((await store.get(keyId, acc.recordId))?.meta.method).toBe("WS")
+})
 
 test("terminal handoff seals frame capture but reads scalar metadata after the upstream lookup", async () => {
   const entered = gate(), release = gate()

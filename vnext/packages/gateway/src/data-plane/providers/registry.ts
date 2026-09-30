@@ -13,7 +13,7 @@ import { defaultsForUpstream, resolveEffectiveFlags } from '../flags/index.ts'
 import type { Repo, StoredUpstreamRecord, UpstreamRecord } from '../../repo/types.ts'
 import type { UserId } from '../../repo/branded-ids.ts'
 import { getDataPlaneRepo as getRepo, getRepo as getAuthoritativeRepo } from '../../repo/index.ts'
-import { __registerPlatformReset, getRuntimeLocation, waitUntil } from '@vibe-core/platform'
+import { __registerPlatformReset, captureBackgroundExecutor, getRuntimeLocation } from '@vibe-core/platform'
 import type { Model, ModelsResponse } from '@vibe-llm/provider-copilot'
 import { copilotModelEndpoints, copilotPublicModelId } from '@vibe-llm/provider-copilot'
 import type { LlmModelProvider, LlmProviderBinding, LlmProviderPlugin } from '@vibe-llm/provider-llm'
@@ -213,7 +213,7 @@ function coordinator(): CatalogCoordinator {
   let current = coordinators.get(repo)
   if (!current) {
     current = new CatalogCoordinator({
-      catalogs: repo.catalogs, catalogRevision: MODEL_CATALOG_REVISION, background: waitUntil,
+      catalogs: repo.catalogs, catalogRevision: MODEL_CATALOG_REVISION,
       discover: async (observation, signal) => {
         const factory = await authoritativeFetchers(observation)
         // Request-token fallback cannot be published as a stored account's catalog.
@@ -231,10 +231,10 @@ function coordinator(): CatalogCoordinator {
 }
 export interface CatalogReadOptions { signal?: AbortSignal; isVisible?: (row: StoredUpstreamRecord) => boolean }
 export function refreshModelsCache(upstream: StoredUpstreamRecord, options: CatalogReadOptions = {}): Promise<CatalogResult | null> {
-  return coordinator().read({ expected: upstream, mode: "explicit", signal: options.signal ?? getRequestSignal(), isVisible: options.isVisible ?? (() => true) })
+  return coordinator().read({ expected: upstream, mode: "explicit", background: captureBackgroundExecutor(), signal: options.signal ?? getRequestSignal(), isVisible: options.isVisible ?? (() => true) })
 }
 export function readCachedModels(upstream: StoredUpstreamRecord, options: CatalogReadOptions = {}): Promise<CatalogResult | null> {
-  return coordinator().read({ expected: upstream, mode: "cache-only", signal: options.signal ?? getRequestSignal(), isVisible: options.isVisible ?? (() => true) })
+  return coordinator().read({ expected: upstream, mode: "cache-only", background: captureBackgroundExecutor(), signal: options.signal ?? getRequestSignal(), isVisible: options.isVisible ?? (() => true) })
 }
 function validModels(models: ModelsResponse): boolean {
   return models != null && Array.isArray(models.data) && models.data.every(model => model != null && typeof model.id === "string" && model.id.length > 0)
@@ -287,6 +287,7 @@ export async function listRoutingBindings(
   scope: RoutingScope,
   opts: Omit<ListUpstreamModelsOptions, "ownerId" | "allOwners" | "dedupe"> = {},
 ): Promise<RoutingBindings> {
+  const background = captureBackgroundExecutor()
   const ownerId = scope.kind === "owner" ? scope.ownerId : undefined
   let upstreams: StoredUpstreamRecord[]
   try {
@@ -337,7 +338,7 @@ export async function listRoutingBindings(
     try {
       const requestOnly = upstream.provider === "copilot" && !upstream.config.githubToken ? opts.copilot : undefined
       const accepted = requestOnly ? null : await coordinator().read({
-        expected, mode: "automatic", signal: opts.signal ?? getRequestSignal(),
+        expected, mode: "automatic", background, signal: opts.signal ?? getRequestSignal(),
         isVisible: row => row.enabled && (scope.kind === "all-owners" || !row.ownerId || row.ownerId === ownerId),
       })
       if (!accepted && !requestOnly) continue

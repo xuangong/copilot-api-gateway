@@ -17,8 +17,21 @@ export function initBackground(b: BackgroundExecutor): void {
   _bg = b
 }
 
-export function waitUntil(p: Promise<unknown>): void {
+const missingBackground: BackgroundExecutor = Object.freeze({
+  waitUntil() { throw new Error("Background not initialized; call bootstrap*Platform() first") },
+})
+
+/** Reads may never schedule; preserve a missing capability without consulting a later scope. */
+export function captureBackgroundExecutor(): BackgroundExecutor {
+  return scopedBackground.getStore() ?? _bg ?? missingBackground
+}
+
+export function getBackgroundExecutor(): BackgroundExecutor {
   const executor = scopedBackground.getStore() ?? _bg
   if (!executor) throw new Error("Background not initialized; call bootstrap*Platform() first")
-  executor.waitUntil(p)
+  return executor
+}
+
+export function waitUntil(p: Promise<unknown>): void {
+  getBackgroundExecutor().waitUntil(p)
 }

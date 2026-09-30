@@ -1,5 +1,6 @@
 import type { UpstreamId } from "../../repo/branded-ids.ts"
 import type { ProxyRecord } from "@vibe-core/proxy-repo"
+import type { BackgroundExecutor } from "@vibe-core/platform"
 import type { StoredUpstreamRecord } from "../../repo/types.ts"
 import { validCatalogModels, type CatalogErrorCode, type CatalogIdentity, type CatalogLease, type CatalogModels, type CatalogObservation, type CatalogRepo, type CatalogSnapshot } from "../../repo/catalogs.ts"
 
@@ -11,6 +12,7 @@ export interface CatalogRequest {
   mode: "automatic" | "cache-only" | "explicit"
   signal?: AbortSignal
   isVisible: (row: StoredUpstreamRecord) => boolean
+  background: BackgroundExecutor
 }
 export interface CatalogResult {
   upstream: StoredUpstreamRecord
@@ -20,7 +22,6 @@ export interface CatalogResult {
 export interface CatalogCoordinatorDependencies {
   catalogs: CatalogRepo
   discover: (observation: CatalogObservation, signal: AbortSignal) => Promise<CatalogModels>
-  background: (work: Promise<void>) => void
   catalogRevision: number
   policy?: { totalBudgetMs?: number; leaseMs?: number; freshnessMs?: number; pollMs?: number }
 }
@@ -137,7 +138,7 @@ export class CatalogCoordinator {
     if (this.refreshing.has(key) || this.refreshing.size >= 512) return
     this.refreshing.add(key)
     const work = this.run({ ...request, signal: undefined }, true).then(() => {}, () => {}).finally(() => this.refreshing.delete(key))
-    try { this.dependencies.background(work) } catch { void work }
+    try { request.background.waitUntil(work) } catch { void work }
   }
   async read(request: CatalogRequest): Promise<CatalogResult | null> {
     if (request.signal?.aborted) throw new CatalogUnavailableError("aborted")
