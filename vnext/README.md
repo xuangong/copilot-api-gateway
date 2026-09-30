@@ -4,6 +4,8 @@
 
 子系统视角见 [架构设计](docs/superpowers/specs/2026-09-30-vnext-subsystem-architecture-design.md) 和 [2026-09-30 源码审查](docs/superpowers/research/2026-09-30-subsystem-architecture/README.md)。设计按职责、权威数据、状态生命周期和完成契约划分逻辑子系统,区分现有实现与后续调整;下面的目录图是包视角。
 
+横向论证见 [可维护性、稳定性、可扩展性与性能视角](docs/superpowers/specs/2026-09-30-vnext-quality-attribute-architecture.md),包含参考项目对照、架构取舍及应尽早重构的边界。
+
 ## 结构
 
 ```

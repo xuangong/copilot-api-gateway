@@ -4,6 +4,8 @@ Date: 2026-09-30. Reviewed source: local `vNext` at `52e7ad67e88e15122bff5008758
 
 The resulting [subsystem design](../../specs/2026-09-30-vnext-subsystem-architecture-design.md) defines responsibilities, ports, state ownership, resource budgets, completion milestones and compatibility requirements. Proposed interfaces and priorities are explicitly future work. The prior [request-boundary implementation](../2026-09-30-cfw-resource-remediation/request-boundaries-results.md) remains implemented; its unfinished performance comparison remains unfinished.
 
+The complementary [quality-attribute views](../../specs/2026-09-30-vnext-quality-attribute-architecture.md) use this evidence to argue maintainability, stability, extensibility and performance trade-offs, with pinned Floway source inspiration and early-refactor decisions. They do not reclassify proposals as implemented fixes or measured gains.
+
 ## Decision
 
 Retain the modular monolith and existing host/provider/protocol boundaries. The recent lazy source adapter, routing projection/materialization split and request-owned scheduler are sound improvements. The next useful work is to clarify authority, lifetime and completion contracts inside that structure.

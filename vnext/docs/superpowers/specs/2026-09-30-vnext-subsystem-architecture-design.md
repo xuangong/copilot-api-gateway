@@ -4,6 +4,8 @@ Date: 2026-09-30. Status: proposed subsystem contracts following source review; 
 
 Source baseline: local `vNext` at `52e7ad67e88e15122bff50087588f37b3e3216e4`, including the preserved collaboration overlay. The [review and source map](../research/2026-09-30-subsystem-architecture/README.md) distinguish confirmed code paths, structural gaps and decisions requiring behavioral validation. The preceding [request-boundary batch](../research/2026-09-30-cfw-resource-remediation/request-boundaries-results.md) is already implemented. This document adds no runtime change, test, resource measurement or deployment.
 
+This is the responsibility/collaboration view of the system. The complementary [quality-attribute assessment](2026-09-30-vnext-quality-attribute-architecture.md) evaluates the same architecture through maintainability, stability, extensibility and performance, including direct Floway source comparisons and decisions about early refactoring. These views overlap; neither implies a new deployment or package for each subsystem.
+
 ## 1. Decision
 
 Keep a modular monolith with two host adapters, a portable gateway, provider plugins and protocol libraries. Organize the next changes around ownership and public contracts within the existing modules. A subsystem is a logical responsibility, not necessarily a package, database or deployed service.
