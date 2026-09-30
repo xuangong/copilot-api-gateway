@@ -1,6 +1,6 @@
 # Source optimization batch: final result
 
-Date: 2026-09-30. The agreed optimization list is implemented and independently reviewed. The complete candidate passed functional CI and the declared cloud workloads, but **ordinary-request resource acceptance failed**. Keep the changes on `fix/cfw-resource-rollback`; do not merge into vNext or deploy this candidate on the strength of these results. Production, rollback tags and original backups were not changed.
+Date: 2026-09-30. The agreed optimization list is implemented and independently reviewed. The complete candidate passed functional CI and the declared cloud workloads, but **ordinary-request resource acceptance failed**. These results do not qualify the candidate for CFW deployment. This source batch has since been integrated into local `vNext` through `298f37b8` together with the [request-boundary architecture changes](./request-boundaries-results.md). That later batch passed frozen functional CI, but its local performance comparison is incomplete and does not overturn this cloud result. No push, production deployment, rollback-tag rewrite or original-backup change occurred. The [source cost analysis](./source-cost-analysis.md) retains its pre-architecture checkpoint scope.
 
 This report quantifies the complete source batch once. It does not assign benefits to individual edits or pool the earlier Bun failure with Node results. Machine-readable paired observations, gates and 84 input hashes are in [source-optimization-node-metrics.json](./source-optimization-node-metrics.json). That report has no missing/unqualified inputs and no integrity issues; its outcome is `INVESTIGATION_REQUIRED`, not resource acceptance.
 
@@ -86,7 +86,7 @@ The previously qualified four-file driver was then run under pinned Node 26 thro
 | Restored D ordinary version | `bd4dd2c5-b806-40c8-b869-a34372919cdf` |
 | Restoration deployment | `8605bafa-ece6-4862-9f11-9cc8a14b7455` |
 
-After all inference workloads ended, D was restored at `2026-09-30T07:07:58.827016+00:00`. Readback confirmed 100% on the archived ordinary version, matching non-versioned settings and retention 0/0. Only the isolated measurement Worker was restored. No merge into vNext, push, production deployment, production data change or backup/tag rewrite occurred.
+After all inference workloads ended, D was restored at `2026-09-30T07:07:58.827016+00:00`. Readback confirmed 100% on the archived ordinary version, matching non-versioned settings and retention 0/0. Only the isolated measurement Worker was restored. At that experiment's closeout, no merge into vNext, push, production deployment, production data change or backup/tag rewrite had occurred. Subsequent local source integration is recorded above and does not change this experiment's evidence.
 
 Private evidence root: `/Users/zhangxian/.local/share/copilot-gateway-backups/cfw-p0-20260930/ordinary-source-v1/source-opt-v1-02`. Important records are `runs/{canary,full,large,history}-node-01`, `runtime-adapters/*/result.json`, `restore-completed.json`, and `restore-records/restore-01/after.json`. SHA-256:
 
@@ -102,4 +102,4 @@ Private evidence root: `/Users/zhangxian/.local/share/copilot-gateway-backups/cf
 2. Reduce shared-isolate memory variability without moving CPU work into more queues, compression parallelism or speculative caches. Account for placement differences before attributing client latency. Any further diagnostics should answer a concrete source hypothesis; do not start another broad load campaign as routine verification.
 3. Finish catalog legacy-writer invalidation and authenticated affinity rollback compatibility, then qualify the combined artifact under enabled-feature, fault/cancellation/protocol and mixed-soak gates. Existing immutable rollback tags cannot be assumed to understand a newly introduced carrier format.
 
-Task 5's final quantification and documentation are complete. The parent resource acceptance, rollback compatibility and integration/release gates remain open.
+Task 5's final quantification and documentation are complete. Local source integration has subsequently completed; parent resource acceptance, rollback compatibility and CFW release gates remain open.

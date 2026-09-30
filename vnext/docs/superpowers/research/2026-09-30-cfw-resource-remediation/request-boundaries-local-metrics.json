@@ -1,0 +1,907 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-09-30",
+  "status": "IMPLEMENTED_FUNCTIONALLY_VERIFIED_PERFORMANCE_MEASUREMENT_INCOMPLETE",
+  "completeLocalComparison": false,
+  "productionResourceQualified": false,
+  "productCommits": [
+    "bb4fca4a02f9ae6f9ed593d7cc90fead66594180",
+    "116e49a5ab7415e58ecaedb0838eed21abb82c02",
+    "298f37b8fe4f3a8aab059f09da9bcc8e9e8b74ae"
+  ],
+  "ci": {
+    "command": "SETUP_TEST_CODEX=/Users/zhangxian/.local/bin/codex bun run ci:local",
+    "cwd": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/vnext",
+    "startedAt": "2026-09-30T09:34:10.740140+00:00",
+    "finishedAt": "2026-09-30T09:36:29.471902+00:00",
+    "exitCode": 0,
+    "elapsedSeconds": 138.732,
+    "log": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-09-30-cfw-request-boundaries/ci-local-02.log",
+    "passed": 5427,
+    "skipped": 1,
+    "failed": 0,
+    "assertions": 229131,
+    "testFiles": 522,
+    "existingLintWarnings": 35,
+    "scope": "Frozen fix-worktree inputs including inherited overlay and generated imports; not a clean installation."
+  },
+  "comparison": {
+    "beforeSha256": "8f64f80c6f1aeca1678334b1074cd313644d3da42b09c39d17c3162e7396309c",
+    "afterSha256": "a41ab4928a797ffd2e37e5f6c55c6aca58b8344ca11494779331176401ad1a6e",
+    "miniflare": "4.20260601.0",
+    "workerd": "1.20260601.1",
+    "compatibilityDate": "2025-06-01",
+    "compatibilityFlags": [
+      "nodejs_compat"
+    ],
+    "fixture": {
+      "upstreams": 3,
+      "models": 21,
+      "payloadBytes": 65536,
+      "dumpRetentionSeconds": 0,
+      "dumpWriterEnabled": true,
+      "responsesRetentionSeconds": 0,
+      "responsesHistoryEnabled": false
+    },
+    "baselineHead": "54f1a4e43ea3bedebff16b362c3378a6cf841c80",
+    "baselineIsDeployedVersion": false,
+    "baselineManifestSha256": "bd010dd6ecc26c2b7e1cf17f90d8c6c11ecbe24e3f2d9d3db3c17433f2f469bc",
+    "afterManifestSha256": "cd8d5b8945d57994c5e3c8deeda787aaa3c6cce043f29c614caeaeca25adeda8",
+    "afterFrozenInputs": 1539,
+    "inheritedOverlayInBothArtifacts": true,
+    "harnessFinalIdentity": [
+      {
+        "path": "harness/dump-readback.ts",
+        "bytes": 12007,
+        "sha256": "2cf08218fb09bf186dc5dadfba4e315fb0f682d05515de481a783580d084e693"
+      },
+      {
+        "path": "harness/entry.mjs.template",
+        "bytes": 1479,
+        "sha256": "cb4cbdb217da255f512055d7c381ea622d0c6037d7e808cd96a9da6cbb611bd4"
+      },
+      {
+        "path": "harness/inspector.ts",
+        "bytes": 3569,
+        "sha256": "452d89abba3f8e2265e0b88ab892ff08e7165bd2b1686da7777ba47d24684d6d"
+      },
+      {
+        "path": "harness/oracle.ts",
+        "bytes": 8778,
+        "sha256": "572ccef291d412b14ffb7b6a5bec5dd1aeaf5e26875ce7670472238d98575d63"
+      },
+      {
+        "path": "harness/replay-existing-canonical.ts",
+        "bytes": 3920,
+        "sha256": "2b32fbf3bed53160a5ba396079aa362f700d4f4fd93e2ca2c0bd7922c45fdee1"
+      },
+      {
+        "path": "harness/run.ts",
+        "bytes": 28753,
+        "sha256": "622319311a34271db23e87d50a140e3d6deb24454a4cba7cfe0e7edf754a407d"
+      },
+      {
+        "path": "harness/upstream-fixture.ts",
+        "bytes": 8407,
+        "sha256": "22a4e1d502cb859ff043b94bc67e5fa38d59288aa1db46855a156756197b48bf"
+      },
+      {
+        "path": "harness/verify-body-projection.ts",
+        "bytes": 9749,
+        "sha256": "140ffb9b14165d76bcd979089e7f3754589974a608a51f43d4af6042663da993"
+      }
+    ],
+    "plannedRequests": 716,
+    "plannedMatrixCellsPerVariant": 126
+  },
+  "latestAttempt": {
+    "run": "final-05",
+    "completed": false,
+    "classification": "local_workerd_diagnostic_startup_stall_outer_deadline_interrupted",
+    "exitCode": 0,
+    "exitCodeIsNotSuccessEvidence": true,
+    "outerDeadlineExceeded": true,
+    "accounting": {
+      "artifactConfirmedLogicalRequests": 508,
+      "uniqueLogicalIds": 508,
+      "warmupRequests": 96,
+      "timingRequests": 160,
+      "matrixRequests": 252,
+      "diagnosticRequests": 0,
+      "expectedFullBatchRequests": 716,
+      "unexecutedRequests": 208,
+      "expectedFullBatchBreakdown": {
+        "warmup": 144,
+        "timing": 160,
+        "matrix": 252,
+        "diagnostic": 160
+      }
+    },
+    "settlementReceipts": 22,
+    "dispatchReadbackReceipts": 4,
+    "ownedR2Objects": 1524,
+    "phases": [
+      {
+        "directory": "before-latency",
+        "warmupRequests": 24,
+        "timingRequests": 80,
+        "matrixRequests": 0,
+        "dumpReadbackRecords": 104,
+        "dispatches": 104,
+        "allowedEgress": 104,
+        "rejectedEgress": [],
+        "exactlyOnceFailures": [],
+        "unexpectedDispatches": 0,
+        "completedDispatches": 104,
+        "cancelledDispatches": 0,
+        "background": {
+          "registered": 104,
+          "settled": 104,
+          "pending": 0,
+          "activeFetches": 0,
+          "failures": [],
+          "elapsedMs": 0
+        },
+        "snapshotCounts": [
+          0,
+          0
+        ],
+        "sqlDumpRows": 104,
+        "spilledFileRows": 312,
+        "ownedObjects": 312,
+        "r2Objects": 312,
+        "mismatchArtifacts": []
+      },
+      {
+        "directory": "after-latency",
+        "warmupRequests": 24,
+        "timingRequests": 80,
+        "matrixRequests": 0,
+        "dumpReadbackRecords": 104,
+        "dispatches": 104,
+        "allowedEgress": 104,
+        "rejectedEgress": [],
+        "exactlyOnceFailures": [],
+        "unexpectedDispatches": 0,
+        "completedDispatches": 104,
+        "cancelledDispatches": 0,
+        "background": {
+          "registered": 104,
+          "settled": 104,
+          "pending": 0,
+          "activeFetches": 0,
+          "failures": [],
+          "elapsedMs": 0
+        },
+        "snapshotCounts": [
+          0,
+          0
+        ],
+        "sqlDumpRows": 104,
+        "spilledFileRows": 312,
+        "ownedObjects": 312,
+        "r2Objects": 312,
+        "mismatchArtifacts": []
+      },
+      {
+        "directory": "before-matrix",
+        "warmupRequests": 24,
+        "timingRequests": 0,
+        "matrixRequests": 126,
+        "dumpReadbackRecords": 150,
+        "dispatches": 150,
+        "allowedEgress": 150,
+        "rejectedEgress": [],
+        "exactlyOnceFailures": [],
+        "unexpectedDispatches": 0,
+        "completedDispatches": 150,
+        "cancelledDispatches": 0,
+        "background": {
+          "registered": 244,
+          "settled": 244,
+          "pending": 0,
+          "activeFetches": 0,
+          "failures": [],
+          "elapsedMs": 0
+        },
+        "snapshotCounts": [
+          0,
+          0
+        ],
+        "sqlDumpRows": 150,
+        "spilledFileRows": 450,
+        "ownedObjects": 450,
+        "r2Objects": 450,
+        "mismatchArtifacts": []
+      },
+      {
+        "directory": "after-matrix",
+        "warmupRequests": 24,
+        "timingRequests": 0,
+        "matrixRequests": 126,
+        "dumpReadbackRecords": 150,
+        "dispatches": 150,
+        "allowedEgress": 150,
+        "rejectedEgress": [],
+        "exactlyOnceFailures": [],
+        "unexpectedDispatches": 0,
+        "completedDispatches": 150,
+        "cancelledDispatches": 0,
+        "background": {
+          "registered": 244,
+          "settled": 244,
+          "pending": 0,
+          "activeFetches": 0,
+          "failures": [],
+          "elapsedMs": 1
+        },
+        "snapshotCounts": [
+          0,
+          0
+        ],
+        "sqlDumpRows": 150,
+        "spilledFileRows": 450,
+        "ownedObjects": 450,
+        "r2Objects": 450,
+        "mismatchArtifacts": []
+      }
+    ],
+    "knownStatusMappings": [
+      {
+        "logicalId": "architecture_before_matrix_264",
+        "accepted": true,
+        "wireStatus": 200,
+        "dumpStatus": 502,
+        "classification": "inherited_json_policy_refusal_dump_failure_status"
+      },
+      {
+        "logicalId": "architecture_after_matrix_414",
+        "accepted": true,
+        "wireStatus": 200,
+        "dumpStatus": 502,
+        "classification": "inherited_json_policy_refusal_dump_failure_status"
+      }
+    ],
+    "finalWireJournalPresent": false,
+    "finalSummaryPresent": false,
+    "completeWireMatrixQualified": false,
+    "latency": null,
+    "sampledCpu": null,
+    "settledHeap": null,
+    "boundary": "Host dispatch, stored capture and background receipts survive; they do not reconstruct the lost in-memory wire journal. 208 planned requests were not executed."
+  },
+  "partialLatencyRuns": [
+    {
+      "run": "final-02",
+      "completeComparison": false,
+      "fatal": "Successful wire response lacks matching canonical dump semantics architecture_before_matrix_253: missing_explicit_failure_event",
+      "latency": [
+        {
+          "variant": "before",
+          "mode": "json",
+          "requests": 40,
+          "semanticPassed": 40,
+          "p50EofMs": 15.653040999999575,
+          "p95EofMs": 19.39600000000064,
+          "p50FirstSemanticMs": 15.62395800000013,
+          "blocks": [
+            {
+              "block": 0,
+              "requests": 10,
+              "p50EofMs": 14.475666999999703
+            },
+            {
+              "block": 1,
+              "requests": 10,
+              "p50EofMs": 15.190499999999702
+            },
+            {
+              "block": 2,
+              "requests": 10,
+              "p50EofMs": 15.706250000001091
+            },
+            {
+              "block": 3,
+              "requests": 10,
+              "p50EofMs": 16.002000000000407
+            }
+          ]
+        },
+        {
+          "variant": "before",
+          "mode": "sse",
+          "requests": 40,
+          "semanticPassed": 40,
+          "p50EofMs": 63.48304199999984,
+          "p95EofMs": 80.61062499999935,
+          "p50FirstSemanticMs": 43.65270799999962,
+          "blocks": [
+            {
+              "block": 0,
+              "requests": 10,
+              "p50EofMs": 58.863000000000284
+            },
+            {
+              "block": 1,
+              "requests": 10,
+              "p50EofMs": 63.48304199999984
+            },
+            {
+              "block": 2,
+              "requests": 10,
+              "p50EofMs": 62.68837499999972
+            },
+            {
+              "block": 3,
+              "requests": 10,
+              "p50EofMs": 67.79008299999987
+            }
+          ]
+        },
+        {
+          "variant": "after",
+          "mode": "json",
+          "requests": 40,
+          "semanticPassed": 40,
+          "p50EofMs": 14.672832999998718,
+          "p95EofMs": 17.25500000000011,
+          "p50FirstSemanticMs": 14.65495799999917,
+          "blocks": [
+            {
+              "block": 0,
+              "requests": 10,
+              "p50EofMs": 15.091457999999875
+            },
+            {
+              "block": 1,
+              "requests": 10,
+              "p50EofMs": 14.491624999999658
+            },
+            {
+              "block": 2,
+              "requests": 10,
+              "p50EofMs": 14.55004100000042
+            },
+            {
+              "block": 3,
+              "requests": 10,
+              "p50EofMs": 14.360499999998865
+            }
+          ]
+        },
+        {
+          "variant": "after",
+          "mode": "sse",
+          "requests": 40,
+          "semanticPassed": 40,
+          "p50EofMs": 64.45770799999991,
+          "p95EofMs": 76.24795900000026,
+          "p50FirstSemanticMs": 45.048249999999825,
+          "blocks": [
+            {
+              "block": 0,
+              "requests": 10,
+              "p50EofMs": 63.160499999999956
+            },
+            {
+              "block": 1,
+              "requests": 10,
+              "p50EofMs": 66.7086249999993
+            },
+            {
+              "block": 2,
+              "requests": 10,
+              "p50EofMs": 60.13387500000135
+            },
+            {
+              "block": 3,
+              "requests": 10,
+              "p50EofMs": 63.43249999999898
+            }
+          ]
+        }
+      ],
+      "boundary": "Saved latency phase only; not pooled with any other run and not a complete performance/resource qualification."
+    },
+    {
+      "run": "final-03",
+      "completeComparison": false,
+      "fatal": "Dump metadata mismatch architecture_before_matrix_264",
+      "latency": [
+        {
+          "variant": "before",
+          "mode": "json",
+          "requests": 40,
+          "semanticPassed": 40,
+          "p50EofMs": 14.530791000000136,
+          "p95EofMs": 22.026708000001236,
+          "p50FirstSemanticMs": 14.506624999999985,
+          "blocks": [
+            {
+              "block": 0,
+              "requests": 10,
+              "p50EofMs": 11.617833000000246
+            },
+            {
+              "block": 1,
+              "requests": 10,
+              "p50EofMs": 14.379666999999245
+            },
+            {
+              "block": 2,
+              "requests": 10,
+              "p50EofMs": 15.395333999998911
+            },
+            {
+              "block": 3,
+              "requests": 10,
+              "p50EofMs": 16.691208000000188
+            }
+          ]
+        },
+        {
+          "variant": "before",
+          "mode": "sse",
+          "requests": 40,
+          "semanticPassed": 40,
+          "p50EofMs": 60.33008299999983,
+          "p95EofMs": 72.49704099999872,
+          "p50FirstSemanticMs": 41.14400000000023,
+          "blocks": [
+            {
+              "block": 0,
+              "requests": 10,
+              "p50EofMs": 58.23120900000049
+            },
+            {
+              "block": 1,
+              "requests": 10,
+              "p50EofMs": 63.21183299999939
+            },
+            {
+              "block": 2,
+              "requests": 10,
+              "p50EofMs": 64.98520800000006
+            },
+            {
+              "block": 3,
+              "requests": 10,
+              "p50EofMs": 62.5317500000001
+            }
+          ]
+        },
+        {
+          "variant": "after",
+          "mode": "json",
+          "requests": 40,
+          "semanticPassed": 40,
+          "p50EofMs": 15.116124999999556,
+          "p95EofMs": 19.861916999999266,
+          "p50FirstSemanticMs": 15.091832999999497,
+          "blocks": [
+            {
+              "block": 0,
+              "requests": 10,
+              "p50EofMs": 15.074749999999767
+            },
+            {
+              "block": 1,
+              "requests": 10,
+              "p50EofMs": 16.00287499999922
+            },
+            {
+              "block": 2,
+              "requests": 10,
+              "p50EofMs": 14.785874999999578
+            },
+            {
+              "block": 3,
+              "requests": 10,
+              "p50EofMs": 14.438083000000915
+            }
+          ]
+        },
+        {
+          "variant": "after",
+          "mode": "sse",
+          "requests": 40,
+          "semanticPassed": 40,
+          "p50EofMs": 64.910167,
+          "p95EofMs": 77.87304200000108,
+          "p50FirstSemanticMs": 44.65941699999894,
+          "blocks": [
+            {
+              "block": 0,
+              "requests": 10,
+              "p50EofMs": 56.708458000000064
+            },
+            {
+              "block": 1,
+              "requests": 10,
+              "p50EofMs": 63.82995899999969
+            },
+            {
+              "block": 2,
+              "requests": 10,
+              "p50EofMs": 67.429583000001
+            },
+            {
+              "block": 3,
+              "requests": 10,
+              "p50EofMs": 66.03508299999885
+            }
+          ]
+        }
+      ],
+      "boundary": "Saved latency phase only; not pooled with any other run and not a complete performance/resource qualification."
+    }
+  ],
+  "integration": {
+    "verifiedAt": "2026-09-30T10:08:14.552981+00:00",
+    "branch": "vNext",
+    "head": "298f37b8fe4f3a8aab059f09da9bcc8e9e8b74ae",
+    "sourceInputsMatchingFrozen": 1530,
+    "ignoredGeneratedInputsPreserved": [
+      "vnext/packages/gateway/src/control-plane/setup/dist/runner.mjs",
+      "vnext/packages/gateway/src/control-plane/setup/dist/runner.mjs.txt",
+      "vnext/packages/gateway/src/control-plane/setup/dist/runner.sha256.txt",
+      "vnext/packages/gateway/src/control-plane/setup/dist/setup.ps1.txt",
+      "vnext/packages/gateway/src/control-plane/setup/dist/setup.sh.txt",
+      "vnext/packages/gateway/src/shared/edge/ui-pages/dashboard-app/dist/dashboard.css",
+      "vnext/packages/gateway/src/shared/edge/ui-pages/dashboard-app/dist/dashboard.css.txt",
+      "vnext/packages/gateway/src/shared/edge/ui-pages/dashboard-app/dist/dashboard.js",
+      "vnext/packages/gateway/src/shared/edge/ui-pages/dashboard-app/dist/dashboard.js.txt"
+    ],
+    "originalFilesByteIdentical": 36,
+    "originalUntrackedFilesPreserved": 27,
+    "combinedOverlayResolution": {
+      "path": "vnext/packages/gateway/src/data-plane/chat-flow/responses/attempt.ts",
+      "sha256": "07be9bea3f592002e798df6cbaab207679fa7aeeecae8c1f80bd2b236d985909",
+      "matchesFrozen": true,
+      "preservesReviewedOptimizationAndDiagnostics": true
+    },
+    "unmerged": false,
+    "indexEmpty": true,
+    "stashDropped": "67d68e86ccd699e19b21a12747f45b8466a9625b",
+    "pushPerformed": false,
+    "deploymentPerformed": false
+  },
+  "rawEvidenceRoot": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-09-30-cfw-request-boundaries",
+  "rawEvidence": [
+    {
+      "path": "after/artifact-checks.json",
+      "bytes": 311,
+      "sha256": "dca15cc329670c55ab6e36a4af4960e5b01c8ca384acc264868e24a5b37263d5"
+    },
+    {
+      "path": "after/ci-source-check.json",
+      "bytes": 94,
+      "sha256": "a5436ee4624ce85ce8250263dd9c1972da7ff9ae31a081e0126238a0b8cf4b01"
+    },
+    {
+      "path": "after/source-manifest.json",
+      "bytes": 302045,
+      "sha256": "cd8d5b8945d57994c5e3c8deeda787aaa3c6cce043f29c614caeaeca25adeda8"
+    },
+    {
+      "path": "before/source-manifest.json",
+      "bytes": 301328,
+      "sha256": "bd010dd6ecc26c2b7e1cf17f90d8c6c11ecbe24e3f2d9d3db3c17433f2f469bc"
+    },
+    {
+      "path": "ci-local-02-receipt.json",
+      "bytes": 483,
+      "sha256": "13f6917f5ac064ee4b9b217d9b3268f077f0e7fbf9eb47acaf09389260486c3e"
+    },
+    {
+      "path": "ci-local-02.log",
+      "bytes": 596163,
+      "sha256": "cf87e4397d4b971bae40bb45eacc3fc20f6ba45577dc79c4cd22bd04e2f9aeea"
+    },
+    {
+      "path": "final-measurement-02-harness-identity.json",
+      "bytes": 1475,
+      "sha256": "5f79868e68eb750505e89bcfdb9623eb0e129ce9201e01b8a52d9f6bdc3377c8"
+    },
+    {
+      "path": "final-measurement-02-receipt.json",
+      "bytes": 641,
+      "sha256": "e9602f03e031bbf4ef8a9c53e949039f5d9784dd1d8663a6fe483dddd362f13a"
+    },
+    {
+      "path": "final-measurement-02.log",
+      "bytes": 17870,
+      "sha256": "e7301c1297ef1c73037bb1fa60eef35c9148a08b666ef983ee8ded75657833fa"
+    },
+    {
+      "path": "final-measurement-03-harness-identity.json",
+      "bytes": 1766,
+      "sha256": "240dc2f242bec007d8201d90f09be91744bd41115401aea77770d897ef695f20"
+    },
+    {
+      "path": "final-measurement-03-receipt.json",
+      "bytes": 641,
+      "sha256": "66eb2af72b379d37c7480a42823145a2f089f529078003ea91be7ae13331c671"
+    },
+    {
+      "path": "final-measurement-03.log",
+      "bytes": 17784,
+      "sha256": "2fbb1606cbda81ffb71c42a25cf73bde1f05b9194326e58e0cb8513a5ce315a9"
+    },
+    {
+      "path": "final-measurement-04-disposition.json",
+      "bytes": 3844,
+      "sha256": "422a38e5e84019c58634eb543ad538f4a1f424d41ccc0f91fb8afeef1d7f8204"
+    },
+    {
+      "path": "final-measurement-04-harness-identity.json",
+      "bytes": 1843,
+      "sha256": "a2e6633c02462ca0f9401e6100d3422f70c6e055258ee46ee167107ba898b0da"
+    },
+    {
+      "path": "final-measurement-04-post-identity.json",
+      "bytes": 725,
+      "sha256": "49e54ed2669bc686bb0483f663c891d77702363cc4b309db8519186b0f11ee8f"
+    },
+    {
+      "path": "final-measurement-04-receipt.json",
+      "bytes": 641,
+      "sha256": "57cb6820e03a5eee2b9b1849fd22d95b2cd0f75a35bae2a5afab535cd25a35f2"
+    },
+    {
+      "path": "final-measurement-04.log",
+      "bytes": 17780,
+      "sha256": "000e592846c5e3291f5622105e176ede186058c31a4d90abebb3f7f62788a7bb"
+    },
+    {
+      "path": "final-measurement-05-disposition.json",
+      "bytes": 18429,
+      "sha256": "9cc7057078e09b6cabcecaadddde9cda5df067f34b6cc4828e384297455de46d"
+    },
+    {
+      "path": "final-measurement-05-harness-identity.json",
+      "bytes": 2018,
+      "sha256": "cf3aa36f51ae000980e307c6b910bb9659ccc04fc54734d246abf8e9bbe6c620"
+    },
+    {
+      "path": "final-measurement-05-post-identity.json",
+      "bytes": 864,
+      "sha256": "428ddcaac0069d34f3c641da1b832e312272ebef5aab3cf3f92145f774cb7d04"
+    },
+    {
+      "path": "final-measurement-05-receipt.json",
+      "bytes": 779,
+      "sha256": "98e3e22ba32f2378a05aa07fb80c798421fb799fbede751b3d8f3cb89f2d803f"
+    },
+    {
+      "path": "final-measurement-05.log",
+      "bytes": 27634,
+      "sha256": "8df403be967475b9d342e829e0075657fd8c18f8ea20310ef9fc14e01de6953f"
+    },
+    {
+      "path": "final-measurement-receipt.json",
+      "bytes": 514,
+      "sha256": "ac2a3c23433a0149acf0b93cd3801d1fe3012099a17a26fa57dc92c09a71f0dc"
+    },
+    {
+      "path": "final-measurement.log",
+      "bytes": 1161,
+      "sha256": "f1dd0fbb985103e920582eb4f2713eabc1ad6f71d0a1d2ba6e29b0782cfc24d0"
+    },
+    {
+      "path": "harness-capture-boundary-review.md",
+      "bytes": 17643,
+      "sha256": "d6b9b1c43f84962557e9909ee1b2133967bda049debdf80b2aac35e3142a7bb4"
+    },
+    {
+      "path": "harness/metadata-status-check-02-receipt.json",
+      "bytes": 260,
+      "sha256": "64c2a76e626d50088cd2e5f4e0a45358945d2d126bd716e86163c2ab5bbede88"
+    },
+    {
+      "path": "harness/reader-final-total.diff",
+      "bytes": 7249,
+      "sha256": "463999a426d9d8e0d12b502475076318fb3b2263da40ea43bb358af37dd1bc29"
+    },
+    {
+      "path": "harness/reader-metadata-status-02.diff",
+      "bytes": 3176,
+      "sha256": "34c66b2057dfcee9080900cca7a5d11dbb9d986989fb7c6aaaa4fb6d80a2cb68"
+    },
+    {
+      "path": "integration-readiness-review.md",
+      "bytes": 6755,
+      "sha256": "fc5a2f20ea2386fccd56dce812a00aa85e46b8f8a501a30be3c3ab65ec98b501"
+    },
+    {
+      "path": "main-integration-verification.json",
+      "bytes": 1462,
+      "sha256": "cf0ba863fe3a62a0b53d0087b642877a6cdc9196048544a2e054df00a5558a8c"
+    },
+    {
+      "path": "runs/final-02/requests.jsonl",
+      "bytes": 234673,
+      "sha256": "766a95f16734ab0bfd809fac929dd8099c44356691216e7836fb165b5870c4fe"
+    },
+    {
+      "path": "runs/final-02/summary.json",
+      "bytes": 16638,
+      "sha256": "4d51b9f1b6bc5220f040731dbfe87e6c025e4eb63585cde0baf1641bd9bc4b28"
+    },
+    {
+      "path": "runs/final-03/requests.jsonl",
+      "bytes": 234678,
+      "sha256": "6163445ac5b0abb5898b32394821297b23c95bff1de6f6c92ea583ba2d1025f5"
+    },
+    {
+      "path": "runs/final-03/summary.json",
+      "bytes": 16554,
+      "sha256": "ab596b7d52cbb425867d1c5b943c372ae269af6a3685be12165852e681d0b76c"
+    },
+    {
+      "path": "runs/final-05/after-latency/dispatch-readback.json",
+      "bytes": 43293,
+      "sha256": "121aaaf5c586dcb159ffc325363a76503508b534edac81147953c602a4bd3a53"
+    },
+    {
+      "path": "runs/final-05/after-latency/dump-readback.jsonl",
+      "bytes": 117322,
+      "sha256": "0b7a8b1fc62d9a43244897c1926593ad5715ca5bb21f80f4e3588f8e8ac6e8d2"
+    },
+    {
+      "path": "runs/final-05/after-latency/json-0-settlement.json",
+      "bytes": 2091,
+      "sha256": "d5353531111ea06bd23a0930e57e0696d11a263d959f09f747cbc0f6abc0e2d0"
+    },
+    {
+      "path": "runs/final-05/after-latency/json-1-settlement.json",
+      "bytes": 2091,
+      "sha256": "3f9470e8a41729e4ad16d95096b77c21fde93fa2e6c4882971709eacd8fbbb24"
+    },
+    {
+      "path": "runs/final-05/after-latency/json-2-settlement.json",
+      "bytes": 2091,
+      "sha256": "86e543ead0a18f97893dd849cb6ee835e92a393bcb34d0a0b62634f52e0682d3"
+    },
+    {
+      "path": "runs/final-05/after-latency/json-3-settlement.json",
+      "bytes": 2091,
+      "sha256": "a7ef70b96a060d84e353b27aa22596beabce602cfc61794b768465ccd7d6fee9"
+    },
+    {
+      "path": "runs/final-05/after-latency/sse-0-settlement.json",
+      "bytes": 2090,
+      "sha256": "d6bbf415a973dbe541a54b65f5384ab40905813d9d669b78a11231ddf79c9a42"
+    },
+    {
+      "path": "runs/final-05/after-latency/sse-1-settlement.json",
+      "bytes": 2090,
+      "sha256": "652ae76b3210a71605435f6e1f336e88bf1ec5a68c6dec05bacd5b55c4d39854"
+    },
+    {
+      "path": "runs/final-05/after-latency/sse-2-settlement.json",
+      "bytes": 2090,
+      "sha256": "eab0b36242abebc62d2122db3ede888d276facf8c7199a2e25e66c4bd56bdf91"
+    },
+    {
+      "path": "runs/final-05/after-latency/sse-3-settlement.json",
+      "bytes": 2105,
+      "sha256": "ddd01a8b0b635601c37266a70db5fabf5aadd521172913dfa607639a58a68553"
+    },
+    {
+      "path": "runs/final-05/after-latency/warmup-settlement.json",
+      "bytes": 2087,
+      "sha256": "fcb535c9a6238978716bdd0e47abe7b40e2b1deb57de6de099c60b0fc1d31ce2"
+    },
+    {
+      "path": "runs/final-05/after-matrix/dispatch-readback.json",
+      "bytes": 62331,
+      "sha256": "89109fda431b34463ae2b02d54cf832e9f141943e4bd6e1e76995346a65c1962"
+    },
+    {
+      "path": "runs/final-05/after-matrix/dump-readback.jsonl",
+      "bytes": 168865,
+      "sha256": "aa35da0af6fbf7b9ee1dcdb3523cfe09bc5a6cf092d2fb7530d87296f3cb2087"
+    },
+    {
+      "path": "runs/final-05/after-matrix/matrix-settlement.json",
+      "bytes": 2328,
+      "sha256": "bb63aae5b6040217f7bcf9adf19a3b2b2b02c8a62435088306d14498ee528080"
+    },
+    {
+      "path": "runs/final-05/after-matrix/warmup-settlement.json",
+      "bytes": 2086,
+      "sha256": "7e40e30fd648bc7b4e657edf47ad356a7e0421c4611a4177fc60112370c3086f"
+    },
+    {
+      "path": "runs/final-05/before-latency/dispatch-readback.json",
+      "bytes": 43396,
+      "sha256": "242381c3b61c1b3f0f038bc8dcc67c665b402b3b8412c9cacd395cd0022d8c7b"
+    },
+    {
+      "path": "runs/final-05/before-latency/dump-readback.jsonl",
+      "bytes": 117424,
+      "sha256": "b8b19368a644392ec4139beff34eb955e564c62ce52710837a462ad5a77e93e8"
+    },
+    {
+      "path": "runs/final-05/before-latency/json-0-settlement.json",
+      "bytes": 2092,
+      "sha256": "11bf2536c3a8ed43ed135c16dae74e89f1c5fb193d4ab309b7a0a7d3b5554c28"
+    },
+    {
+      "path": "runs/final-05/before-latency/json-1-settlement.json",
+      "bytes": 2092,
+      "sha256": "c800d2914ced56c238db8b9e6b2efd4f59c13c2469b527c4384f65e8d23cc37e"
+    },
+    {
+      "path": "runs/final-05/before-latency/json-2-settlement.json",
+      "bytes": 2092,
+      "sha256": "514947a5d39d3fced0d44168dc7c57358d0ea5958026407a87fde28d6a2f60d9"
+    },
+    {
+      "path": "runs/final-05/before-latency/json-3-settlement.json",
+      "bytes": 2092,
+      "sha256": "baae366619a18580d6bbf73bf5953586c0758f77c99e642d4312e0c2e427e609"
+    },
+    {
+      "path": "runs/final-05/before-latency/sse-0-settlement.json",
+      "bytes": 2091,
+      "sha256": "bdecd9ad4336e4ee4c6110a33eb94d77e0eed16eb09dbcb6fc633bdeea9baf6a"
+    },
+    {
+      "path": "runs/final-05/before-latency/sse-1-settlement.json",
+      "bytes": 2091,
+      "sha256": "289925134c764b3eafa6ae67f6bc3fd3b5327921e4d64ab3fc1324ce66786ef6"
+    },
+    {
+      "path": "runs/final-05/before-latency/sse-2-settlement.json",
+      "bytes": 2091,
+      "sha256": "b40008f316e6d3c26e71a84e194abec4eebb00c1317c316e0e763bc22b9bcc11"
+    },
+    {
+      "path": "runs/final-05/before-latency/sse-3-settlement.json",
+      "bytes": 2106,
+      "sha256": "25c05ee6ba4e465d94dc56ec7a7d31ffd2152bf7a3243acd5ddacc5290b677ad"
+    },
+    {
+      "path": "runs/final-05/before-latency/warmup-settlement.json",
+      "bytes": 2088,
+      "sha256": "803a0d687b70d6a7fc36d6e4700b9a5ef3c8009eae8b41b1a7c5c98853a78033"
+    },
+    {
+      "path": "runs/final-05/before-matrix/dispatch-readback.json",
+      "bytes": 62482,
+      "sha256": "6fac4eab20c92fa12b47cff783db69ad8b627fe0994a2df14b90dd25ce3bee2c"
+    },
+    {
+      "path": "runs/final-05/before-matrix/dump-readback.jsonl",
+      "bytes": 169015,
+      "sha256": "09b9615d361d6c2dc41ac6ccc605269ef6db5928b0dc75853faba861bd192cb6"
+    },
+    {
+      "path": "runs/final-05/before-matrix/matrix-settlement.json",
+      "bytes": 2329,
+      "sha256": "ed34d1eb754ae6f6ef56b511c24186c118ce665f434349d67aee1e9b647bdd97"
+    },
+    {
+      "path": "runs/final-05/before-matrix/warmup-settlement.json",
+      "bytes": 2087,
+      "sha256": "27de6249d0726acfb766f02d710559175ef0d3b69ba0f74611a38d9275fa92ae"
+    },
+    {
+      "path": "task-4-final-partial-accounting.json",
+      "bytes": 13751,
+      "sha256": "e6fbb85eadc5b19379747330ed6bd576345458221a31e69526b65511562e1850"
+    },
+    {
+      "path": "task-4-measurement-report.md",
+      "bytes": 7328,
+      "sha256": "aa4e7fe0fc8cceb7ca8110d8556f3a8ffd202c007adf5c494e16ef5bbe24c559"
+    }
+  ],
+  "nextPriorities": [
+    "Make local workerd measurement initialization bounded and isolate phases/processes; journal each request before termination can lose it. Then complete unchanged before/after CPU and heap observations.",
+    "Consolidate request settlement and diagnostic projections with explicit HTTP, semantic and dump status ownership, preserving defaults and required durable completion.",
+    "Resolve catalog legacy-writer and affinity old-reader rollback compatibility before any CFW release."
+  ]
+}
