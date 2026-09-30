@@ -41,6 +41,8 @@ export type DumpErrorMeta =
   | { kind: "failed"; reason: string }
   | { kind: "cancelled"; reason: "client_cancelled" }
 
+export type DumpCaptureOmission = "capture_limit" | "environment_limit" | "frame_limit" | "unsupported_payload"
+
 export interface DumpMetadata {
   id: DumpRecordId
   startedAt: number        // unix ms
@@ -59,6 +61,9 @@ export interface DumpMetadata {
   responseBytes: number
   durationMs: number
   error: DumpErrorMeta | null
+  // Separate from inference success/failure. Omitted capture never publishes
+  // a partial body as complete; absent means the legacy/exact capture format.
+  capture?: { state: "omitted"; reason: DumpCaptureOmission }
 }
 
 // Canonical protocol frame the gateway's respond layer fans out to every

@@ -11,6 +11,13 @@ const SAFE_EVENT_NAMES = new Set([
   "message_stop", "content_block_start", "content_block_delta", "content_block_stop",
 ])
 
+const captureStatus = (capture: StoredDumpRecord["meta"]["capture"]) => {
+  if (capture?.state !== "omitted") return null
+  const reason = capture.reason
+  return reason === "capture_limit" || reason === "environment_limit" || reason === "frame_limit" || reason === "unsupported_payload"
+    ? { state: "omitted" as const, reason } : null
+}
+
 const finiteNonnegative = (value: unknown): number | null =>
   typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null
 
@@ -77,6 +84,7 @@ export function dumpRecordToExport(original: StoredDumpRecord) {
       errorCategory: record.meta.error?.kind === "upstream" || record.meta.error?.kind === "gateway"
         || record.meta.error?.kind === "failed" || record.meta.error?.kind === "cancelled"
         ? record.meta.error.kind : null,
+      capture: captureStatus(record.meta.capture),
     },
     request: {
       method: method(record.request.method),

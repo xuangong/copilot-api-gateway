@@ -17,7 +17,8 @@ import { getBackgroundExecutor, type BackgroundExecutor } from "@vibe-core/platf
 import type { ProtocolFrame } from "@vibe-core/result"
 import type { TelemetryModelIdentity } from "@vibe-llm/protocols/common"
 
-import { getDumpBroker, getDumpStore } from "./registry.ts"
+import { getDumpBroker, getDumpCaptureBudget, getDumpStore } from "./registry.ts"
+import { retireDumpCapture, type DumpCaptureBudget, type DumpCaptureReservation } from "./capture-budget.ts"
 import { UpstreamExchangeCollector } from "./upstream-attempts.ts"
 import { createUpstreamDialObservationContext } from "./upstream-dial-adapter.ts"
 import type { UpstreamExchanges } from "./upstream-attempts.ts"
@@ -98,6 +99,8 @@ interface TerminalRecord {
   record: DumpWriteRecord
 }
 
+const emptyRequestBody = (): PreparedDumpRequestBody => ({ encoding: "identity", bytes: new Uint8Array(), decodedByteLength: 0 })
+
 const writeFailureFor = (keyId: ApiKeyId, recordId: DumpRecordId) => (error: unknown): void => {
   console.error(`[dump] write failed for key=${keyId} record=${recordId}`, oneLineError(error))
 }
@@ -123,6 +126,7 @@ function persistTerminalRecord(input: TerminalRecord | null): Promise<void> {
 async function drainResponse(
   body: ReadableStream<Uint8Array>, status: number,
   headers: ReadonlyArray<readonly [string, string]>, isStream: boolean,
+  admit: (bytes: number) => boolean,
 ): Promise<ResponseSnapshot> {
   const reader = body.getReader()
   const chunks: Uint8Array[] = []
@@ -132,16 +136,17 @@ async function drainResponse(
     for (;;) {
       const { value, done } = await reader.read()
       if (done) break
-      chunks.push(value)
       total += value.byteLength
+      if (admit(value.byteLength * 3 + 64)) chunks.push(new Uint8Array(value))
+      else chunks.length = 0
     }
   } catch (error) {
     streamError = oneLineError(error)
   } finally { reader.releaseLock() }
-  const bytes = new Uint8Array(total)
+  const bytes = new Uint8Array(chunks.reduce((length, chunk) => length + chunk.byteLength, 0))
   let offset = 0
   for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength }
-  return { status, headers, isStream, bytes, payloadBytes: bytes.byteLength, streamError }
+  return { status, headers, isStream, bytes, payloadBytes: total, streamError }
 }
 
 export class DumpAccumulator {
@@ -153,6 +158,9 @@ export class DumpAccumulator {
   private outputTokens: number | null = null
   private errorMeta: DumpErrorMeta | null = null
   private preparedRequestBody: Promise<PreparedDumpRequestBody> | null
+  private readonly preparationSettled: Promise<void>
+  private readonly capture: DumpCaptureReservation
+  private captureOmitted = false
   private upstreamExchangeCollector: UpstreamExchangeCollector | null = null
   private ownsUpstreamCollector = false
   private upstreamObservation: ReturnType<typeof createUpstreamDialObservationContext> | null = null
@@ -168,13 +176,42 @@ export class DumpAccumulator {
     requestBody: Uint8Array,
     private readonly startedAt: number,
     private readonly background: BackgroundExecutor = getBackgroundExecutor(),
+    budget: DumpCaptureBudget = getDumpCaptureBudget(),
   ) {
     this.recordId = ulid(startedAt) as DumpRecordId
-    this.preparedRequestBody = getDumpStore().prepareRequestBody(requestBody)
+    this.capture = budget.open()
+    try {
+      this.preparedRequestBody = this.capture.bytes(requestBody.buffer.byteLength * 3 + 256)
+        ? getDumpStore().prepareRequestBody(requestBody) : Promise.resolve(emptyRequestBody())
+    } catch (error) { this.preparedRequestBody = Promise.reject(error) }
     // Preparation starts eagerly and is awaited at terminal persistence. Mark
     // a rejection handled immediately so a long upstream wait cannot surface
     // it as an unhandled promise before `write()` records the dump failure.
-    void this.preparedRequestBody.catch(() => {})
+    this.preparationSettled = this.preparedRequestBody.then(() => {}, () => {})
+    if (this.capture.reason) this.omitCapture()
+  }
+
+  private omitCapture(): void {
+    if (this.captureOmitted) return
+    this.captureOmitted = true
+    if (this.events !== null) this.events = []
+    this.preparedRequestBody = this.preparedRequestBody?.then(emptyRequestBody) ?? null
+    // Keep failures handled immediately even while the upstream is pending.
+    void this.preparedRequestBody?.catch(() => {})
+    if (this.ownsUpstreamCollector) this.upstreamExchangeCollector?.abandon()
+    this.upstreamExchangeCollector = null
+    this.upstreamObservation = null
+    this.ownsUpstreamCollector = false
+  }
+
+  private admitBytes(bytes: number): boolean {
+    if (this.capture.bytes(bytes)) return true
+    this.omitCapture()
+    return false
+  }
+
+  private retire(work: Promise<void>): Promise<void> {
+    return retireDumpCapture(work, this.preparationSettled, this.capture)
   }
 
   // --- mid-flight hooks (called from per-protocol respond layer) ---
@@ -191,12 +228,12 @@ export class DumpAccumulator {
   }
 
   attachUpstreamExchangeCollector(collector: UpstreamExchangeCollector): void {
-    if (this.events === null) return
+    if (this.events === null || this.captureOmitted) return
     this.upstreamExchangeCollector ??= collector
   }
 
   upstreamDialObservation(): ReturnType<typeof createUpstreamDialObservationContext> {
-    if (this.events === null) return inactiveObservation
+    if (this.events === null || this.captureOmitted) return inactiveObservation
     if (this.upstreamExchangeCollector === null) {
       this.upstreamExchangeCollector = new UpstreamExchangeCollector(this.startedAt)
       this.ownsUpstreamCollector = true
@@ -230,10 +267,13 @@ export class DumpAccumulator {
     this.errorMeta = { kind: "failed", reason: typeof reason === "string" ? reason : oneLineError(reason) }
   }
 
-  // Records one protocol frame. Stored as the canonical ProtocolFrame so
-  // neither serialization nor parsing happens on this path.
+  // Retain a budget-owned JSON projection of each canonical frame. Strings are
+  // shared, objects are copied; neither serialization nor parsing runs here.
   frame(frame: ProtocolFrame<unknown>): void {
-    this.events?.push({ frame, ts: Date.now() - this.startedAt })
+    if (this.events === null || this.captureOmitted) return
+    const captured = this.capture.frame({ frame, ts: Date.now() - this.startedAt })
+    if (captured) this.events.push(captured.value)
+    else this.omitCapture()
   }
 
   recordSentPayloadBytes(byteLength: number): void {
@@ -273,14 +313,24 @@ export class DumpAccumulator {
     if (this.terminalWrite !== null) return this.terminalWrite
     try {
       const hasFrames = (this.events?.length ?? 0) > 0
-      const bytes = !hasFrames && canonicalBody !== undefined
-        ? new TextEncoder().encode(JSON.stringify(canonicalBody)) : new Uint8Array()
+      let bytes = new Uint8Array()
+      if (!hasFrames && canonicalBody !== undefined && !this.captureOmitted) {
+        const projected = this.capture.project(canonicalBody)
+        if (!projected && this.capture.invalidJson) throw new TypeError("Dump fallback is not JSON serializable")
+        if (projected) {
+          const serialized = JSON.stringify(projected.value)
+          // UTF-8 needs at most three bytes per UTF-16 code unit. Reserve the
+          // owned output before encoding; JSON/codec scratch is a separate domain.
+          if (this.admitBytes((serialized?.length ?? 0) * 3 + 64)) bytes = new TextEncoder().encode(serialized)
+        }
+        else this.omitCapture()
+      }
       return this.write({ status, headers: ownHeaderPairs(headers), isStream: hasFrames,
         bytes, payloadBytes: this.sentPayloadBytes, streamError: null })
     } catch (error) {
       // This API formerly used an async frame: stringify failures must still
       // reject its completion instead of escaping synchronously to the caller.
-      this.terminalWrite = Promise.reject(error)
+      this.terminalWrite = this.retire(Promise.reject(error))
       this.events = null
       this.preparedRequestBody = null
       if (this.ownsUpstreamCollector) this.upstreamExchangeCollector?.abandon()
@@ -331,9 +381,9 @@ export class DumpAccumulator {
     const [forClient, forCapture] = response.body.tee()
     // Register the first finalization immediately, while frames may still
     // arrive during the drain. Body ownership seals only in the builder.
-    this.terminalWrite = drainResponse(forCapture, responseStatus, responseHeaders, isStream)
+    this.terminalWrite = this.retire(drainResponse(forCapture, responseStatus, responseHeaders, isStream, bytes => this.admitBytes(bytes))
       .then(this.buildTerminalRecord.bind(this))
-      .then(persistTerminalRecord)
+      .then(persistTerminalRecord))
     this.background.waitUntil(this.terminalWrite)
 
     return new Response(forClient, {
@@ -354,15 +404,16 @@ export class DumpAccumulator {
     const transport = Promise.withResolvers<{ payloadBytes: number; streamError: string | null; cancelled: boolean }>()
     const semantic = completion.settled.then(() => null, oneLineError)
     const cancelCompletion = completion.cancel
-    let fallbackBody = completion.fallbackBody
-    this.terminalWrite = transport.promise.then(async snapshot => {
+    let fallbackBody = (this.events?.length ?? 0) === 0 ? completion.fallbackBody : undefined
+    if (fallbackBody !== undefined && !this.admitBytes(fallbackBody.length * 5 + 32)) fallbackBody = undefined
+    this.terminalWrite = this.retire(transport.promise.then(async snapshot => {
       const semanticError = snapshot.cancelled ? null : await semantic
-      const bytes = (this.events?.length ?? 0) === 0 && fallbackBody !== undefined
+      const bytes = !this.captureOmitted && (this.events?.length ?? 0) === 0 && fallbackBody !== undefined
         ? new TextEncoder().encode(fallbackBody) : new Uint8Array()
       fallbackBody = undefined
       return this.buildTerminalRecord({ status, headers, isStream, bytes, ...snapshot,
         streamError: snapshot.streamError ?? semanticError })
-    }).then(persistTerminalRecord)
+    }).then(persistTerminalRecord))
     this.background.waitUntil(this.terminalWrite)
     let payloadBytes = 0
     let finished = false
@@ -423,7 +474,7 @@ export class DumpAccumulator {
   // --- private: persist ---
 
   private write(response: ResponseSnapshot): Promise<void> {
-    this.terminalWrite ??= this.buildTerminalRecord(response).then(persistTerminalRecord)
+    this.terminalWrite ??= this.retire(this.buildTerminalRecord(response).then(persistTerminalRecord))
     return this.terminalWrite
   }
 
@@ -457,7 +508,7 @@ export class DumpAccumulator {
     // Prefer the accumulator's frame log so dumps reflect the gateway's
     // frame sequence regardless of negotiated wire shape; passthrough
     // endpoints with no frames fall back to captured bytes.
-    const responseBody: DumpWriteResponseBody = events !== null && events.length > 0
+    const responseBody: DumpWriteResponseBody = this.captureOmitted ? { type: "none" } : events !== null && events.length > 0
       ? { type: "stream", events }
       : response.bytes.byteLength > 0 || response.streamError !== null || response.isStream && response.payloadBytes > 0
         ? response.isStream
@@ -486,6 +537,7 @@ export class DumpAccumulator {
       error: this.errorMeta
         ?? (this.requestSnapshot.streamError !== null ? { kind: "failed", reason: this.requestSnapshot.streamError } : null)
         ?? (response.streamError !== null ? { kind: "failed", reason: response.streamError } : null),
+      ...(this.capture.reason ? { capture: { state: "omitted" as const, reason: this.capture.reason } } : {}),
     }
 
     // Commit the row before publishing so subscribers fetching detail off the meta frame find it.

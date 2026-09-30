@@ -1,9 +1,13 @@
 import { DUMP_DISABLED_REASON, type DumpBroker } from "./broker.ts"
 import type { DumpStore } from "./store-contract.ts"
 import type { ApiKeyId } from "../../repo/branded-ids.ts"
+import { DumpCaptureBudget } from "./capture-budget.ts"
 
 let _store: DumpStore | null = null
 let _broker: DumpBroker | null = null
+let _captureBudget = new DumpCaptureBudget()
+
+export const getDumpCaptureBudget = (): DumpCaptureBudget => _captureBudget
 
 export const initDumpStore = (store: DumpStore): void => {
   _store = store
@@ -27,6 +31,7 @@ export const getDumpBroker = (): DumpBroker => {
 export const resetDumpRegistryForTests = (): void => {
   _store = null
   _broker = null
+  _captureBudget = new DumpCaptureBudget()
 }
 
 // Best-effort by contract: a broker outage must never fail the surrounding

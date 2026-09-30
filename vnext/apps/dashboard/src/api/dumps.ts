@@ -15,6 +15,7 @@ export interface DumpMetadata {
   responseBytes: number
   durationMs: number
   error: { kind: string; reason?: string } | null
+  capture?: { state: "omitted"; reason: "capture_limit" | "environment_limit" | "frame_limit" | "unsupported_payload" }
 }
 
 export interface DumpBody { encoding: "utf8" | "base64"; data: string }

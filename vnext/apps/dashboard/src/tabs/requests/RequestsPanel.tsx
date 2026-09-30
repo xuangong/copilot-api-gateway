@@ -47,6 +47,7 @@ export function RequestsPanel({ keyId, keyName, onClose }: { keyId: string; keyN
             <span className="font-mono text-xs text-themed">{record.id}</span>
             <span className="ml-3 text-xs text-themed-secondary">{record.method} · {record.status ?? "—"} · {record.durationMs} ms</span>
             <span className="block text-xs text-themed-dim break-all mt-1">{record.path}</span>
+            {record.capture?.state === "omitted" ? <span className="block text-xs text-accent-red mt-1">{t("dash.requests.captureOmitted")}</span> : null}
           </button>
         ))}
       </div>
@@ -65,6 +66,11 @@ export function RequestsPanel({ keyId, keyName, onClose }: { keyId: string; keyN
           </div>
           {dumps.detailLoading ? <p className="text-sm text-themed-dim mt-2">{t("dash.requests.loadingDetail")}</p> : null}
           {dumps.detailError ? <p role="alert" className="text-accent-red text-sm mt-2">{dumps.detailError}</p> : null}
+          {dumps.detail?.meta.capture?.state === "omitted" ? (
+            <p role="status" className="text-accent-red text-sm mt-3">
+              {t("dash.requests.captureOmittedDetail")} {t(`dash.requests.captureReason.${dumps.detail.meta.capture.reason}`)}
+            </p>
+          ) : null}
           {dumps.detail ? (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4 text-themed-secondary">
               <section className="min-w-0">
@@ -77,7 +83,7 @@ export function RequestsPanel({ keyId, keyName, onClose }: { keyId: string; keyN
                 <h5 className="text-themed text-sm font-medium mb-2">{t("dash.requests.canonicalOutput")}</h5>
                 <p className="text-xs mb-2">{t("dash.requests.status", { status: dumps.detail.response.status ?? "—" })}</p>
                 <pre className="text-xs whitespace-pre-wrap break-all mb-3">{dumps.detail.response.headers.map(([name, value]) => `${name}: ${value}`).join("\n")}</pre>
-                {dumps.detail.response.body.type === "none" ? <p className="text-xs text-themed-dim">{t("dash.requests.noBody")}</p> : null}
+                {dumps.detail.response.body.type === "none" && !dumps.detail.meta.capture ? <p className="text-xs text-themed-dim">{t("dash.requests.noBody")}</p> : null}
                 {dumps.detail.response.body.type === "bytes" ? <BodyView body={dumps.detail.response.body.body} /> : null}
                 {dumps.detail.response.body.type === "stream" ? (
                   <pre className="text-xs whitespace-pre-wrap break-all">{JSON.stringify(dumps.detail.response.body.events, null, 2)}</pre>
