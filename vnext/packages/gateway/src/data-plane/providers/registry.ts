@@ -1,3 +1,4 @@
+import { RoutingProjection, RoutingProjectionCache, type RoutingBindingDescriptor, type RoutingScope } from "./routing-projection.ts"
 import { configurationAffinityAuthority } from "./affinity-authority"
 import { parseOpaqueCompatibilityDeclaration } from "@vibe-llm/provider-llm"
 import { catalogWithCopilotVariants } from "@vibe-llm/provider-copilot"
@@ -188,6 +189,13 @@ export function modelToBindingModel(
 // Version 7 rebuilds strictly validated provider-owned opaque compatibility metadata; raw fields grant no authority.
 export const MODEL_CATALOG_REVISION = 7
 let coordinators = new WeakMap<Repo, CatalogCoordinator>()
+let projections = new WeakMap<Repo, RoutingProjectionCache>()
+function projectionCache(): RoutingProjectionCache {
+  const repo = getAuthoritativeRepo()
+  let cache = projections.get(repo)
+  if (!cache) { cache = new RoutingProjectionCache(); projections.set(repo, cache) }
+  return cache
+}
 
 function withCatalogSignal(fetcher: Fetcher, signal: AbortSignal): Fetcher {
   return Object.assign((url: string, init: RequestInit) => {
@@ -242,7 +250,7 @@ async function requestCatalog(opts: CreateProviderOptions, fetcher: Fetcher, sig
   } finally { deadline.dispose() }
 }
 /** Clears isolate-local state without touching shared SQL. */
-export function _clearModelsMemoForTest(): void { coordinators = new WeakMap() }
+export function _clearModelsMemoForTest(): void { coordinators = new WeakMap(); projections = new WeakMap() }
 __registerPlatformReset(_clearModelsMemoForTest)
 
 function sortUpstreams(upstreams: StoredUpstreamRecord[]): StoredUpstreamRecord[] {
@@ -264,12 +272,25 @@ async function listVisibleUpstreams(ownerId?: UserId, allOwners = false): Promis
   return getRepo().upstreams.list({ ownerId: '' as UserId })
 }
 
-export async function listProviderBindings(
-  opts: ListUpstreamModelsOptions = {},
-): Promise<LlmProviderBinding[]> {
+export interface RoutingBindings {
+  all(): RoutingBindingDescriptor[]
+  find(modelIds: readonly string[]): RoutingBindingDescriptor[]
+  materialize(descriptor: RoutingBindingDescriptor): Promise<LlmProviderBinding | null>
+  reconcile(): Promise<void>
+}
+
+export function routingScope(ownerId?: string): RoutingScope {
+  return ownerId === undefined ? { kind: "global" } : { kind: "owner", ownerId }
+}
+
+export async function listRoutingBindings(
+  scope: RoutingScope,
+  opts: Omit<ListUpstreamModelsOptions, "ownerId" | "allOwners" | "dedupe"> = {},
+): Promise<RoutingBindings> {
+  const ownerId = scope.kind === "owner" ? scope.ownerId : undefined
   let upstreams: StoredUpstreamRecord[]
   try {
-    upstreams = await listVisibleUpstreams(opts.ownerId as UserId | undefined, opts.allOwners)
+    upstreams = await listVisibleUpstreams(ownerId as UserId | undefined, scope.kind === "all-owners")
   } catch (err) {
     if (err instanceof ConfigurationUnavailableError) throw err
     opts.onCatalogError?.()
@@ -277,31 +298,39 @@ export async function listProviderBindings(
     upstreams = []
   }
 
-  // Built once from the already-loaded rows so each provider dials through its
-  // own proxy fallback list. Deliberately uncaught: swallowing it would leave
-  // every plugin with no fetcher, i.e. direct egress on a proxy-only host.
-  // All six take one via `ctx.fetcherForUpstream` (provider-copilot :27,
-  // provider-codex :14, provider-claude-code :14, provider-azure :9,
-  // provider-custom :9, provider-sdf :9, each src/plugin.ts). Throwing 5xxes
-  // the per-request binding path (routing/candidates.ts:73,
-  // routing/binding-resolver.ts:45), not only /v1/models — that is intended.
+  // Keep the all-visible-upstream preflight outside the contribution catch:
+  // a proxy repository failure must never turn into implicit direct egress.
   const fetcherForUpstream = await createPerRequestFetcher(getRuntimeLocation(), upstreams)
-
-  // Ordinary and observed execution share one catalog and fallback policy.
-  // The accumulator owns the context so translated/re-entrant selections share IDs.
   const observation = (() => {
     try { return opts.dump?.upstreamDialObservation() } catch { return undefined }
   })()
-  const executionFetcherForUpstream: ProviderPluginContext['executionFetcherForUpstream'] = observation
-    ? (upstreamId, request) => {
-        const operation = operationForProviderRequest(request)
-        return operation
-          ? fetcherForUpstream(upstreamId, observation.forOperation({ upstreamId, operation }))
-          : fetcherForUpstream(upstreamId)
-      }
-    : undefined
-
-  const bindings: LlmProviderBinding[] = []
+  type Group = {
+    projection: RoutingProjection
+    descriptor: (entry: RoutingProjection["entries"][number]) => RoutingBindingDescriptor
+    disabled: Set<string>
+    provider: () => Promise<LlmModelProvider | null>
+  }
+  const groups = new Map<string, Group>()
+  const failed = new Set<string>()
+  const reportFailure = (id: string, kind: UpstreamKind, error: unknown) => {
+    failed.add(id)
+    opts.onCatalogError?.(id)
+    if (opts.signal?.aborted || opts.strictCatalog) throw error
+    console.warn(`[registry] upstream ${id} (${kind}) contributed no models:`,
+      error instanceof CatalogUnavailableError ? error.code : "unavailable")
+  }
+  const project = (models: ModelsResponse, kind: UpstreamKind, provider: LlmModelProvider) => {
+    const listed = kind === "copilot" ? catalogWithCopilotVariants(models) : models
+    return new RoutingProjection(listed.data.map(model => ({
+      publicId: kind === "copilot" ? model.variant_family ?? copilotPublicModelId(model.id) : model.id,
+      model: modelToBindingModel(model as Model, kind, provider),
+    })), models)
+  }
+  const addGroup = (id: string, kind: UpstreamKind, projection: RoutingProjection,
+    enabledFlags: ReadonlySet<string>, disabled: readonly string[], provider: Group["provider"]) => {
+    groups.set(id, { projection, disabled: new Set(disabled), provider,
+      descriptor: entry => ({ upstream: id, kind, model: entry.model, enabledFlags }) })
+  }
   for (const expected of upstreams) {
     let upstream = expected
     if (!upstream.enabled || (opts.pin && upstream.id !== opts.pin)) continue
@@ -309,84 +338,102 @@ export async function listProviderBindings(
       const requestOnly = upstream.provider === "copilot" && !upstream.config.githubToken ? opts.copilot : undefined
       const accepted = requestOnly ? null : await coordinator().read({
         expected, mode: "automatic", signal: opts.signal ?? getRequestSignal(),
-        isVisible: row => row.enabled && (opts.allOwners === true || !row.ownerId || row.ownerId === opts.ownerId),
+        isVisible: row => row.enabled && (scope.kind === "all-owners" || !row.ownerId || row.ownerId === ownerId),
       })
       if (!accepted && !requestOnly) continue
       if (accepted) upstream = accepted.upstream
-      const currentFetcher = accepted ? await authoritativeFetchers(accepted) : fetcherForUpstream
-      const currentExecution: ProviderPluginContext["executionFetcherForUpstream"] = observation ? (id, request) => {
-        const operation = operationForProviderRequest(request)
-        return currentFetcher(id, operation ? observation.forOperation({ upstreamId: id, operation }) : undefined)
-      } : executionFetcherForUpstream
-      const provider = await createProviderFromUpstream(upstream, requestOnly, currentFetcher, currentExecution)
-      if (!provider) throw new CatalogUnavailableError("unavailable")
       let models: ModelsResponse
       if (accepted) models = accepted.snapshot.models as unknown as ModelsResponse
-      else if (requestOnly) models = await requestCatalog(requestOnly, currentFetcher(upstream.id), opts.signal ?? getRequestSignal())
+      else if (requestOnly) models = await requestCatalog(requestOnly, fetcherForUpstream(upstream.id), opts.signal ?? getRequestSignal())
       else throw new CatalogUnavailableError("unavailable")
-      provider.setModelCatalog?.(models)
-      const enabledFlags = resolveEffectiveFlags(defaultsForUpstream(upstream.provider), [upstream.flagOverrides])
-      const disabled = new Set(upstream.disabledPublicModelIds)
-      const listedModels = upstream.provider === "copilot" ? catalogWithCopilotVariants(models) : models
-      for (const model of listedModels.data ?? []) {
-        const publicId = upstream.provider === 'copilot' ? model.variant_family ?? copilotPublicModelId(model.id) : model.id
-        if (disabled.has(publicId)) continue
-        bindings.push({
-          upstream: upstream.id,
-          kind: upstream.provider,
-          model: modelToBindingModel(model as Model, upstream.provider, provider),
-          enabledFlags,
-          provider,
-        })
+      // The promise and authoritative credential/proxy observation live only in
+      // this request. A cold projection provider is reused if it wins routing.
+      let pending: Promise<LlmModelProvider | null> | undefined
+      const provider = () => pending ??= (async () => {
+        const currentFetcher = accepted ? await authoritativeFetchers(accepted) : fetcherForUpstream
+        const execution: ProviderPluginContext["executionFetcherForUpstream"] = observation ? (id, request) => {
+          const operation = operationForProviderRequest(request)
+          return currentFetcher(id, operation ? observation.forOperation({ upstreamId: id, operation }) : undefined)
+        } : undefined
+        const created = await createProviderFromUpstream(upstream, requestOnly, currentFetcher, execution)
+        if (!created) throw new CatalogUnavailableError("unavailable")
+        created.setModelCatalog?.(models)
+        return created
+      })().catch(error => { reportFailure(upstream.id, upstream.provider, error); return null })
+      const cache = accepted ? projectionCache() : undefined
+      let projection = accepted ? cache?.get(accepted.snapshot) : undefined
+      if (!projection) {
+        const created = await provider()
+        if (!created) continue
+        projection = project(models, upstream.provider, created)
+        if (accepted) cache?.set(accepted.snapshot, projection)
       }
-    } catch (err) {
-      opts.onCatalogError?.(upstream.id)
-      if (opts.strictCatalog) throw err
-      console.warn(
-        `[registry] upstream ${upstream.id} (${upstream.provider}) contributed no models:`,
-        err instanceof CatalogUnavailableError ? err.code : "unavailable",
-      )
-      continue
+      addGroup(upstream.id, upstream.provider, projection,
+        resolveEffectiveFlags(defaultsForUpstream(upstream.provider), [upstream.flagOverrides]),
+        upstream.disabledPublicModelIds, provider)
+    } catch (error) {
+      if (failed.has(upstream.id)) throw error
+      reportFailure(upstream.id, upstream.provider, error)
     }
   }
 
-  // Request-scoped Copilot fallback: if no stored Copilot upstream produced
-  // bindings, synthesize one from the per-request token in opts.copilot.
-  if (!upstreams.some((upstream) => upstream.provider === 'copilot') && opts.copilot) {
-    const provider = createCopilotProvider(opts.copilot, observation ? (request) => {
-      const operation = operationForProviderRequest(request)
-      const upstreamId = 'copilot_request'
-      return operation
-        ? createObservedDirectFetcher(upstreamId, observation.forOperation({ upstreamId, operation }))
-        : directFetcher
-    } : undefined)
+  // Request-token catalogs are never published or retained across requests.
+  // Keep the stored-Copilot existence gate, including disabled/invisible pins.
+  if (!upstreams.some(upstream => upstream.provider === "copilot") && opts.copilot) {
     try {
+      const provider = createCopilotProvider(opts.copilot, observation ? request => {
+        const operation = operationForProviderRequest(request)
+        const upstreamId = "copilot_request"
+        return operation ? createObservedDirectFetcher(upstreamId, observation.forOperation({ upstreamId, operation })) : directFetcher
+      } : undefined)
       const models = await requestCatalog(opts.copilot, directFetcher, opts.signal ?? getRequestSignal())
-      const enabledFlags = defaultsForUpstream('copilot')
       provider.setModelCatalog?.(models)
-      const listedModels = catalogWithCopilotVariants(models)
-      for (const model of listedModels.data ?? []) {
-        bindings.push({
-          upstream: 'copilot:request',
-          kind: 'copilot',
-          model: modelToBindingModel(model as Model, 'copilot', provider),
-          enabledFlags,
-          provider,
-        })
-      }
-    } catch (err) {
-      opts.onCatalogError?.('copilot:request')
-      if (opts.strictCatalog) throw err
-    }
+      addGroup("copilot:request", "copilot", project(models, "copilot", provider), defaultsForUpstream("copilot"), [], async () => provider)
+    } catch (error) { reportFailure("copilot:request", "copilot", error) }
   }
+  const collect = (ids?: readonly string[]): RoutingBindingDescriptor[] => {
+    const descriptors: RoutingBindingDescriptor[] = []
+    for (const [id, group] of groups) {
+      if (failed.has(id)) continue
+      for (const entry of ids ? group.projection.find(ids) : group.projection.entries) {
+        if (!group.disabled.has(entry.publicId)) descriptors.push(group.descriptor(entry))
+      }
+    }
+    return descriptors
+  }
+  return {
+    all: () => collect(), find: ids => collect(ids),
+    async reconcile() {
+      // Empty catalogs also had a constructor in the legacy contribution pass.
+      for (const [id, group] of groups) if (!failed.has(id)) await group.provider()
+    },
+    async materialize(descriptor) {
+      if (failed.has(descriptor.upstream)) return null
+      const group = groups.get(descriptor.upstream)
+      if (!group) return null
+      const provider = await group.provider()
+      return provider ? { ...descriptor, model: structuredClone(descriptor.model), enabledFlags: new Set(descriptor.enabledFlags), provider } : null
+    },
+  }
+}
 
+/** Compatibility API for callers explicitly requesting all execution bindings. */
+export async function listProviderBindings(opts: ListUpstreamModelsOptions = {}): Promise<LlmProviderBinding[]> {
+  const routing = await listRoutingBindings(opts.allOwners ? { kind: "all-owners" } : routingScope(opts.ownerId), opts)
+  await routing.reconcile()
+  const bindings: LlmProviderBinding[] = []
+  for (const descriptor of routing.all()) {
+    const binding = await routing.materialize(descriptor)
+    if (binding) bindings.push(binding)
+  }
   return bindings
 }
 
 export async function listUpstreamModels(
   opts: ListUpstreamModelsOptions = {},
 ): Promise<ModelsResponse> {
-  const bindings = await listProviderBindings(opts)
+  const routing = await listRoutingBindings(opts.allOwners ? { kind: "all-owners" } : routingScope(opts.ownerId), opts)
+  const bindings = routing.all()
   const data: ModelsResponse['data'] = []
   const seen = new Map<string, number>()
   // Map binding.model.endpoints (internal EndpointKey) → SDK-facing path tokens
@@ -430,7 +477,7 @@ export async function listUpstreamModels(
       // upstream model JSON verbatim so vendor fields (`capabilities.family`,
       // `supports.*`, `tokenizer`, `model_picker_category`, `policy`,
       // `supported_endpoints`, `preview`) round-trip unchanged.
-      const raw = binding.model.raw as Record<string, unknown>
+      const raw = structuredClone(binding.model.raw) as Record<string, unknown>
       const chat = raw.chat as { image_detail_original?: boolean; modalities?: { input?: string[] } } | undefined
       data.push({ ...raw,
         ...(!Object.hasOwn(raw, 'supported_endpoints') ? { supported_endpoints: supportedEndpoints } : {}),

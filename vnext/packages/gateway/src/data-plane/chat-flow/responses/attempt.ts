@@ -1,5 +1,5 @@
 import { AffinityRoutingUnavailableError } from "../../../shared/affinity/analysis.ts"
-import { affinityExecutionState, fetchAffinityUpstream, selectAffinityCandidate, materializeAffinity, affinityFence, acceptAffinityExecution, type AttemptAffinity, type AffinityPreparationOptions } from "../../shared/affinity-request"
+import { affinityExecutionState, fetchAffinityUpstream, materializeAffinity, affinityFence, acceptAffinityExecution, type AttemptAffinity, type AffinityPreparationOptions } from "../../shared/affinity-request"
 import { selectedTierFrames } from "../shared/execution-tier"
 import type { GatewayRequestContext } from "../shared/gateway-ctx.ts"
 import type { DumpAccumulator } from "../../../shared/dump/accumulator.ts"
@@ -76,7 +76,7 @@ import type { TelemetryRequestContext } from '../shared/telemetry-ctx.ts'
 import type { SelectBindingAuth } from '../shared/select-binding.ts'
 import { withUpstreamTelemetry } from '../shared/upstream-telemetry'
 import { MODEL_CATALOG_UNAVAILABLE } from '../../errors/model-catalog.ts'
-import { enumerateBindingCandidates } from '../../routing/candidates.ts'
+import { selectBindingForProtocol } from "../shared/select-binding.ts"
 import { selectPair } from '../../dispatch/pair-selector.ts'
 import { getTranslator, type PairTranslator } from '../../dispatch/translator-registry.ts'
 import { traverseTranslation } from '../shared/traverse-translation.ts'
@@ -147,29 +147,10 @@ const pickTargetForResponses = (endpoints: ModelEndpoints): EndpointKey | null =
   selectPair('responses', endpoints)
 
 const defaultSelectBinding: SelectResponsesBinding = async ({ model, auth, dump, affinity, affinityOptions }) => {
-  const { candidates, sawModel, bareModel, catalogUnavailable } = await enumerateBindingCandidates({
-    model,
-    pickTarget: pickTargetForResponses,
-    opts: {
-      dump,
-      ownerId: auth.ownerId,
-      copilot: auth.copilot,
-      pin: auth.pin,
-    },
+  return selectBindingForProtocol({
+    model, auth, dump, affinity, affinityOptions,
+    protocol: "responses", pickTarget: pickTargetForResponses,
   })
-  if (catalogUnavailable) return { kind: 'catalog-unavailable', bareModel }
-  if (!sawModel) return { kind: 'model-not-found', bareModel }
-  const first = await selectAffinityCandidate(candidates, affinity, bareModel, affinityOptions)
-  if (!first) return { kind: 'no-eligible-binding', bareModel }
-  const translator = getTranslator('responses', first.targetEndpoint)
-  if (!translator) return { kind: 'no-translator', bareModel, targetEndpoint: first.targetEndpoint }
-  return {
-    kind: 'ok',
-    binding: first.binding as never,
-    targetEndpoint: first.targetEndpoint,
-    translator,
-    bareModel,
-  }
 }
 
 // ─── Streaming/JSON branching helpers ────────────────────────────────────

@@ -122,7 +122,8 @@ export interface LlmModelProvider extends UpstreamAdapter {
 
   /** Pure trusted-provider declaration for a discovered candidate. Never infer
    * this from caller input or arbitrary remote catalog fields. The registry
-   * validates and reconstructs it on every binding rebuild, including cache hits. */
+   * validates it when projecting each accepted configuration/catalog publication;
+   * cached projections retain only the validated declaration data. */
   getOpaqueCompatibilityForModel?(model: Readonly<BindingModel>): OpaqueCompatibilityDeclaration | undefined
   /** Seed instance-local model resolution from the shared successful catalog. */
   setModelCatalog?(models: ProviderModelsResponse): void

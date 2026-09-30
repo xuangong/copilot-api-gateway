@@ -12,9 +12,9 @@ import type { DumpAccumulator } from "../../shared/dump/accumulator.ts"
  *   - Composite-model fallback (parseCompositeModelId) is reused verbatim.
  */
 import type { EndpointKey } from '@vibe-llm/protocols/common'
-import { bindingServesEndpoint, type LlmProviderBinding } from './binding.ts'
+import { type LlmProviderBinding } from './binding.ts'
 import { ModelCatalogUnavailableError } from '../errors/model-catalog.ts'
-import { listProviderBindings, type CreateProviderOptions } from '../providers/registry.ts'
+import { listRoutingBindings, routingScope, type CreateProviderOptions } from '../providers/registry.ts'
 import { parseCompositeModelId } from '@vibe-llm/provider-copilot'
 import { parseModelRouting } from './model-routing.ts'
 
@@ -38,8 +38,7 @@ export async function resolveBinding(
   const upstreamPin = opts.pin ?? parsed.upstreamPin
   const bareModel = parsed.bareModel
   let incomplete = false
-  const bindings = await listProviderBindings({
-    ownerId: opts.ownerId,
+  const bindings = await listRoutingBindings(routingScope(opts.ownerId), {
     pin: upstreamPin,
     copilot: opts.copilot,
     dump: opts.dump,
@@ -47,18 +46,18 @@ export async function resolveBinding(
       if (!upstreamPin || upstreamId === undefined || upstreamId === upstreamPin) incomplete = true
     },
   })
-  const candidates = bindings.filter((b) => bindingServesEndpoint(b, endpoint))
-  const matches = (b: LlmProviderBinding, id: string) =>
-    b.model.id === id && (!upstreamPin || b.upstream === upstreamPin)
-
-  const direct = candidates.find((b) => matches(b, bareModel))
-  if (direct) return direct
-
   const composite = parseCompositeModelId(bareModel)
-  if (composite.baseId && composite.baseId !== bareModel) {
-    const base = candidates.find((b) => matches(b, composite.baseId))
-    if (base) return base
+  const ids = composite.baseId && composite.baseId !== bareModel ? [bareModel, composite.baseId] : [bareModel]
+  // This resolver intentionally prefers all direct matches before any base
+  // fallback; chat candidate enumeration preserves upstream order instead.
+  for (const id of ids) {
+    for (const descriptor of bindings.find([id])) {
+      if ((upstreamPin && descriptor.upstream !== upstreamPin) || descriptor.model.endpoints[endpoint] === undefined) continue
+      const binding = await bindings.materialize(descriptor)
+      if (binding) return binding
+    }
   }
+  await bindings.reconcile()
 
   if (incomplete) throw new ModelCatalogUnavailableError(opts.errorFormat)
   return null

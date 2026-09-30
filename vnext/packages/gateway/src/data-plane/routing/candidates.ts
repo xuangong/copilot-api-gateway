@@ -6,16 +6,21 @@ import type { DumpAccumulator } from "../../shared/dump/accumulator.ts"
  */
 import type { EndpointKey, ModelEndpoints } from '@vibe-llm/protocols/common'
 import type { LlmProviderBinding } from '@vibe-llm/provider-llm'
-import { listProviderBindings, type CreateProviderOptions } from '../providers/registry.ts'
+import { listRoutingBindings, routingScope, type CreateProviderOptions } from '../providers/registry.ts'
 import { parseModelRouting } from './model-routing.ts'
 import { parseCompositeModelId } from '@vibe-llm/provider-copilot'
 
+import type { RoutingBindingDescriptor } from "../providers/routing-projection.ts"
+
 export interface BindingCandidate {
-  binding: LlmProviderBinding
+  binding: RoutingBindingDescriptor
   targetEndpoint: EndpointKey
 }
 
+export interface MaterializedBindingCandidate extends BindingCandidate { binding: LlmProviderBinding }
+
 export interface EnumerateOptions {
+  signal?: AbortSignal
   dump?: DumpAccumulator | null
   ownerId?: string
   copilot?: CreateProviderOptions
@@ -29,6 +34,8 @@ export interface EnumerateResult {
   sawModel: boolean
   bareModel: string
   upstreamPin?: string
+  materialize?: (candidate: BindingCandidate) => Promise<MaterializedBindingCandidate | null>
+  reconcile?: () => Promise<void>
 }
 
 /**
@@ -36,7 +43,7 @@ export interface EnumerateResult {
  * minus the listProviderBindings I/O.
  */
 export function filterBindingCandidates(args: {
-  bindings: readonly LlmProviderBinding[]
+  bindings: readonly RoutingBindingDescriptor[]
   model: string
   pickTarget: (e: ModelEndpoints) => EndpointKey | null
   pin?: string
@@ -49,7 +56,7 @@ export function filterBindingCandidates(args: {
   const composite = parseCompositeModelId(bareModel)
   const altId = composite.baseId && composite.baseId !== bareModel ? composite.baseId : null
 
-  const matches = (b: LlmProviderBinding): boolean => {
+  const matches = (b: RoutingBindingDescriptor): boolean => {
     if (upstreamPin && b.upstream !== upstreamPin) return false
     return b.model.id === bareModel || (altId !== null && b.model.id === altId)
   }
@@ -76,8 +83,8 @@ export async function enumerateBindingCandidates(args: {
   const { model, pickTarget, opts = {} } = args
   const upstreamPin = opts.pin ?? parseModelRouting(model).upstreamPin
   let incomplete = false
-  const bindings = await listProviderBindings({
-    ownerId: opts.ownerId,
+  const bindings = await listRoutingBindings(routingScope(opts.ownerId), {
+    signal: opts.signal,
     pin: upstreamPin,
     copilot: opts.copilot,
     dump: opts.dump,
@@ -85,6 +92,23 @@ export async function enumerateBindingCandidates(args: {
       if (!upstreamPin || upstreamId === undefined || upstreamId === upstreamPin) incomplete = true
     },
   })
-  const result = filterBindingCandidates({ bindings, model, pickTarget, pin: opts.pin })
-  return incomplete && result.candidates.length === 0 ? { ...result, catalogUnavailable: true } : result
+  const parsed = parseModelRouting(model)
+  const composite = parseCompositeModelId(parsed.bareModel)
+  const ids = composite.baseId && composite.baseId !== parsed.bareModel ? [parsed.bareModel, composite.baseId] : [parsed.bareModel]
+  const current = () => filterBindingCandidates({ bindings: bindings.find(ids), model, pickTarget, pin: opts.pin })
+  return {
+    bareModel: parsed.bareModel, upstreamPin,
+    get candidates() { return current().candidates },
+    get sawModel() { return current().sawModel },
+    get catalogUnavailable() { return incomplete && current().candidates.length === 0 },
+    async materialize(candidate) {
+      const binding = await bindings.materialize(candidate.binding)
+      return binding ? { ...candidate, binding } : null
+    },
+    async reconcile() {
+      // No selected endpoint can validate these advertised contributions. Only
+      // terminal error paths pay the legacy construction pass for error parity.
+      await bindings.reconcile()
+    },
+  }
 }

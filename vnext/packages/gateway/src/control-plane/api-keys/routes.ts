@@ -33,7 +33,7 @@ import { resolveWebSearchForKey } from '../../data-plane/tools/web-search/resolv
 import type { ApiKeyId, UserId } from '../../repo/branded-ids.ts'
 import { zValidator } from '../middleware/zod-validator.ts'
 import { loadOwned } from '../shared/ownership.ts'
-import { listProviderBindings } from '../../data-plane/providers/registry.ts'
+import { listRoutingBindings, routingScope } from '../../data-plane/providers/registry.ts'
 import { normalizeApiKeyModelMappings } from '../../shared/api-key-model-mappings.ts'
 import { buildCompositeModelId, composeModelOptions, copilotPublicModelId } from '@vibe-llm/provider-copilot'
 import type { Model, ModelsResponse } from '@vibe-llm/provider-copilot'
@@ -175,14 +175,12 @@ function validateModelMappings(value: unknown): ModelMappingInput[] | { error: s
 async function destinationsAreAvailable(ownerId: string | undefined, mappings: readonly ModelMappingInput[]): Promise<boolean> {
   if (mappings.length === 0) return true
   let catalogIncomplete = false
-  const bindings = await listProviderBindings({
-    ownerId,
-    dedupe: false,
+  const routing = await listRoutingBindings(routingScope(ownerId), {
     onCatalogError: () => { catalogIncomplete = true },
   })
   const available = new Set<string>()
   const copilotModelsByUpstream = new Map<string, Model[]>()
-  for (const binding of bindings) {
+  for (const binding of routing.all()) {
     available.add(binding.model.id)
     if (binding.kind !== 'copilot' || !binding.model.raw) continue
     const rawModels = copilotModelsByUpstream.get(binding.upstream) ?? []

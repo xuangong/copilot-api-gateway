@@ -34,13 +34,27 @@ export async function createRequestAffinity(protocol: AffinityProtocol, source: 
 
 export interface AffinityPreparationOptions { signal?: AbortSignal; inboundHeaders?: Headers; inheritedHeaders?: Record<string, string>; action?: "generate" | "compact" }
 
-interface Candidate { binding: LlmProviderBinding; targetEndpoint: EndpointKey }
-export async function selectAffinityCandidate<T extends Candidate>(candidates: readonly T[], affinity: AttemptAffinity | undefined, bareModel: string, options: AffinityPreparationOptions = {}): Promise<T | undefined> {
-  if (!affinity) return candidates[0]
-  if (!("analysis" in affinity)) throw new AffinityRoutingUnavailableError()
-  if (!affinity.analysis.hasOwned) return candidates[0]
+import type { RoutingBindingDescriptor } from "../providers/routing-projection.ts"
+
+interface Candidate { binding: RoutingBindingDescriptor; targetEndpoint: EndpointKey }
+type MaterializedCandidate<T extends Candidate> = T & { binding: LlmProviderBinding }
+export async function selectAffinityCandidate<T extends Candidate>(candidates: readonly T[], affinity: AttemptAffinity | undefined, bareModel: string, options: AffinityPreparationOptions = {}, materialize?: (candidate: T) => Promise<MaterializedCandidate<T> | null>): Promise<MaterializedCandidate<T> | undefined> {
+  const ready = async (candidate: T): Promise<MaterializedCandidate<T> | null> => {
+    if (materialize) return materialize(candidate)
+    if (!("provider" in candidate.binding)) throw new TypeError("Routing descriptor requires materialization")
+    return candidate as MaterializedCandidate<T>
+  }
+  if (affinity && !("analysis" in affinity)) throw new AffinityRoutingUnavailableError()
+  if (!affinity || !affinity.analysis.hasOwned) {
+    for (const candidate of candidates) {
+      options.signal?.throwIfAborted()
+      const selected = await ready(candidate)
+      if (selected) return selected
+    }
+    return undefined
+  }
   const execution = affinity.execution
-  const prepared: Array<{ candidate: T; target: AffinityExecutionTarget | undefined }> = []
+  const prepared: Array<{ candidate: MaterializedCandidate<T>; target: AffinityExecutionTarget | undefined }> = []
   for (const candidate of candidates) {
     options.signal?.throwIfAborted()
     if (["responses", "messages"].includes(execution.protocol) && candidate.targetEndpoint === "chat_completions") continue
@@ -51,6 +65,8 @@ export async function selectAffinityCandidate<T extends Candidate>(candidates: r
     if (affinity.analysis.hasRequiredOwned && candidate.targetEndpoint !== execution.protocol) continue
     const translator = getTranslator(execution.protocol, candidate.targetEndpoint)
     if (!translator) continue
+    const selected = await ready(candidate)
+    if (!selected) continue
     try {
       const source: Record<string, unknown> = { ...affinity.analysis.cloneSource(), model: bareModel }
       const translated = await translator.translateRequest(source, { signal: options.signal ?? new AbortController().signal, model: bareModel })
@@ -59,7 +75,7 @@ export async function selectAffinityCandidate<T extends Candidate>(candidates: r
         endpoint: candidate.targetEndpoint,
         payload,
         headers: new Headers({
-          ...(execution.protocol === "messages" ? allowedInboundHeaders(options.inboundHeaders, candidate.binding.provider) : {}),
+          ...(execution.protocol === "messages" ? allowedInboundHeaders(options.inboundHeaders, selected.binding.provider) : {}),
           ...options.inheritedHeaders,
         }),
         action: options.action,
@@ -68,18 +84,17 @@ export async function selectAffinityCandidate<T extends Candidate>(candidates: r
         sourceApi: candidate.targetEndpoint === "messages" ? "anthropic" : "openai",
         sourceProtocol: execution.protocol,
       }
-      const target = await candidate.binding.provider.prepareAffinityExecution?.(request)
-      prepared.push({ candidate, target })
+      const target = await selected.binding.provider.prepareAffinityExecution?.(request)
+      prepared.push({ candidate: selected, target })
     } catch (error) {
       if (options.signal?.aborted) throw error
       // Unprovable execution/representation never grants a route for owned state.
-      if (!affinity.analysis.hasOwned) prepared.push({ candidate, target: undefined })
+
     }
   }
   const first = affinity.analysis.rankAuthorizedCandidates(prepared, value => value.target)[0]
   if (!first) {
-    if (affinity.analysis.hasOwned) throw new AffinityRoutingUnavailableError()
-    return candidates[0]
+    throw new AffinityRoutingUnavailableError()
   }
   execution.selected = first.target
   return first.candidate

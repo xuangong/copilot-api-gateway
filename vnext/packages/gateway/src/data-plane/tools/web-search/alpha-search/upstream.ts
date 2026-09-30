@@ -34,13 +34,14 @@ export const resolveAlphaSearchDispatcher = async (args: {
   if (config.upstreamId === '') {
     throw new Error('OpenAI search passthrough has no upstream configured')
   }
-  const { candidates } = await enumerateBindingCandidates({
+  const enumeration = await enumerateBindingCandidates({
     model: config.model,
     pickTarget: pickAlphaSearch as never,
     opts: { dump: args.dump, ownerId: auth.userId, copilot: auth.copilot, pin: config.upstreamId },
   })
-  const candidate = candidates.find((c) => c.binding.upstream === config.upstreamId)
-  if (candidate === undefined) {
+  const descriptor = enumeration.candidates.find((c) => c.binding.upstream === config.upstreamId)
+  const candidate = descriptor ? await enumeration.materialize?.(descriptor) : undefined
+  if (!candidate) {
     // Enumeration is already scoped to what this caller can see, so "not
     // found" covers both "no such pair" and "not yours". Say so — the
     // reference raises these separately and the merged message was too vague

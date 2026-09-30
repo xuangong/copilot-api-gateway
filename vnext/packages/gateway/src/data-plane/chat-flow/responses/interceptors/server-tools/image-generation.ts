@@ -950,7 +950,7 @@ import { sleep } from '../../../../../data-plane/shared/sleep.ts'
 import { appendFailedUpstreams } from '../../../../../data-plane/shared/failed-upstreams.ts'
 import { recordTokenUsage, tokenUsageFromImagesBody } from '../../../../../data-plane/shared/token-usage.ts'
 import { stampUpstreamCallStart, type AttemptState } from '../../../../../data-plane/shared/gateway-ctx.ts'
-import { enumerateBindingCandidates, type BindingCandidate } from '../../../../routing/candidates.ts'
+import { enumerateBindingCandidates, type MaterializedBindingCandidate } from '../../../../routing/candidates.ts'
 
 // Standalone image backend error, normalized across HTTP transport /
 // backend-body / dispatch-time exceptions. `retryable` lets the ReAct loop
@@ -1126,7 +1126,7 @@ const serverError = (e: unknown): ImageError => ({
 const resolveImageCandidate = async (
   isEdit: boolean,
   state: ShimState,
-): Promise<{ ok: true; candidate: BindingCandidate } | { ok: false; error: ImageError }> => {
+): Promise<{ ok: true; candidate: MaterializedBindingCandidate } | { ok: false; error: ImageError }> => {
   const endpointKey: EndpointKey = isEdit ? 'images_edits' : 'images_generations'
   const endpointPath = isEdit ? '/images/edits' : '/images/generations'
   const pickTarget = (endpoints: ModelEndpoints): EndpointKey | null =>
@@ -1153,7 +1153,14 @@ const resolveImageCandidate = async (
   const filtered = state.upstreamIds === null || state.upstreamIds === undefined
     ? resolution.candidates
     : resolution.candidates.filter(c => state.upstreamIds!.includes(c.binding.upstream))
-  const match = filtered[0]
+  let match: MaterializedBindingCandidate | undefined
+  try {
+    if (resolution.candidates.length === 0) await resolution.reconcile?.()
+    for (const candidate of filtered) {
+      const ready = await resolution.materialize?.(candidate)
+      if (ready) { match = ready; break }
+    }
+  } catch (error) { return { ok: false, error: serverError(error) } }
   serverToolTrace('image.resolve', {
     requestedModel: state.config.model,
     endpoint: endpointKey,
@@ -1242,7 +1249,7 @@ export const parseRetryAfterMs = (headers: Headers): number | null => {
 // unread body — intermediate failed responses are drained inside the loop so
 // the underlying socket can be reused while we sleep.
 const issueImageCall = async (
-  candidate: BindingCandidate,
+  candidate: MaterializedBindingCandidate,
   prompt: string,
   editRequest: ImagesEditsRequest | null,
   config: ImageGenerationConfig,
@@ -1303,7 +1310,7 @@ const issueImageCall = async (
 // outcome. Transport/backend failures become `{ok:false}` rather than
 // throwing, so the caller always produces a terminal image item.
 const consumeImageResponse = async (
-  candidate: BindingCandidate,
+  candidate: MaterializedBindingCandidate,
   modelKey: string,
   response: ProviderResponse,
   state: ShimState,
