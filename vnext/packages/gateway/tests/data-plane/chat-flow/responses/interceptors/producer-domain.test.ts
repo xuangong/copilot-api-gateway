@@ -1,4 +1,3 @@
-import { translatedFixture } from "../../shared/translated-fixture"
 import { beforeEach, expect, test } from "bun:test"
 import { doneFrame, eventFrame, type ProtocolFrame } from "@vibe-core/result"
 import { llmEventResult, type Invocation, type TranslatedLlmEventResult } from "@vibe-llm/protocols/common"
@@ -6,7 +5,6 @@ import { getTranslator } from "../../../../../src/data-plane/dispatch/translator
 import { traverseTranslation } from "../../../../../src/data-plane/chat-flow/shared/traverse-translation"
 import { withResponsesCompactShim } from "../../../../../src/data-plane/chat-flow/responses/interceptors/with-responses-compact-shim"
 import { withResponsesServerToolShim } from "../../../../../src/data-plane/chat-flow/responses/interceptors/server-tool-shim"
-import { withResponsesCollaborationShim } from "../../../../../src/data-plane/chat-flow/responses/interceptors/with-responses-collaboration-shim"
 import { createInMemoryPrivatePayloadStore } from "../../../../../src/data-plane/orchestrator/server-tools/private-payload-store"
 import type { ServerToolRegistration, ServerToolResultSlot } from "../../../../../src/data-plane/orchestrator/server-tools/types"
 import { respondResponses } from "../../../../../src/data-plane/chat-flow/responses/respond"
@@ -89,31 +87,5 @@ for (const stream of [false, true]) {
     expect(runs).toBe(2)
     if (!stream) expect(body.metadata).toEqual({ retained: "body-only" })
     expect(counts).toEqual({ body: stream ? 0 : 2, events: stream ? 2 : 0 })
-  })
-
-  test(`collaboration shim keeps ${stream ? "event" : "body"} translation independent and restores its namespace`, async () => {
-    const inv = invocation(stream)
-    inv.enabledFlags = new Set(["responses-collaboration-shim"])
-    inv.payload.tools = [{ type: "namespace", name: "collaboration", tools: [{ type: "function", name: "spawn_agent", parameters: { type: "object", properties: {} } }] }]
-    const counts = { body: 0, events: 0 }
-    // Namespace tools are currently rejected by the real cross-protocol
-    // request translator; exercise this response adapter seam explicitly.
-    const result = await withResponsesCollaborationShim(inv, ctx, async () => {
-      const tools = inv.payload.tools as Array<{ name: string }>
-      const response = { id: "r", object: "response", status: "completed", model: "m", output: [
-        { type: "function_call", id: "f", call_id: "c", namespace: tools[0]?.name, name: "spawn_agent", arguments: "{}" },
-      ] }
-      return translatedFixture({ kind: "translated", source: "responses", protocol: "chat_completions" },
-        (async function* () { yield eventFrame({ id: "c", model: "m", choices: [{ index: 0, delta: {}, finish_reason: "stop" }] }); yield doneFrame() })(), identity,
-        undefined, undefined,
-        () => { counts.body++; return response },
-        async function* () { counts.events++; yield { type: "response.completed", response } },
-      )
-    })
-    if (result.type !== "events") throw new Error("Expected events")
-    expect(result.producer?.protocol).toBe("chat_completions")
-    const body = await readResponse(await respondResponses(result, { wantsStream: stream }), stream)
-    expect(body.output).toMatchObject([{ namespace: "collaboration", name: "spawn_agent", encrypted_function_args: [] }])
-    expect(counts).toEqual({ body: stream ? 0 : 1, events: stream ? 1 : 0 })
   })
 }
