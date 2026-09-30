@@ -76,10 +76,16 @@ export function createCopilotProvider(opts: CreateProviderOptions, executionFetc
  * deployment/etc. Callers wanting HTTP 4xx must wrap in try/catch
  * (see control-plane upstream-probe).
  */
-const PROVIDER_PLUGINS = new Map(
-  [copilotProviderPlugin, azureProviderPlugin, codexProviderPlugin, claudeCodeProviderPlugin, customProviderPlugin, sdfProviderPlugin]
-    .map((p) => [p.kind, p] as const),
-) satisfies ReadonlyMap<UpstreamKind, LlmProviderPlugin>
+const BUNDLED_PROVIDER_PLUGINS = {
+  copilot: copilotProviderPlugin,
+  azure: azureProviderPlugin,
+  codex: codexProviderPlugin,
+  "claude-code": claudeCodeProviderPlugin,
+  custom: customProviderPlugin,
+  sdf: sdfProviderPlugin,
+} satisfies Record<UpstreamKind, LlmProviderPlugin>
+
+const PROVIDER_PLUGINS: ReadonlyMap<string, LlmProviderPlugin> = new Map(Object.entries(BUNDLED_PROVIDER_PLUGINS))
 
 export async function createProviderFromUpstream(
   upstream: UpstreamRecord<unknown>,

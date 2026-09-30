@@ -170,6 +170,10 @@ export interface ServeTemplateResult<TExtra> {
   readonly extra: TExtra | undefined
 }
 
+export type PrepareTemplateResult<TPayload, TAttemptResult, TExtra = undefined, TTelemetryCtx = unknown> =
+  | { readonly kind: 'response'; readonly response: Response; readonly extra: TExtra | undefined }
+  | { readonly kind: 'attempt'; readonly result: TAttemptResult; readonly context: RespondCtx<TPayload, TExtra, TTelemetryCtx>; readonly extra: TExtra | undefined }
+
 export async function prepareTemplate<
   TPayload,
   TAttemptResult,
@@ -180,10 +184,7 @@ export async function prepareTemplate<
   hooks: ServeTemplateHooks<TPayload, TAttemptResult, TExtra, TAuth, TTelemetryCtx>,
   input: ServeTemplateInput<TAuth>,
   deps: ServeTemplateDeps<TAuth, TTelemetryCtx, TPayload, TExtra>,
-): Promise<
-  | { readonly kind: 'response'; readonly response: Response; readonly extra: TExtra | undefined }
-  | { readonly kind: 'attempt'; readonly result: TAttemptResult; readonly context: RespondCtx<TPayload, TExtra, TTelemetryCtx>; readonly extra: TExtra | undefined }
-> {
+): Promise<PrepareTemplateResult<TPayload, TAttemptResult, TExtra, TTelemetryCtx>> {
   const requestStartedAt = Date.now()
 
   // 1. Parse.

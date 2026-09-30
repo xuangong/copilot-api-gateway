@@ -40,6 +40,7 @@ import {
   type KitAuthCtx,
   type KitDumpSink,
   type KitObsCtx,
+  type PrepareTemplateResult,
   type PreProcessResult,
   type ServeTemplateHooks,
 } from '@vibe-core/chat-flow-kit'
@@ -114,6 +115,8 @@ type ResponsesPayload = Record<string, unknown> & {
 type ResponsesServeAuth = ResponsesAttemptAuth & KitAuthCtx & Pick<DataPlaneAuthCtx, 'routingPolicy' | 'responsesRetentionSeconds'>
 
 type ResponsesExtra = { readonly affinity?: RequestAffinity; readonly mergedInputItems?: unknown[]; readonly incomingModel: string; readonly upstreamPin?: string; readonly onCompleted?: ResponsesCompletionWriter }
+
+type ResponsesPreparation = PrepareTemplateResult<ResponsesPayload, ResponsesAttemptResult, ResponsesExtra, TelemetryRequestContext>
 
 const responsesHooks: ServeTemplateHooks<
   ResponsesPayload,
@@ -258,7 +261,7 @@ export function startResponsesTurn(args: ResponsesServeArgs): ResponsesTurn {
   return turn
 }
 
-async function prepareResponses(args: ResponsesServeArgs, upstreamAbortController: AbortController) {
+async function prepareResponses(args: ResponsesServeArgs, upstreamAbortController: AbortController): Promise<ResponsesPreparation> {
   const auth: ResponsesServeAuth = {
     ownerId: args.auth.userId,
     copilot: args.auth.copilot,

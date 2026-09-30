@@ -9,6 +9,7 @@ import {
   withCanonicalCompletion,
   type KitCanonicalCompletion,
   type KitAuthCtx,
+  type PrepareTemplateResult,
   type PreProcessResult,
   type ServeTemplateDeps,
   type ServeTemplateHooks,
@@ -364,7 +365,7 @@ describe('serveTemplate — AbortController linking', () => {
     const listener = spyOn(controller.signal, "addEventListener")
     let attemptSignal: AbortSignal | undefined
     try {
-      const prepared = await prepareTemplate(defaultHooks({
+      const prepared: PrepareTemplateResult<Payload, AttemptResult, Extra, TCtx> = await prepareTemplate(defaultHooks({
         runAttempt: async a => {
           attemptSignal = a.downstreamAbortSignal
           return { kind: "ok", echoed: a.payload.value }
