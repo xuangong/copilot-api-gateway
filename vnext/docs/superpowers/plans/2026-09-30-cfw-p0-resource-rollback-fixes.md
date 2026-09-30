@@ -14,7 +14,8 @@ User-approved scope: fix the measured resource regression and old/new catalog/af
 - [x] Verify and reduce preparation-only closure retention in actual workerd, preserving cancellation and completion ownership: `5934d23d`, 18 independently audited snapshots and 100 focused regression tests. This proves the narrow ownership change, not cloud resource acceptance.
 - [x] Complete exact frozen full CI for `5934d23d`: 5,248 passed, 2 skipped, 0 failed; all other stages passed and 2,307 source hashes matched afterward. Same-lock dependency reuse remains a clean-install gap.
 - [ ] Complete unchanged cloud resource qualification for the preparation-ownership candidate.
-- [ ] Validate explicit driver task-retirement accounting before another remote load comparison. Keep the failed runner and all dropped offers in the evidence.
+- [x] Validate explicit driver task-retirement accounting before another remote load comparison: v2.1 duplicate-count false acceptance reproduced, v2.2 real local HTTP/filesystem matrix passed 18 cases each on Node and Bun, 18 helper tests each and strict typecheck passed; 453 independent receipt/readback checks passed. This does not resolve the original cap anomaly or qualify cloud resources. Keep the failed runner and all dropped offers in the evidence.
+- [ ] Measure dump ownership through real local workerd/D1/R2 stage acknowledgements, retaining old handles and a borrowed-collector control; implement only the supported ownership handoff and verify semantic preservation before cloud qualification.
 - [ ] Pass joint enabled-feature resource qualification, remaining fault/cancellation/protocol coverage and one-hour mixed soak.
 - [ ] Complete catalog legacy-writer and affinity rollback compatibility (Tasks 2 and 3).
 - [ ] Complete combined qualification and integrate reviewed passing work into vNext (Task 4). No production deployment or push in this phase.
