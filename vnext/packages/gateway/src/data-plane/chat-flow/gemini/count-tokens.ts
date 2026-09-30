@@ -1,3 +1,4 @@
+import { withDumpExceptionCleanup } from '@vibe-core/chat-flow-kit'
 // packages/gateway/src/data-plane/chat-flow/gemini/count-tokens.ts
 //
 // Gemini-native :countTokens handler. Translates the Gemini request body to
@@ -25,74 +26,76 @@ export interface GeminiCountTokensServeArgs {
 }
 
 export async function serveGeminiCountTokens(args: GeminiCountTokensServeArgs): Promise<Response> {
-  const tee = (r: Response): Response => (args.dump ? args.dump.finalize(r) : r)
-  if (args.dump && args.model) args.dump.requestedModel(args.model)
-  let geminiPayload
-  try { geminiPayload = parseGeminiPayload(args.raw) }
-  catch (err) {
-    const e = err as Error & { status?: number; body?: unknown }
-    return tee(jsonErrorWrap(
-      e.status ?? 400,
-      e.body ?? { error: { code: 400, message: e.message, status: 'INVALID_ARGUMENT' } },
-    ))
-  }
+  return withDumpExceptionCleanup(args.dump, async () => {
+    const tee = (r: Response): Response => (args.dump ? args.dump.finalize(r) : r)
+    if (args.dump && args.model) args.dump.requestedModel(args.model)
+    let geminiPayload
+    try { geminiPayload = parseGeminiPayload(args.raw) }
+    catch (err) {
+      const e = err as Error & { status?: number; body?: unknown }
+      return tee(jsonErrorWrap(
+        e.status ?? 400,
+        e.body ?? { error: { code: 400, message: e.message, status: 'INVALID_ARGUMENT' } },
+      ))
+    }
 
-  const resolved = resolveKeyModel(args.model, args.auth.routingPolicy)
-  const messagesPayload = translateGeminiToMessages(geminiPayload, { model: resolved.routedModel })
+    const resolved = resolveKeyModel(args.model, args.auth.routingPolicy)
+    const messagesPayload = translateGeminiToMessages(geminiPayload, { model: resolved.routedModel })
 
-  const binding = await resolveBinding(resolved.routedModel, 'messages_count_tokens', {
-    dump: args.dump,
-    ownerId: args.auth.userId,
-    copilot: args.auth.copilot,
-    pin: resolved.upstreamPin,
-    errorFormat: 'gemini',
-  })
-  if (!binding) {
-    return tee(jsonErrorWrap(404, {
-      error: {
-        code: 404,
-        message: `No messages_count_tokens upstream available for model: ${args.model}.`,
-        status: 'NOT_FOUND',
-      },
-    }))
-  }
-
-  try {
-    const headers = new Headers({ 'content-type': 'application/json' })
-    const pr = await binding.provider.fetch({
-      endpoint: 'messages_count_tokens',
-      payload: messagesPayload,
-      headers,
-      sourceApi: 'gemini',
-      operationName: 'count tokens',
-      flags: { isStreaming: false },
-      signal: args.signal,
+    const binding = await resolveBinding(resolved.routedModel, 'messages_count_tokens', {
+      dump: args.dump,
+      ownerId: args.auth.userId,
+      copilot: args.auth.copilot,
+      pin: resolved.upstreamPin,
+      errorFormat: 'gemini',
     })
-    const response = new Response(pr.body, { status: pr.status, headers: pr.headers })
-    if (response.status !== 200) {
-      const text = await response.text()
-      return tee(jsonErrorWrap(response.status, {
+    if (!binding) {
+      return tee(jsonErrorWrap(404, {
         error: {
-          code: response.status,
-          message: text || 'Upstream token counting request failed.',
-          status: 'UNKNOWN',
+          code: 404,
+          message: `No messages_count_tokens upstream available for model: ${args.model}.`,
+          status: 'NOT_FOUND',
         },
       }))
     }
-    let decoded: unknown
-    try { decoded = await response.json() } catch {}
-    const reshaped = reshapeMessagesCountAsGemini(decoded)
-    if (!reshaped) {
-      return tee(jsonErrorWrap(502, {
-        error: { code: 502, message: 'Invalid upstream token counting response.', status: 'UNKNOWN' },
-      }))
+
+    try {
+      const headers = new Headers({ 'content-type': 'application/json' })
+      const pr = await binding.provider.fetch({
+        endpoint: 'messages_count_tokens',
+        payload: messagesPayload,
+        headers,
+        sourceApi: 'gemini',
+        operationName: 'count tokens',
+        flags: { isStreaming: false },
+        signal: args.signal,
+      })
+      const response = new Response(pr.body, { status: pr.status, headers: pr.headers })
+      if (response.status !== 200) {
+        const text = await response.text()
+        return tee(jsonErrorWrap(response.status, {
+          error: {
+            code: response.status,
+            message: text || 'Upstream token counting request failed.',
+            status: 'UNKNOWN',
+          },
+        }))
+      }
+      let decoded: unknown
+      try { decoded = await response.json() } catch {}
+      const reshaped = reshapeMessagesCountAsGemini(decoded)
+      if (!reshaped) {
+        return tee(jsonErrorWrap(502, {
+          error: { code: 502, message: 'Invalid upstream token counting response.', status: 'UNKNOWN' },
+        }))
+      }
+      return tee(Response.json(reshaped, { status: 200 }))
+    } catch (err) {
+      if (err instanceof HTTPError) {
+        return tee(await forwardUpstreamError(err.response, 'gemini'))
+      }
+      const message = err instanceof Error ? err.message : 'upstream error'
+      return tee(jsonErrorWrap(502, { error: { code: 502, message, status: 'UNKNOWN' } }))
     }
-    return tee(Response.json(reshaped, { status: 200 }))
-  } catch (err) {
-    if (err instanceof HTTPError) {
-      return tee(await forwardUpstreamError(err.response, 'gemini'))
-    }
-    const message = err instanceof Error ? err.message : 'upstream error'
-    return tee(jsonErrorWrap(502, { error: { code: 502, message, status: 'UNKNOWN' } }))
-  }
+  })
 }

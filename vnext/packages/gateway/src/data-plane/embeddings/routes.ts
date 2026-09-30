@@ -1,3 +1,4 @@
+import { withDumpExceptionCleanup } from '@vibe-core/chat-flow-kit'
 /**
  * Embeddings data-plane router — Week 5a-impl port of old src/routes/embeddings.ts.
  *
@@ -56,94 +57,96 @@ export async function embeddingsHandler(
   const auth = c.get('auth') ?? {}
   const { requestBody, dump } = await openRequestDump(c, auth, c.req.method)
 
-  let sourceBody: EmbeddingsPayload
-  try {
-    sourceBody = presetBody ?? (parseJsonBody(requestBody.bytes) as EmbeddingsPayload)
-  } catch {
-    dump?.failed('invalid JSON')
-    return wrapResponse(dump, c.json({ error: { type: 'invalid_request_error', message: 'invalid JSON' } }, 400))
-  }
-  if (!sourceBody || typeof sourceBody.model !== 'string') {
-    dump?.failed('model is required')
-    return wrapResponse(dump, c.json({ error: { type: 'invalid_request_error', message: 'model is required' } }, 400))
-  }
-  dump?.requestedModel(sourceBody.model)
+  return withDumpExceptionCleanup(dump, async () => {
+    let sourceBody: EmbeddingsPayload
+    try {
+      sourceBody = presetBody ?? (parseJsonBody(requestBody.bytes) as EmbeddingsPayload)
+    } catch {
+      dump?.failed('invalid JSON')
+      return wrapResponse(dump, c.json({ error: { type: 'invalid_request_error', message: 'invalid JSON' } }, 400))
+    }
+    if (!sourceBody || typeof sourceBody.model !== 'string') {
+      dump?.failed('model is required')
+      return wrapResponse(dump, c.json({ error: { type: 'invalid_request_error', message: 'model is required' } }, 400))
+    }
+    dump?.requestedModel(sourceBody.model)
 
-  const resolved = resolveKeyModel(sourceBody.model, auth.routingPolicy)
-  // Never mutate `presetBody`: Ollama retains caller-owned parsed input. The
-  // provider gets a shallow clone containing only the resolved bare model.
-  const body: EmbeddingsPayload = {
-    ...sourceBody,
-    model: resolved.routedModel,
-    ...(typeof sourceBody.input === 'string' ? { input: [sourceBody.input] } : {}),
-  }
-  const binding = await resolveBinding(resolved.routedModel, 'embeddings', {
-    dump,
-    ownerId: auth.userId,
-    copilot: auth.copilot,
-    pin: resolved.upstreamPin,
-  })
-  if (!binding) {
-    dump?.failed(`no embeddings upstream for model ${body.model}`)
-    return wrapResponse(dump, c.json(
-      { error: { type: 'invalid_request_error', message: `No embeddings upstream available for model: ${body.model}. Run GET /v1/models for available ids.` } },
-      404,
-    ))
-  }
-
-  // Pricing lookup uses the post-pin-strip model id (same value handed to the
-  // provider's binding resolver above). The provider returns null when no
-  // pricing entry exists; we still record the usage row, just without prices.
-  const pricing = binding.provider.getPricingForModelKey(body.model)
-  let attempt: Awaited<ReturnType<typeof runEmbeddingsAttempt>>
-  try {
-    attempt = await runEmbeddingsAttempt({
-      apiKeyId: auth.apiKeyId,
-      incomingModel: resolved.incomingModel,
-      model: body.model,
-      modelKey: body.model,
-      pricing,
-      upstream: binding.upstream,
-      userAgent: c.req.header('user-agent') ?? undefined,
-      requestId: c.req.header('x-request-id') ?? undefined,
+    const resolved = resolveKeyModel(sourceBody.model, auth.routingPolicy)
+    // Never mutate `presetBody`: Ollama retains caller-owned parsed input. The
+    // provider gets a shallow clone containing only the resolved bare model.
+    const body: EmbeddingsPayload = {
+      ...sourceBody,
+      model: resolved.routedModel,
+      ...(typeof sourceBody.input === 'string' ? { input: [sourceBody.input] } : {}),
+    }
+    const binding = await resolveBinding(resolved.routedModel, 'embeddings', {
       dump,
-      call: async () => {
-        const pr = await binding.provider.fetch({
-          endpoint: 'embeddings',
-          payload: body,
-          headers: new Headers({ 'content-type': 'application/json' }),
-          sourceApi: 'openai',
-          operationName: 'create embeddings',
-          flags: { isStreaming: false },
-        })
-        return new Response(pr.body, { status: pr.status, headers: pr.headers })
-      },
+      ownerId: auth.userId,
+      copilot: auth.copilot,
+      pin: resolved.upstreamPin,
     })
-  } catch (err) {
-    if (!(err instanceof HTTPError) || !err.response) throw err
-    return wrapResponse(dump, await forwardUpstreamError(err.response, 'chat_completions'))
-  }
+    if (!binding) {
+      dump?.failed(`no embeddings upstream for model ${body.model}`)
+      return wrapResponse(dump, c.json(
+        { error: { type: 'invalid_request_error', message: `No embeddings upstream available for model: ${body.model}. Run GET /v1/models for available ids.` } },
+        404,
+      ))
+    }
 
-  if (!attempt.ok && 'rateLimit' in attempt) {
-    return wrapResponse(dump, c.json({
-      error: {
-        type: 'rate_limit_error',
-        message: attempt.rateLimit.reason,
-        ...(attempt.rateLimit.retryAfterSeconds != null
-          ? { retry_after_seconds: attempt.rateLimit.retryAfterSeconds }
-          : {}),
-      },
-    }, 429))
-  }
+    // Pricing lookup uses the post-pin-strip model id (same value handed to the
+    // provider's binding resolver above). The provider returns null when no
+    // pricing entry exists; we still record the usage row, just without prices.
+    const pricing = binding.provider.getPricingForModelKey(body.model)
+    let attempt: Awaited<ReturnType<typeof runEmbeddingsAttempt>>
+    try {
+      attempt = await runEmbeddingsAttempt({
+        apiKeyId: auth.apiKeyId,
+        incomingModel: resolved.incomingModel,
+        model: body.model,
+        modelKey: body.model,
+        pricing,
+        upstream: binding.upstream,
+        userAgent: c.req.header('user-agent') ?? undefined,
+        requestId: c.req.header('x-request-id') ?? undefined,
+        dump,
+        call: async () => {
+          const pr = await binding.provider.fetch({
+            endpoint: 'embeddings',
+            payload: body,
+            headers: new Headers({ 'content-type': 'application/json' }),
+            sourceApi: 'openai',
+            operationName: 'create embeddings',
+            flags: { isStreaming: false },
+          })
+          return new Response(pr.body, { status: pr.status, headers: pr.headers })
+        },
+      })
+    } catch (err) {
+      if (!(err instanceof HTTPError) || !err.response) throw err
+      return wrapResponse(dump, await forwardUpstreamError(err.response, 'chat_completions'))
+    }
 
-  if (!attempt.ok) {
-    // Forward the upstream JSON verbatim (matches the pre-refactor behavior:
-    // the old handler always returned `Response.json(json, { status })`).
-    const json = await attempt.response.json().catch(() => null)
-    return wrapResponse(dump, Response.json(json, { status: attempt.status }))
-  }
+    if (!attempt.ok && 'rateLimit' in attempt) {
+      return wrapResponse(dump, c.json({
+        error: {
+          type: 'rate_limit_error',
+          message: attempt.rateLimit.reason,
+          ...(attempt.rateLimit.retryAfterSeconds != null
+            ? { retry_after_seconds: attempt.rateLimit.retryAfterSeconds }
+            : {}),
+        },
+      }, 429))
+    }
 
-  return wrapResponse(dump, Response.json(attempt.json, { status: attempt.status }))
+    if (!attempt.ok) {
+      // Forward the upstream JSON verbatim (matches the pre-refactor behavior:
+      // the old handler always returned `Response.json(json, { status })`).
+      const json = await attempt.response.json().catch(() => null)
+      return wrapResponse(dump, Response.json(json, { status: attempt.status }))
+    }
+
+    return wrapResponse(dump, Response.json(attempt.json, { status: attempt.status }))
+  })
 }
 
 embeddingsRouter.post('/embeddings', (c) => embeddingsHandler(c))

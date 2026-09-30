@@ -46,6 +46,26 @@ export function withCanonicalCompletion(response: Response, completion: KitCanon
 export interface KitDumpSink {
   requestedModel(model: string): void
   finalize(response: Response, completion?: KitCanonicalCompletion): Response
+  /** Release an exceptional exit before a response exists. The concrete sink
+   * owns already-started preparation and any selected terminal persistence. */
+  abandon?(): void | Promise<void>
+}
+
+/** Diagnostic cleanup must preserve the original exception and must not make
+ * its propagation wait for background preparation or persistence. */
+export function withDumpExceptionCleanup<T>(
+  dump: Pick<KitDumpSink, 'abandon'> | null | undefined,
+  work: () => Promise<T>,
+): Promise<T> {
+  if (!dump?.abandon) return work()
+  return (async () => {
+    try { return await work() }
+    catch (error) {
+      try { void Promise.resolve(dump.abandon?.()).catch(() => {}) }
+      catch { /* Cleanup cannot replace the request's exception. */ }
+      throw error
+    }
+  })()
 }
 
 export interface ServeTemplateInput<TAuth extends KitAuthCtx = KitAuthCtx> {
@@ -277,9 +297,11 @@ export async function serveTemplate<TPayload, TAttemptResult, TExtra = undefined
   input: ServeTemplateInput<TAuth>,
   deps: ServeTemplateDeps<TAuth, TTelemetryCtx, TPayload, TExtra>,
 ): Promise<ServeTemplateResult<TExtra>> {
-  const prepared = await prepareTemplate(hooks, input, deps)
-  const response = prepared.kind === 'response' ? prepared.response : await hooks.respond(prepared.result, prepared.context)
-  const completion = canonicalResponses.get(response)
-  canonicalResponses.delete(response)
-  return { response: input.dump ? input.dump.finalize(response, completion) : response, extra: prepared.extra }
+  return withDumpExceptionCleanup(input.dump, async () => {
+    const prepared = await prepareTemplate(hooks, input, deps)
+    const response = prepared.kind === 'response' ? prepared.response : await hooks.respond(prepared.result, prepared.context)
+    const completion = canonicalResponses.get(response)
+    canonicalResponses.delete(response)
+    return { response: input.dump ? input.dump.finalize(response, completion) : response, extra: prepared.extra }
+  })
 }

@@ -1,3 +1,4 @@
+import { withDumpExceptionCleanup } from '@vibe-core/chat-flow-kit'
 /**
  * `POST /api/chat` — Ollama's chat endpoint, served by our own pipeline.
  *
@@ -40,92 +41,94 @@ export async function ollamaChatHandler(c: Context<{ Bindings: Env }>): Promise<
   const auth = readAuth(c)
   const { requestBody, dump } = await openRequestDump(c, auth, c.req.method)
 
-  let body: OllamaChatRequest
-  try {
-    body = parseJsonBody(requestBody.bytes) as OllamaChatRequest
-  } catch {
-    const res = badRequest('invalid JSON')
-    return dump ? dump.finalize(res) : res
-  }
-  if (!body || typeof body.model !== 'string') {
-    const res = badRequest('model is required')
-    return dump ? dump.finalize(res) : res
-  }
+  return withDumpExceptionCleanup(dump, async () => {
+    let body: OllamaChatRequest
+    try {
+      body = parseJsonBody(requestBody.bytes) as OllamaChatRequest
+    } catch {
+      const res = badRequest('invalid JSON')
+      return dump ? dump.finalize(res) : res
+    }
+    if (!body || typeof body.model !== 'string') {
+      const res = badRequest('model is required')
+      return dump ? dump.finalize(res) : res
+    }
 
-  // Ollama defaults `stream` to true when the field is absent.
-  const wantsStream = body.stream !== false
-  const startMs = performance.now()
-  const createdAt = new Date().toISOString()
+    // Ollama defaults `stream` to true when the field is absent.
+    const wantsStream = body.stream !== false
+    const startMs = performance.now()
+    const createdAt = new Date().toISOString()
 
-  const upstream = await serveChatCompletions({
-    raw: ollamaToOpenAIBody(body),
-    auth,
-    obsCtx: readObsCtx(c, auth),
-    signal: c.req.raw.signal,
-    dump,
-  })
+    const upstream = await serveChatCompletions({
+      raw: ollamaToOpenAIBody(body),
+      auth,
+      obsCtx: readObsCtx(c, auth),
+      signal: c.req.raw.signal,
+      dump,
+    })
 
-  // Errors pass through untouched: ollama-js reads `.error` off a non-2xx JSON
-  // body, and our error envelope already carries a message it can surface.
-  if (!upstream.ok) return upstream
+    // Errors pass through untouched: ollama-js reads `.error` off a non-2xx JSON
+    // body, and our error envelope already carries a message it can surface.
+    if (!upstream.ok) return upstream
 
-  if (!wantsStream) {
-    const json = await upstream.json() as Parameters<typeof openAIJsonToOllama>[0]
-    const endMs = performance.now()
-    return Response.json(
-      openAIJsonToOllama(
-        json,
-        json.model ?? body.model,
-        createdAt,
-        timings(
-          startMs,
-          null,
-          endMs,
-          json.usage?.prompt_tokens ?? 0,
-          json.usage?.completion_tokens ?? 0,
+    if (!wantsStream) {
+      const json = await upstream.json() as Parameters<typeof openAIJsonToOllama>[0]
+      const endMs = performance.now()
+      return Response.json(
+        openAIJsonToOllama(
+          json,
+          json.model ?? body.model,
+          createdAt,
+          timings(
+            startMs,
+            null,
+            endMs,
+            json.usage?.prompt_tokens ?? 0,
+            json.usage?.completion_tokens ?? 0,
+          ),
         ),
-      ),
-    )
-  }
+      )
+    }
 
-  const state = new OllamaStreamState()
-  const encoder = new TextEncoder()
-  let firstTokenMs: number | null = null
-  let effectiveModel = body.model
+    const state = new OllamaStreamState()
+    const encoder = new TextEncoder()
+    let firstTokenMs: number | null = null
+    let effectiveModel = body.model
 
-  const stream = new ReadableStream<Uint8Array>({
-    async start(controller) {
-      const write = (line: string | null) => {
-        if (line !== null) controller.enqueue(encoder.encode(line + '\n'))
-      }
-      try {
-        for await (const chunk of parseChatSSEStream(upstream.body, c.req.raw.signal)) {
-          const parsedChunk = chunk as OpenAIStreamChunk
-          if (typeof parsedChunk.model === 'string') effectiveModel = parsedChunk.model
-          const line = state.chunkToLine(parsedChunk, effectiveModel, createdAt)
-          if (line !== null && firstTokenMs === null) firstTokenMs = performance.now()
-          write(line)
+    const stream = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        const write = (line: string | null) => {
+          if (line !== null) controller.enqueue(encoder.encode(line + '\n'))
         }
-        write(state.toolCallLine(effectiveModel, createdAt))
-        write(state.doneLine(
-          effectiveModel,
-          createdAt,
-          timings(startMs, firstTokenMs, performance.now(), state.promptTokens, state.completionTokens),
-        ))
-      } catch {
-        // The client went away, or the upstream stream broke. Either way the
-        // terminal frame is what tells ollama-js to stop reading, so emit it
-        // rather than leaving the reader hanging on a truncated stream.
-        write(state.doneLine(
-          effectiveModel,
-          createdAt,
-          timings(startMs, firstTokenMs, performance.now(), state.promptTokens, state.completionTokens),
-        ))
-      } finally {
-        controller.close()
-      }
-    },
-  })
+        try {
+          for await (const chunk of parseChatSSEStream(upstream.body, c.req.raw.signal)) {
+            const parsedChunk = chunk as OpenAIStreamChunk
+            if (typeof parsedChunk.model === 'string') effectiveModel = parsedChunk.model
+            const line = state.chunkToLine(parsedChunk, effectiveModel, createdAt)
+            if (line !== null && firstTokenMs === null) firstTokenMs = performance.now()
+            write(line)
+          }
+          write(state.toolCallLine(effectiveModel, createdAt))
+          write(state.doneLine(
+            effectiveModel,
+            createdAt,
+            timings(startMs, firstTokenMs, performance.now(), state.promptTokens, state.completionTokens),
+          ))
+        } catch {
+          // The client went away, or the upstream stream broke. Either way the
+          // terminal frame is what tells ollama-js to stop reading, so emit it
+          // rather than leaving the reader hanging on a truncated stream.
+          write(state.doneLine(
+            effectiveModel,
+            createdAt,
+            timings(startMs, firstTokenMs, performance.now(), state.promptTokens, state.completionTokens),
+          ))
+        } finally {
+          controller.close()
+        }
+      },
+    })
 
-  return new Response(stream, { status: 200, headers: NDJSON })
+    return new Response(stream, { status: 200, headers: NDJSON })
+  })
 }

@@ -295,6 +295,26 @@ export class DumpAccumulator {
 
   // --- response-side: handler exit ---
 
+  // No response was handed off, so there is no status or terminal record to
+  // invent. Seal this owner while its already-started preparation settles.
+  // A previously selected write remains the sole terminal owner.
+  abandon(): Promise<void> {
+    if (this.terminalWrite !== null) return this.terminalWrite
+    const collector = this.ownsUpstreamCollector ? this.upstreamExchangeCollector : null
+    this.events = null
+    this.preparedRequestBody = null
+    this.upstreamExchangeCollector = null
+    this.upstreamObservation = null
+    this.ownsUpstreamCollector = false
+    const retired = this.retire(Promise.resolve().then(() => { collector?.abandon() }))
+    this.terminalWrite = retired
+    // Both cleanup and scheduler failures are diagnostic-only. Retirement
+    // still runs and waits preparation even if background registration fails.
+    void retired.catch(() => {})
+    try { this.background.waitUntil(retired) } catch { /* Retirement already owns cleanup. */ }
+    return retired
+  }
+
   // Schedules the dump-record write at the turn's terminal point. Two input
   // shapes:
   //

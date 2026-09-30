@@ -1,3 +1,4 @@
+import { withDumpExceptionCleanup } from '@vibe-core/chat-flow-kit'
 // packages/gateway/src/data-plane/chat-flow/count-tokens/serve.ts
 import type { DataPlaneAuthCtx } from '../../models/routes.ts'
 import { parseMessagesCountTokensPayload } from '../../parsers.ts'
@@ -17,57 +18,59 @@ export interface CountTokensServeArgs {
 }
 
 export async function serveCountTokens(args: CountTokensServeArgs): Promise<Response> {
-  const tee = (r: Response): Response => (args.dump ? args.dump.finalize(r) : r)
-  let payload
-  try { payload = parseMessagesCountTokensPayload(args.raw) }
-  catch (err) {
-    const e = err as Error & { status?: number; body?: unknown }
-    return tee(jsonErrorWrap(
-      e.status ?? 400,
-      e.body ?? { type: 'error', error: { type: 'invalid_request_error', message: e.message } },
-    ))
-  }
-  if (args.dump && typeof payload.model === 'string') args.dump.requestedModel(payload.model)
-  const resolved = resolveKeyModel(payload.model, args.auth.routingPolicy)
-  const forwardPayload = { ...payload, model: resolved.routedModel }
-
-  const binding = await resolveBinding(resolved.routedModel, 'messages_count_tokens', {
-    dump: args.dump,
-    ownerId: args.auth.userId,
-    copilot: args.auth.copilot,
-    pin: resolved.upstreamPin,
-  })
-  if (!binding) {
-    return tee(jsonErrorWrap(404, {
-      type: 'error',
-      error: {
-        type: 'invalid_request_error',
-        message: `No messages_count_tokens upstream available for model: ${payload.model}. Run GET /v1/models for available ids.`,
-      },
-    }))
-  }
-
-  try {
-    const headers = new Headers({ 'content-type': 'application/json' })
-    for (const [k, v] of Object.entries(args.forwardedHeaders)) headers.set(k, v)
-    const pr = await binding.provider.fetch({
-      endpoint: 'messages_count_tokens',
-      payload: forwardPayload,
-      headers,
-      sourceApi: 'anthropic',
-      operationName: 'count tokens',
-      flags: { isStreaming: false },
-      signal: args.signal,
-    })
-    const response = new Response(pr.body, { status: pr.status, headers: pr.headers })
-    const json = await response.json()
-    return tee(Response.json(json, { status: response.status }))
-  } catch (err) {
-    if (err instanceof HTTPError) {
-      return tee(await forwardUpstreamError(err.response, 'messages'))
+  return withDumpExceptionCleanup(args.dump, async () => {
+    const tee = (r: Response): Response => (args.dump ? args.dump.finalize(r) : r)
+    let payload
+    try { payload = parseMessagesCountTokensPayload(args.raw) }
+    catch (err) {
+      const e = err as Error & { status?: number; body?: unknown }
+      return tee(jsonErrorWrap(
+        e.status ?? 400,
+        e.body ?? { type: 'error', error: { type: 'invalid_request_error', message: e.message } },
+      ))
     }
-    const message = err instanceof Error ? err.message : 'upstream error'
-    return tee(jsonErrorWrap(502, { type: 'error', error: { type: 'api_error', message } }))
-  }
+    if (args.dump && typeof payload.model === 'string') args.dump.requestedModel(payload.model)
+    const resolved = resolveKeyModel(payload.model, args.auth.routingPolicy)
+    const forwardPayload = { ...payload, model: resolved.routedModel }
+
+    const binding = await resolveBinding(resolved.routedModel, 'messages_count_tokens', {
+      dump: args.dump,
+      ownerId: args.auth.userId,
+      copilot: args.auth.copilot,
+      pin: resolved.upstreamPin,
+    })
+    if (!binding) {
+      return tee(jsonErrorWrap(404, {
+        type: 'error',
+        error: {
+          type: 'invalid_request_error',
+          message: `No messages_count_tokens upstream available for model: ${payload.model}. Run GET /v1/models for available ids.`,
+        },
+      }))
+    }
+
+    try {
+      const headers = new Headers({ 'content-type': 'application/json' })
+      for (const [k, v] of Object.entries(args.forwardedHeaders)) headers.set(k, v)
+      const pr = await binding.provider.fetch({
+        endpoint: 'messages_count_tokens',
+        payload: forwardPayload,
+        headers,
+        sourceApi: 'anthropic',
+        operationName: 'count tokens',
+        flags: { isStreaming: false },
+        signal: args.signal,
+      })
+      const response = new Response(pr.body, { status: pr.status, headers: pr.headers })
+      const json = await response.json()
+      return tee(Response.json(json, { status: response.status }))
+    } catch (err) {
+      if (err instanceof HTTPError) {
+        return tee(await forwardUpstreamError(err.response, 'messages'))
+      }
+      const message = err instanceof Error ? err.message : 'upstream error'
+      return tee(jsonErrorWrap(502, { type: 'error', error: { type: 'api_error', message } }))
+    }
+  })
 }
 

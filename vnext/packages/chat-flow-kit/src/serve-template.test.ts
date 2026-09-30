@@ -55,6 +55,19 @@ function defaultHooks(
   }
 }
 
+for (const cleanup of ['absent', 'throw', 'reject'] as const) test(`exception cleanup ${cleanup} preserves the original serve error`, async () => {
+  const original = new Error('request failed')
+  const dump = {
+    requestedModel() {}, finalize: (response: Response) => response,
+    ...(cleanup === 'absent' ? {} : { abandon() {
+      if (cleanup === 'throw') throw new Error('cleanup failed')
+      return Promise.reject(new Error('cleanup failed'))
+    } }),
+  }
+  const serving = serveTemplate(defaultHooks({ respond: async () => { throw original } }), defaultInput({ dump }), defaultDeps())
+  expect(await serving.catch(error => error as unknown)).toBe(original)
+})
+
 describe('serveTemplate — skeleton order', () => {
   test('runs parse → preProcess → buildTelemetryCtx → runQuotaGate → runAttempt → respond in order', async () => {
     const calls: string[] = []
