@@ -8,9 +8,8 @@
 //   - No `color` column on upstreams — `hydrateUpstream` no longer reads or
 //     validates a color; `DumpUpstreamRef` has no color field.
 //   - `provider` (not `kind`) is the vNext upstreams column name. The type is
-//     `UpstreamKind` from protocols-llm/common ('copilot'|'custom'|'azure'|
-//     'sdf'); anything else in the row is a schema slip and coerces to
-//     'custom' (the vNext catch-all).
+//     `UpstreamKind` from protocols-llm/common; anything else in the row
+//     falls back to 'custom' (the vNext catch-all).
 
 import { DUMP_FILE_PREFIX, SPILLED_FILE_STAGE_GRACE_MS } from "../shared/dump/spilled-files-policy.ts"
 import { safeUpstreamExchangesForPersistence } from "../shared/dump/upstream-attempts.ts"
@@ -52,7 +51,14 @@ interface DumpRow {
   upstream_exchanges_descriptor: string | null
 }
 
-const KNOWN_UPSTREAM_KINDS: ReadonlySet<UpstreamKind> = new Set(["copilot", "custom", "azure", "sdf"])
+const KNOWN_UPSTREAM_KINDS: Readonly<Record<UpstreamKind, true>> = {
+  copilot: true,
+  custom: true,
+  azure: true,
+  sdf: true,
+  codex: true,
+  "claude-code": true,
+}
 
 // A null `upstream_id` means no upstream was identified at capture time
 // (auth/validation reject, no candidate matched); a non-null id with a null
@@ -61,7 +67,7 @@ const KNOWN_UPSTREAM_KINDS: ReadonlySet<UpstreamKind> = new Set(["copilot", "cus
 // so a bad row doesn't poison every read.
 const hydrateUpstream = (row: Pick<DumpRow, "upstream_id" | "upstream_name" | "upstream_provider">): DumpUpstreamRef | null => {
   if (row.upstream_id === null || row.upstream_name === null) return null
-  const kind: UpstreamKind = row.upstream_provider !== null && KNOWN_UPSTREAM_KINDS.has(row.upstream_provider as UpstreamKind)
+  const kind: UpstreamKind = row.upstream_provider !== null && Object.hasOwn(KNOWN_UPSTREAM_KINDS, row.upstream_provider)
     ? (row.upstream_provider as UpstreamKind)
     : "custom"
   return { id: row.upstream_id as UpstreamId, name: row.upstream_name, kind }
