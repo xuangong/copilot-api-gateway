@@ -42,3 +42,5 @@ export const runInterceptors = async <Ctx, Req, R>(
       : terminal()
   return run(0)
 }
+
+export { beforeRequest, type RequestTransform } from "./request-transform"
