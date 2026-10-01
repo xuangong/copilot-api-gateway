@@ -1128,9 +1128,15 @@ export const withResponsesServerToolShim = (
   try {
     for (const prepareServerTool of registrations) {
       const prepared: ServerToolPrepareResult = await prepareServerTool(ctx, requestCtx)
+      if (prepared.type === 'active' && prepared.hosted?.work) {
+        lifetime ??= new ServerToolLifetime(closeState, gatewayCtx.downstreamAbortSignal)
+        lifetime.ownWork(prepared.hosted.work)
+        lifetime.assertOpen()
+      }
       if (prepared.type === 'inactive') continue
       if (prepared.type === 'invalid-request') {
-        closeState()
+        if (lifetime) await lifetime.close().catch(() => {})
+        else closeState()
         return invalidRequestEnvelope(prepared.message, prepared.param, prepared.code)
       }
       const currentTools = Array.isArray(ctx.payload.tools) ? (ctx.payload.tools as ResponsesTool[]) : []
@@ -1139,7 +1145,8 @@ export const withResponsesServerToolShim = (
       if (hosted !== undefined && historicalClientCallableUsesName(
         toolName, Array.isArray(ctx.payload.input) ? ctx.payload.input as ResponsesInputItem[] : [],
       )) {
-        closeState()
+        if (lifetime) await lifetime.close().catch(() => {})
+        else closeState()
         return invalidRequestEnvelope(
           `Historical client callable '${toolName}' conflicts with the hosted tool function name.`,
           'input',
@@ -1190,7 +1197,7 @@ export const withResponsesServerToolShim = (
     )
     if (hostedActive.length > 0) {
       if (isOwnedPrivatePayloadSource(dependency)) scope = dependency.createScope()
-      lifetime = new ServerToolLifetime(closeState, gatewayCtx.downstreamAbortSignal)
+      lifetime ??= new ServerToolLifetime(closeState, gatewayCtx.downstreamAbortSignal)
       lifetime.assertOpen()
     }
     const canonicalInput = (ctx.payload.input as ResponsesInputItem[]) ?? []
@@ -1221,7 +1228,7 @@ export const withResponsesServerToolShim = (
       if (result.type === 'events') await owner.discardLate(result)
     }, result => result.type === 'events' ? owner.ownProducer(result) : result)
     owner.assertOpen()
-    if (first.type !== 'events') { await owner.close(); return first }
+    if (first.type !== 'events') { await owner.close().catch(() => {}); return first }
     const firstResult = await owner.wait(materializeResponsesSource(first, ctx.payload.stream === true, gatewayCtx.downstreamAbortSignal, gatewayCtx.abortUpstream))
     owner.assertOpen()
     merge.lastSeenModel = firstResult.modelIdentity.modelKey

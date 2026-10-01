@@ -194,13 +194,3 @@ export const runWebSearchCallPlan = async (
   if (op === undefined) throw new Error("Web search plan has no operation")
   return executeOperationToIr(op, session, batch, work)
 }
-
-/** Temporary unowned adapter until both hosted callers adopt execution scopes. */
-export const planWebSearchCalls = (
-  args: Record<string, unknown> | null,
-  session: WebSearchExecutionSession,
-): Array<WebSearchCallPlan & { promise: Promise<WebSearchCallIR> }> => {
-  const plans = splitWebSearchCalls(args)
-  const fetches = startWebSearchCallFetches(plans, session)
-  return plans.map((plan) => ({ ...plan, promise: runWebSearchCallPlan(plan, session, fetches) }))
-}

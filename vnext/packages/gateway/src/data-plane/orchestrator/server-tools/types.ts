@@ -62,6 +62,16 @@ export type ServerToolDispatcher = (args: {
   loopState: ServerToolLoopState
 }) => ServerToolResultSlot[]
 
+export interface ServerToolHostedWork {
+  cancel(): undefined
+  settled(): Promise<void>
+}
+
+type AssertTrue<T extends true> = T
+export type HostedWorkRejectsAsyncCancel = AssertTrue<
+  (() => Promise<void>) extends ServerToolHostedWork["cancel"] ? false : true
+>
+
 /**
  * 4-tuple — must move together. A partial declaration is a compile error
  * instead of a silently never-dispatching registration.
@@ -73,6 +83,7 @@ export type ServerToolDispatcher = (args: {
  * `server-tool-shim.ts` so the shim + plugin ports are 1:1.
  */
 export interface ServerToolHostedDispatch {
+  readonly work?: ServerToolHostedWork
   readonly hostedTypes: readonly string[]
   /**
    * `include` tokens that only exist to widen the hosted item this shim

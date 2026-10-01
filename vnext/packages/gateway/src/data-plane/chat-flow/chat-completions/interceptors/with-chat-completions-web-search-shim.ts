@@ -1,4 +1,3 @@
-import { requireNativeEventResult } from "../../shared/producer-ownership"
 /**
  * Chat Completions web-search shim.
  *
@@ -45,10 +44,10 @@ import {
   isSearchContextSize,
   maxResultsForContextSize,
   renderWebSearchCallOutput,
-  type WebSearchExecutionSession,
   type WebSearchFilters,
 } from '../../../tools/web-search/operations.ts'
-import { planWebSearchCalls } from '../../../tools/web-search/plan-operations.ts'
+import { createWebSearchExecutionScope, type WebSearchExecutionScope } from '../../../tools/web-search/execution-scope.ts'
+import { ChatWebSearchResultOwner } from './web-search-result-owner'
 import { providerNameFor } from '../../../tools/web-search/key-config.ts'
 import { resolveWebSearchForKey } from '../../../tools/web-search/resolve-for-key.ts'
 import {
@@ -214,22 +213,26 @@ export const withChatCompletionsWebSearchShim: ChatCompletionsInterceptor = asyn
     },
   ]
 
-  const session: WebSearchExecutionSession = {
+  const search = createWebSearchExecutionScope({
     getProvider: () => Promise.resolve(configured),
     filters: extractFilters(options),
     apiKeyId: (ctx.apiKeyId ?? '') as ApiKeyId,
-    pageCache: new Map(),
     includeSearchActionSources: false,
     ...(ctx.downstreamAbortSignal !== undefined ? { signal: ctx.downstreamAbortSignal } : {}),
-  }
-
-  const rawFirst = await run()
-  if (rawFirst.type !== 'events') return rawFirst
-  const first = await requireNativeEventResult(rawFirst, ctx.abortUpstream)
-
-  return {
-    ...first,
-    events: driveSearchLoop(first.events, inv, run, session, toolName, ctx.abortUpstream),
+  })
+  const owner = new ChatWebSearchResultOwner<ProtocolFrame<ChatCompletionsStreamEvent>>(search, ctx.downstreamAbortSignal, ctx.abortUpstream)
+  try {
+    const first = await owner.run(run)
+    owner.assertOpen()
+    if (first.type !== 'events') { await owner.close(); return first }
+    return {
+      ...first,
+      discardProducer: () => owner.close(),
+      events: owner.wrap(driveSearchLoop(first.events, inv, run, search, toolName, owner)),
+    }
+  } catch (error) {
+    await owner.close().catch(() => {})
+    throw error
   }
 }
 
@@ -237,9 +240,9 @@ async function* driveSearchLoop(
   firstTurn: AsyncIterable<ProtocolFrame<ChatCompletionsStreamEvent>>,
   inv: Invocation,
   run: () => Promise<ShimResult>,
-  session: WebSearchExecutionSession,
+  search: WebSearchExecutionScope,
   toolName: string,
-  abortUpstream?: () => void,
+  owner: ChatWebSearchResultOwner<ProtocolFrame<ChatCompletionsStreamEvent>>,
 ): AsyncGenerator<ProtocolFrame<ChatCompletionsStreamEvent>> {
   let current = firstTurn
   // Turn 1's identity is stamped on every forwarded chunk so a client that
@@ -254,11 +257,13 @@ async function* driveSearchLoop(
   let budgetExhausted = false
 
   for (;;) {
+    owner.assertOpen()
     const buffered = new Map<number, BufferedToolCall>()
     let assistantText = ''
     let finishReason: string | null = null
 
     for await (const frame of current) {
+      owner.assertOpen()
       // Intermediate `done` frames are swallowed; exactly one is emitted at
       // the very end so the merged stream terminates once.
       if (frame.type === 'done') continue
@@ -308,6 +313,7 @@ async function* driveSearchLoop(
       yield eventFrame({ ...rest, id: streamId, created, model, choices: outChoices } as ChatCompletionsStreamEvent)
     }
 
+    owner.assertOpen()
     const calls = [...buffered.keys()].sort((a, b) => a - b).map((k) => buffered.get(k)!)
     const shimCalls = calls.filter((c) => c.name === toolName)
     const clientCalls = calls.filter((c) => c.name !== toolName)
@@ -343,9 +349,9 @@ async function* driveSearchLoop(
         // searches, but Chat Completions allows exactly one `role:'tool'`
         // message per `tool_call_id` — so the results come back concatenated
         // into that one message rather than as separate replies.
-        const irs = await Promise.all(
-          planWebSearchCalls(parseServerToolArguments(call.arguments), session).map((plan) => plan.promise),
-        )
+        const batch = search.prepare(parseServerToolArguments(call.arguments)).start()
+        const irs = await owner.wait(Promise.all(batch.calls.map(call => call.result())))
+        owner.assertOpen()
         content = irs.map(renderWebSearchCallOutput).join('\n\n')
         for (const result of irs.flatMap((ir) => ir.results)) {
           if (citedUrls.has(result.url)) continue
@@ -356,6 +362,7 @@ async function* driveSearchLoop(
       toolMessages.push({ role: 'tool', tool_call_id: callId, content })
     }
 
+    owner.assertOpen()
     const messages = Array.isArray(inv.payload.messages)
       ? (inv.payload.messages as Array<Record<string, unknown>>)
       : []
@@ -373,15 +380,16 @@ async function* driveSearchLoop(
       ...toolMessages,
     ]
 
-    const rawNext = await run()
+    owner.assertOpen()
+    const rawNext = await owner.run(run)
+    owner.assertOpen()
     if (rawNext.type !== 'events') {
       // Chat Completions has no in-band error frame, so a mid-loop upstream
       // failure has to throw; `attempt.ts` maps it to an internal-error
       // result the same way the whitespace-abort interceptor relies on.
       throw new Error(`Chat Completions web search shim: upstream turn failed with result type '${rawNext.type}'`)
     }
-    const next = await requireNativeEventResult(rawNext, abortUpstream)
-    current = next.events
+    current = rawNext.events
   }
 }
 

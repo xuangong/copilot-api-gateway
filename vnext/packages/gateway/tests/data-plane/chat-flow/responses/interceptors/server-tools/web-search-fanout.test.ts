@@ -158,3 +158,50 @@ describe('web_search shim fan-out on the Responses wire', () => {
     expect(JSON.parse(call.arguments)).toEqual({ search_query: [{ q: 'bun latest' }] })
   })
 })
+
+test("actual hosted preparation constructs replay metadata before any eager provider start", async () => {
+  let requests = 0
+  globalThis.fetch = (async () => { requests++; return Response.json({ results: [] }) }) as unknown as typeof fetch
+  const hosted = await hostedDispatch()
+  const entry: Record<string, unknown> = { ref_id: "https://metadata.test" }
+  entry.cycle = entry
+  expect(() => hosted.dispatcher({ intercepted: { callId: "call", name: "web_search", arguments: { open: [entry] } }, loopState: { iterationCount: 1, remainingToolCalls: undefined } })).toThrow()
+  await new Promise(resolve => setTimeout(resolve, 0))
+  expect(requests).toBe(0)
+  hosted.work?.cancel()
+  await hosted.work?.settled()
+})
+
+test("actual eager unconsumed rejected branch stays observed while page sibling is owned", async () => {
+  const pageStarted = Promise.withResolvers<AbortSignal>()
+  const searchStarted = Promise.withResolvers<void>()
+  const page = Promise.withResolvers<Response>()
+  const search = Promise.withResolvers<Response>()
+  globalThis.fetch = (async (url, init) => {
+    if (String(url).includes("/extract")) {
+      if (!init?.signal) throw new Error("Missing owned signal")
+      pageStarted.resolve(init.signal)
+      return page.promise
+    }
+    searchStarted.resolve()
+    return search.promise
+  }) as typeof fetch
+  const hosted = await hostedDispatch()
+  if (!hosted.work) throw new Error("Missing hosted work")
+  const slots = hosted.dispatcher({ intercepted: { callId: "call", name: "web_search", arguments: { search_query: [{ q: "a" }, { q: "b" }], open: [{ ref_id: "https://sibling.test" }] } }, loopState: { iterationCount: 1, remainingToolCalls: undefined } })
+  const signal = await pageStarted.promise
+  await searchStarted.promise
+  expect(slots).toHaveLength(2)
+  search.reject(new DOMException("branch aborted", "AbortError"))
+  await new Promise(resolve => setTimeout(resolve, 0))
+  let settled = false
+  hosted.work.cancel()
+  const settlement = hosted.work.settled().then(() => { settled = true })
+  expect(signal.aborted).toBe(true)
+  await new Promise(resolve => setTimeout(resolve, 0))
+  expect(settled).toBe(false)
+  page.resolve(Response.json({ results: [{ url: "https://sibling.test", raw_content: "late" }] }))
+  await settlement
+  expect(settled).toBe(true)
+  await expect(runSlot(slots[0]?.run ?? (() => { throw new Error("Missing slot") }))).rejects.toThrow()
+})

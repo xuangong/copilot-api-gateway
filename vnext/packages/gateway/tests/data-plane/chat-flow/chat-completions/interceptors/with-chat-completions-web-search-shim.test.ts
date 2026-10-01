@@ -416,3 +416,190 @@ describe('search loop', () => {
     ])
   })
 })
+
+for (const exit of ["return", "throw", "discard"] as const) test(`owned Chat ${exit} before first pull closes its concrete producer once`, async () => {
+  let reads = 0
+  let returned = 0
+  let discarded = 0
+  const source = { [Symbol.asyncIterator]: () => ({ next: async () => { reads++; return { done: true as const, value: undefined } }, return: async () => { returned++; return { done: true as const, value: undefined } } }) }
+  const result = await withChatCompletionsWebSearchShim(invocation({ model: "m", messages: [], web_search_options: {} }), ctx, async () => ({ ...llmEventResult(source, stubIdentity), discardProducer: async () => { discarded++ } }))
+  if (result.type !== "events") throw new Error("Expected events")
+  const iterator = result.events[Symbol.asyncIterator]()
+  if (exit === "return") await iterator.return?.()
+  if (exit === "throw") await iterator.throw?.(new Error("consumer stopped")).catch(() => {})
+  if (exit === "discard") await result.discardProducer?.()
+  await result.discardProducer?.()
+  expect(reads).toBe(0)
+  expect(returned).toBe(1)
+  expect(discarded).toBe(1)
+})
+
+for (const exit of ["return", "throw", "discard", "abort"] as const) test(`owned Chat pending search ${exit} revokes signal before late success and never mutates messages`, async () => {
+  const started = Promise.withResolvers<AbortSignal>()
+  const provider = Promise.withResolvers<Response>()
+  const controller = new AbortController()
+  globalThis.fetch = (async (_url, init) => {
+    if (!init?.signal) throw new Error("Missing signal")
+    started.resolve(init.signal)
+    return provider.promise
+  }) as typeof fetch
+  const script = scriptedRun([toolCallTurn("web_search", '{"search_query":[{"q":"pending"}]}')])
+  const inv = invocation({ model: "m", messages: [], web_search_options: {} })
+  const result = await withChatCompletionsWebSearchShim(inv, { ...ctx, downstreamAbortSignal: controller.signal }, script.run)
+  if (result.type !== "events") throw new Error("Expected events")
+  const iterator = result.events[Symbol.asyncIterator]()
+  const read = iterator.next().then(step => step, error => error)
+  const signal = await started.promise
+  let close: Promise<unknown> | undefined
+  if (exit === "return") close = iterator.return?.()
+  if (exit === "throw") close = iterator.throw?.(new Error("consumer stopped")).catch(error => error)
+  if (exit === "discard") close = Promise.resolve(result.discardProducer?.())
+  if (exit === "abort") { controller.abort(); close = Promise.resolve(result.discardProducer?.()) }
+  const observedClose = close?.catch(error => error)
+  expect(signal.aborted).toBe(true)
+  provider.resolve(tavilyResponse([{ url: "https://late.test", title: "late" }]))
+  await observedClose
+  expect(await read).toBeInstanceOf(Error)
+  expect(inv.payload.messages).toEqual([])
+  expect(script.calls()).toBe(1)
+})
+
+for (const turn of ["first", "later"] as const) test(`owned Chat late ${turn} run result is disposed without being pulled`, async () => {
+  const pending = Promise.withResolvers<Result>()
+  const started = Promise.withResolvers<void>()
+  const controller = new AbortController()
+  let calls = 0
+  let reads = 0
+  let returned = 0
+  let discarded = 0
+  globalThis.fetch = (async () => tavilyResponse([])) as unknown as typeof fetch
+  const late = { ...llmEventResult({ [Symbol.asyncIterator]: () => ({ next: async () => { reads++; return { done: true as const, value: undefined } }, return: async () => { returned++; return { done: true as const, value: undefined } } }) }, stubIdentity), discardProducer: async () => { discarded++ } }
+  const script = scriptedRun([toolCallTurn("web_search", '{"search_query":[{"q":"q"}]}')])
+  const running = withChatCompletionsWebSearchShim(invocation({ model: "m", messages: [], web_search_options: {} }), { ...ctx, downstreamAbortSignal: controller.signal }, async () => {
+    calls++
+    if (turn === "later" && calls === 1) return script.run()
+    started.resolve()
+    return pending.promise
+  })
+  const consuming = turn === "first" ? running.then(collect).catch(error => error) : collect(await running).catch(error => error)
+  await started.promise
+  controller.abort()
+  pending.resolve(late)
+  expect(await consuming).toBeInstanceOf(Error)
+  await new Promise(resolve => setTimeout(resolve, 0))
+  expect(reads).toBe(0)
+  expect(returned).toBe(1)
+  expect(discarded).toBe(1)
+})
+
+for (const exit of ["run-error", "non-events", "unsupported", "acquisition-error"] as const) test(`owned Chat first ${exit} releases listeners and disposes unsupported producers once`, async () => {
+  const controller = new AbortController()
+  const signal = controller.signal
+  let listeners = 0
+  let returned = 0
+  let discarded = 0
+  const add = signal.addEventListener.bind(signal)
+  const remove = signal.removeEventListener.bind(signal)
+  signal.addEventListener = (...args: Parameters<typeof add>) => { listeners++; return add(...args) }
+  signal.removeEventListener = (...args: Parameters<typeof remove>) => { listeners--; return remove(...args) }
+  const failure: Result = { type: "upstream-error", status: 503, headers: new Headers(), body: new Uint8Array() }
+  const source = { [Symbol.asyncIterator]: () => {
+    if (exit === "acquisition-error") throw new Error("original acquisition")
+    return { next: async () => ({ done: true as const, value: undefined }), return: async () => { returned++; return { done: true as const, value: undefined } } }
+  } }
+  const running = withChatCompletionsWebSearchShim(invocation({ model: "m", messages: [], web_search_options: {} }), { ...ctx, downstreamAbortSignal: signal }, async () => {
+    if (exit === "run-error") throw new Error("original run")
+    if (exit === "non-events") return failure
+    const native = { ...llmEventResult(source, stubIdentity), discardProducer: async () => { discarded++ } }
+    if (exit !== "unsupported") return native
+    const { translatedFixture } = await import("../../shared/translated-fixture")
+    return { ...translatedFixture({ kind: "translated", source: "chat_completions", protocol: "responses" }, source, stubIdentity), discardProducer: native.discardProducer }
+  })
+  if (exit === "non-events") expect(await running).toBe(failure)
+  else await expect(running).rejects.toThrow(exit === "unsupported" ? "Native" : "original")
+  expect(listeners).toBe(0)
+  expect(signal.aborted).toBe(false)
+  expect(returned).toBe(exit === "unsupported" ? 1 : 0)
+  expect(discarded).toBe(exit === "unsupported" || exit === "acquisition-error" ? 1 : 0)
+})
+
+for (const turn of ["first", "later"] as const) test(`owned Chat abort closes current ${turn} producer and ignores its late read`, async () => {
+  const controller = new AbortController()
+  const started = Promise.withResolvers<void>()
+  const pending = Promise.withResolvers<IteratorResult<ProtocolFrame<ChatCompletionsStreamEvent>>>()
+  let returned = 0
+  let discarded = 0
+  let runs = 0
+  globalThis.fetch = (async () => tavilyResponse([])) as unknown as typeof fetch
+  const script = scriptedRun([toolCallTurn("web_search", '{"search_query":[{"q":"q"}]}')])
+  const current = { ...llmEventResult({ [Symbol.asyncIterator]: () => ({ next: () => { started.resolve(); return pending.promise }, return: async () => { returned++; return { done: true as const, value: undefined } } }) }, stubIdentity), discardProducer: async () => { discarded++ } }
+  const result = await withChatCompletionsWebSearchShim(invocation({ model: "m", messages: [], web_search_options: {} }), { ...ctx, downstreamAbortSignal: controller.signal }, async () => ++runs === 1 && turn === "later" ? script.run() : current)
+  if (result.type !== "events") throw new Error("Expected events")
+  const consuming = collect(result).catch(error => error)
+  await started.promise
+  controller.abort()
+  expect(await consuming).toBeInstanceOf(Error)
+  await result.discardProducer?.()
+  pending.resolve({ done: false, value: { type: "event", event: textChunk("late") } })
+  expect(returned).toBe(1)
+  expect(discarded).toBe(1)
+  expect(runs).toBe(turn === "later" ? 2 : 1)
+})
+
+test("owned Chat normal native JSON loop releases drained producers and retains citations and usage", async () => {
+  const { synthesizeChatCompletionsFramesFromJson } = await import("../../../../../src/data-plane/chat-flow/chat-completions/events/json-to-frames")
+  const { collectChatCompletionsProtocolEventsToResult } = await import("../../../../../src/data-plane/chat-flow/chat-completions/events/to-result")
+  globalThis.fetch = (async () => tavilyResponse([{ url: "https://json.test", title: "JSON search" }])) as unknown as typeof fetch
+  let runs = 0
+  const discarded: number[] = []
+  const result = await withChatCompletionsWebSearchShim(invocation({ model: "m", messages: [], stream: false, web_search_options: {} }), ctx, async () => {
+    const turn = ++runs
+    const message = turn === 1 ? { role: "assistant", content: null, tool_calls: [{ id: "json-call", type: "function" as const, function: { name: "web_search", arguments: '{"search_query":[{"q":"json"}]}' } }] } : { role: "assistant", content: "JSON answer" }
+    return { ...llmEventResult(synthesizeChatCompletionsFramesFromJson({ id: "json", object: "chat.completion", created: 1, model: "m", choices: [{ index: 0, message, finish_reason: turn === 1 ? "tool_calls" : "stop" }], usage: { prompt_tokens: 2, completion_tokens: 3, total_tokens: 5 } }), stubIdentity), discardProducer: async () => { discarded.push(turn) } }
+  })
+  if (result.type !== "events") throw new Error("Expected events")
+  const body = await collectChatCompletionsProtocolEventsToResult(result.events)
+  // The reassembler stops at done; explicit disposal completes the owner's normal drain.
+  await result.discardProducer?.()
+  expect(body.choices[0]?.message.content).toBe("JSON answer")
+  expect(body.usage?.total_tokens).toBe(10)
+  expect(JSON.stringify(body)).toContain("https://json.test")
+  expect(discarded).toEqual([])
+})
+
+test("owned Chat source failure preserves the original error and reports incomplete producer cleanup", async () => {
+  let returned = 0
+  let discarded = 0
+  const source = { [Symbol.asyncIterator]: () => ({ next: async () => { throw new Error("original source failure") }, return: async () => { returned++; throw new Error("cleanup failure") } }) }
+  const result = await withChatCompletionsWebSearchShim(invocation({ model: "m", messages: [], web_search_options: {} }), ctx, async () => ({ ...llmEventResult(source, stubIdentity), discardProducer: async () => { discarded++ } }))
+  if (result.type !== "events") throw new Error("Expected events")
+  await expect(collect(result)).rejects.toThrow("original source failure")
+  await expect(result.discardProducer?.()).rejects.toThrow("cleanup incomplete")
+  expect(returned).toBe(1)
+  expect(discarded).toBe(1)
+})
+
+test("owned Chat noncooperative search reports cleanup deadline and ignores eventual settlement", async () => {
+  const started = Promise.withResolvers<AbortSignal>()
+  const provider = Promise.withResolvers<Response>()
+  globalThis.fetch = (async (_url, init) => {
+    if (!init?.signal) throw new Error("Missing signal")
+    started.resolve(init.signal)
+    return provider.promise
+  }) as typeof fetch
+  const inv = invocation({ model: "m", messages: [], web_search_options: {} })
+  const script = scriptedRun([toolCallTurn("web_search", '{"search_query":[{"q":"q"}]}')])
+  const result = await withChatCompletionsWebSearchShim(inv, ctx, script.run)
+  if (result.type !== "events") throw new Error("Expected events")
+  const read = result.events[Symbol.asyncIterator]().next().catch(error => error)
+  const signal = await started.promise
+  const closing = Promise.resolve(result.discardProducer?.())
+  expect(signal.aborted).toBe(true)
+  expect(await read).toBeInstanceOf(Error)
+  await expect(closing).rejects.toThrow("cleanup incomplete")
+  provider.resolve(tavilyResponse([{ url: "https://late.test", title: "late" }]))
+  await new Promise(resolve => setTimeout(resolve, 0))
+  await expect(result.discardProducer?.()).rejects.toThrow("cleanup incomplete")
+  expect(inv.payload.messages).toEqual([])
+  expect(script.calls()).toBe(1)
+})

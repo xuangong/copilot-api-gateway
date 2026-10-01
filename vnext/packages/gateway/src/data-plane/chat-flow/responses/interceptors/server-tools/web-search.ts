@@ -35,10 +35,9 @@ import {
   renderWebSearchCallOutput,
   schemaErrorIr,
   type WebSearchCallIR,
-  type WebSearchExecutionSession,
   type WebSearchFilters,
 } from '../../../../tools/web-search/operations.ts'
-import { planWebSearchCalls } from '../../../../tools/web-search/plan-operations.ts'
+import { createWebSearchExecutionScope, type WebSearchExecutionScope } from '../../../../tools/web-search/execution-scope.ts'
 import type { ApiKeyId } from '../../../../../repo/branded-ids.ts'
 import { providerNameFor } from '../../../../tools/web-search/key-config.ts'
 import { resolveWebSearchForKey } from '../../../../tools/web-search/resolve-for-key.ts'
@@ -447,7 +446,8 @@ const transformTypedInputItemsForWebSearch = (
 // The shim's execution session plus the one wire-shaping flag that lives
 // only on the Responses side. Alpha-search passthrough (reference
 // `executeAlpha`) is intentionally omitted — Spec 13-C Q3(b) defers it.
-interface ShimState extends WebSearchExecutionSession {
+interface ShimState {
+  execution: WebSearchExecutionScope
   // Set when the client passed `include: ["web_search_call.results"]` on
   // the request. Native Responses gates the `results` field on this
   // include token; the shim follows suit on the wire item — but the IR
@@ -463,36 +463,46 @@ interface ShimSlot {
   action?: ResponsesWebSearchAction
   /** The slice of the shim call's arguments this slot alone will replay. */
   arguments: Record<string, unknown>
-  promise: Promise<WebSearchCallIR>
+  result(): Promise<WebSearchCallIR>
 }
 
 const planShimSlots = (
   args: Record<string, unknown> | null,
   state: ShimState,
   loopState: ServerToolLoopState,
-): ShimSlot[] => {
+): { slots: ShimSlot[]; start(): void } => {
+  state.execution.assertOpen()
   if (loopState.iterationCount > ITERATION_CAP) {
     // One refusal slot for the whole call, whatever it asked for: the budget
     // is exhausted, so there is nothing to fan out.
-    return [{
+    return { start: () => {}, slots: [{
       id: synthesizeWebSearchCallId(),
       arguments: args ?? {},
-      promise: Promise.resolve(schemaErrorIr(
+      result: () => Promise.resolve(schemaErrorIr(
         'tool budget exhausted',
         'Tool call budget exhausted',
         `Web search iteration limit (${ITERATION_CAP}) reached. Further web_search calls in this response will return this same error. Summarize what you have already learned, and continue the task using other available tools (shell, file inspection, prior knowledge) or directly answer based on what you've gathered.`,
       )),
-    }]
+    }] }
   }
 
   // Everything below the iteration cap is protocol-agnostic and shared with
   // the Chat Completions shim.
-  return planWebSearchCalls(args, state).map((plan) => ({
-    id: synthesizeWebSearchCallId(),
-    ...(plan.action !== undefined ? { action: plan.action } : {}),
-    arguments: plan.arguments,
-    promise: plan.promise,
-  }))
+  const prepared = state.execution.prepare(args)
+  let started: ReturnType<typeof prepared.start> | undefined
+  return {
+    slots: prepared.plans.map((plan, index) => ({
+      id: synthesizeWebSearchCallId(),
+      ...(plan.action !== undefined ? { action: plan.action } : {}),
+      arguments: plan.arguments,
+      result: () => {
+        const call = started?.calls[index]
+        if (!call) throw new Error("Web search slot was not started")
+        return call.result()
+      },
+    })),
+    start: () => { started = prepared.start() },
+  }
 }
 
 export const webSearchServerTool: ServerToolRegistration<Invocation, ServerToolRequestCtx> = async (
@@ -543,31 +553,32 @@ export const webSearchServerTool: ServerToolRegistration<Invocation, ServerToolR
     impl: resolved.impl,
   })
   const includeArray = Array.isArray(invocation.payload.include) ? (invocation.payload.include as string[]) : []
-  const state: ShimState = {
+  const execution = hasHostedWebSearch ? createWebSearchExecutionScope({
     filters,
-    pageCache: new Map(),
     getProvider: () => configuredProvider,
     apiKeyId: requestCtx.apiKeyId,
-    includeSearchResults: includeArray.includes('web_search_call.results'),
     includeSearchActionSources: includeArray.includes('web_search_call.action.sources'),
     ...(requestCtx.abortSignal !== undefined ? { signal: requestCtx.abortSignal } : {}),
-  }
+  }) : undefined
 
   return {
     type: 'active',
     baseToolName: SHIM_TOOL_NAME,
     transformItems: (items, toolName) =>
       transformTypedInputItemsForWebSearch(items, toolName, (id) => requestCtx.store.getPrivatePayload(id)),
-    ...(hasHostedWebSearch
+    ...(execution
       ? {
           hosted: {
+            work: execution,
             hostedTypes: WEB_SEARCH_HOSTED_TYPE_NAMES,
             includeTokens: WEB_SEARCH_INCLUDE_TOKENS,
             canonicalize: canonicalizeWebSearchTool,
             buildFunctionTool: buildShimFunctionTool,
             dispatcher: ({ intercepted, loopState }) => {
-              const slots = planShimSlots(intercepted.arguments, state, loopState)
-              return slots.map((slot, index) => {
+              const state: ShimState = { execution, includeSearchResults: includeArray.includes('web_search_call.results') }
+              const batch = planShimSlots(intercepted.arguments, state, loopState)
+              const slots = batch.slots
+              const dispatched = slots.map((slot, index) => {
                 const functionCallItem: ResponsesFunctionToolCallItem = {
                   type: 'function_call',
                   // A fanned-out call cannot reuse the upstream's single
@@ -600,7 +611,8 @@ export const webSearchServerTool: ServerToolRegistration<Invocation, ServerToolR
                     { type: 'response.web_search_call.searching' },
                   ],
                   run: async function* run() {
-                    const ir = await slot.promise
+                    const ir = await slot.result()
+                    execution.assertOpen()
                     // `results` is gated on the client's `include`
                     // opt-in to match native Responses' default wire
                     // shape; the IR keeps them either way for the
@@ -621,6 +633,8 @@ export const webSearchServerTool: ServerToolRegistration<Invocation, ServerToolR
                   },
                 }
               })
+              batch.start()
+              return dispatched
             },
           },
         }

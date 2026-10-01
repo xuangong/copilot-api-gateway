@@ -1,3 +1,4 @@
+import type { ServerToolHostedWork } from "../../../orchestrator/server-tools/types"
 import type { LlmEventResult } from "@vibe-llm/protocols/common"
 import { closeStream, settleStreamMetadata } from "../../shared/stream-tail"
 import { disposeEventProducerBody } from "../../shared/producer-ownership"
@@ -13,6 +14,7 @@ export class ServerToolLifetime {
   private incomplete = false
   private cleanup: Promise<void> | undefined
   private readonly resources = new Set<Resource>()
+  private readonly work = new Set<ServerToolHostedWork>()
   private readonly reads = new Set<(error: Error) => void>()
   private readonly onAbort = (): void => { void this.close().catch(() => {}) }
   private onClosed: (() => void) | undefined
@@ -46,6 +48,20 @@ export class ServerToolLifetime {
     this.resources.add(resource)
     if (this.closed) void resource.close()
     return resource
+  }
+
+  ownWork(work: ServerToolHostedWork): void {
+    if (this.work.has(work)) return
+    this.work.add(work)
+    this.resource(async () => {
+      try { return (await settleStreamMetadata(Promise.resolve().then(() => work.settled()))).settled }
+      finally { this.work.delete(work) }
+    })
+    if (this.closed) this.cancelWork(work)
+  }
+
+  private cancelWork(work: ServerToolHostedWork): void {
+    try { work.cancel() } catch { this.recordIncompleteCleanup() }
   }
 
   trackIterator(iterator: AsyncIterator<unknown>): Resource {
@@ -127,6 +143,7 @@ export class ServerToolLifetime {
       if (this.incomplete) throw new Error("Server-tool resource cleanup incomplete")
     })
     this.closed = true
+    for (const work of this.work) this.cancelWork(work)
     const callback = this.onClosed
     this.onClosed = undefined
     this.signal?.removeEventListener("abort", this.onAbort)
@@ -162,3 +179,8 @@ export class ServerToolLifetime {
 
 /** Slot materialization can close its iterator, but cannot dispose the invocation. */
 export type ServerToolSlotLifetime = Pick<ServerToolLifetime, "assertOpen" | "wait" | "trackIterator" | "recordIncompleteCleanup">
+
+type AssertTrue<T extends true> = T
+export type SlotCannotCancelInvocation = AssertTrue<
+  Extract<"close" | "ownWork" | "ownProducer", keyof ServerToolSlotLifetime> extends never ? true : false
+>

@@ -342,3 +342,140 @@ test("unstarted closure never calls the identity resolver when the binding key i
   expect(await settles(result.finalMetadata ?? Promise.reject(new Error("Missing metadata")))).toMatchObject({ modelIdentity: identity })
   expect(resolutions).toBe(0)
 })
+
+for (const exit of ["invalid-request", "prepare-error", "historical-conflict"] as const) test(`early ${exit} cancels already adopted hosted work before returning control`, async () => {
+  let cancels = 0
+  let settlements = 0
+  const work = { cancel: (): undefined => { cancels++; return undefined }, settled: async () => { settlements++ } }
+  const base = registration()
+  const first: ServerToolRegistration<Invocation, ServerToolRequestCtx> = async (inv, ctx) => {
+    const prepared = await base(inv, ctx)
+    if (prepared.type !== "active" || !prepared.hosted) throw new Error("Missing hosted")
+    return { ...prepared, hosted: { ...prepared.hosted, work } }
+  }
+  const inv = invocation()
+  if (exit === "historical-conflict") inv.payload.input = [{ type: "function_call", name: "web_search", call_id: "client", arguments: "{}" }]
+  const later: ServerToolRegistration<Invocation, ServerToolRequestCtx> = () => {
+    if (exit === "prepare-error") throw new Error("original preparation")
+    return { type: "invalid-request", message: "original invalid", param: "tools" }
+  }
+  const pending = withResponsesServerToolShim([first, later], defaultPrivatePayloadStore)(inv, { requestStartedAt: 0 }, async () => { throw new Error("Must not run") })
+  if (exit === "prepare-error") await expect(pending).rejects.toThrow("original preparation")
+  else expect((await pending).type).toBe("upstream-error")
+  expect(cancels).toBe(1)
+  expect(settlements).toBe(1)
+})
+
+test("real eager search discard before slot acquisition aborts work and forbids late private writes or reentry", async () => {
+  const { db, repo } = setupTestPlatform()
+  const originalFetch = globalThis.fetch
+  const started = Promise.withResolvers<AbortSignal>()
+  const provider = Promise.withResolvers<Response>()
+  const writes: unknown[] = []
+  let calls = 0
+  let slotRuns = 0
+  try {
+    await repo.apiKeys.save({ id: "eager-search-key" as ApiKeyId, name: "search", key: "sk-eager-search", createdAt: "2026-01-01T00:00:00Z", webSearchEnabled: true, modelMappingsEnabled: false, modelMappings: [], webSearchPriority: ["tavily"], webSearchTavilyKey: "fixture" })
+    globalThis.fetch = (async (_url, init) => {
+      if (!init?.signal) throw new Error("Missing provider signal")
+      started.resolve(init.signal)
+      return provider.promise
+    }) as typeof fetch
+    const actual: ServerToolRegistration<Invocation, ServerToolRequestCtx> = async (inv, ctx) => {
+      const prepared = await webSearchServerTool(inv, ctx)
+      if (prepared.type !== "active" || !prepared.hosted) throw new Error("Missing actual hosted tool")
+      const hosted = prepared.hosted
+      return { ...prepared, hosted: { ...hosted, dispatcher: args => hosted.dispatcher(args).map(slot => ({ ...slot, run: () => { slotRuns++; return slot.run() } })) } }
+    }
+    const result = requireEvents(await withResponsesServerToolShim([actual], { getPrivatePayload: () => undefined, registerPrivatePayload: (_id, value) => { writes.push(value) } })(invocation(), { requestStartedAt: 0, apiKeyId: "eager-search-key", downstreamAbortSignal: new AbortController().signal }, async () => { calls++; return llmEventResult(frames("query"), identity) }))
+    const iterator = result.events[Symbol.asyncIterator]()
+    for (;;) {
+      const step = await iterator.next()
+      if (step.done) throw new Error("Search not dispatched")
+      if (step.value.type === "event" && step.value.event.type === "response.output_item.added" && step.value.event.item.type === "web_search_call") break
+    }
+    const signal = await started.promise
+    expect(slotRuns).toBe(0)
+    const closing = Promise.resolve(result.discardProducer?.()).then(() => "closed", error => error)
+    expect(signal.aborted).toBe(true)
+    provider.resolve(Response.json({ results: [{ url: "https://late.test", title: "late", content: "late" }] }))
+    expect(await closing).toBe("closed")
+    expect((await iterator.next()).done).toBe(true)
+    expect(slotRuns).toBe(0)
+    expect(calls).toBe(1)
+    expect(writes).toEqual([])
+  } finally { provider.resolve(Response.json({ results: [] })); globalThis.fetch = originalFetch; db.close() }
+})
+
+test("hosted work cancellation is synchronous and one throwing callback does not skip other work", async () => {
+  const { ServerToolLifetime } = await import("../../../../../src/data-plane/chat-flow/responses/interceptors/server-tool-lifetime")
+  const owner = new ServerToolLifetime(() => undefined)
+  const cancelled: number[] = []
+  const settlement = Promise.withResolvers<void>()
+  owner.ownWork({ cancel: (): undefined => { cancelled.push(1); throw new Error("cancel failure") }, settled: () => settlement.promise })
+  owner.ownWork({ cancel: (): undefined => { cancelled.push(2); return undefined }, settled: async () => {} })
+  const closing = owner.close().catch(error => error)
+  expect(cancelled).toEqual([1, 2])
+  settlement.resolve()
+  expect(await closing).toBeInstanceOf(Error)
+})
+
+test("incomplete hosted cleanup preserves an already decided invalid request", async () => {
+  const base = registration()
+  const first: ServerToolRegistration<Invocation, ServerToolRequestCtx> = async (inv, ctx) => {
+    const prepared = await base(inv, ctx)
+    if (prepared.type !== "active" || !prepared.hosted) throw new Error("Missing hosted")
+    return { ...prepared, hosted: { ...prepared.hosted, work: { cancel: (): undefined => { throw new Error("broken cancellation") }, settled: async () => {} } } }
+  }
+  const result = await withResponsesServerToolShim([first, () => ({ type: "invalid-request", message: "original invalid", param: "tools" })], defaultPrivatePayloadStore)(invocation(), { requestStartedAt: 0 }, async () => { throw new Error("Must not run") })
+  expect(result.type).toBe("upstream-error")
+  if (result.type !== "upstream-error") throw new Error("Expected invalid result")
+  expect(new TextDecoder().decode(result.body)).toContain("original invalid")
+})
+
+test("hosted cleanup deadline does not fake actual work settlement", async () => {
+  const { ServerToolLifetime } = await import("../../../../../src/data-plane/chat-flow/responses/interceptors/server-tool-lifetime")
+  const settlement = Promise.withResolvers<void>()
+  let cancelled = false
+  let settled = false
+  const owner = new ServerToolLifetime(() => undefined)
+  owner.ownWork({ cancel: (): undefined => { cancelled = true; return undefined }, settled: () => settlement.promise })
+  const closing = owner.close()
+  expect(cancelled).toBe(true)
+  void settlement.promise.then(() => { settled = true })
+  await expect(closing).rejects.toThrow("cleanup incomplete")
+  expect(settled).toBe(false)
+  settlement.resolve()
+  await settlement.promise
+  await expect(owner.close()).rejects.toThrow("cleanup incomplete")
+})
+
+test("actual hosted native JSON loop uses existing adapters and preserves private replay and final metadata", async () => {
+  const { responsesResultToEvents } = await import("@vibe-llm/protocols/responses")
+  const { respondResponses } = await import("../../../../../src/data-plane/chat-flow/responses/respond")
+  const { db, repo } = setupTestPlatform()
+  const originalFetch = globalThis.fetch
+  let runs = 0
+  const discarded: number[] = []
+  try {
+    await repo.apiKeys.save({ id: "json-search-key" as ApiKeyId, name: "search", key: "sk-json-search", createdAt: "2026-01-01T00:00:00Z", webSearchEnabled: true, modelMappingsEnabled: false, modelMappings: [], webSearchPriority: ["tavily"], webSearchTavilyKey: "fixture" })
+    globalThis.fetch = (async () => Response.json({ results: [{ url: "https://json.test", title: "JSON search", content: "private JSON content" }] })) as unknown as typeof fetch
+    const inv = invocation()
+    inv.payload.stream = false
+    const result = requireEvents(await withResponsesServerToolShim([webSearchServerTool], defaultPrivatePayloadStore)(inv, { requestStartedAt: 0, apiKeyId: "json-search-key" }, async () => {
+      const turn = ++runs
+      if (turn === 2) expect(JSON.stringify(inv.payload.input)).toContain("private JSON content")
+      const body: ResponsesResult = { ...snapshot(), output: turn === 1 ? [{ type: "function_call", id: "fc_json", call_id: "json-call", name: "web_search", arguments: '{"search_query":[{"q":"json"}]}', status: "completed" }] : [{ type: "message", id: "msg_json", role: "assistant", status: "completed", content: [{ type: "output_text", text: "JSON answer", annotations: [] }] }] }
+      return { ...llmEventResult((async function* () { yield* responsesResultToEvents(body, { genericOutputItems: true }) })(), identity), discardProducer: async () => { discarded.push(turn) } }
+    }))
+    const response = await respondResponses(result, { wantsStream: false })
+    const body = await response.json() as ResponsesResult
+    expect(body.status).toBe("completed")
+    expect(body.output.filter(item => item.type === "web_search_call")).toHaveLength(1)
+    expect(JSON.stringify(body)).toContain("JSON answer")
+    expect(await result.finalMetadata).toMatchObject({ modelIdentity: identity })
+    await result.discardProducer?.()
+    expect(discarded).toEqual([])
+    expect(runs).toBe(2)
+  } finally { globalThis.fetch = originalFetch; db.close() }
+})
