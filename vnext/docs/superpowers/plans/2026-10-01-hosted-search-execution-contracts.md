@@ -25,7 +25,7 @@
 
 **Interfaces:** Produce `createWebSearchExecutionScope(session: Omit<WebSearchExecutionSession, "pageCache">): WebSearchExecutionScope`. Scope methods: `prepare(args: Record<string, unknown> | null): PreparedWebSearchBatch`, `assertOpen(): void`, `cancel(): undefined`, `settled(): Promise<void>`. Prepared batch exposes readonly `plans` and single-use `start(): StartedWebSearchBatch`; started batch exposes readonly `calls` with readonly `plan` and `result(): Promise<WebSearchCallIR>`. Implementation may use module-private tracker types shared with operations; no chat-flow dependency.
 
-- [ ] Write discriminating RED cases for fallback after swallowed abort, late cache writes, cancelled delayed provider resolution, and pure prepare/single start. Scope tests may initially fail on the missing export; preserve the real old-code fallback failure separately.
+- [x] Write discriminating RED cases for fallback after swallowed abort, late cache writes, cancelled delayed provider resolution, and pure prepare/single start. Scope tests may initially fail on the missing export; preserve the real old-code fallback failure separately.
 
 ```ts
 const scope = createWebSearchExecutionScope(sessionConfig)
@@ -37,10 +37,10 @@ scope.cancel()
 await expect(batch.calls[0]?.result()).rejects.toBeDefined()
 ```
 
-- [ ] Implement a local controller/cache owner with immediate observation of every eager branch. Track each complete provider-plus-usage leaf, not only parent aggregates. Dispose completed registrations; retain no cumulative task log. Cancellation revokes waiting delivery without waiting for noncooperative providers; real settlement still observes every started leaf.
-- [ ] Reuse pure split and current start scheduling. Link parent abort once, handle already-aborted, prohibit prepare/start after close, preserve normal page deduplication/cache reuse. Observe synchronous factory throws. No clones, serial queue, cap or hidden normal timeout.
-- [ ] Add pre/post provider-resolution, provider/usage and cache-write guards; stop fallback on signal state or recognized abort, while preserving ordinary errors/empty fallback. Check the existing Jina/MS retry boundary before starting each attempt without changing policy.
-- [ ] Verify all-started sibling and usage settlement with deferred fixtures, unconsumed rejected result observation, normal fanout/order/arguments, repeated close, late successes and parent-listener cleanup. Run focused suites, gateway typecheck, purity, scoped lint and protected hashes. Keep the old `planWebSearchCalls` only as a temporary adapter for Task 2; document this staged migration. Commit only task source/tests and write the implementation report with RED/GREEN evidence.
+- [x] Implement a local controller/cache owner with immediate observation of every eager branch. Track each complete provider-plus-usage leaf, not only parent aggregates. Dispose completed registrations; retain no cumulative task log. Cancellation revokes waiting delivery without waiting for noncooperative providers; real settlement still observes every started leaf.
+- [x] Reuse pure split and current start scheduling. Link parent abort once, handle already-aborted, prohibit prepare/start after close, preserve normal page deduplication/cache reuse. Observe synchronous factory throws. No clones, serial queue, cap or hidden normal timeout.
+- [x] Add pre/post provider-resolution, provider/usage and cache-write guards; stop fallback on signal state or recognized abort, while preserving ordinary errors/empty fallback. Check the existing Jina/MS retry boundary before starting each attempt without changing policy.
+- [x] Verify all-started sibling and usage settlement with deferred fixtures, unconsumed rejected result observation, normal fanout/order/arguments, repeated close, late successes and parent-listener cleanup. Run focused suites, gateway typecheck, purity, scoped lint and protected hashes. Keep the old `planWebSearchCalls` only as a temporary adapter for Task 2; document this staged migration. Commit only task source/tests and write the implementation report with RED/GREEN evidence.
 
 ### Task 2: Bind both hosted callers to owned execution
 
@@ -48,7 +48,7 @@ await expect(batch.calls[0]?.result()).rejects.toBeDefined()
 
 **Interfaces:** Consume Task 1 scope. Add `ServerToolHostedWork` with `cancel(): undefined; settled(): Promise<void>` and optional `ServerToolHostedDispatch.work`. Add `ServerToolLifetime.ownWork(work: ServerToolHostedWork): void` which adopts synchronously and cancels synchronously on close, then uses existing cleanup settlement policy. The slot lifetime view remains unable to cancel the invocation. Protocol terminal and writer interfaces stay unchanged.
 
-- [ ] Write RED tests using the actual search registration: discard after eager dispatch but before slot acquisition cancels provider signal, late results cannot write/reenter, and an unconsumed rejected branch stays observed. Add preparation rejection/invalid request after an earlier work owner was returned.
+- [x] Write RED tests using the actual search registration: discard after eager dispatch but before slot acquisition cancels provider signal, late results cannot write/reenter, and an unconsumed rejected branch stays observed. Add preparation rejection/invalid request after an earlier work owner was returned.
 
 ```ts
 const pending = iterator.next()
@@ -62,10 +62,10 @@ expect(nextRunCount).toBe(0)
 expect(privateWrites).toEqual([])
 ```
 
-- [ ] Adopt hosted work immediately on registration, before later preparation and first upstream run. Release every adopted owner on all early returns and exceptions. `ownWork` closes all work synchronously even if one cancel callback throws, and observes actual settlement asynchronously. Cleanup timeout stays explicit incomplete cleanup and never changes a previously decided outcome.
-- [ ] Migrate Responses to one active hosted scope, pure preparation and metadata construction before single start; slots await result access. Preserve replay-only/native inactivity, existing iteration refusal, fanout IDs, failed/incomplete materialization while live, private replay and metadata ordering. Remove the old unowned planner export after both callers migrate.
-- [ ] Migrate Chat with a concrete lazy-result owner, explicit pre-pull/pending-read return/throw/discard behavior, current-producer disposal and late-run-result disposal. Reuse shared producer/cleanup primitives; no wholesale lifetime-engine rewrite. No reentry, message mutation or terminal success after close. Close on normal drain and failures as well as abandonment.
-- [ ] Exercise both protocol lifetimes (normal drain, native JSON through existing adapters, before-first-pull return/discard, pending search abort, later upstream result, current producer cleanup), plus unchanged fanout/replay/citations/usage/client-tool handoff/budgets. Run only focused suites, types, purity, scoped lint and protection hashes. Report exact commands/results and commit scoped source/tests.
+- [x] Adopt hosted work immediately on registration, before later preparation and first upstream run. Release every adopted owner on all early returns and exceptions. `ownWork` closes all work synchronously even if one cancel callback throws, and observes actual settlement asynchronously. Cleanup timeout stays explicit incomplete cleanup and never changes a previously decided outcome.
+- [x] Migrate Responses to one active hosted scope, pure preparation and metadata construction before single start; slots await result access. Preserve replay-only/native inactivity, existing iteration refusal, fanout IDs, failed/incomplete materialization while live, private replay and metadata ordering. Remove the old unowned planner export after both callers migrate.
+- [x] Migrate Chat with a concrete lazy-result owner, explicit pre-pull/pending-read return/throw/discard behavior, current-producer disposal and late-run-result disposal. Reuse shared producer/cleanup primitives; no wholesale lifetime-engine rewrite. No reentry, message mutation or terminal success after close. Close on normal drain and failures as well as abandonment.
+- [x] Exercise both protocol lifetimes (normal drain, native JSON through existing adapters, before-first-pull return/discard, pending search abort, later upstream result, current producer cleanup), plus unchanged fanout/replay/citations/usage/client-tool handoff/budgets. Run only focused suites, types, purity, scoped lint and protection hashes. Report exact commands/results and commit scoped source/tests.
 
 ### Task 3: Bind diagnostic cancellation before the snapshot
 
@@ -73,7 +73,7 @@ expect(privateWrites).toEqual([])
 
 **Interfaces:** No public signature or wire event changes. The existing AbortController owns the eager subscription; raw-request abort is attached before subscription/snapshot work and removed on all exits.
 
-- [ ] Add a RED route test with a pending snapshot read, publish into the real broker, abort the request, and assert subscriber cancellation before resolving the read. Add authorized already-aborted and read-failure cases.
+- [x] Add a RED route test with a pending snapshot read, publish into the real broker, abort the request, and assert subscriber cancellation before resolving the read. Add authorized already-aborted and read-failure cases.
 
 ```ts
 const request = new Request(url, { signal: controller.signal })
@@ -86,12 +86,12 @@ const response = await pendingResponse
 expect(await response.text()).not.toContain("event: snapshot")
 ```
 
-- [ ] Move signal ownership before eager registration, handle already-aborted after authorization, suppress SSE delivery after a read settles late, and observe read rejection. Preserve subscribe-before-snapshot for live clients and existing non-aborted failure behavior. No claim that pending SQL is cancelled; no queue dropping policy.
-- [ ] Verify snapshot then queued appended delivery for a live client, abort before/during/after snapshot, read reject with/without abort, repeated cleanup, listener removal, and existing auth behavior. Run focused route/broker/SQLite auth suites, gateway types, purity, scoped lint, protection hashes. Commit source/tests and record RED/GREEN evidence.
+- [x] Move signal ownership before eager registration, handle already-aborted after authorization, suppress SSE delivery after a read settles late, and observe read rejection. Preserve subscribe-before-snapshot for live clients and existing non-aborted failure behavior. No claim that pending SQL is cancelled; no queue dropping policy.
+- [x] Verify snapshot then queued appended delivery for a live client, abort before/during/after snapshot, read reject with/without abort, repeated cleanup, listener removal, and existing auth behavior. Run focused route/broker/SQLite auth suites, gateway types, purity, scoped lint, protection hashes. Commit source/tests and record RED/GREEN evidence.
 
 ## Qualification and integration
 
-- [ ] Independent task specification/quality reviews and fix loops, marking every task complete after its review.
+- [x] Independent task specification/quality reviews and fix loops, marking every task complete after its review.
 - [ ] Whole-increment review, triage deferred issues and archive contract matrix/follow-up decisions.
 - [ ] Freeze a fresh non-doc source/config/test manifest including the protected overlay; run one complete `SETUP_TEST_CODEX=/Users/zhangxian/.local/bin/codex bun run ci:local`.
 - [ ] Verify unchanged frozen source and original hashes; fast-forward local vNext and compare both source manifests, protected inventories and fixture identity.

@@ -19,6 +19,19 @@ The preparation contracts select the correct protocol path. Producer-domain cont
 
 This increment extends that chain into eager search execution and request preparation cancellation. An output iterator is not sufficient evidence that underlying provider promises are owned. Likewise, stopping delivery is not evidence of underlying settlement, and durable diagnostic rows are not evidence that a reconnecting client has received every notification.
 
+## Contract chain and extension points
+
+The earlier contracts remain distinct owners. This increment adds an execution capability to that chain; it does not make one generic lifetime class responsible for every subsystem.
+
+| Existing design | Responsibility retained | Extension point in this increment |
+| --- | --- | --- |
+| [Reference-led request stages](../../specs/2026-10-01-reference-led-stage-contracts.md) | Explicit preparation and selected execution path | Hosted search separates side-effect-free preparation from one start |
+| [Interceptor contracts](../../specs/2026-10-01-interceptor-contracts.md) | Protocol-specific ordering, producer shape and completion ownership | Responses adopts work before later preparation; Chat uses its own narrow adapter |
+| [Strengthened producer/private-payload contracts](../../specs/2026-10-01-contract-strengthening.md) | Validated event domain, writer/read/disposal capability separation | Search work exposes cancellation and settlement without terminal-response authority |
+| [Diagnostic resource contracts](../../specs/2026-10-01-diagnostic-resource-contracts.md) | Capture retirement, subscription lifetime and storage-before-notification | Raw request cancellation reaches the eager subscription before snapshot preparation |
+
+Future admission belongs before the work it bounds: operation admission before expansion/start, body admission before full parsing, and replay/cache admission before retention. Completion and persistence owners should consume an explicit outcome from those decisions. A cancellation receipt cannot replace an admission decision, and an observed notification cannot replace durable readback or client reconciliation.
+
 ## Remaining gaps and next priorities
 
 1. Operation admission before parser expansion, slot allocation and provider start still needs a quantitative policy. Existing turn limits are not operation budgets. The new prepare/start boundary provides an integration point but does not itself bound work.
