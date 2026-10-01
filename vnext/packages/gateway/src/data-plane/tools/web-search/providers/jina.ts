@@ -280,7 +280,14 @@ export const createJinaWebSearchProvider = (apiKey: string, deps?: { fetch?: typ
       return { type: 'ok', pages: [], failures: [] }
     }
 
-    const outcomes = await Promise.all(request.urls.map(url => readOneUrl(httpFetch, apiKey, url, request.signal, request.ingress)))
+    // Delivery is already revoked by the ingress latch; ownership must still
+    // wait for every started helper before provider-plus-usage can settle.
+    const settlements = await Promise.allSettled(request.urls.map(url => readOneUrl(httpFetch, apiKey, url, request.signal, request.ingress)))
+    const outcomes: ReadOutcome[] = []
+    for (const settlement of settlements) {
+      if (settlement.status === "rejected") throw settlement.reason
+      outcomes.push(settlement.value)
+    }
 
     // Whole-batch transport / 5xx failure collapses into one envelope —
     // mirrors Microsoft Grounding's policy. Per-URL 4xx stays granular so

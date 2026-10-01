@@ -1,3 +1,5 @@
+import { createJinaWebSearchProvider } from "../../../../src/data-plane/tools/web-search/providers/jina.ts"
+import { createMicrosoftGroundingWebSearchProvider } from "../../../../src/data-plane/tools/web-search/providers/microsoft-grounding.ts"
 import { readSuccessfulText } from "../../../../src/data-plane/tools/web-search/providers/success-body.ts"
 import { createFallbackWebSearchProvider } from "../../../../src/data-plane/tools/web-search/key-config.ts"
 import { afterEach, beforeEach, expect, test } from "bun:test"
@@ -425,3 +427,39 @@ test("successful ingress persists across reentry and page operation failure is f
   await scope.settled()
   expect(db.query("SELECT SUM(attempts) AS total FROM web_search_engine_usage").get()).toEqual({ total: 2 })
 })
+
+
+for (const [name, create] of [["jina", createJinaWebSearchProvider], ["microsoft", createMicrosoftGroundingWebSearchProvider]] as const) {
+  for (const siblingExit of ["resolve", "reject"] as const) test(`${name} page capacity keeps real scope and usage unsettled until started sibling fetch ${siblingExit}`, async () => {
+    const sibling = deferred<Response>()
+    let starts = 0
+    let siblingEnded = false
+    const impl = create("test", { fetch: (async () => {
+      starts++
+      if (starts === 1) return new Response("12345")
+      try { return await sibling.promise }
+      finally { siblingEnded = true }
+    }) as typeof fetch })
+    const scope = createWebSearchExecutionScope({ ...session, getProvider: async () => ({ type: "enabled", provider: name === "jina" ? "jina" : "microsoft-grounding", impl }) }, { responseBodyBytes: 4 })
+    const batch = scope.prepare(scope.admit({ open: [{ ref_id: "https://a.example" }, { ref_id: "https://b.example" }] })).start()
+    await tick()
+    expect(starts).toBe(2)
+    let reason: unknown
+    try { scope.assertOpen() } catch (error) { reason = error }
+    expect(reason).toMatchObject({ category: "responseBodyBytes", limit: 4 })
+    await expect(batch.calls[0]?.result()).rejects.toBe(reason)
+    let settled = false
+    const receipt = scope.settled().then(() => { settled = true })
+    await tick()
+    expect(siblingEnded).toBe(false)
+    expect(settled).toBe(false)
+    expect(db.query("SELECT COUNT(*) AS total FROM web_search_engine_usage").get()).toEqual({ total: 0 })
+    if (siblingExit === "resolve") sibling.resolve(new Response("{}"))
+    else sibling.reject(new Error("sibling transport failure"))
+    await receipt
+    expect(siblingEnded).toBe(true)
+    expect(settled).toBe(true)
+    expect(db.query("SELECT SUM(attempts) AS total FROM web_search_engine_usage").get()).toEqual({ total: 1 })
+    await expect(batch.calls[0]?.result()).rejects.toBe(reason)
+  })
+}

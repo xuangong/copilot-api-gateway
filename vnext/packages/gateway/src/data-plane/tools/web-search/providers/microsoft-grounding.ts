@@ -234,7 +234,14 @@ export const createMicrosoftGroundingWebSearchProvider = (apiKey: string, deps?:
       return { type: 'ok', pages: [], failures: [] }
     }
 
-    const outcomes = await Promise.all(request.urls.map(url => browseOneUrl(httpFetch, apiKey, url, request.signal, request.ingress)))
+    // Delivery is already revoked by the ingress latch; ownership must still
+    // wait for every started helper before provider-plus-usage can settle.
+    const settlements = await Promise.allSettled(request.urls.map(url => browseOneUrl(httpFetch, apiKey, url, request.signal, request.ingress)))
+    const outcomes: BrowseOutcome[] = []
+    for (const settlement of settlements) {
+      if (settlement.status === "rejected") throw settlement.reason
+      outcomes.push(settlement.value)
+    }
 
     // Whole-batch failure (every URL transport-failed or 5xx) collapses
     // into one {type:'error'} envelope; 4xx/202 stay per-URL so one bad
