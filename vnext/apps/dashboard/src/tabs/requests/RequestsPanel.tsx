@@ -36,6 +36,13 @@ export function RequestsLiveStatus({ continuity, omittedRows, loading, onRefresh
   )
 }
 
+export function RequestsEmptyState({ loading, listError, recordCount, omittedRows }: {
+  loading: boolean; listError: string | null; recordCount: number; omittedRows: number,
+}) {
+  const t = useT()
+  return !loading && !listError && recordCount === 0 && omittedRows === 0 ? <p className="text-sm text-themed-dim">{t("dash.requests.empty")}</p> : null
+}
+
 export function RequestsPanel({ keyId, keyName, onClose }: { keyId: string; keyName: string; onClose: () => void }) {
   const dumps = useDumps(keyId)
   const t = useT()
@@ -52,7 +59,7 @@ export function RequestsPanel({ keyId, keyName, onClose }: { keyId: string; keyN
       {dumps.listError ? <p role="alert" className="text-accent-red text-sm mb-3">{dumps.listError}</p> : null}
       {dumps.liveError ? <p role="status" className="text-accent-red text-sm mb-3">{dumps.liveError}</p> : null}
       {dumps.loading && dumps.records.length === 0 ? <p className="text-sm text-themed-dim">{t("dash.requests.loading")}</p> : null}
-      {!dumps.loading && !dumps.listError && dumps.records.length === 0 ? <p className="text-sm text-themed-dim">{t("dash.requests.empty")}</p> : null}
+      <RequestsEmptyState loading={dumps.loading} listError={dumps.listError} recordCount={dumps.records.length} omittedRows={dumps.omittedRows} />
       <div className="space-y-2">
         {dumps.records.map((record) => (
           <button

@@ -55,3 +55,43 @@ test("retirement during reflection cannot publish a late retained entry", () => 
   expect(() => map.set("key", value)).toThrow("closed")
   expect(map.get("key")).toBeUndefined()
 })
+
+test("estimator accepts depth 64 and rejects depth 65", () => {
+  let depth64: unknown = null
+  for (let i = 0; i < 64; i++) depth64 = { deep: depth64 }
+  expect(estimateRetainedCharge(depth64, "privateBytes", 100000)).toBe(7688)
+  expect(() => estimateRetainedCharge({ deep: depth64 }, "privateBytes", 100000)).toThrow(WebSearchCapacityError)
+})
+
+test("estimator accepts 65536 visited values and rejects the next including an optional key", () => {
+  // The array itself and its own length value each consume one visit.
+  expect(estimateRetainedCharge(new Array(65534).fill(null), "privateBytes", 16000000)).toBeGreaterThan(0)
+  expect(() => estimateRetainedCharge(new Array(65535).fill(null), "privateBytes", 16000000)).toThrow(WebSearchCapacityError)
+  expect(estimateRetainedCharge(new Array(65533).fill(null), "privateBytes", 16000000, "a")).toBeGreaterThan(0)
+  expect(() => estimateRetainedCharge(new Array(65534).fill(null), "privateBytes", 16000000, "a")).toThrow(WebSearchCapacityError)
+})
+
+test("nested insertion during reflection consumes the last entry before outer admission", () => {
+  const map = createOwnedRetainedMap<unknown>({ entries: 1, bytes: 1000, entriesCategory: "pageEntries", bytesCategory: "pageBytes" })
+  const value = new Proxy({}, { ownKeys() { map.set("nested", "kept"); return [] } })
+  expect(() => map.set("outer", value)).toThrow(new WebSearchCapacityError("pageEntries", 1))
+  expect(map.get("outer")).toBeUndefined()
+  expect(map.get("nested")).toBe("kept")
+  expect(() => map.set("later", "rejected")).toThrow(WebSearchCapacityError)
+})
+
+test("nested same-key replacement is refunded at its current charge after reflection", () => {
+  const map = createOwnedRetainedMap<unknown>({ entries: 4, bytes: 334, entriesCategory: "privateEntries", bytesCategory: "privateBytes" })
+  map.set("a", "a")
+  map.set("b", "b")
+  const value = new Proxy({}, { ownKeys() { map.set("a", "x".repeat(100)); return [] } })
+  map.set("a", value)
+  expect(map.get("a")).toBe(value)
+  expect(map.get("b")).toBe("b")
+  // a=98, b=68, c=168 exactly fill the domain after the nested replacement.
+  map.set("c", "x".repeat(51))
+  expect(map.get("c")).toBe("x".repeat(51))
+  expect(() => map.set("d", "d")).toThrow(new WebSearchCapacityError("privateBytes", 334))
+  expect(map.get("d")).toBeUndefined()
+  expect(map.get("a")).toBe(value)
+})
