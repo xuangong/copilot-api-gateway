@@ -53,7 +53,7 @@ Add a defaulted `TInputs` generic to `ServeTemplateInput`, `PreProcessCtx`, `Run
 - Gemini: requested model and forced stream choice.
 - Chat Completions: no endpoint side inputs.
 
-Remove side-input casts from these hooks. Preserve input object identity and auth references across the handoff. These are borrowed request-local references: callers must not mutate them between preparation and execution; a readonly container is not a deep-freeze guarantee. The kit remains domain-neutral. Optional preprocessing means response context must honestly allow `extra` to be undefined; do not disguise this with an assertion.
+Remove side-input casts from these hooks. Preserve input object identity and auth references across the handoff. These are borrowed request-local references: callers must not mutate them between preparation and execution; a readonly container is not a deep-freeze guarantee. The kit remains domain-neutral. This slice originally allowed optional preprocessing, so its response context honestly allowed `extra` to be undefined. The subsequent [contract-strengthening design](2026-10-01-contract-strengthening.md) requires explicit preprocessing and makes successful prepared output exactly `TExtra`; early responses and callers that explicitly prepare `undefined` retain that possibility. Neither design permits assertions that disguise missing data.
 
 ### Compatibility and resource constraints
 

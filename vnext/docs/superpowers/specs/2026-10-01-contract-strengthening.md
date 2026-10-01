@@ -45,12 +45,12 @@ interface ServerToolPrivatePayloadReader {
   getPrivatePayload(itemId: string): WebSearchCallPrivatePayload | undefined
 }
 interface ServerToolPrivatePayloadWriter {
-  registerPrivatePayload(itemId: string, payload: WebSearchCallPrivatePayload): void
+  registerPrivatePayload(itemId: string, payload: WebSearchCallPrivatePayload): undefined
 }
 interface OwnedServerToolPrivatePayloadScope {
   readonly reader: ServerToolPrivatePayloadReader
   readonly writer: ServerToolPrivatePayloadWriter
-  dispose(): void
+  dispose(): undefined
 }
 interface OwnedServerToolPrivatePayloadSource {
   readonly ownership: "owned"
@@ -59,15 +59,15 @@ interface OwnedServerToolPrivatePayloadSource {
 type ServerToolPrivatePayloadDependency = OwnedServerToolPrivatePayloadSource | PrivatePayloadStore
 ```
 
-The legacy borrowed store retains its unknown-valued read contract. Its invocation adapter validates those foreign values before exposing the typed reader; owned typed writes do not need repeated deep validation on every read. Give plugins a real reader-only facade; materialization receives only the typed writer. Only the outer shim/result owner retains disposal authority. A closed invocation returns no private values and rejects writes; disposing is idempotent. Borrowed stores are not cleared or disposed, but that invocation stops accessing them after closure.
+The legacy borrowed store retains its unknown-valued read contract. Its invocation adapter validates those foreign values before exposing the typed reader; owned typed writes do not need repeated deep validation on every read. Give plugins a real reader-only facade; materialization receives only the typed writer. Only the outer shim/result owner retains disposal authority. A closed invocation returns no private values and rejects writes; disposing is idempotent. The new typed writer and owned disposer return `undefined`, rejecting asynchronous or broad-void implementations that would detach a required synchronous write or release. The legacy borrowed interface retains `void` for source compatibility; its adapter cannot prove synchronous behavior of foreign implementations. Borrowed stores are not cleared or disposed, but that invocation stops accessing them after closure.
 
-Move the current web-search v1 payload shape into a small gateway-owned contract module and keep the plugin's existing type export as a re-export. `ServerToolTerminal.privatePayload` becomes that named optional payload. Strengthen the foreign-value decoder for the currently consumed action/result/function-call fields; invalid/unknown-version history remains a miss. Preserve the current shape and public output. Skip `undefined` registrations. Do not store image base64 or add a persisted replay format.
+Move the current web-search v1 payload shape into a small gateway-owned contract module and keep the plugin's existing type export as a re-export. `ServerToolTerminal.privatePayload` becomes that named optional payload. Strengthen the foreign-value decoder for the currently consumed action/result/function-call fields, including every position of foreign arrays; invalid/unknown-version history remains a miss. Preserve the current shape and public output. Skip `undefined` registrations. Do not store image base64 or add a persisted replay format.
 
 The admitted values remain borrowed references under trusted-code mutation rules; do not deep-clone or freeze entire search results merely to enforce a stronger claim than this slice requires. Avoid increasing retained copies on CFW. The reader facade limits operations, not arbitrary mutation via unsafe casts; record that boundary explicitly.
 
 Owned state is created at most once for an active outer hosted response, never per provider fetch, turn or frame. Inactive/default replay-only preparation needs no Map, listener or result wrapper. It survives the initial lazy result return and every subsequent input rewrite. No TTL eviction or write-time global sweep applies to live owned state. Default invocations share no replay values; explicit borrowed injection retains existing direct shared-store replay. Do not seed from wire results, native snapshots or unused repository tables.
 
-Use a small owned-lifetime helper to close private state synchronously and idempotently on drain, error, return, throw, abort and `discardProducer`, including before first iteration. Unlink any added abort listener at closure. Track the currently owned producer rather than retaining only the first result's discard callback. A late result must be disposed and must not resume registration, another upstream turn or output after closure. Bound asynchronous iterator/body cleanup using existing helpers; do not turn cleanup timeout into a false success.
+Use a small owned-lifetime helper to close private state synchronously and idempotently on drain, error, return, throw, abort and `discardProducer`, including before first iteration. Unlink any added abort listener at closure. Release the stored closure callback before invoking it; a callback registered after closure runs immediately without being retained. Track the currently owned producer rather than retaining only the first result's discard callback. A late result must be disposed and must not resume registration, another upstream turn or output after closure. Bound asynchronous iterator/body cleanup using existing helpers; do not turn cleanup timeout into a false success.
 
 The materializer manually drives a slot iterator today. Add closing `finally` and track the active slot so cancellation can request closure even while `next()` is pending. Returning an unstarted outer generator must still release state and settle the existing final metadata. Preserve metadata identity, native JSON adapters, source cancellation and terminal failure behavior. Do not introduce a second request outcome or continuation owner.
 
