@@ -16,14 +16,11 @@
  * - copilot-gateway `.../responses/interceptors/vendor-deepseek-normalize.ts`
  */
 import type { ResponsesInterceptor } from './types'
+import { withRequestNormalization } from "../../shared/request-normalization"
 import { asJsonObject } from '../../shared/json-helpers'
 
-export const withVendorDeepSeekResponsesNormalize: ResponsesInterceptor = async (
-  inv,
-  _ctx,
-  run,
-) => {
-  if (!inv.enabledFlags.has('vendor-deepseek')) return await run()
+export const withVendorDeepSeekResponsesNormalize: ResponsesInterceptor = withRequestNormalization((inv) => {
+  if (!inv.enabledFlags.has('vendor-deepseek')) return
 
   const payload = inv.payload as Record<string, unknown>
   const reasoning = asJsonObject(payload.reasoning)
@@ -32,5 +29,4 @@ export const withVendorDeepSeekResponsesNormalize: ResponsesInterceptor = async 
     inv.payload = { ...rest, thinking: { type: 'disabled' } } as typeof inv.payload
   }
 
-  return await run()
-}
+})

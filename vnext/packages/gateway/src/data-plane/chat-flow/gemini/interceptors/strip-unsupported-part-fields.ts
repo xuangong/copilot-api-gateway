@@ -8,6 +8,7 @@
  * Ported from `copilot-gateway`'s `strip-unsupported-part-fields.ts`.
  */
 import type { GeminiInterceptor } from './types.ts'
+import { withRequestNormalization } from "../../shared/request-normalization"
 
 interface GeminiPartLike {
   fileData?: unknown
@@ -44,7 +45,6 @@ export const stripUnsupportedPartFieldsFromPayload = (payload: GeminiPayloadLike
   }
 }
 
-export const stripUnsupportedPartFields: GeminiInterceptor = (ctx, _requestCtx, run) => {
-  stripUnsupportedPartFieldsFromPayload(ctx.payload as GeminiPayloadLike)
-  return run()
-}
+export const stripUnsupportedPartFields: GeminiInterceptor = withRequestNormalization((inv) => {
+  stripUnsupportedPartFieldsFromPayload(inv.payload as GeminiPayloadLike)
+})

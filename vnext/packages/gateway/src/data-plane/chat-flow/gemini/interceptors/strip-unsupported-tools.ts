@@ -17,6 +17,7 @@
  * Ported from `copilot-gateway`'s `strip-unsupported-tools.ts`.
  */
 import type { GeminiInterceptor } from './types.ts'
+import { withRequestNormalization } from "../../shared/request-normalization"
 
 interface GeminiToolGroupLike {
   functionDeclarations?: unknown[]
@@ -63,7 +64,6 @@ export const stripUnsupportedToolsFromPayload = (payload: GeminiPayloadLike): vo
   }
 }
 
-export const stripUnsupportedTools: GeminiInterceptor = (ctx, _requestCtx, run) => {
-  stripUnsupportedToolsFromPayload(ctx.payload as GeminiPayloadLike)
-  return run()
-}
+export const stripUnsupportedTools: GeminiInterceptor = withRequestNormalization((inv) => {
+  stripUnsupportedToolsFromPayload(inv.payload as GeminiPayloadLike)
+})

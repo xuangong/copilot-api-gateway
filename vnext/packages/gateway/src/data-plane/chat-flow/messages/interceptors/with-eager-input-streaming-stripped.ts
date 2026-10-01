@@ -18,15 +18,15 @@
  * - https://github.com/anthropics/anthropic-sdk-typescript/blob/a53f60d59ca904f3e79296586642aac3ce68ae02/src/resources/messages/messages.ts#L1761
  */
 import type { MessagesInterceptor } from './types'
+import { withRequestNormalization } from "../../shared/request-normalization"
 
-export const withEagerInputStreamingStripped: MessagesInterceptor = async (inv, _ctx, run) => {
-  if (!inv.enabledFlags.has('strip-eager-input-streaming')) return run()
+export const withEagerInputStreamingStripped: MessagesInterceptor = withRequestNormalization((inv) => {
+  if (!inv.enabledFlags.has('strip-eager-input-streaming')) return
   const tools = (inv.payload as { tools?: unknown }).tools
-  if (!Array.isArray(tools)) return run()
+  if (!Array.isArray(tools)) return
   ;(inv.payload as { tools?: unknown }).tools = tools.map(tool => {
     if (tool === null || typeof tool !== 'object') return tool
     const { eager_input_streaming: _drop, ...rest } = tool as Record<string, unknown>
     return rest
   })
-  return run()
-}
+})

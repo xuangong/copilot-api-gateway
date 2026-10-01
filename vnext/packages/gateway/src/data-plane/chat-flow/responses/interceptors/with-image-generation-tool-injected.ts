@@ -1,4 +1,5 @@
 import type { ResponsesInterceptor } from './types'
+import { withRequestNormalization } from "../../shared/request-normalization"
 import type { ResponsesTool } from '../../../orchestrator/server-tools/types.ts'
 import { isHostedImageGenerationTool } from './server-tools/image-generation'
 
@@ -30,15 +31,14 @@ import { isHostedImageGenerationTool } from './server-tools/image-generation'
  * every injected tool costs prompt tokens on every turn, so nothing turns this
  * on implicitly.
  */
-export const withImageGenerationToolInjected: ResponsesInterceptor = async (inv, _ctx, run) => {
-  if (!inv.enabledFlags.has('responses-image-generation-inject')) return await run()
+export const withImageGenerationToolInjected: ResponsesInterceptor = withRequestNormalization((inv) => {
+  if (!inv.enabledFlags.has('responses-image-generation-inject')) return
 
   const payload = inv.payload as Record<string, unknown>
-  if (payload.tool_choice === 'none') return await run()
+  if (payload.tool_choice === 'none') return
 
   const tools = Array.isArray(payload.tools) ? (payload.tools as ResponsesTool[]) : []
-  if (tools.some(isHostedImageGenerationTool)) return await run()
+  if (tools.some(isHostedImageGenerationTool)) return
 
   inv.payload = { ...payload, tools: [...tools, { type: 'image_generation' }] } as typeof inv.payload
-  return await run()
-}
+})

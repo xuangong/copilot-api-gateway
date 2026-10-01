@@ -11,14 +11,11 @@
  * - copilot-gateway `.../responses/interceptors/vendor-qwen-normalize.ts`
  */
 import type { ResponsesInterceptor } from './types'
+import { withRequestNormalization } from "../../shared/request-normalization"
 import { asJsonObject } from '../../shared/json-helpers'
 
-export const withVendorQwenResponsesNormalize: ResponsesInterceptor = async (
-  inv,
-  _ctx,
-  run,
-) => {
-  if (!inv.enabledFlags.has('vendor-qwen')) return await run()
+export const withVendorQwenResponsesNormalize: ResponsesInterceptor = withRequestNormalization((inv) => {
+  if (!inv.enabledFlags.has('vendor-qwen')) return
 
   const payload = inv.payload as Record<string, unknown>
   const reasoning = asJsonObject(payload.reasoning)
@@ -27,5 +24,4 @@ export const withVendorQwenResponsesNormalize: ResponsesInterceptor = async (
     inv.payload = { ...rest, enable_thinking: false } as typeof inv.payload
   }
 
-  return await run()
-}
+})

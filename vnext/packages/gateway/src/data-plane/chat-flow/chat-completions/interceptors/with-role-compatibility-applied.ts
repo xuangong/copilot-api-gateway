@@ -19,22 +19,19 @@
  * `packages/gateway/src/data-plane/chat/chat-completions/interceptors/apply-role-compatibility.ts`.
  */
 import type { ChatCompletionsInterceptor } from './types'
+import { withRequestNormalization } from "../../shared/request-normalization"
 import { asJsonObject, type JsonObject } from '../../shared/json-helpers'
 
-export const withRoleCompatibilityApplied: ChatCompletionsInterceptor = async (
-  inv,
-  _ctx,
-  run,
-) => {
+export const withRoleCompatibilityApplied: ChatCompletionsInterceptor = withRequestNormalization((inv) => {
   const flags = inv.enabledFlags
   const promoteSystem = flags.has('promote-system-to-developer')
   const demoteDeveloper = flags.has('demote-developer-to-system')
   const demoteInterleavedSystem = flags.has('demote-interleaved-system-to-user')
-  if (!promoteSystem && !demoteDeveloper && !demoteInterleavedSystem) return run()
+  if (!promoteSystem && !demoteDeveloper && !demoteInterleavedSystem) return
 
   const payload = inv.payload as JsonObject
   const messages = payload.messages
-  if (!Array.isArray(messages)) return run()
+  if (!Array.isArray(messages)) return
 
   let crossedLeadingSystemRun = false
   inv.payload = {
@@ -53,5 +50,4 @@ export const withRoleCompatibilityApplied: ChatCompletionsInterceptor = async (
     }),
   } as typeof inv.payload
 
-  return run()
-}
+})

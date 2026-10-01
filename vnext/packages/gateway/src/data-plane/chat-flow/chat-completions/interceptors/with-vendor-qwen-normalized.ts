@@ -8,13 +8,10 @@
  * - copilot-gateway `packages/gateway/src/data-plane/chat/chat-completions/interceptors/vendor-qwen-normalize.ts`
  */
 import type { ChatCompletionsInterceptor } from './types'
+import { withRequestNormalization } from "../../shared/request-normalization"
 
-export const withVendorQwenChatCompletionsNormalize: ChatCompletionsInterceptor = async (
-  inv,
-  _ctx,
-  run,
-) => {
-  if (!inv.enabledFlags.has('vendor-qwen')) return await run()
+export const withVendorQwenChatCompletionsNormalize: ChatCompletionsInterceptor = withRequestNormalization((inv) => {
+  if (!inv.enabledFlags.has('vendor-qwen')) return
 
   const payload = inv.payload as Record<string, unknown>
   if (payload.reasoning_effort === 'none') {
@@ -22,5 +19,4 @@ export const withVendorQwenChatCompletionsNormalize: ChatCompletionsInterceptor 
     inv.payload = { ...rest, enable_thinking: false } as typeof inv.payload
   }
 
-  return await run()
-}
+})

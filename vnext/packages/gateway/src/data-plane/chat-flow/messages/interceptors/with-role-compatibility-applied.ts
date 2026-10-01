@@ -15,14 +15,15 @@
  * guard is unnecessary.
  */
 import type { MessagesInterceptor } from './types'
+import { withRequestNormalization } from "../../shared/request-normalization"
 import { asJsonObject, type JsonObject } from '../../shared/json-helpers'
 
-export const withRoleCompatibilityApplied: MessagesInterceptor = async (inv, _ctx, run) => {
-  if (!inv.enabledFlags.has('demote-interleaved-system-to-user')) return run()
+export const withRoleCompatibilityApplied: MessagesInterceptor = withRequestNormalization((inv) => {
+  if (!inv.enabledFlags.has('demote-interleaved-system-to-user')) return
 
   const payload = inv.payload as JsonObject
   const messages = payload.messages
-  if (!Array.isArray(messages)) return run()
+  if (!Array.isArray(messages)) return
 
   inv.payload = {
     ...payload,
@@ -33,5 +34,4 @@ export const withRoleCompatibilityApplied: MessagesInterceptor = async (inv, _ct
     }),
   } as typeof inv.payload
 
-  return run()
-}
+})

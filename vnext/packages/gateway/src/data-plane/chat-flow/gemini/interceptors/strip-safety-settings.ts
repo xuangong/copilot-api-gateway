@@ -7,9 +7,9 @@
  * Ported from `copilot-gateway`'s `strip-safety-settings.ts` (reference impl).
  */
 import type { GeminiInterceptor } from './types.ts'
+import { withRequestNormalization } from "../../shared/request-normalization"
 
-export const stripSafetySettings: GeminiInterceptor = (ctx, _requestCtx, run) => {
-  const payload = ctx.payload as { safetySettings?: unknown }
+export const stripSafetySettings: GeminiInterceptor = withRequestNormalization((inv) => {
+  const payload = inv.payload as { safetySettings?: unknown }
   delete payload.safetySettings
-  return run()
-}
+})

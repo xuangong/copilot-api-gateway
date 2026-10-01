@@ -26,6 +26,7 @@
  * reference's `providerModelOf(ctx.candidate).enabledFlags.has(...)`.
  */
 import type { MessagesInterceptor } from './types'
+import { withRequestNormalization } from "../../shared/request-normalization"
 
 const BILLING_HEADER_LINE_RE = /x-anthropic-billing-header[^\n]*/g
 const CCH_HASH_RE = /cch=[0-9a-f]{5,};?/gi
@@ -46,8 +47,8 @@ interface SystemBlock {
 const isSystemBlock = (v: unknown): v is SystemBlock =>
   typeof v === 'object' && v !== null && typeof (v as { text?: unknown }).text === 'string'
 
-export const withBillingAttributionStripped: MessagesInterceptor = async (inv, _ctx, run) => {
-  if (!inv.enabledFlags.has('strip-billing-attribution')) return run()
+export const withBillingAttributionStripped: MessagesInterceptor = withRequestNormalization((inv) => {
+  if (!inv.enabledFlags.has('strip-billing-attribution')) return
 
   const payload = inv.payload as SystemPayload
   const system = payload.system
@@ -71,5 +72,4 @@ export const withBillingAttributionStripped: MessagesInterceptor = async (inv, _
     }
   }
 
-  return run()
-}
+})

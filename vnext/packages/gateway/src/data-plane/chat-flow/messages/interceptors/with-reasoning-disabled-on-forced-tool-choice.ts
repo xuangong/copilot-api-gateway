@@ -15,6 +15,7 @@
  * `packages/gateway/src/data-plane/chat/messages/interceptors/disable-reasoning-on-forced-tool-choice.ts`.
  */
 import type { MessagesInterceptor } from './types'
+import { withRequestNormalization } from "../../shared/request-normalization"
 import { asJsonObject, type JsonObject } from '../../shared/json-helpers'
 
 const hasForcedToolChoice = (payload: JsonObject): boolean => {
@@ -34,14 +35,9 @@ const disableMessagesReasoning = (payload: JsonObject): JsonObject => {
   return next
 }
 
-export const withReasoningDisabledOnForcedToolChoice: MessagesInterceptor = async (
-  inv,
-  _ctx,
-  run,
-) => {
-  if (!inv.enabledFlags.has('disable-reasoning-on-forced-tool-choice')) return run()
+export const withReasoningDisabledOnForcedToolChoice: MessagesInterceptor = withRequestNormalization((inv) => {
+  if (!inv.enabledFlags.has('disable-reasoning-on-forced-tool-choice')) return
   const payload = inv.payload as JsonObject
-  if (!hasForcedToolChoice(payload)) return run()
+  if (!hasForcedToolChoice(payload)) return
   inv.payload = disableMessagesReasoning(payload) as typeof inv.payload
-  return run()
-}
+})
