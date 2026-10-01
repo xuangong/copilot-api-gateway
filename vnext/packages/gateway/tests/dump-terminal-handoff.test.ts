@@ -324,3 +324,35 @@ test("HTTP finalization keeps frames arriving during tee drain and ignores a sec
   expect(stored.response.body.events.map(event => event.frame)).toEqual([{ type: "event", event: { text: "during drain" } }])
   expect(raw.query("SELECT file_key FROM spilled_files").all()).toHaveLength(2)
 })
+
+for (const subscribed of [false, true]) {
+  test(`dump persistence precedes optional notification encoding with subscribed=${subscribed}`, async () => {
+    let encoded = 0
+    let persistedAtEncode: { records: unknown[], files: unknown[] } | undefined
+    broker = new EventTargetChannelBroker<DumpMetadata>({
+      encode(meta) {
+        encoded++
+        persistedAtEncode = {
+          records: raw.query("SELECT id FROM dump_records").all(),
+          files: raw.query("SELECT state FROM spilled_files").all(),
+        }
+        return dumpCodec.encode(meta)
+      },
+      decode: dumpCodec.decode,
+    })
+    initDumpBroker(broker)
+    const ac = new AbortController()
+    const iterator = subscribed ? broker.subscribe(keyId, ac.signal)[Symbol.asyncIterator]() : undefined
+    try {
+      const acc = accumulator()
+      await acc.finalizeTurn(200, [], { answer: "persisted" })
+      expect(encoded).toBe(subscribed ? 1 : 0)
+      expect(persistedAtEncode).toEqual(subscribed ? {
+        records: [{ id: acc.recordId }],
+        files: [{ state: "owned" }, { state: "owned" }],
+      } : undefined)
+      expect((await store.get(keyId, acc.recordId))?.meta.status).toBe(200)
+      if (iterator) expect((await iterator.next()).value.id).toBe(acc.recordId)
+    } finally { ac.abort() }
+  })
+}
