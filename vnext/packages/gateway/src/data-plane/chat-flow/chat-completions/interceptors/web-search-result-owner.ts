@@ -133,6 +133,7 @@ export class ChatWebSearchResultOwner<T> {
         if (this.closed) { await this.close(); return { done: true, value: undefined } }
         try {
           const step = await this.wait(generator.next(value))
+          this.assertOpen()
           if (step.done) { this.generator = undefined; await this.close() }
           return step
         } catch (error) {

@@ -9,6 +9,7 @@ import { test, expect, describe, beforeEach, afterEach } from 'bun:test'
 import { withChatCompletionsWebSearchShim } from '../../../../../src/data-plane/chat-flow/chat-completions/interceptors/with-chat-completions-web-search-shim'
 import { initRepo } from '../../../../../src/repo/index'
 import type { Repo } from '../../../../../src/repo/types'
+import type { ApiKeyId } from '../../../../../src/repo/branded-ids'
 import type { Invocation, RequestContext } from '@vibe-llm/protocols/common'
 import {
   llmEventResult,
@@ -602,4 +603,39 @@ test("owned Chat noncooperative search reports cleanup deadline and ignores even
   await expect(result.discardProducer?.()).rejects.toThrow("cleanup incomplete")
   expect(inv.payload.messages).toEqual([])
   expect(script.calls()).toBe(1)
+})
+
+for (const exit of ["discard", "abort", "open"] as const) test(`owned Chat same-tick ${exit} between read settlement and final delivery preserves the delivery gate`, async () => {
+  const { ChatWebSearchResultOwner } = await import("../../../../../src/data-plane/chat-flow/chat-completions/interceptors/web-search-result-owner")
+  const { createWebSearchExecutionScope } = await import("../../../../../src/data-plane/tools/web-search/execution-scope")
+  const controller = new AbortController()
+  const search = createWebSearchExecutionScope({ getProvider: async () => ({ type: "disabled" }), filters: {}, apiKeyId: "key_test" as ApiKeyId, includeSearchActionSources: false, signal: controller.signal })
+  const owner = new ChatWebSearchResultOwner<ProtocolFrame<ChatCompletionsStreamEvent>>(search, controller.signal)
+  const terminal: ProtocolFrame<ChatCompletionsStreamEvent> = { type: "event", event: chunk([{ index: 0, delta: {}, finish_reason: "stop" }]) }
+  const generator = (async function* () { yield terminal })()
+  const next = generator.next.bind(generator)
+  let closing: Promise<void> | undefined
+  generator.next = (...args) => {
+    const step = next(...args)
+    // This reaction runs before wait's reaction, then queues close after wait
+    // resolves but before the outer next continuation publishes the step.
+    void step.then(() => queueMicrotask(() => {
+      if (exit === "open") return
+      if (exit === "abort") controller.abort()
+      closing = owner.close()
+    }))
+    return step
+  }
+  const wrapped = owner.wrap(generator)
+  const reading = wrapped.next()
+  if (exit === "open") {
+    expect(await reading).toEqual({ done: false, value: terminal })
+    expect((await wrapped.next()).done).toBe(true)
+    expect(controller.signal.aborted).toBe(false)
+  } else {
+    await expect(reading).rejects.toThrow("invocation is closed")
+    await closing
+    expect(controller.signal.aborted).toBe(exit === "abort")
+  }
+  expect(() => search.assertOpen()).toThrow()
 })
