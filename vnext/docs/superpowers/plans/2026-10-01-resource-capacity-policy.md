@@ -53,11 +53,11 @@
 
 **Interfaces:** Estimator charge: string/key 32 + 2*length, object 64, array 64 + 8/slot, property 16, primitive 8; limit visited values to 65,536 and depth to 64. Reject symbol keys, accessors, exotic prototypes, functions and cycles. Inspect all own data properties, preserve JSON extensions, account IDs/keys and net replacement, no clone/stringify/freeze. Defaults: private 64/4 MiB, page 64/2 MiB, Chat generated state 4 MiB. Separate domains use the shared typed capacity error; no ordinary-error fallback.
 
-- [ ] RED tests for count and bytes, ignored/extension fields, replacement preserves old value on failure, invalid graphs and disposal; Chat tests charge arguments/tool strings/new annotations once while excluding repeated base input.
-- [ ] Enforce default owned private scope before insertion and completed frames, without changing synchronous writer shape. Preserve delegated legacy store behavior and document its excluded capacity guarantee.
-- [ ] Replace scope-owned cache Map with narrow bounded get/set/clear capability; standalone low-level sessions remain structurally compatible. Admit actual graph before publishing page success, no eviction/refetch and no late writes after close.
-- [ ] Add incremental Chat generated-state admission before retention/reentry, with no duplicate charging of base/history each turn. Preserve original data/extensions, citations and protocol error owner.
-- [ ] Focused actual-caller/lifecycle/cache/normal tests, types/purity/lint/protection; commit and report exact evidence plus remaining temporary-owner limits.
+- [x] RED tests for count and bytes, ignored/extension fields, replacement preserves old value on failure, invalid graphs and disposal; Chat tests charge arguments/tool strings/new annotations once while excluding repeated base input.
+- [x] Enforce default owned private scope before insertion and completed frames, without changing synchronous writer shape. Preserve delegated legacy store behavior and document its excluded capacity guarantee.
+- [x] Replace scope-owned cache Map with narrow bounded get/set/clear capability; standalone low-level sessions remain structurally compatible. Admit actual graph before publishing page success, no eviction/refetch and no late writes after close.
+- [x] Add incremental Chat generated-state admission before retention/reentry, with no duplicate charging of base/history each turn. Preserve original data/extensions, citations and protocol error owner.
+- [x] Focused actual-caller/lifecycle/cache/normal tests, types/purity/lint/protection; commit and report exact evidence plus remaining temporary-owner limits.
 
 ### Task 4: Bound diagnostic live queues and expose limited recovery
 
