@@ -74,7 +74,7 @@
 ## Qualification and integration
 
 - [x] Complete each implementation and independent task review, marking checked items after accepted evidence.
-- [ ] Complete whole-increment review and resolve findings.
+- [x] Complete whole-increment review and resolve findings.
 - [ ] Freeze a new artifact including protected overlays; run one complete `SETUP_TEST_CODEX=/Users/zhangxian/.local/bin/codex bun run ci:local`.
 - [ ] Fast-forward local vNext, verifying source identity, protection inventories, empty indexes and fixture identity.
 - [ ] Archive evidence and remaining workerd/rollback/publication/history gates. Inspecting the runner is not completing measurement.

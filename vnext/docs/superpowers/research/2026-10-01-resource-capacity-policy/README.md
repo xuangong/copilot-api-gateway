@@ -1,6 +1,6 @@
 # Resource capacity policy evidence
 
-Date: 2026-10-01. Four implementation tasks and their independent task reviews are complete. Whole-increment review and frozen-artifact CI remain pending; this is not release qualification.
+Date: 2026-10-01. Four implementation tasks and their independent task reviews are complete. Whole-increment review and the final minor-finding fix review are complete; frozen-artifact CI and local integration remain pending. This is not release qualification.
 
 - [Binding specification](../../specs/2026-10-01-resource-capacity-policy.md)
 - [Implementation checklist](../../plans/2026-10-01-resource-capacity-policy.md)
@@ -21,3 +21,6 @@ The specification selects the first diagnostic slice: bounded server delivery pl
 | Diagnostic live capacity and recovery | d94ec4a8 | 128 pass | [Approved](task-4-review.md) |
 
 These suites overlap; their counts are not a summed independent test total. See the per-task implementation reports for commands, RED/GREEN evidence and exclusions.
+
+- [Whole-increment architecture review](whole-review.md): no Critical/Important findings.
+- [Final fix report](final-fix-report.md) and [scoped approval](final-fix-review.md): both selected Minor findings addressed at 3ad2d0f1.
