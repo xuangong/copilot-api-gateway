@@ -13,6 +13,8 @@ Date: 2026-10-01. Implementation status is tracked in the linked plan; final ver
 | Chat hosted work | Local lazy-result lifetime | Explicit unstarted/pending cancellation; dispose current and late producers | Native frame pipeline, tool handoff, usage and turn budgets |
 | Diagnostic stream preparation | Request-owned subscription controller | Observe raw abort before snapshot; late SQL does not start delivery | Subscribe before live snapshot; snapshot/appended wire events |
 
+Both protocol iterator owners check their open gate after the outer awaited read, immediately before final delivery. A check inside the awaited promise is insufficient: cancellation can run in the intervening microtask. Same-tick discard/parent-abort regressions and open/drain controls cover this boundary for Chat and Responses.
+
 ## Relationship to earlier contracts
 
 The preparation contracts select the correct protocol path. Producer-domain contracts validate actual native/translated events before consumption. Private-payload capabilities keep readers separate from the invocation writer/disposal owner. Capture admission/retirement separate retained accounting from terminal resource release. Subscription-owned diagnostic channels remove inactive channel state.
