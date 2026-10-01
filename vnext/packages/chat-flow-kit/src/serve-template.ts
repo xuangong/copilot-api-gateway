@@ -209,6 +209,14 @@ export type PrepareTemplateResult<TPayload, TAttemptResult, TExtra = undefined, 
   | { readonly kind: 'response'; readonly response: Response; readonly extra: TExtra | undefined }
   | ReadyTemplateResult<TPayload, TAttemptResult, TExtra, TTelemetryCtx, TInputs>
 
+// A live cancellation listener must not retain the prepared request graph.
+function linkInboundAbort(signal: AbortSignal | undefined, controller: AbortController): void {
+  if (signal && signal !== controller.signal) {
+    if (signal.aborted) controller.abort(signal.reason)
+    else signal.addEventListener('abort', () => controller.abort(signal.reason), { once: true })
+  }
+}
+
 // Keep the ready handoff independent of raw input and preparation dependencies.
 function createReadyTemplate<TPayload, TAttemptResult, TExtra, TAuth, TTelemetryCtx, TInputs>(
   runner: (args: RunAttemptArgs<TPayload, TExtra, TAuth, TTelemetryCtx, TInputs>) => Promise<TAttemptResult>,
@@ -223,11 +231,7 @@ function createReadyTemplate<TPayload, TAttemptResult, TExtra, TAuth, TTelemetry
       const run = pendingRunner
       if (!run) throw new Error('Prepared execution has already been consumed')
       pendingRunner = undefined
-      const controller = context.downstreamAbortController
-      if (signal && signal !== controller.signal) {
-        if (signal.aborted) controller.abort(signal.reason)
-        else signal.addEventListener('abort', () => controller.abort(signal.reason), { once: true })
-      }
+      linkInboundAbort(signal, context.downstreamAbortController)
       const result = await run(args)
       return { result, context, extra: context.extra }
     },
