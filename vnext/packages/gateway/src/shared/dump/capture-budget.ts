@@ -155,6 +155,14 @@ class CaptureFacade implements DumpCapture {
   }
 }
 
+const voidResolution = (resolve: (value: void | PromiseLike<void>) => void): (() => void) => () => resolve()
+
+function observePhase(input: Promise<void>): Promise<void> {
+  // A native receipt isolates a throwing then getter/method to this phase.
+  // Resolve without forwarding a runtime fulfillment value or retaining input.
+  return new Promise<void>((resolve, reject) => { void input.then(voidResolution(resolve), reject) })
+}
+
 // This reaction retains only scalar accounting state and the void completion
 // receipt, never the caller's work/preparation promises or payload graphs.
 function finishRetirement(state: CaptureState, completion: PromiseWithResolvers<void>) {
@@ -182,7 +190,7 @@ class CaptureScope implements DumpCaptureScope {
     const completion = Promise.withResolvers<void>()
     // Bind the receipt before observing promises whose then() may reenter.
     this.#retirement = completion.promise
-    void Promise.allSettled([work, preparation]).then(finishRetirement(this.#state, completion))
+    void Promise.allSettled([observePhase(work), observePhase(preparation)]).then(finishRetirement(this.#state, completion))
     return this.#retirement
   }
 }

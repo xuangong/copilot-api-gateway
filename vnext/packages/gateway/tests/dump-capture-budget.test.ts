@@ -184,3 +184,46 @@ test("retirement is memoized before observing bound promises can reenter", async
   await retirement
   expect(budget.retainedBytes).toBe(0)
 })
+
+for (const brokenPhase of ["work", "preparation"] as const) {
+  for (const observation of ["getter", "method"] as const) {
+    for (const otherRejects of [false, true]) {
+      test(`${brokenPhase} then ${observation} throws; retirement observes and waits for the other ${otherRejects ? "rejected" : "fulfilled"} phase`, async () => {
+        const budget = new DumpCaptureBudget()
+        const scope = budget.open()
+        const broken = Promise.withResolvers<void>(), other = Promise.withResolvers<void>()
+        const observationError = new Error("phase observation failed"), otherError = new Error("other phase failed")
+        expect(scope.capture.bytes(900)).toBe(true)
+        if (observation === "getter") Object.defineProperty(broken.promise, "then", { get() { throw observationError } })
+        else Object.defineProperty(broken.promise, "then", { value() { throw observationError } })
+        let otherObserved = false
+        const originalThen = other.promise.then.bind(other.promise)
+        Object.defineProperty(other.promise, "then", { value: (...args: Parameters<typeof other.promise.then>) => {
+          otherObserved = true
+          return originalThen(...args)
+        } })
+        const retirement = scope.retire(brokenPhase === "work" ? broken.promise : other.promise,
+          brokenPhase === "preparation" ? broken.promise : other.promise)
+        let settled = false, outcome: unknown
+        void retirement.then(() => { settled = true }, error => { settled = true; outcome = error })
+        try {
+          expect(otherObserved).toBe(true)
+          expect(scope.retire(Promise.resolve(), Promise.resolve())).toBe(retirement)
+          await Promise.resolve()
+          expect(settled).toBe(false)
+          expect(budget.retainedBytes).toBe(900)
+          expect(scope.capture.bytes(20)).toBe(true)
+          if (otherRejects) other.reject(otherError)
+          else other.resolve()
+          // Yield one event-loop turn so every already-queued retirement reaction runs.
+          await Bun.sleep(0)
+          expect(settled).toBe(true)
+          expect(outcome).toBe(brokenPhase === "work" && otherRejects ? otherError : observationError)
+          expect(budget.retainedBytes).toBe(0)
+          expect(scope.capture.bytes(1)).toBe(false)
+          expect(scope.retire(Promise.resolve(), Promise.resolve())).toBe(retirement)
+        } finally { broken.resolve(); other.resolve() }
+      })
+    }
+  }
+}
