@@ -244,3 +244,16 @@ test("operation capacity rejects the entire overflowing Responses call before pr
   hosted.work?.cancel()
   await hosted.work?.settled()
 })
+
+test("successful body capacity rejects the hosted Responses slot and closes later admission", async () => {
+  globalThis.fetch = (async () => new Response("x".repeat(1024 * 1024 + 1))) as typeof fetch
+  const hosted = await hostedDispatch()
+  const dispatch = () => hosted.dispatcher({
+    intercepted: { callId: "capacity", name: "web_search", arguments: { search_query: [{ q: "x" }] } },
+    loopState: { iterationCount: 1, remainingToolCalls: undefined },
+  })
+  const slots = dispatch()
+  await expect(runSlot(slots[0]?.run ?? (() => { throw new Error("missing slot") }))).rejects.toMatchObject({ category: "responseBodyBytes" })
+  expect(() => dispatch()).toThrow("Web search capacity exceeded")
+  await hosted.work?.settled()
+})

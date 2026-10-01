@@ -1,3 +1,5 @@
+import { WebSearchCapacityError } from "../capacity.ts"
+import { readSuccessfulText } from "./success-body.ts"
 // vNext-native Bing HTML scrape provider adapted into the reference
 // `WebSearchProvider` abstraction (Spec 13-C-5, Q1c).
 //
@@ -129,7 +131,7 @@ export const createBingWebSearchProvider = (_apiKey: string, deps?: { fetch?: ty
         return { type: 'error', errorCode: 'unavailable', message: `Bing returned HTTP ${response.status}.` }
       }
 
-      const html = await response.text()
+      const html = await readSuccessfulText(response, request)
       const allowed = normalizeDomainList(request.allowedDomains)
       const blocked = normalizeDomainList(request.blockedDomains)
       const limit = request.maxResults ?? DEFAULT_WEB_SEARCH_RESULT_COUNT
@@ -144,6 +146,7 @@ export const createBingWebSearchProvider = (_apiKey: string, deps?: { fetch?: ty
         })),
       }
     } catch (error) {
+      if (error instanceof WebSearchCapacityError) throw error
       return {
         type: 'error',
         errorCode: 'unavailable',

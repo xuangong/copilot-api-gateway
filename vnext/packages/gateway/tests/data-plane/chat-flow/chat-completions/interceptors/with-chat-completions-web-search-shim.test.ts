@@ -656,3 +656,13 @@ for (const scenario of ["reentry", "refusal", "first-call"] as const) test(`oper
   expect(messages.filter(message => message.role === "tool")).toHaveLength(turns.length - 1)
   expect(messages.some(message => String(message.content).includes("maximum web search uses"))).toBe(false)
 })
+
+test("successful body capacity terminates Chat before adding tool output or another model turn", async () => {
+  globalThis.fetch = (async () => new Response("x".repeat(1024 * 1024 + 1))) as typeof fetch
+  const script = scriptedRun([toolCallTurn("web_search", '{"search_query":[{"q":"capacity"}]}')])
+  const inv = invocation({ model: "m", messages: [], web_search_options: {} })
+  await expect(collect(await withChatCompletionsWebSearchShim(inv, ctx, script.run))).rejects.toMatchObject({ category: "responseBodyBytes" })
+  expect(script.calls()).toBe(1)
+  const messages = inv.payload.messages as Array<{ role: string }>
+  expect(messages.filter(message => message.role === "tool")).toHaveLength(0)
+})

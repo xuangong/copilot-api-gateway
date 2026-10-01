@@ -1,3 +1,5 @@
+import { WebSearchCapacityError } from "../capacity.ts"
+import { readSuccessfulJson } from "./success-body.ts"
 // vNext-native LangSearch provider adapted into the reference
 // `WebSearchProvider` abstraction (Spec 13-C-5, Q1c).
 //
@@ -74,7 +76,7 @@ export const createLangSearchWebSearchProvider = (apiKey: string, deps?: { fetch
         return { type: 'error', errorCode: 'unavailable', message: message ?? `LangSearch failed (HTTP ${response.status}).` }
       }
 
-      const payload = await response.json()
+      const payload = await readSuccessfulJson(response, request)
       if (!isJsonObject(payload)) {
         return { type: 'error', errorCode: 'unavailable', message: 'LangSearch returned an unexpected payload shape.' }
       }
@@ -103,6 +105,7 @@ export const createLangSearchWebSearchProvider = (apiKey: string, deps?: { fetch
 
       return { type: 'ok', results }
     } catch (error) {
+      if (error instanceof WebSearchCapacityError) throw error
       return {
         type: 'error',
         errorCode: 'unavailable',

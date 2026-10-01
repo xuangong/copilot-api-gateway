@@ -38,9 +38,26 @@ export const createWebSearchExecutionScope = (
 ): WebSearchExecutionScope => {
   const policy = validateWebSearchCapacityPolicy(capacityPolicy)
   let operations = 0
+  let ingressBytes = 0
   const admissions = new Map<WebSearchAdmission, Record<string, unknown> | null>()
   const controller = new AbortController()
-  const session: WebSearchExecutionSession = { ...config, pageCache: new Map(), signal: controller.signal }
+  const session: WebSearchExecutionSession = {
+    ...config, pageCache: new Map(), signal: controller.signal,
+    ingress: {
+      responseBodyBytes: policy.responseBodyBytes,
+      assertOpen: () => assertOpen(),
+      debit(bytes) {
+        assertOpen()
+        if (bytes > policy.ingressBytes - ingressBytes) {
+          const error = new WebSearchCapacityError("ingressBytes", policy.ingressBytes)
+          cancel(error)
+          throw error
+        }
+        ingressBytes += bytes
+      },
+      fail: error => { cancel(error) },
+    },
+  }
   const pending = new Set<object>()
   const settlementWaiters = new Set<() => void>()
   const deliveries = new Set<(reason: unknown) => void>()

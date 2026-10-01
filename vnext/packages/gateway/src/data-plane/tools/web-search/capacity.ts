@@ -50,3 +50,11 @@ export const countWebSearchOperations = (args: Record<string, unknown> | null, l
   }
   return Math.max(1, count)
 }
+
+/** Invocation-owned synchronous ingress admission, shared by all provider leaves. */
+export interface WebSearchIngress {
+  readonly responseBodyBytes: number
+  assertOpen(): void
+  debit(bytes: number): void
+  fail(error: WebSearchCapacityError): void
+}

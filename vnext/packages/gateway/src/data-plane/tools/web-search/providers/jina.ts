@@ -1,3 +1,5 @@
+import { WebSearchCapacityError } from "../capacity.ts"
+import { readSuccessfulJson } from "./success-body.ts"
 // Ported 1:1 from copilot-gateway data-plane/tools/web-search/providers/jina.ts,
 // with isJsonObject imported from shared.ts (vNext protocols don't export it)
 // and sleep pulled from vNext's newly-added data-plane/shared/sleep.ts.
@@ -141,7 +143,7 @@ type ReadOutcome =
   | { kind: 'ok'; url: string; title?: string; content: string }
   | { kind: 'fail'; url: string; httpStatus: number; message: string }
 
-const readOneUrl = async (httpFetch: typeof fetch, apiKey: string, url: string, signal?: AbortSignal): Promise<ReadOutcome> => {
+const readOneUrl = async (httpFetch: typeof fetch, apiKey: string, url: string, signal?: AbortSignal, ingress?: WebSearchFetchPageRequest["ingress"]): Promise<ReadOutcome> => {
   try {
     const response = await fetchWithRetry(
       () => httpFetch(JINA_READER_URL, {
@@ -162,7 +164,7 @@ const readOneUrl = async (httpFetch: typeof fetch, apiKey: string, url: string, 
       return { kind: 'fail', url, httpStatus: response.status, message }
     }
 
-    const payload = await response.json()
+    const payload = await readSuccessfulJson(response, { signal, ingress })
     const envelope = parseEnvelope(payload)
     if (envelope === null) {
       return { kind: 'fail', url, httpStatus: response.status, message: 'Jina reader returned an unexpected payload shape.' }
@@ -175,6 +177,7 @@ const readOneUrl = async (httpFetch: typeof fetch, apiKey: string, url: string, 
 
     return { kind: 'ok', ...page }
   } catch (error) {
+    if (error instanceof WebSearchCapacityError) throw error
     // httpStatus=0 signals a transport-level failure (network, abort, etc.)
     // so the batch collapsing rule downstream can distinguish "Jina is
     // unreachable" from "one URL was rejected".
@@ -227,7 +230,10 @@ export const createJinaWebSearchProvider = (apiKey: string, deps?: { fetch?: typ
         ...(request.signal !== undefined ? { signal: request.signal } : {}),
       })
 
-      const payload = await response.json().catch(() => null)
+      const payload = await (response.ok ? readSuccessfulJson(response, request) : response.json()).catch(error => {
+        if (error instanceof WebSearchCapacityError) throw error
+        return null
+      })
       const envelope = parseEnvelope(payload)
 
       if (!response.ok) {
@@ -260,6 +266,7 @@ export const createJinaWebSearchProvider = (apiKey: string, deps?: { fetch?: typ
 
       return { type: 'ok', results }
     } catch (error) {
+      if (error instanceof WebSearchCapacityError) throw error
       return {
         type: 'error',
         errorCode: 'unavailable',
@@ -273,7 +280,7 @@ export const createJinaWebSearchProvider = (apiKey: string, deps?: { fetch?: typ
       return { type: 'ok', pages: [], failures: [] }
     }
 
-    const outcomes = await Promise.all(request.urls.map(url => readOneUrl(httpFetch, apiKey, url, request.signal)))
+    const outcomes = await Promise.all(request.urls.map(url => readOneUrl(httpFetch, apiKey, url, request.signal, request.ingress)))
 
     // Whole-batch transport / 5xx failure collapses into one envelope —
     // mirrors Microsoft Grounding's policy. Per-URL 4xx stays granular so

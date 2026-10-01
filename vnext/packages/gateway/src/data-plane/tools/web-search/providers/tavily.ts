@@ -1,3 +1,5 @@
+import { WebSearchCapacityError } from "../capacity.ts"
+import { readSuccessfulJson } from "./success-body.ts"
 // Ported 1:1 from copilot-gateway data-plane/tools/web-search/providers/tavily.ts,
 // with isJsonObject imported from shared.ts (vNext protocols don't export it).
 
@@ -124,7 +126,7 @@ export const createTavilyWebSearchProvider = (apiKey: string, deps?: { fetch?: t
         }
       }
 
-      const payload = await response.json()
+      const payload = await readSuccessfulJson(response, request)
       const limit = request.maxResults ?? DEFAULT_WEB_SEARCH_RESULT_COUNT
       // Unexpected payload shape is a backend contract violation;
       // returning empty results would mask a real Tavily outage.
@@ -142,6 +144,7 @@ export const createTavilyWebSearchProvider = (apiKey: string, deps?: { fetch?: t
         results: results.slice(0, limit),
       }
     } catch (error) {
+      if (error instanceof WebSearchCapacityError) throw error
       return {
         type: 'error',
         errorCode: 'unavailable',
@@ -185,7 +188,7 @@ export const createTavilyWebSearchProvider = (apiKey: string, deps?: { fetch?: t
         }
       }
 
-      const payload = await response.json()
+      const payload = await readSuccessfulJson(response, request)
       if (!isJsonObject(payload)) {
         return { type: 'error', errorCode: 'unavailable', message: 'Tavily extract returned an unexpected payload.' }
       }
@@ -230,6 +233,7 @@ export const createTavilyWebSearchProvider = (apiKey: string, deps?: { fetch?: t
 
       return { type: 'ok', pages, failures }
     } catch (error) {
+      if (error instanceof WebSearchCapacityError) throw error
       return {
         type: 'error',
         errorCode: 'unavailable',

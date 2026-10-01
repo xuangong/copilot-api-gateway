@@ -1,3 +1,4 @@
+import { WebSearchCapacityError } from "../../../tools/web-search/capacity.ts"
 import { requireNativeEventResult } from "../../shared/producer-ownership"
 // vnext/packages/gateway/src/data-plane/chat-flow/messages/interceptors/with-messages-web-search-shim.ts
 //
@@ -717,7 +718,8 @@ const runWebSearchStopHandler = async function* (
         request,
       })
       return buildNativeWebSearchResultBlockFromProviderResult(providerResult, block.upstreamToolUseId)
-    } catch {
+    } catch (error) {
+      if (error instanceof WebSearchCapacityError) throw error
       return buildNativeWebSearchErrorResultBlock(block.upstreamToolUseId, 'unavailable')
     }
   })()

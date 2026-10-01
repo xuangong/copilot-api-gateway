@@ -1,3 +1,5 @@
+import { WebSearchCapacityError } from "../capacity.ts"
+import { readSuccessfulText } from "./success-body.ts"
 // vNext-native Copilot MCP web-search provider adapted into the reference
 // `WebSearchProvider` abstraction (Spec 13-C-5, Q1c).
 //
@@ -180,7 +182,7 @@ export const createCopilotWebSearchProvider = (githubToken: string, deps?: { fet
         return { type: 'error', errorCode: 'unavailable', message: `Copilot MCP failed (HTTP ${response.status})${snippet}` }
       }
 
-      const bodyText = await response.text()
+      const bodyText = await readSuccessfulText(response, request)
       const rpc = parseJsonRpcEnvelope(bodyText)
       if (!rpc) {
         return { type: 'error', errorCode: 'unavailable', message: 'Copilot MCP returned no parseable JSON-RPC payload.' }
@@ -202,6 +204,7 @@ export const createCopilotWebSearchProvider = (githubToken: string, deps?: { fet
         })),
       }
     } catch (error) {
+      if (error instanceof WebSearchCapacityError) throw error
       return {
         type: 'error',
         errorCode: 'unavailable',

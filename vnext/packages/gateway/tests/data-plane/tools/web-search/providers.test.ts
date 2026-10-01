@@ -1,3 +1,5 @@
+import { createTavilyWebSearchProvider } from "../../../../src/data-plane/tools/web-search/providers/tavily.ts"
+import { WebSearchCapacityError } from "../../../../src/data-plane/tools/web-search/capacity.ts"
 // Unit tests for the vNext-native web-search provider adapters
 // (Spec 13-C-5 Q1c). Each adapter is exercised via injected fetch;
 // tests cover success mapping + error surface behavior.
@@ -257,5 +259,61 @@ for (const name of ['jina reader', 'microsoft browse', 'microsoft search'] as co
     const result = name === 'microsoft search' ? await provider.search({ query: 'a' }) : await provider.fetchPage({ urls: ['https://a.example'] })
     expect(result.type).toBe('ok')
     expect(starts).toBe(2)
+  })
+}
+
+// Successful-body capacity applies to all built-in search and reader paths,
+// including standalone calls that have no hosted invocation capability.
+
+const capacityProviders = [
+  ["tavily", createTavilyWebSearchProvider, true],
+  ["jina", createJinaWebSearchProvider, true],
+  ["microsoft", createMicrosoftGroundingWebSearchProvider, true],
+  ["langsearch", createLangSearchWebSearchProvider, false],
+  ["bing", createBingWebSearchProvider, false],
+  ["copilot", createCopilotWebSearchProvider, false],
+] as const
+for (const [name, create, hasPages] of capacityProviders) {
+  test(`${name}: standalone successful bodies enforce 1 MiB and capacity survives catches`, async () => {
+    const impl = create("test", { fetch: (async () => new Response("x".repeat(1024 * 1024 + 1))) as typeof fetch })
+    await expect(impl.search({ query: "x" })).rejects.toMatchObject({ category: "responseBodyBytes", limit: 1024 * 1024 })
+    if (hasPages) await expect(impl.fetchPage({ urls: ["https://a.example"] })).rejects.toBeInstanceOf(WebSearchCapacityError)
+  })
+  test(`${name}: search and page helpers forward invocation ingress and original failure`, async () => {
+    let failure: WebSearchCapacityError | undefined
+    const ingress = { responseBodyBytes: 4, assertOpen() {}, debit() {}, fail(error: WebSearchCapacityError) { failure = error } }
+    const impl = create("test", { fetch: (async () => new Response("12345")) as typeof fetch })
+    await expect(impl.search({ query: "x", ingress })).rejects.toBeInstanceOf(WebSearchCapacityError)
+    expect(failure?.category).toBe("responseBodyBytes")
+    if (hasPages) {
+      failure = undefined
+      await expect(impl.fetchPage({ urls: ["https://a.example"], ingress })).rejects.toBeInstanceOf(WebSearchCapacityError)
+      expect(failure?.category).toBe("responseBodyBytes")
+    }
+  })
+}
+
+for (const [name, create, searchPayload, pagePayload] of [
+  ["tavily", createTavilyWebSearchProvider, { results: [{ url: "https://a.example", title: "A", content: "alpha" }] }, { results: [{ url: "https://a.example", title: "A", raw_content: "alpha page" }] }],
+  ["jina", createJinaWebSearchProvider, { code: 200, data: [{ url: "https://a.example", title: "A", content: "alpha" }] }, { code: 200, data: { url: "https://a.example", title: "A", content: "alpha page" } }],
+  ["microsoft", createMicrosoftGroundingWebSearchProvider, { webResults: [{ url: "https://a.example", title: "A", snippet: "alpha" }] }, { url: "https://a.example", title: "A", content: "alpha page" }],
+] as const) {
+  test(`${name}: admitted search and reader paths keep normal results without full-response helpers`, async () => {
+    let calls = 0
+    let ingressBytes = 0
+    const impl = create("test", { fetch: (async () => {
+      const response = new Response(JSON.stringify(calls++ === 0 ? searchPayload : pagePayload))
+      response.text = () => { throw new Error("unbounded read") }
+      response.json = () => { throw new Error("unbounded read") }
+      return response
+    }) as typeof fetch })
+    const ingress = { responseBodyBytes: 1024, assertOpen() {}, debit(bytes: number) { ingressBytes += bytes }, fail() { throw new Error("unexpected overflow") } }
+    const search = await impl.search({ query: "x", ingress })
+    expect(search.type).toBe("ok")
+    if (search.type === "ok") expect(search.results[0]?.source).toBe("https://a.example")
+    const pages = await impl.fetchPage({ urls: ["https://a.example"], ingress })
+    expect(pages.type).toBe("ok")
+    if (pages.type === "ok") expect(pages.pages[0]?.content).toBe("alpha page")
+    expect(ingressBytes).toBe(new TextEncoder().encode(JSON.stringify(searchPayload) + JSON.stringify(pagePayload)).byteLength)
   })
 }

@@ -1,3 +1,5 @@
+import { readSuccessfulText } from "../../../../src/data-plane/tools/web-search/providers/success-body.ts"
+import { createFallbackWebSearchProvider } from "../../../../src/data-plane/tools/web-search/key-config.ts"
 import { afterEach, beforeEach, expect, test } from "bun:test"
 import { Database } from "bun:sqlite"
 import { BunSqliteRepo } from "@vibe-llm/platform-bun/src/bun-sqlite-repo.ts"
@@ -351,4 +353,75 @@ test("cancellation during argument reflection cannot publish an admission", () =
   const args = { get search_query() { scope.cancel(); return [] } }
   expect(() => scope.admit(args)).toThrow()
   expect(() => scope.admit(null)).toThrow()
+})
+
+
+for (const category of ["ingressBytes", "responseBodyBytes"] as const) test(`${category} capacity latches immediately before result consumption, blocking sibling fallback and retaining real usage settlement`, async () => {
+  const overflow = deferred<void>()
+  const sibling = deferred<WebSearchProviderResult>()
+  let requests = 0
+  let fallbackStarts = 0
+  const first = provider({ search: async request => {
+    requests++
+    if (request.query === "b") return sibling.promise
+    await overflow.promise
+    await readSuccessfulText(new Response("12345"), request)
+    return ok
+  } })
+  const fallback = createFallbackWebSearchProvider([
+    { id: "tavily", impl: first },
+    { id: "bing", impl: provider({ search: async () => { fallbackStarts++; return ok } }) },
+  ])
+  const scope = createWebSearchExecutionScope({ ...session, getProvider: async () => configured(fallback) }, { [category]: 4 })
+  const batch = scope.prepare(scope.admit({ search_query: [{ q: "a" }, { q: "b" }] })).start()
+  await tick()
+  expect(requests).toBe(2)
+  overflow.resolve()
+  await tick()
+  let reason: unknown
+  try { scope.assertOpen() } catch (error) { reason = error }
+  expect(reason).toMatchObject({ category, limit: 4 })
+  expect(() => scope.admit(null)).toThrow(WebSearchCapacityError)
+  await expect(batch.calls[0]?.result()).rejects.toBe(reason)
+  let settled = false
+  const settlement = scope.settled().then(() => { settled = true })
+  await tick()
+  expect(settled).toBe(false)
+  sibling.resolve({ type: "error", errorCode: "unavailable" })
+  await settlement
+  expect(fallbackStarts).toBe(0)
+  expect(db.query("SELECT SUM(attempts) AS total FROM web_search_engine_usage").get()).toEqual({ total: 2 })
+})
+
+test("concurrent sublimit bodies share monotonic ingress", async () => {
+  let reads = 0
+  const impl = provider({ search: async request => {
+    reads++
+    await readSuccessfulText(new Response("123"), request)
+    return ok
+  } })
+  const scope = createWebSearchExecutionScope({ ...session, getProvider: async () => configured(impl) }, { responseBodyBytes: 4, ingressBytes: 5 })
+  const batch = scope.prepare(scope.admit({ search_query: [{ q: "a" }, { q: "b" }] })).start()
+  await expect(batch.calls[0]?.result()).rejects.toMatchObject({ category: "ingressBytes", limit: 5 })
+  await scope.settled()
+  expect(reads).toBe(2)
+  expect(db.query("SELECT SUM(attempts) AS total FROM web_search_engine_usage").get()).toEqual({ total: 2 })
+})
+
+
+test("successful ingress persists across reentry and page operation failure is fatal", async () => {
+  const impl = provider({
+    search: async request => { await readSuccessfulText(new Response("123"), request); return ok },
+    fetchPage: async request => {
+      await readSuccessfulText(new Response("123"), request)
+      return { type: "ok", pages: [], failures: [] }
+    },
+  })
+  const scope = createWebSearchExecutionScope({ ...session, getProvider: async () => configured(impl) }, { ingressBytes: 5 })
+  const first = scope.prepare(scope.admit({ search_query: [{ q: "a" }] })).start()
+  expect((await first.calls[0]?.result())?.results[0]?.title).toBe("A")
+  const second = scope.prepare(scope.admit({ open: [{ ref_id: "https://a.example" }] })).start()
+  await expect(second.calls[0]?.result()).rejects.toMatchObject({ category: "ingressBytes" })
+  await scope.settled()
+  expect(db.query("SELECT SUM(attempts) AS total FROM web_search_engine_usage").get()).toEqual({ total: 2 })
 })

@@ -1,3 +1,4 @@
+import type { WebSearchIngress } from "./capacity.ts"
 // Ported 1:1 from copilot-gateway data-plane/tools/web-search/types.ts
 
 import type { WebSearchProviderName } from '../../../shared/web-search-providers.ts'
@@ -30,6 +31,8 @@ export interface WebSearchProviderRequest {
   /** Aborted when the downstream client disconnects — providers MUST pass
    *  through to the underlying fetch so cancellation stops upstream load. */
   signal?: AbortSignal
+  /** Internal invocation capability; configured providers never own counters. */
+  ingress?: WebSearchIngress
 }
 
 export type WebSearchProviderResult =
@@ -59,6 +62,8 @@ export interface WebSearchFetchPageRequest {
   urls: string[]
   /** See WebSearchProviderRequest.signal. */
   signal?: AbortSignal
+  /** Internal invocation capability; configured providers never own counters. */
+  ingress?: WebSearchIngress
 }
 
 export type WebSearchFetchPageResult =

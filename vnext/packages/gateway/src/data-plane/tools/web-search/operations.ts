@@ -1,3 +1,4 @@
+import { WebSearchCapacityError, type WebSearchIngress } from "./capacity.ts"
 // Ported 1:1 from copilot-gateway data-plane/tools/web-search/operations.ts,
 // with import path adaptations for vNext:
 //   - truncatePreservingCodePoints → chat-flow (not chat) sub-tree
@@ -273,6 +274,7 @@ export interface WebSearchExecutionSession {
   pageCache: Map<string, PageCacheEntry>
   includeSearchActionSources: boolean
   signal?: AbortSignal
+  ingress?: WebSearchIngress
 }
 
 /** Internal ownership port for complete provider-plus-usage leaves. */
@@ -510,6 +512,7 @@ const runOneSearchQuery = async (
       blockedDomains: session.filters.blockedDomains,
       userLocation: session.filters.userLocation,
       ...(session.signal !== undefined ? { signal: session.signal } : {}),
+      ...(session.ingress !== undefined ? { ingress: session.ingress } : {}),
     }
     session.signal?.throwIfAborted()
     const result = await runProviderWork(work, () => searchWebAndRecordUsage({
@@ -536,6 +539,7 @@ const runOneSearchQuery = async (
       : undefined
     return sources !== undefined ? { results, sources } : { results }
   } catch (e) {
+    if (e instanceof WebSearchCapacityError) throw e
     session.signal?.throwIfAborted()
     if (isAbortError(e)) throw e
     const msg = e instanceof Error ? e.message : String(e)
@@ -605,6 +609,7 @@ const runBatchFetch = async (
     const fetchRequest = {
       urls: needFetch,
       ...(session.signal !== undefined ? { signal: session.signal } : {}),
+      ...(session.ingress !== undefined ? { ingress: session.ingress } : {}),
     }
     session.signal?.throwIfAborted()
     const result = await runProviderWork(work, () => fetchPageAndRecordUsage({
@@ -648,6 +653,7 @@ const runBatchFetch = async (
     }
     return perUrl
   } catch (e) {
+    if (e instanceof WebSearchCapacityError) throw e
     session.signal?.throwIfAborted()
     if (isAbortError(e)) throw e
     const msg = e instanceof Error ? e.message : String(e)

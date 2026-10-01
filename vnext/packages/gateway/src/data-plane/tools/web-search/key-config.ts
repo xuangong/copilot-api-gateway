@@ -1,3 +1,4 @@
+import { WebSearchCapacityError } from "./capacity.ts"
 /**
  * Per-key web-search engine resolution.
  *
@@ -178,16 +179,21 @@ const NO_ENGINE = 'no web search engine is configured for this API key'
  */
 export const createFallbackWebSearchProvider = (engines: readonly Engine[]): WebSearchProvider => ({
   async search(request: WebSearchProviderRequest): Promise<WebSearchProviderResult> {
+    request.ingress?.assertOpen()
     request.signal?.throwIfAborted()
     let last: WebSearchProviderResult = failure(NO_ENGINE)
     for (const engine of engines) {
+      request.ingress?.assertOpen()
       request.signal?.throwIfAborted()
       try {
         const result = await engine.impl.search(request)
+        request.ingress?.assertOpen()
         request.signal?.throwIfAborted()
         last = result
         if (result.type === 'ok' && result.results.length > 0) return result
       } catch (err) {
+        if (err instanceof WebSearchCapacityError) throw err
+        request.ingress?.assertOpen()
         request.signal?.throwIfAborted()
         if (isAbortError(err)) throw err
         last = failure(`${engine.id}: ${err instanceof Error ? err.message : String(err)}`)
@@ -197,16 +203,21 @@ export const createFallbackWebSearchProvider = (engines: readonly Engine[]): Web
   },
 
   async fetchPage(request: WebSearchFetchPageRequest): Promise<WebSearchFetchPageResult> {
+    request.ingress?.assertOpen()
     request.signal?.throwIfAborted()
     let last: WebSearchFetchPageResult = failure(NO_ENGINE)
     for (const engine of engines) {
+      request.ingress?.assertOpen()
       request.signal?.throwIfAborted()
       try {
         const result = await engine.impl.fetchPage(request)
+        request.ingress?.assertOpen()
         request.signal?.throwIfAborted()
         last = result
         if (result.type === 'ok' && result.pages.length > 0) return result
       } catch (err) {
+        if (err instanceof WebSearchCapacityError) throw err
+        request.ingress?.assertOpen()
         request.signal?.throwIfAborted()
         if (isAbortError(err)) throw err
         last = failure(`${engine.id}: ${err instanceof Error ? err.message : String(err)}`)

@@ -1,3 +1,5 @@
+import { WebSearchCapacityError } from "../capacity.ts"
+import { readSuccessfulJson } from "./success-body.ts"
 // Ported 1:1 from copilot-gateway data-plane/tools/web-search/providers/microsoft-grounding.ts,
 // with isJsonObject imported from shared.ts (vNext protocols don't export it)
 // and sleep pulled from vNext's newly-added data-plane/shared/sleep.ts.
@@ -84,7 +86,7 @@ type BrowseOutcome =
   | { kind: 'cold'; url: string }
   | { kind: 'fail'; url: string; httpStatus: number; message: string }
 
-const browseOneUrl = async (httpFetch: typeof fetch, apiKey: string, url: string, signal?: AbortSignal): Promise<BrowseOutcome> => {
+const browseOneUrl = async (httpFetch: typeof fetch, apiKey: string, url: string, signal?: AbortSignal, ingress?: WebSearchFetchPageRequest["ingress"]): Promise<BrowseOutcome> => {
   try {
     const response = await fetchWithRetry(() => httpFetch(MICROSOFT_GROUNDING_BROWSE_URL, {
       method: 'POST',
@@ -115,7 +117,7 @@ const browseOneUrl = async (httpFetch: typeof fetch, apiKey: string, url: string
       return { kind: 'fail', url, httpStatus: response.status, message }
     }
 
-    const payload = await response.json()
+    const payload = await readSuccessfulJson(response, { signal, ingress })
     if (!isJsonObject(payload) || typeof payload.url !== 'string') {
       return { kind: 'fail', url, httpStatus: response.status, message: 'Microsoft Grounding browse returned an unexpected payload.' }
     }
@@ -131,6 +133,7 @@ const browseOneUrl = async (httpFetch: typeof fetch, apiKey: string, url: string
       },
     }
   } catch (error) {
+    if (error instanceof WebSearchCapacityError) throw error
     return { kind: 'fail', url, httpStatus: 0, message: error instanceof Error ? error.message : String(error) }
   }
 }
@@ -167,7 +170,7 @@ export const createMicrosoftGroundingWebSearchProvider = (apiKey: string, deps?:
       }), request.signal)
 
       if (response.ok) {
-        const payload = await response.json()
+        const payload = await readSuccessfulJson(response, request)
         // Unexpected payload shape is a backend contract violation;
         // returning empty results would mask a real Grounding outage.
         if (!isJsonObject(payload) || !Array.isArray(payload.webResults)) {
@@ -217,6 +220,7 @@ export const createMicrosoftGroundingWebSearchProvider = (apiKey: string, deps?:
         message: message ?? 'Microsoft Grounding search failed.',
       }
     } catch (error) {
+      if (error instanceof WebSearchCapacityError) throw error
       return {
         type: 'error',
         errorCode: 'unavailable',
@@ -230,7 +234,7 @@ export const createMicrosoftGroundingWebSearchProvider = (apiKey: string, deps?:
       return { type: 'ok', pages: [], failures: [] }
     }
 
-    const outcomes = await Promise.all(request.urls.map(url => browseOneUrl(httpFetch, apiKey, url, request.signal)))
+    const outcomes = await Promise.all(request.urls.map(url => browseOneUrl(httpFetch, apiKey, url, request.signal, request.ingress)))
 
     // Whole-batch failure (every URL transport-failed or 5xx) collapses
     // into one {type:'error'} envelope; 4xx/202 stay per-URL so one bad

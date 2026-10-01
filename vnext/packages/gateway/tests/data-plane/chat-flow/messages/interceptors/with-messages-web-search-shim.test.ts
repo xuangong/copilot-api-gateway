@@ -246,3 +246,21 @@ describe('cross-protocol source', () => {
     expect((delta.delta as { stop_reason?: string }).stop_reason).toBe('end_turn')
   })
 })
+
+for (const sourceApi of ["messages", "gemini"] as const) {
+  test(`${sourceApi}: successful search body capacity escapes without result success, terminal success or next model turn`, async () => {
+    globalThis.fetch = (async () => new Response("x".repeat(1024 * 1024 + 1))) as typeof fetch
+    const script = scriptedRun([searchTurn("capacity"), answerTurn("must not continue")])
+    const result = await withMessagesWebSearchShim(invocation(sourceApi), ctx, script.run)
+    if (result.type !== "events") throw new Error("expected events")
+    const seen: Frames = []
+    let failure: unknown
+    try { for await (const frame of result.events) seen.push(frame) }
+    catch (error) { failure = error }
+    expect(failure).toMatchObject({ name: "WebSearchCapacityError", category: "responseBodyBytes", limit: 1024 * 1024 })
+    expect(script.calls()).toBe(1)
+    expect(seen.some(frame => frame.type === "done")).toBe(false)
+    expect(events(seen).some(event => event.type === "message_stop" || event.type === "message_delta")).toBe(false)
+    expect(events(seen).some(event => event.type === "content_block_start" && (event.content_block as { type?: string }).type === "web_search_tool_result")).toBe(false)
+  })
+}
