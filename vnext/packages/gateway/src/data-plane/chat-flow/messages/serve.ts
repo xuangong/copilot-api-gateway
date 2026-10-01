@@ -101,9 +101,9 @@ const messagesHooks: ServeTemplateHooks<
 
   runAttempt: (a) => messagesAttempt.generate({
     payload: a.payload,
-    affinity: a.extra?.affinity,
+    affinity: a.extra.affinity,
     // Structural typing: extra apiKeyId on auth is ignored by attempt.
-    auth: a.extra?.upstreamPin ? { ...a.auth, pin: a.extra.upstreamPin } : a.auth,
+    auth: a.extra.upstreamPin ? { ...a.auth, pin: a.extra.upstreamPin } : a.auth,
     // apiKeyId reaches the interceptors the same way the Responses flow does
     // (responses/serve.ts:178). The web-search shim resolves the caller's
     // engines from their key, so without it every Messages request looks like
@@ -118,7 +118,7 @@ const messagesHooks: ServeTemplateHooks<
 
   respond: (r, c) => respondMessages(r, {
     wantsStream: c.wantsStream,
-    affinity: c.extra?.affinity?.execution,
+    affinity: c.extra.affinity?.execution,
     downstreamAbortController: c.downstreamAbortController,
     telemetryCtx: c.telemetryCtx,
     ...(c.dump !== undefined && c.dump !== null && { dump: c.dump as DumpAccumulator }),

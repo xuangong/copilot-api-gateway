@@ -99,8 +99,8 @@ const chatCompletionsHooks: ServeTemplateHooks<
 
   runAttempt: (a) => chatCompletionsAttempt.generate({
     payload: a.payload,
-    affinity: a.extra?.affinity,
-    auth: a.extra?.upstreamPin ? { ...a.auth, pin: a.extra.upstreamPin } : a.auth,
+    affinity: a.extra.affinity,
+    auth: a.extra.upstreamPin ? { ...a.auth, pin: a.extra.upstreamPin } : a.auth,
     // Same as messages/serve.ts: the web-search shim resolves engines from the
     // caller's key, so the interceptors need the id.
     ctx: { requestStartedAt: a.requestStartedAt, downstreamAbortSignal: a.downstreamAbortSignal, apiKeyId: a.auth.apiKeyId },
@@ -110,7 +110,7 @@ const chatCompletionsHooks: ServeTemplateHooks<
 
   respond: (r, c) => respondChatCompletions(r, {
     wantsStream: c.wantsStream,
-    affinity: c.extra?.affinity?.execution,
+    affinity: c.extra.affinity?.execution,
     includeUsageChunk: c.payload.stream_options?.include_usage === true,
     downstreamAbortController: c.downstreamAbortController,
     telemetryCtx: c.telemetryCtx,

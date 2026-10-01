@@ -17,7 +17,7 @@ export class ResponsesLocalContinuation implements ResponsesLocalContinuationRes
 
   clear(): void { this.slot = undefined }
 
-  candidate(id: string, create: Record<string, unknown>, output: readonly unknown[], compactTriggered = false): string | undefined {
+  candidate(id: string, create: Readonly<Record<string, unknown>>, output: readonly unknown[], compactTriggered = false): string | undefined {
     const { input, previous_response_id: _previous, stream: _stream, ...config } = create
     const items = responseContinuationItems(Array.isArray(input) ? input : [], output, compactTriggered)
     const json = JSON.stringify({ id, create: config, items })

@@ -101,6 +101,7 @@ for (const protocol of ["chat", "messages", "gemini"] as const) test(`${protocol
 function rejectRespond(dump: DumpAccumulator, error: unknown): Promise<unknown> {
   const hooks: ServeTemplateHooks<{ model: string }, undefined> = {
     endpointTag: "test_endpoint", parse: () => ({ model: "model" }), wantsStream: () => false,
+    preProcess: async payload => ({ kind: "continue", payload, extra: undefined }),
     runAttempt: async () => undefined, respond: async () => { throw error },
   }
   return serveTemplate(hooks, { raw: {}, auth: {}, obsCtx: {}, extras: {}, dump }, {

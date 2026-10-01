@@ -10,11 +10,17 @@ import {
   withCanonicalCompletion,
   type KitCanonicalCompletion,
   type KitAuthCtx,
+  type BuildTelemetryCtxArgs,
+  type ExecuteTemplateResult,
   type PrepareTemplateResult,
   type PreProcessResult,
+  type ReadyTemplateResult,
+  type RespondCtx,
+  type RunAttemptArgs,
   type ServeTemplateDeps,
   type ServeTemplateHooks,
   type ServeTemplateInput,
+  type ServeTemplateResult,
 } from './serve-template.ts'
 
 type Auth = KitAuthCtx & { readonly userId?: string; readonly pin?: string }
@@ -22,6 +28,23 @@ type Payload = { value: number; stream?: boolean }
 type Extra = { tag: string } | undefined
 type AttemptResult = { kind: 'ok'; echoed: number }
 type TCtx = { tag: string; isStreaming: boolean }
+
+type Assert<T extends true> = T
+type Equal<A, B> =
+  (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false
+type PreparedExtra = { readonly tag: string }
+type PreparedHooks = ServeTemplateHooks<Payload, AttemptResult, PreparedExtra, Auth, TCtx>
+type _PreprocessingRequired = Assert<
+  Omit<PreparedHooks, "preProcess"> extends PreparedHooks ? false : true
+>
+type _AttemptExtraExact = Assert<Equal<RunAttemptArgs<Payload, PreparedExtra, Auth, TCtx>["extra"], PreparedExtra>>
+type _RespondExtraExact = Assert<Equal<RespondCtx<Payload, PreparedExtra, TCtx>["extra"], PreparedExtra>>
+type _TelemetryExtraExact = Assert<Equal<BuildTelemetryCtxArgs<Payload, PreparedExtra, Auth>["extra"], PreparedExtra>>
+type _ReadyExtraExact = Assert<Equal<ReadyTemplateResult<Payload, AttemptResult, PreparedExtra>["extra"], PreparedExtra>>
+type _ExecutedExtraExact = Assert<Equal<ExecuteTemplateResult<Payload, AttemptResult, PreparedExtra>["extra"], PreparedExtra>>
+type _UndefinedExtraAccepted = Assert<Equal<ReadyTemplateResult<Payload, AttemptResult, undefined>["extra"], undefined>>
+type _EarlyExtraOptional = Assert<Equal<Extract<PrepareTemplateResult<Payload, AttemptResult, PreparedExtra>, { kind: "response" }>["extra"], PreparedExtra | undefined>>
+type _OuterExtraOptional = Assert<Equal<ServeTemplateResult<PreparedExtra>["extra"], PreparedExtra | undefined>>
 
 function defaultDeps(overrides: Partial<ServeTemplateDeps<Auth, TCtx>> = {}): ServeTemplateDeps<Auth, TCtx> {
   return {
@@ -49,6 +72,7 @@ function defaultHooks(
   return {
     endpointTag: 'test_endpoint',
     parse: ({ raw }) => raw as Payload,
+    preProcess: async payload => ({ kind: "continue", payload, extra: undefined }),
     wantsStream: (p) => p.stream === true,
     runAttempt: async (a) => ({ kind: 'ok', echoed: a.payload.value }),
     respond: async (r) => new Response(JSON.stringify(r), { status: 200 }),
@@ -159,6 +183,8 @@ test("the typed handoff preserves prepared references and request start time", a
   } }))
   expect(observed).toBeUndefined()
   if (prepared.kind !== "ready") throw new Error("Expected prepared readiness")
+  expect(prepared.extra).toBe(extra)
+  expect(prepared.context.extra).toBe(extra)
   const executed = await executeTemplate(prepared)
   expect(observed).toBeDefined()
   expect(executed.context).toBe(prepared.context)
@@ -324,19 +350,39 @@ describe('serveTemplate — preProcess short-circuit', () => {
     expect(calls).toEqual(['preProcess'])
   })
 
-  test('preProcess throw with status+body uses jsonErrorWrap', async () => {
+  test('preProcess throw preserves its envelope before telemetry, quota or execution', async () => {
+    const calls: string[] = []
     const hooks = defaultHooks({
       preProcess: async () => {
+        calls.push("preProcess")
         throw Object.assign(new Error('pre-bad'), {
           status: 409,
           body: { error: { message: 'conflict' } },
         })
       },
+      runAttempt: async () => {
+        calls.push("attempt")
+        return { kind: "ok", echoed: 1 }
+      },
+      respond: async () => {
+        calls.push("respond")
+        return new Response("unexpected")
+      },
     })
-    const result = await serveTemplate(hooks, defaultInput(), defaultDeps())
+    const result = await serveTemplate(hooks, defaultInput(), defaultDeps({
+      buildTelemetryCtx: () => {
+        calls.push("telemetry")
+        return { tag: "unexpected", isStreaming: false }
+      },
+      runQuotaGate: async () => {
+        calls.push("quota")
+        return null
+      },
+    }))
     expect(result.response.status).toBe(409)
     expect(await result.response.json()).toEqual({ error: { message: 'conflict' } })
     expect(result.extra).toBeUndefined()
+    expect(calls).toEqual(["preProcess"])
   })
 })
 
@@ -678,15 +724,32 @@ describe('serveTemplate — respond ctx', () => {
     expect(observed.extras).toEqual({ side: 'channel' })
   })
 
-  test('without preProcess, extra defaults to undefined', async () => {
-    let observedExtra: Extra | 'unset' = 'unset'
-    const hooks = defaultHooks({
+  test('explicit no-op preparation preserves payload and undefined extra through execution', async () => {
+    const payload: Payload = { value: 9 }
+    let observedExtra: undefined | 'unset' = 'unset'
+    const hooks: ServeTemplateHooks<Payload, AttemptResult, undefined, Auth, TCtx> = {
+      ...defaultHooks(),
+      preProcess: async current => ({ kind: "continue", payload: current, extra: undefined }),
+      runAttempt: async args => {
+        expect(args.payload).toBe(payload)
+        expect(args.extra).toBeUndefined()
+        return { kind: "ok", echoed: args.payload.value }
+      },
       respond: async (_r, c) => {
+        expect(c.payload).toBe(payload)
         observedExtra = c.extra
         return new Response('ok', { status: 200 })
       },
-    })
-    const result = await serveTemplate(hooks, defaultInput(), defaultDeps())
+    }
+    const deps: ServeTemplateDeps<Auth, TCtx, Payload, undefined> = {
+      ...defaultDeps(),
+      buildTelemetryCtx: input => {
+        expect(input.payload).toBe(payload)
+        expect(input.extra).toBeUndefined()
+        return { tag: "no-op", isStreaming: false }
+      },
+    }
+    const result = await serveTemplate(hooks, defaultInput({ raw: payload }), deps)
     expect(observedExtra).toBeUndefined()
     expect(result.extra).toBeUndefined()
   })

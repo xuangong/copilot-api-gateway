@@ -69,13 +69,18 @@ import { respondResponses, renderResponsesTurn, type ResponsesCompletionWriter }
 import { createResponsesTurn, type ResponsesTurn } from './turn.ts'
 import type { DumpAccumulator } from '../../../shared/dump/accumulator.ts'
 
+export type ResponsesPreparedObserver = (
+  payload: Readonly<Record<string, unknown>>,
+  compactTriggered: boolean,
+) => undefined
+
 export interface ResponsesServeArgs {
   readonly localContinuation?: ResponsesLocalContinuationResolver
   readonly warmup?: boolean
   /** Keep expanded history for callers that consume the compatibility result. */
   readonly retainInputHistory?: boolean
   /** Source create state after expansion, before routing. Never an auth context. */
-  readonly onPrepared?: (payload: Record<string, unknown>, compactTriggered: boolean) => void
+  readonly onPrepared?: ResponsesPreparedObserver
   /** Pre-parsed JSON body from http.ts (`await c.req.json()`). */
   readonly raw: unknown
   readonly auth: DataPlaneAuthCtx
@@ -220,8 +225,8 @@ const responsesHooks: ServeTemplateHooks<
 
   runAttempt: (a) => (a.extras.warmup ? validateResponsesAttempt : responsesAttempt.generate)({
     payload: a.payload,
-    affinity: a.extra?.affinity,
-    auth: a.extra?.upstreamPin ? { ...a.auth, pin: a.extra.upstreamPin } : a.auth,
+    affinity: a.extra.affinity,
+    auth: a.extra.upstreamPin ? { ...a.auth, pin: a.extra.upstreamPin } : a.auth,
     ctx: { requestStartedAt: a.requestStartedAt, downstreamAbortSignal: a.downstreamAbortSignal, apiKeyId: a.auth.apiKeyId, abortUpstream: a.extras.abortUpstream },
     dump: a.dump as DumpAccumulator | null,
     telemetryCtx: a.telemetryCtx,
@@ -232,9 +237,9 @@ const responsesHooks: ServeTemplateHooks<
 
   respond: (r, c) => respondResponses(r, {
     wantsStream: c.wantsStream,
-    affinity: c.extra?.affinity?.execution,
-    onCompleted: c.extra?.onCompleted,
-    mergedInputItems: c.extra?.mergedInputItems,
+    affinity: c.extra.affinity?.execution,
+    onCompleted: c.extra.onCompleted,
+    mergedInputItems: c.extra.mergedInputItems,
     downstreamAbortController: c.downstreamAbortController,
     telemetryCtx: c.telemetryCtx,
     ...(c.dump !== undefined && c.dump !== null && { dump: c.dump as DumpAccumulator }),
@@ -261,7 +266,7 @@ export function startResponsesTurn(args: ResponsesServeArgs): ResponsesTurn {
     if (prepared.kind === "response") return { result: { kind: "bridged-response" as const, response: prepared.response }, options: common }
     const executed = await executeTemplate(prepared)
     const c = executed.context
-    return { result: executed.result, options: { ...common, affinity: c.extra?.affinity?.execution, onCompleted: c.extra?.onCompleted, mergedInputItems: c.extra?.mergedInputItems, telemetryCtx: warmup ? undefined : c.telemetryCtx } }
+    return { result: executed.result, options: { ...common, affinity: c.extra.affinity?.execution, onCompleted: c.extra.onCompleted, mergedInputItems: c.extra.mergedInputItems, telemetryCtx: warmup ? undefined : c.telemetryCtx } }
   }, common)
   void turn.completion.finally(unlinkAbort)
   return turn

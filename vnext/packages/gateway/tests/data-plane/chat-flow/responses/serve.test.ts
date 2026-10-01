@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, expect, test } from 'bun:test'
+import { afterAll, beforeAll, expect, spyOn, test } from 'bun:test'
 import { __resetPlatformForTests } from '@vibe-core/platform'
 import { setupTestPlatform } from '../../../_setup-platform.ts'
 import { initResponsesStore } from '../../../../src/data-plane/runtime/responses-store.ts'
@@ -6,6 +6,7 @@ import { serveResponses } from '../../../../src/data-plane/chat-flow/responses/s
 import type { DataPlaneAuthCtx } from '../../../../src/data-plane/models/routes.ts'
 import type { DispatchObsCtx } from '../../../../src/data-plane/chat-flow/shared/obs-ctx.ts'
 import { InMemoryResponsesSnapshotStore } from '@vibe-llm/responses-store'
+import * as responsesAttemptModule from '../../../../src/data-plane/chat-flow/responses/attempt.ts'
 
 beforeAll(() => { setupTestPlatform() })
 afterAll(() => { __resetPlatformForTests() })
@@ -58,3 +59,33 @@ test('HTTP callers can omit returned history while internal callers retain expan
   expect(result.response.status).toBe(404)
   expect(result.mergedInputItems).toEqual([])
 })
+
+for (const warmup of [false, true]) {
+  test(`synchronous prepared observer rejection precedes ${warmup ? "warmup validation" : "inference"}`, async () => {
+    initResponsesStore(new InMemoryResponsesSnapshotStore())
+    const generate = spyOn(responsesAttemptModule.responsesAttempt, "generate")
+    const validate = spyOn(responsesAttemptModule, "validateResponsesAttempt")
+    const body = { error: { type: "local_state_limit", message: "Observer admission rejected" } }
+    let observed = 0
+    try {
+      const { response } = await serveResponses({
+        raw: { model: "source", input: "current work", store: false }, auth, obsCtx, warmup,
+        onPrepared(payload, compactTriggered) {
+          observed++
+          expect(payload.model).toBe("source")
+          expect(compactTriggered).toBe(false)
+          throw Object.assign(new Error("Observer admission rejected"), { status: 413, body })
+        },
+      })
+
+      expect(observed).toBe(1)
+      expect(response.status).toBe(413)
+      expect(await response.json()).toEqual(body)
+      expect(generate).not.toHaveBeenCalled()
+      expect(validate).not.toHaveBeenCalled()
+    } finally {
+      generate.mockRestore()
+      validate.mockRestore()
+    }
+  })
+}

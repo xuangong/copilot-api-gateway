@@ -114,7 +114,6 @@ const geminiHooks: ServeTemplateHooks<
 
   runAttempt: (a) => {
     const extra = a.extra
-    if (!extra) throw new Error('Gemini preprocessing must provide routing data')
     return geminiAttempt.generate({
       payload: { ...a.payload },
       affinity: extra.affinity,
@@ -129,7 +128,7 @@ const geminiHooks: ServeTemplateHooks<
 
   respond: (r, c) => respondGemini(r, {
     wantsStream: c.wantsStream,
-    affinity: c.extra?.affinity?.execution,
+    affinity: c.extra.affinity?.execution,
     downstreamAbortController: c.downstreamAbortController,
     telemetryCtx: c.telemetryCtx,
     ...(c.dump !== undefined && c.dump !== null && { dump: c.dump as DumpAccumulator }),

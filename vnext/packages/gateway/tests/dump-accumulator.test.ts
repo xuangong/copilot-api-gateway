@@ -500,6 +500,7 @@ async function finishViaTemplate(response: Response, dump: DumpAccumulator): Pro
   const served = await serveTemplate({
     endpointTag: "test",
     parse: () => ({}), wantsStream: () => true,
+    preProcess: async payload => ({ kind: "continue", payload, extra: undefined }),
     runAttempt: async () => response,
     respond: async result => result,
   }, { raw: {}, auth: {}, obsCtx: {}, extras: {}, dump }, {

@@ -105,7 +105,7 @@ export interface RunAttemptArgs<TPayload, TExtra, TAuth, TTelemetryCtx, TInputs 
   readonly payload: TPayload
   /** Endpoint-specific data returned by preProcess. This carries routing data
    * without allowing preprocessing to alter the request auth context. */
-  readonly extra: TExtra | undefined
+  readonly extra: TExtra
   readonly auth: TAuth
   readonly telemetryCtx: TTelemetryCtx
   readonly downstreamAbortSignal: AbortSignal
@@ -115,7 +115,7 @@ export interface RunAttemptArgs<TPayload, TExtra, TAuth, TTelemetryCtx, TInputs 
 
 export interface RespondCtx<TPayload, TExtra, TTelemetryCtx, TInputs = Record<string, unknown>> {
   readonly payload: TPayload
-  readonly extra: TExtra | undefined
+  readonly extra: TExtra
   readonly wantsStream: boolean
   readonly downstreamAbortController: AbortController
   readonly telemetryCtx: TTelemetryCtx
@@ -149,7 +149,7 @@ export interface ServeTemplateHooks<
   /** Optional renderer for parse() failures. Default: `deps.jsonErrorWrap`. */
   parseErrorRender?(err: Error & { status?: number; body?: unknown }): Response
 
-  preProcess?(
+  preProcess(
     payload: TPayload,
     ctx: PreProcessCtx<TAuth, TInputs>,
   ): Promise<PreProcessResult<TPayload, TExtra>>
@@ -168,7 +168,7 @@ export interface BuildTelemetryCtxArgs<TPayload = unknown, TExtra = unknown, TAu
   readonly auth: TAuth
   readonly obsCtx: KitObsCtx
   readonly payload: TPayload
-  readonly extra: TExtra | undefined
+  readonly extra: TExtra
   readonly isStreaming: boolean
   readonly requestStartedAt: number
   readonly endpointTag: string
@@ -195,13 +195,13 @@ const executionCapability = Symbol("prepared execution")
 export interface ExecuteTemplateResult<TPayload, TAttemptResult, TExtra = undefined, TTelemetryCtx = unknown, TInputs = Record<string, unknown>> {
   readonly result: TAttemptResult
   readonly context: RespondCtx<TPayload, TExtra, TTelemetryCtx, TInputs>
-  readonly extra: TExtra | undefined
+  readonly extra: TExtra
 }
 
 export interface ReadyTemplateResult<TPayload, TAttemptResult, TExtra = undefined, TTelemetryCtx = unknown, TInputs = Record<string, unknown>> {
   readonly kind: 'ready'
   readonly context: RespondCtx<TPayload, TExtra, TTelemetryCtx, TInputs>
-  readonly extra: TExtra | undefined
+  readonly extra: TExtra
   readonly [executionCapability]: () => Promise<ExecuteTemplateResult<TPayload, TAttemptResult, TExtra, TTelemetryCtx, TInputs>>
 }
 
@@ -278,26 +278,23 @@ export async function prepareTemplate<
     if (typeof model === 'string' && model.length > 0) input.dump.requestedModel(model)
   }
 
-  // 2. preProcess (optional).
-  let extra: TExtra | undefined
-  if (hooks.preProcess) {
-    let pre: PreProcessResult<TPayload, TExtra>
-    try {
-      pre = await hooks.preProcess(payload, { auth: input.auth, extras: input.extras })
-    } catch (err) {
-      const e = err as Error & { status?: number; body?: unknown }
-      const errResp = deps.jsonErrorWrap(e.status ?? 400, e.body ?? { error: { message: e.message } })
-      return {
-        kind: 'response', response: errResp,
-        extra: undefined,
-      }
+  // 2. preProcess.
+  let pre: PreProcessResult<TPayload, TExtra>
+  try {
+    pre = await hooks.preProcess(payload, { auth: input.auth, extras: input.extras })
+  } catch (err) {
+    const e = err as Error & { status?: number; body?: unknown }
+    const errResp = deps.jsonErrorWrap(e.status ?? 400, e.body ?? { error: { message: e.message } })
+    return {
+      kind: 'response', response: errResp,
+      extra: undefined,
     }
-    if (pre.kind === 'short-circuit') {
-      return { kind: 'response', response: pre.response, extra: pre.extra }
-    }
-    payload = pre.payload
-    extra = pre.extra
   }
+  if (pre.kind === 'short-circuit') {
+    return { kind: 'response', response: pre.response, extra: pre.extra }
+  }
+  payload = pre.payload
+  const extra = pre.extra
 
   // 3. wantsStream.
   const wantsStream = hooks.wantsStream(payload, input)

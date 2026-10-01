@@ -28,11 +28,13 @@ import type { TelemetryRequestContext } from './telemetry-ctx.ts'
 import type { PerformanceSourceApi } from '../../../repo/types.ts'
 import type { ApiKeyId } from '../../../repo/branded-ids.ts'
 
-function incomingModelFromExtra(extra: unknown): string {
+export type PreparedModelIdentity = { readonly incomingModel: string }
+
+function incomingModelFromExtra(extra: PreparedModelIdentity): string {
   if (typeof extra !== 'object' || extra === null) {
     throw new Error('Chat preprocessing must provide incoming model identity')
   }
-  const incomingModel = (extra as Record<string, unknown>).incomingModel
+  const incomingModel = extra.incomingModel
   if (typeof incomingModel !== 'string' || incomingModel.length === 0) {
     throw new Error('Chat preprocessing must provide incoming model identity')
   }
@@ -68,7 +70,7 @@ function endpointTagToSourceApi(tag: string): PerformanceSourceApi {
   }
 }
 
-export const kitDeps: ServeTemplateDeps<AuthWithApiKey, TelemetryRequestContext> = {
+export const kitDeps: ServeTemplateDeps<AuthWithApiKey, TelemetryRequestContext, unknown, PreparedModelIdentity> = {
   runQuotaGate: (apiKeyId) => runQuotaGate(apiKeyId as ApiKeyId | null | undefined),
   jsonErrorWrap,
   buildTelemetryCtx: ({ auth, obsCtx, extra, isStreaming, requestStartedAt, endpointTag }) => ({
