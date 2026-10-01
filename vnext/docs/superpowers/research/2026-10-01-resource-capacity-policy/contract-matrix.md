@@ -8,7 +8,7 @@ Implementation/review status is tracked in the [plan](../../plans/2026-10-01-res
 | Successful provider ingress | Reader plus invocation byte debit | Whole chunk before copy/full parse | Stop reading; no fallback/reentry | Runtime chunk allocation and parse expansion |
 | Private replay retention | Owned private writer | Graph charge before insertion/completed frame | Atomic rejection; preserve earlier entries | Borrowed external legacy store |
 | Page cache retention | Scope-owned cache | Key/value charge before successful publication | Failure without eviction/refetch | Temporary provider result graphs |
-| Chat continuation | Chat result owner | Newly generated messages/annotations before append | Failure without next upstream run | Initial history and caller-retained output |
+| Chat continuation | Chat result owner | Newly generated messages/annotations before append | Failure without next upstream run | Initial history, current-turn stream assembly and caller-retained output |
 | Diagnostic subscription | Bounded broker iterator | Encoded frame count/charge before queue/decode | Detach, clear queue, latch finite recovery reason | SQL rows and codec transients |
 | Diagnostic stream preparation/delivery | Route permit | Immediate permit before subscribe/list | 429 without waiting; existing owners retire after actual work | Unrelated persistence/publication work |
 | Diagnostic recovery | Dashboard generation | Visible latest-only scope, explicit refresh | Continuity remains unknown | Complete historical replay and cross-isolate delivery |

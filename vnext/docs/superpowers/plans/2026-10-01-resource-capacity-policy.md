@@ -38,14 +38,14 @@
 
 ### Task 2: Bound successful provider body ingress
 
-**Files:** Add a narrowly scoped success-body reader in `tools/web-search/providers/`; modify `capacity.ts`, `types.ts`, `execution-scope.ts`, `operations.ts`, `key-config.ts` and built-in providers Tavily, Jina, LangSearch, Microsoft grounding, Bing and Copilot. Extend corresponding focused tests, including alpha compatibility where shared provider changes affect it.
+**Files:** Add a narrowly scoped success-body reader in `tools/web-search/providers/`; modify `capacity.ts`, `types.ts`, `execution-scope.ts`, `operations.ts`, `key-config.ts` and built-in providers Tavily, Jina, LangSearch, Microsoft grounding, Bing and Copilot. Extend corresponding focused tests, including alpha compatibility where shared provider changes affect it. Narrowly update the native Messages search shim catch and its tests so the newly introduced standalone body capacity error is not downgraded to unavailable; do not add a Messages invocation budget in this task.
 
 **Interfaces:** Scope owns a monotonic 8 MiB ingress debit capability and an immediate fatal-capacity latch forwarded through search/fetchPage requests and helper/fallback/retry paths; shared configured providers carry no request counter. Reader enforces 1 MiB per response (independently for standalone use), checks both budgets synchronously before retaining a whole chunk, copies into bounded blocks, decodes/parses only after admitted EOF, and throws `WebSearchCapacityError` on excess. Policy injection is internal for tests, no new public config.
 
-- [ ] RED tests for exact EOF/plus one, deceptive Content-Length, oversized chunk/backing buffer, tiny chunk stream, UTF-8 boundaries, null body, malformed JSON and jointly excessive concurrent bodies.
-- [ ] Route all built-in successful JSON/text reads through the bounded reader, including extraction/reader HTML and Copilot text/SSE. Keep error-body policy and Alpha/model streaming scope unchanged. Do not fall back to unbounded response.text/json when body is null.
-- [ ] Propagate capacity unchanged through provider broad catches, per-page catches and operations/configured fallback; no later engine/retry/model continuation after capacity failure. Latch a reader capacity failure at the shared scope immediately with its original safe reason so sibling fallback/start gates close too; do not wait until its later result slot is consumed. Record started usage and retain existing real-settlement ownership.
-- [ ] Confirm every successful read site, representative built-in search/page paths, existing fallback and usage normal cases. Focused tests/types/purity/lint/protection only. Commit source/tests and detailed implementation report.
+- [x] RED tests for exact EOF/plus one, deceptive Content-Length, oversized chunk/backing buffer, tiny chunk stream, UTF-8 boundaries, null body, malformed JSON and jointly excessive concurrent bodies.
+- [x] Route all built-in successful JSON/text reads through the bounded reader, including extraction/reader HTML and Copilot text/SSE. Keep error-body policy and Alpha/model streaming scope unchanged. Do not fall back to unbounded response.text/json when body is null.
+- [x] Propagate capacity unchanged through provider broad catches, per-page catches and operations/configured fallback; no later engine/retry/model continuation after capacity failure. Latch a reader capacity failure at the shared scope immediately with its original safe reason so sibling fallback/start gates close too; do not wait until its later result slot is consumed. Record started usage and retain existing real-settlement ownership.
+- [x] Confirm every successful read site, representative built-in search/page paths, existing fallback and usage normal cases. Focused tests/types/purity/lint/protection only. Commit source/tests and detailed implementation report.
 
 ### Task 3: Admit retained replay, page cache and Chat continuation
 
