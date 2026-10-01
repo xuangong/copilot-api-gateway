@@ -341,15 +341,17 @@ async function* driveSearchLoop(
     for (const call of shimCalls) {
       const callId = call.id !== '' ? call.id : `call_${crypto.randomUUID().replace(/-/g, '')}`
       call.id = callId
+      const admission = search.admit(parseServerToolArguments(call.arguments))
       let content: string
       if (budgetExhausted) {
+        search.refuse(admission)
         content = `Error: maximum web search uses (${MAX_SEARCH_TURNS}) exceeded. Answer using what you have already gathered.`
       } else {
         // A shim call carrying several operations fans out into several
         // searches, but Chat Completions allows exactly one `role:'tool'`
         // message per `tool_call_id` — so the results come back concatenated
         // into that one message rather than as separate replies.
-        const batch = search.prepare(parseServerToolArguments(call.arguments)).start()
+        const batch = search.prepare(admission).start()
         const irs = await owner.wait(Promise.all(batch.calls.map(call => call.result())))
         owner.assertOpen()
         content = irs.map(renderWebSearchCallOutput).join('\n\n')

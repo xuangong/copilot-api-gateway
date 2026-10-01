@@ -205,3 +205,42 @@ test("actual eager unconsumed rejected branch stays observed while page sibling 
   expect(settled).toBe(true)
   await expect(runSlot(slots[0]?.run ?? (() => { throw new Error("Missing slot") }))).rejects.toThrow()
 })
+
+test("operation capacity survives Responses turns and charges iteration refusals before slots", async () => {
+  let fetches = 0
+  const fetch = globalThis.fetch
+  globalThis.fetch = (...args) => { fetches++; return fetch(...args) }
+  const hosted = await hostedDispatch()
+  const dispatch = (arguments_: Record<string, unknown> | null, iterationCount: number) => hosted.dispatcher({
+    intercepted: { callId: `call_${iterationCount}`, name: "web_search", arguments: arguments_ },
+    loopState: { iterationCount, remainingToolCalls: undefined },
+  })
+  for (let turn = 1; turn <= 30; turn++) {
+    const slots = dispatch({ search_query: [{ q: "a" }, { q: "b" }] }, turn)
+    expect(slots).toHaveLength(1)
+    await runSlot(slots[0]?.run ?? (() => { throw new Error("missing slot") }))
+  }
+  expect(fetches).toBe(60)
+  const refused = dispatch({ search_query: new Array(4) }, 31)
+  expect(refused).toHaveLength(1)
+  expect(payloadOf(await runSlot(refused[0]?.run ?? (() => { throw new Error("missing slot") }))).ir.results[0]?.title).toBe("Tool call budget exhausted")
+  expect(() => dispatch(null, 32)).toThrow("Web search capacity exceeded")
+  expect(fetches).toBe(60)
+  hosted.work?.cancel()
+  await hosted.work?.settled()
+})
+
+test("operation capacity rejects the entire overflowing Responses call before providers or argument elements", async () => {
+  let fetches = 0
+  globalThis.fetch = async () => { fetches++; throw new Error("unexpected fetch") }
+  const hosted = await hostedDispatch()
+  const huge = new Array(0xffffffff)
+  Object.defineProperty(huge, "0", { get: () => { throw new Error("unexpected expansion") } })
+  expect(() => hosted.dispatcher({
+    intercepted: { callId: "large", name: "web_search", arguments: { search_query: huge } },
+    loopState: { iterationCount: 1, remainingToolCalls: undefined },
+  })).toThrow("Web search capacity exceeded")
+  expect(fetches).toBe(0)
+  hosted.work?.cancel()
+  await hosted.work?.settled()
+})

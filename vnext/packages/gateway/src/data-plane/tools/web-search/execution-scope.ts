@@ -1,8 +1,14 @@
 import type { WebSearchCallIR, WebSearchExecutionSession, WebSearchWorkTracker } from "./operations.ts"
 import { runWebSearchCallPlan, splitWebSearchCalls, startWebSearchCallFetches, type WebSearchCallPlan } from "./plan-operations.ts"
+import { countWebSearchOperations, validateWebSearchCapacityPolicy, WebSearchCapacityError, type WebSearchCapacityPolicy } from "./capacity.ts"
+
+declare const admissionBrand: unique symbol
+export interface WebSearchAdmission { readonly [admissionBrand]: true }
 
 export interface WebSearchExecutionScope {
-  prepare(args: Record<string, unknown> | null): PreparedWebSearchBatch
+  admit(args: Record<string, unknown> | null): WebSearchAdmission
+  prepare(admission: WebSearchAdmission): PreparedWebSearchBatch
+  refuse(admission: WebSearchAdmission): void
   assertOpen(): void
   cancel(): undefined
   settled(): Promise<void>
@@ -28,7 +34,11 @@ export type WebSearchScopeRejectsAsyncCancel = AssertTrue<
 
 export const createWebSearchExecutionScope = (
   config: Omit<WebSearchExecutionSession, "pageCache">,
+  capacityPolicy?: Partial<WebSearchCapacityPolicy>,
 ): WebSearchExecutionScope => {
+  const policy = validateWebSearchCapacityPolicy(capacityPolicy)
+  let operations = 0
+  const admissions = new Map<WebSearchAdmission, Record<string, unknown> | null>()
   const controller = new AbortController()
   const session: WebSearchExecutionSession = { ...config, pageCache: new Map(), signal: controller.signal }
   const pending = new Set<object>()
@@ -83,6 +93,7 @@ export const createWebSearchExecutionScope = (
     closed = true
     config.signal?.removeEventListener("abort", onParentAbort)
     controller.abort(reason)
+    admissions.clear()
     session.pageCache.clear()
     for (const reject of deliveries) reject(controller.signal.reason)
     deliveries.clear()
@@ -91,12 +102,31 @@ export const createWebSearchExecutionScope = (
   if (config.signal?.aborted) cancel(config.signal.reason)
   else config.signal?.addEventListener("abort", onParentAbort, { once: true })
 
+  const consume = (admission: WebSearchAdmission): Record<string, unknown> | null => {
+    assertOpen()
+    if (!admissions.has(admission)) throw new Error("Invalid web search admission")
+    const args = admissions.get(admission) ?? null
+    admissions.delete(admission)
+    return args
+  }
+
   return {
+    admit(args) {
+      assertOpen()
+      const charge = countWebSearchOperations(args, policy.operations - operations)
+      assertOpen()
+      if (charge > policy.operations - operations) throw new WebSearchCapacityError("operations", policy.operations)
+      operations += charge
+      const admission = {} as WebSearchAdmission
+      admissions.set(admission, args)
+      return admission
+    },
+    refuse(admission) { consume(admission) },
     assertOpen,
     cancel: () => cancel(),
     settled: () => pending.size === 0 ? Promise.resolve() : new Promise(resolve => { settlementWaiters.add(resolve) }),
-    prepare(args) {
-      assertOpen()
+    prepare(admission) {
+      const args = consume(admission)
       const plans = splitWebSearchCalls(args)
       let started = false
       return {

@@ -639,3 +639,20 @@ for (const exit of ["discard", "abort", "open"] as const) test(`owned Chat same-
   }
   expect(() => search.assertOpen()).toThrow()
 })
+
+for (const scenario of ["reentry", "refusal", "first-call"] as const) test(`operation capacity rejects Chat ${scenario} before overflow work or another turn`, async () => {
+  let fetches = 0
+  globalThis.fetch = (async () => { fetches++; return tavilyResponse([{ url: "https://a.example/", title: "A" }]) }) as unknown as typeof fetch
+  const queries = (count: number) => toolCallTurn("web_search", JSON.stringify({ search_query: Array.from({ length: count }, () => ({ q: "x" })) }))
+  const turns = scenario === "reentry" ? [queries(32), queries(32), queries(1)]
+    : scenario === "refusal" ? [queries(16), queries(16), queries(16), queries(16), queries(1)]
+    : [queries(65)]
+  const script = scriptedRun(turns)
+  const inv = invocation({ model: "m", messages: [], web_search_options: {} })
+  await expect(collect(await withChatCompletionsWebSearchShim(inv, ctx, script.run))).rejects.toThrow("Web search capacity exceeded")
+  expect(fetches).toBe(scenario === "first-call" ? 0 : 64)
+  expect(script.calls()).toBe(turns.length)
+  const messages = inv.payload.messages as Array<{ role: string; content?: unknown }>
+  expect(messages.filter(message => message.role === "tool")).toHaveLength(turns.length - 1)
+  expect(messages.some(message => String(message.content).includes("maximum web search uses"))).toBe(false)
+})

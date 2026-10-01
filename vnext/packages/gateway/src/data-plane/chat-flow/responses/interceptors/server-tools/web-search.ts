@@ -472,7 +472,9 @@ const planShimSlots = (
   loopState: ServerToolLoopState,
 ): { slots: ShimSlot[]; start(): void } => {
   state.execution.assertOpen()
+  const admission = state.execution.admit(args)
   if (loopState.iterationCount > ITERATION_CAP) {
+    state.execution.refuse(admission)
     // One refusal slot for the whole call, whatever it asked for: the budget
     // is exhausted, so there is nothing to fan out.
     return { start: () => {}, slots: [{
@@ -488,7 +490,7 @@ const planShimSlots = (
 
   // Everything below the iteration cap is protocol-agnostic and shared with
   // the Chat Completions shim.
-  const prepared = state.execution.prepare(args)
+  const prepared = state.execution.prepare(admission)
   let started: ReturnType<typeof prepared.start> | undefined
   return {
     slots: prepared.plans.map((plan, index) => ({
