@@ -1,0 +1,8 @@
+{
+  "source_head": "0e44391d600add13daa665de820911198f1bd44f",
+  "source_file_count": 1560,
+  "manifest_sha256": "2f3b7d969e2acdcf630cfdbf7a367669fa9c61c803218167a39f90dd4f6b7c3b",
+  "overlay": "14 protected isolated files included; separate from commits",
+  "main_protected": 38,
+  "isolated_protected": 14
+}

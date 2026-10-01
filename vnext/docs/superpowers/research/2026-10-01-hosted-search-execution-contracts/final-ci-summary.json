@@ -1,0 +1,18 @@
+{
+  "command": "SETUP_TEST_CODEX=/Users/zhangxian/.local/bin/codex bun run ci:local",
+  "cwd": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/vnext",
+  "started_at": "2026-10-01T11:45:51.604443+00:00",
+  "ended_at": "2026-10-01T11:48:17.516202+00:00",
+  "exit_code": 0,
+  "log": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-01-hosted-search-execution-contracts/final-ci.log",
+  "package_typechecks_passed": 26,
+  "purity_ok": true,
+  "test_summary": [
+    "\n\n 5780 pass\n 1 skip\n 0 fail\n 236880 expect() calls\nRan 5781 tests across 546 files. [117.76s]"
+  ],
+  "lint_summary": [
+    "\u2716 34 problems (0 errors, 34 warnings)"
+  ],
+  "worker_dry_run_ok": true,
+  "log_sha256": "f696808a15b333e5f4026c567497e683221c1a5f6903ad594fb57ac28cedbb4c"
+}

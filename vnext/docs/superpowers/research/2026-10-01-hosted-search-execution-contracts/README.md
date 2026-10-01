@@ -1,6 +1,6 @@
 # Hosted search execution and request cancellation evidence
 
-Date: 2026-10-01. All three tasks and independent task reviews are complete. The whole-increment review found one additional Responses delivery race; its scoped repair is accepted. Frozen-source qualification and local integration remain the final gate.
+Date: 2026-10-01. All three tasks and independent task reviews are complete. The whole-increment review found one additional Responses delivery race; its scoped repair is accepted. The [frozen-source qualification and local integration](qualification.md) are complete: 5,780 pass, 1 skip, 0 fail; no push/deployment.
 
 | Task | Product commits | Verified local behavior | Review |
 | --- | --- | --- | --- |

@@ -1,0 +1,13 @@
+{
+  "time": "2026-10-01T11:49:04.025040+00:00",
+  "main_before": "db9ce4f35abab6fbed34dc038d1efd2c979cf773",
+  "main_after": "0e44391d600add13daa665de820911198f1bd44f",
+  "isolated_head": "0e44391d600add13daa665de820911198f1bd44f",
+  "integration": "local fast-forward only",
+  "frozen_source_match": true,
+  "original_dirty_inventories_match": true,
+  "indexes_empty": true,
+  "fixture": "90455 Wed Sep 30 05:16:07 2026     bun",
+  "pushed": false,
+  "deployed": false
+}

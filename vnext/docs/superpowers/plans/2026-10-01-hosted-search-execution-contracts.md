@@ -93,6 +93,6 @@ expect(await response.text()).not.toContain("event: snapshot")
 
 - [x] Independent task specification/quality reviews and fix loops, marking every task complete after its review.
 - [x] Whole-increment review, triage deferred issues and archive contract matrix/follow-up decisions.
-- [ ] Freeze a fresh non-doc source/config/test manifest including the protected overlay; run one complete `SETUP_TEST_CODEX=/Users/zhangxian/.local/bin/codex bun run ci:local`.
-- [ ] Verify unchanged frozen source and original hashes; fast-forward local vNext and compare both source manifests, protected inventories and fixture identity.
-- [ ] Commit scoped qualification/closeout docs and report local outcome, no push/deploy and remaining capacity/workerd/rollback gates.
+- [x] Freeze a fresh non-doc source/config/test manifest including the protected overlay; run one complete `SETUP_TEST_CODEX=/Users/zhangxian/.local/bin/codex bun run ci:local`.
+- [x] Verify unchanged frozen source and original hashes; fast-forward local vNext and compare both source manifests, protected inventories and fixture identity.
+- [x] Commit scoped qualification/closeout docs and report local outcome, no push/deploy and remaining capacity/workerd/rollback gates.
