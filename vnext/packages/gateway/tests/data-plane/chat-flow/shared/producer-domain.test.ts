@@ -1,6 +1,6 @@
 import { beforeEach, expect, test } from "bun:test"
 import { doneFrame, eventFrame, type ProtocolFrame } from "@vibe-core/result"
-import { llmEventResult, type LlmExecuteResult } from "@vibe-llm/protocols/common"
+import { llmEventResult, type LlmExecuteResult, type TranslatedProducerProtocol } from "@vibe-llm/protocols/common"
 import type { ChatCompletionsStreamEvent } from "@vibe-llm/protocols/chat"
 import type { MessagesStreamEvent } from "@vibe-llm/protocols/messages"
 import type { ResponsesStreamEvent } from "@vibe-llm/protocols/responses"
@@ -17,7 +17,7 @@ type Protocol = "chat_completions" | "messages" | "responses" | "gemini"
 const identity = { incomingModel: "m", model: "m", modelKey: "m", upstream: "up", cost: null }
 const payload = { model: "m", messages: [{ role: "user", content: "hello" }], input: [{ role: "user", content: "hello" }],
   contents: [{ role: "user", parts: [{ text: "hello" }] }], max_tokens: 100 }
-async function* hubFrames(hub: Protocol): AsyncGenerator<ProtocolFrame<unknown>> {
+async function* hubFrames(hub: TranslatedProducerProtocol): AsyncGenerator<ProtocolFrame<unknown>> {
   if (hub === "chat_completions") {
     yield eventFrame({ id: "chat", created: 1, model: "m", choices: [{ index: 0, delta: { role: "assistant", content: "domain-safe" }, finish_reason: "stop" }] })
   } else {
@@ -31,7 +31,7 @@ async function* hubFrames(hub: Protocol): AsyncGenerator<ProtocolFrame<unknown>>
   yield doneFrame()
 }
 
-function register<T>(source: Protocol, hub: Protocol,
+function register<T>(source: Protocol, hub: TranslatedProducerProtocol,
   respond: (result: LlmExecuteResult<ProtocolFrame<T>>, options: { wantsStream: boolean }) => Promise<Response>) {
   for (const wantsStream of [false, true]) for (const telemetry of ["missing", "stale"] as const) {
     test(`${source} ${wantsStream ? "SSE" : "JSON"} consumes the real producer with ${telemetry} translator telemetry`, async () => {

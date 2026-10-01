@@ -91,6 +91,7 @@ export type {
   LlmEventResult,
   NativeLlmEventResult,
   TranslatedLlmEventResult,
+  TranslatedProducerProtocol,
   TranslatorProtocol,
   UpstreamErrorResult,
   InternalErrorResult,

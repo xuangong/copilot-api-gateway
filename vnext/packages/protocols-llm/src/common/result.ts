@@ -10,6 +10,8 @@ import type { ProtocolFrame } from '@vibe-core/result'
  */
 export type TranslatorProtocol = 'chat_completions' | 'messages' | 'responses' | 'gemini'
 
+export type TranslatedProducerProtocol = Exclude<TranslatorProtocol, "gemini">
+
 export interface TelemetryModelIdentity {
   /** Client-requested model after protocol normalization, before routing. */
   readonly incomingModel: string
@@ -122,7 +124,7 @@ export interface TranslatedLlmEventResult extends LlmEventResultMetadata {
   readonly producer: {
     readonly kind: 'translated'
     readonly source: TranslatorProtocol
-    readonly protocol: TranslatorProtocol
+    readonly protocol: TranslatedProducerProtocol
   }
   readonly events: AsyncIterable<ProtocolFrame<unknown>>
   readonly translateBody: NonNullable<LlmEventResultMetadata['translateBody']>

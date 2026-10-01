@@ -1,8 +1,9 @@
+import type { TranslatedProducerProtocol } from "@vibe-llm/protocols/common"
 import { chatCompletionsAttempt } from '../chat-completions/attempt.ts'
 import { messagesAttempt } from '../messages/attempt.ts'
 import { responsesAttempt } from '../responses/attempt.ts'
 
-export type HubAttemptProtocol = 'chat_completions' | 'messages' | 'responses'
+export type HubAttemptProtocol = TranslatedProducerProtocol
 
 export function pickHubAttempt(p: HubAttemptProtocol) {
   switch (p) {

@@ -27,6 +27,7 @@ import type { ResponsesPayload } from '@vibe-llm/protocols/responses'
 import {
   llmInternalErrorResult,
   type TranslatedLlmEventResult,
+  type TranslatedProducerProtocol,
   type TranslatorProtocol,
   type LlmExecuteResult,
 } from '@vibe-llm/protocols/common'
@@ -52,7 +53,7 @@ export interface TraverseTranslationArgs<HubFrame> {
   abortUpstream?: () => void
   sourcePayload: Record<string, unknown>
   sourceProtocol: TranslatorProtocol
-  hubProtocol: TranslatorProtocol
+  hubProtocol: TranslatedProducerProtocol
   translator: PairTranslator
   innerAttempt: (args: InnerAttemptArgs) => Promise<LlmExecuteResult<ProtocolFrame<HubFrame>>>
   inheritedHeaders: Record<string, string>
