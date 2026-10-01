@@ -57,6 +57,8 @@ type ChatCompletionsPayload = Record<string, unknown> & {
  * necessary — the kit needs apiKeyId for quota, attempt does not.
  */
 type ChatCompletionsServeAuth = ChatCompletionsAttemptAuth & KitAuthCtx & Pick<DataPlaneAuthCtx, 'routingPolicy'>
+type ChatCompletionsInputs = Record<string, never>
+
 type ChatCompletionsExtra = { readonly affinity?: RequestAffinity; readonly incomingModel: string; readonly upstreamPin?: string }
 
 const chatCompletionsHooks: ServeTemplateHooks<
@@ -64,7 +66,8 @@ const chatCompletionsHooks: ServeTemplateHooks<
   ChatCompletionsAttemptResult,
   ChatCompletionsExtra,
   ChatCompletionsServeAuth,
-  TelemetryRequestContext
+  TelemetryRequestContext,
+  ChatCompletionsInputs
 > = {
   endpointTag: 'chat_completions',
 

@@ -5,6 +5,7 @@
 import { describe, expect, spyOn, test } from 'bun:test'
 import {
   prepareTemplate,
+  executeTemplate,
   serveTemplate,
   withCanonicalCompletion,
   type KitCanonicalCompletion,
@@ -55,7 +56,122 @@ function defaultHooks(
   }
 }
 
-for (const cleanup of ['absent', 'throw', 'reject'] as const) test(`exception cleanup ${cleanup} preserves the original serve error`, async () => {
+test("preparation does not begin the attempt or response", async () => {
+  const calls: string[] = []
+  const prepared = await prepareTemplate(defaultHooks({
+    runAttempt: async a => {
+      calls.push("attempt")
+      return { kind: "ok", echoed: a.payload.value }
+    },
+    respond: async () => {
+      calls.push("respond")
+      return new Response("ok")
+    },
+  }), defaultInput(), defaultDeps())
+  expect(calls).toEqual([])
+  expect(prepared.kind).toBe("ready")
+})
+
+test("execution consumes readiness before the original runner settles", async () => {
+  const pending = Promise.withResolvers<AttemptResult>()
+  let attempts = 0
+  const hooks = defaultHooks({
+    async runAttempt() {
+      expect(this).toBe(hooks)
+      attempts++
+      return pending.promise
+    },
+  })
+  const prepared = await prepareTemplate(hooks, defaultInput(), defaultDeps())
+  if (prepared.kind !== "ready") throw new Error("Expected prepared readiness")
+  // Readiness binds the original runner even if the caller later replaces it.
+  hooks.runAttempt = async () => { throw new Error("replacement runner") }
+  const executing = executeTemplate(prepared)
+  expect(attempts).toBe(1)
+  await expect(executeTemplate(prepared)).rejects.toThrow("already been consumed")
+  expect(attempts).toBe(1)
+  const result: AttemptResult = { kind: "ok", echoed: 3 }
+  pending.resolve(result)
+  expect((await executing).result).toBe(result)
+  await expect(executeTemplate(prepared)).rejects.toThrow("already been consumed")
+  expect(attempts).toBe(1)
+})
+
+test("rejected execution preserves the original error and remains consumed", async () => {
+  const original = { cause: "attempt failure" }
+  let attempts = 0
+  const prepared = await prepareTemplate(defaultHooks({
+    runAttempt: async () => {
+      attempts++
+      throw original
+    },
+  }), defaultInput(), defaultDeps())
+  if (prepared.kind !== "ready") throw new Error("Expected prepared readiness")
+  expect(await executeTemplate(prepared).catch(error => error as unknown)).toBe(original)
+  await expect(executeTemplate(prepared)).rejects.toThrow("already been consumed")
+  expect(attempts).toBe(1)
+})
+
+test("the typed handoff preserves prepared references and request start time", async () => {
+  type Inputs = { readonly marker: { readonly source: string } }
+  type PreparedExtra = { readonly tag: string }
+  const payload: Payload = { value: 7 }
+  const extra: PreparedExtra = { tag: "prepared" }
+  const auth: Auth = { apiKeyId: "key", userId: "owner" }
+  const telemetry: TCtx = { tag: "identity", isStreaming: true }
+  const inputs: Inputs = { marker: { source: "endpoint" } }
+  const controller = new AbortController()
+  const dump = { requestedModel() {}, finalize: (response: Response) => response }
+  let startedAt: number | undefined
+  let observed: unknown
+  const hooks: ServeTemplateHooks<Payload, AttemptResult, PreparedExtra, Auth, TCtx, Inputs> = {
+    endpointTag: "identity",
+    parse: () => ({ value: 1 }),
+    preProcess: async (_payload, ctx) => {
+      expect(ctx.auth).toBe(auth)
+      expect(ctx.extras).toBe(inputs)
+      return { kind: "continue", payload, extra }
+    },
+    wantsStream: () => true,
+    runAttempt: async args => {
+      expect(args.payload).toBe(payload)
+      expect(args.extra).toBe(extra)
+      expect(args.auth).toBe(auth)
+      expect(args.telemetryCtx).toBe(telemetry)
+      expect(args.extras).toBe(inputs)
+      expect(args.dump).toBe(dump)
+      expect(args.downstreamAbortSignal).toBe(controller.signal)
+      if (startedAt === undefined) throw new Error("Expected preparation timestamp")
+      expect(args.requestStartedAt).toBe(startedAt)
+      observed = args
+      return { kind: "ok", echoed: args.payload.value }
+    },
+    respond: async () => { throw new Error("Explicit execution must not respond") },
+  }
+  const prepared = await prepareTemplate(hooks, {
+    ...defaultInput(), auth, extras: inputs, dump, downstreamAbortController: controller,
+  }, defaultDeps({ buildTelemetryCtx: args => {
+    expect(args.auth).toBe(auth)
+    expect(args.payload).toBe(payload)
+    expect(args.extra).toBe(extra)
+    startedAt = args.requestStartedAt
+    return telemetry
+  } }))
+  expect(observed).toBeUndefined()
+  if (prepared.kind !== "ready") throw new Error("Expected prepared readiness")
+  const executed = await executeTemplate(prepared)
+  expect(observed).toBeDefined()
+  expect(executed.context).toBe(prepared.context)
+  expect(executed.context.payload).toBe(payload)
+  expect(executed.context.extra).toBe(extra)
+  expect(executed.context.extras).toBe(inputs)
+  expect(executed.context.telemetryCtx).toBe(telemetry)
+  expect(executed.context.downstreamAbortController).toBe(controller)
+  expect(executed.extra).toBe(extra)
+})
+
+for (const exit of ['attempt', 'respond'] as const)
+for (const cleanup of ['absent', 'throw', 'reject'] as const) test(`exception cleanup ${cleanup} preserves the original ${exit} error`, async () => {
   const original = new Error('request failed')
   const dump = {
     requestedModel() {}, finalize: (response: Response) => response,
@@ -64,7 +180,9 @@ for (const cleanup of ['absent', 'throw', 'reject'] as const) test(`exception cl
       return Promise.reject(new Error('cleanup failed'))
     } }),
   }
-  const serving = serveTemplate(defaultHooks({ respond: async () => { throw original } }), defaultInput({ dump }), defaultDeps())
+  const serving = serveTemplate(defaultHooks(exit === 'attempt'
+    ? { runAttempt: async () => { throw original } }
+    : { respond: async () => { throw original } }), defaultInput({ dump }), defaultDeps())
   expect(await serving.catch(error => error as unknown)).toBe(original)
 })
 
@@ -373,6 +491,40 @@ describe('serveTemplate — quota-gate short-circuit', () => {
 })
 
 describe('serveTemplate — AbortController linking', () => {
+  test("preparation adds no inbound link and between-stage abort reaches execution unchanged", async () => {
+    const inbound = new AbortController()
+    const listener = spyOn(inbound.signal, "addEventListener")
+    const reason = { cause: "cancelled between stages" }
+    let attemptSignal: AbortSignal | undefined
+    try {
+      const prepared = await prepareTemplate(defaultHooks({
+        runAttempt: async args => {
+          attemptSignal = args.downstreamAbortSignal
+          return { kind: "ok", echoed: args.payload.value }
+        },
+      }), defaultInput({ signal: inbound.signal }), defaultDeps())
+      if (prepared.kind !== "ready") throw new Error("Expected prepared readiness")
+      expect(listener).not.toHaveBeenCalled()
+      expect(prepared.context.downstreamAbortController.signal.aborted).toBe(false)
+      inbound.abort(reason)
+      expect(prepared.context.downstreamAbortController.signal.aborted).toBe(false)
+      await executeTemplate(prepared)
+      expect(attemptSignal?.aborted).toBe(true)
+      expect(attemptSignal?.reason).toBe(reason)
+    } finally { listener.mockRestore() }
+  })
+
+  test("execution keeps the inbound link effective after the attempt returns", async () => {
+    const inbound = new AbortController()
+    const reason = { cause: "stream disconnected" }
+    const prepared = await prepareTemplate(defaultHooks(), defaultInput({ signal: inbound.signal }), defaultDeps())
+    if (prepared.kind !== "ready") throw new Error("Expected prepared readiness")
+    const executed = await executeTemplate(prepared)
+    inbound.abort(reason)
+    expect(executed.context.downstreamAbortController.signal.aborted).toBe(true)
+    expect(executed.context.downstreamAbortController.signal.reason).toBe(reason)
+  })
+
   test("preparation reuses the supplied controller without linking its own signal", async () => {
     const controller = new AbortController()
     const listener = spyOn(controller.signal, "addEventListener")
@@ -384,10 +536,13 @@ describe('serveTemplate — AbortController linking', () => {
           return { kind: "ok", echoed: a.payload.value }
         },
       }), defaultInput({ signal: controller.signal, downstreamAbortController: controller }), defaultDeps())
-      expect(attemptSignal).toBe(controller.signal)
-      expect(prepared.kind).toBe("attempt")
-      if (prepared.kind !== "attempt") throw new Error("Expected prepared attempt")
+      expect(attemptSignal).toBeUndefined()
+      expect(prepared.kind).toBe("ready")
+      if (prepared.kind !== "ready") throw new Error("Expected prepared readiness")
       expect(prepared.context.downstreamAbortController).toBe(controller)
+      expect(listener).not.toHaveBeenCalled()
+      await executeTemplate(prepared)
+      expect(attemptSignal).toBe(controller.signal)
       expect(listener).not.toHaveBeenCalled()
     } finally { listener.mockRestore() }
   })
@@ -403,9 +558,11 @@ describe('serveTemplate — AbortController linking', () => {
         return { kind: "ok", echoed: a.payload.value }
       },
     }), defaultInput({ signal: controller.signal, downstreamAbortController: controller }), defaultDeps())
-    expect(attemptReason).toBe(reason)
-    if (prepared.kind !== "attempt") throw new Error("Expected prepared attempt")
+    expect(attemptReason).toBeUndefined()
+    if (prepared.kind !== "ready") throw new Error("Expected prepared readiness")
     expect(prepared.context.downstreamAbortController).toBe(controller)
+    await executeTemplate(prepared)
+    expect(attemptReason).toBe(reason)
   })
 
   for (const beforePreparation of [false, true]) {
@@ -421,10 +578,11 @@ describe('serveTemplate — AbortController linking', () => {
           return { kind: "ok", echoed: a.payload.value }
         },
       }), defaultInput({ signal: inbound.signal }), defaultDeps())
+      if (prepared.kind !== "ready") throw new Error("Expected prepared readiness")
+      await executeTemplate(prepared)
       expect(attemptSignal).not.toBe(inbound.signal)
       expect(attemptSignal?.aborted).toBe(true)
       expect(attemptSignal?.reason).toBe(reason)
-      if (prepared.kind !== "attempt") throw new Error("Expected prepared attempt")
       if (!attemptSignal) throw new Error("Expected attempt cancellation signal")
       expect(prepared.context.downstreamAbortController.signal).toBe(attemptSignal)
     })

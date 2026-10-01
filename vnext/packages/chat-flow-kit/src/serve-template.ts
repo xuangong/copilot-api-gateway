@@ -68,16 +68,15 @@ export function withDumpExceptionCleanup<T>(
   })()
 }
 
-export interface ServeTemplateInput<TAuth extends KitAuthCtx = KitAuthCtx> {
+export interface ServeTemplateInput<TAuth extends KitAuthCtx = KitAuthCtx, TInputs = Record<string, unknown>> {
   readonly raw: unknown
   readonly auth: TAuth
   readonly obsCtx: KitObsCtx
   readonly signal?: AbortSignal
   /** Optional endpoint-owned cancellation controller; avoids a second link. */
   readonly downstreamAbortController?: AbortController
-  /** Catch-all bag for endpoint-specific side inputs (e.g. URL-derived
-   *  model name + verb, or per-request passthrough fields). Opaque to the kit. */
-  readonly extras: Record<string, unknown>
+  /** Typed endpoint-specific side inputs, opaque to the kit. */
+  readonly extras: TInputs
   /** Opaque request-dump sink. When present, the kit calls
    *  `requestedModel` after `parse` and `finalize` with an optional canonical
    *  completion on the returned Response. Null when
@@ -85,10 +84,10 @@ export interface ServeTemplateInput<TAuth extends KitAuthCtx = KitAuthCtx> {
   readonly dump?: KitDumpSink | null
 }
 
-export interface PreProcessCtx<TAuth extends KitAuthCtx = KitAuthCtx> {
+export interface PreProcessCtx<TAuth extends KitAuthCtx = KitAuthCtx, TInputs = Record<string, unknown>> {
   readonly auth: TAuth
   /** Endpoint-owned input side data. Opaque to the kit, such as URL-derived model names. */
-  readonly extras: Record<string, unknown>
+  readonly extras: TInputs
 }
 
 /** preProcess returns one of two shapes: continue with a (possibly mutated)
@@ -101,7 +100,7 @@ export type PreProcessResult<TPayload, TExtra> =
   | { kind: 'continue'; payload: TPayload; extra: TExtra }
   | { kind: 'short-circuit'; response: Response; extra: TExtra }
 
-export interface RunAttemptArgs<TPayload, TExtra, TAuth, TTelemetryCtx> {
+export interface RunAttemptArgs<TPayload, TExtra, TAuth, TTelemetryCtx, TInputs = Record<string, unknown>> {
   readonly dump?: KitDumpSink | null
   readonly payload: TPayload
   /** Endpoint-specific data returned by preProcess. This carries routing data
@@ -111,16 +110,16 @@ export interface RunAttemptArgs<TPayload, TExtra, TAuth, TTelemetryCtx> {
   readonly telemetryCtx: TTelemetryCtx
   readonly downstreamAbortSignal: AbortSignal
   readonly requestStartedAt: number
-  readonly extras: Record<string, unknown>
+  readonly extras: TInputs
 }
 
-export interface RespondCtx<TPayload, TExtra, TTelemetryCtx> {
+export interface RespondCtx<TPayload, TExtra, TTelemetryCtx, TInputs = Record<string, unknown>> {
   readonly payload: TPayload
-  readonly extra: TExtra
+  readonly extra: TExtra | undefined
   readonly wantsStream: boolean
   readonly downstreamAbortController: AbortController
   readonly telemetryCtx: TTelemetryCtx
-  readonly extras: Record<string, unknown>
+  readonly extras: TInputs
   /** Opaque dump sink threaded from `ServeTemplateInput.dump`. Respond
    *  hooks cast this to the concrete accumulator type they imported and
    *  call `frame`/`success`/`error`/`recordSentPayloadBytes` in-flight. */
@@ -133,34 +132,35 @@ export interface ServeTemplateHooks<
   TExtra = undefined,
   TAuth extends KitAuthCtx = KitAuthCtx,
   TTelemetryCtx = unknown,
+  TInputs = Record<string, unknown>,
 > {
   /** Caller-supplied tag. Opaque to the kit; only `deps.buildTelemetryCtx`
    *  receives it. Keeps the purity gate intact (no LLM literals in the kit). */
   readonly endpointTag: string
 
-  parse(input: ServeTemplateInput<TAuth>): Promise<TPayload> | TPayload
+  parse(input: ServeTemplateInput<TAuth, TInputs>): Promise<TPayload> | TPayload
 
   /** Optional: extract the requested model id from the parsed payload so
    *  the kit can stamp it onto the dump sink immediately after `parse`.
    *  Endpoints that carry the model in the URL (Gemini) or on a different
    *  field can override; default (unspecified) is to read `.model`. */
-  extractRequestedModel?(payload: TPayload, input: ServeTemplateInput<TAuth>): string | undefined
+  extractRequestedModel?(payload: TPayload, input: ServeTemplateInput<TAuth, TInputs>): string | undefined
 
   /** Optional renderer for parse() failures. Default: `deps.jsonErrorWrap`. */
   parseErrorRender?(err: Error & { status?: number; body?: unknown }): Response
 
   preProcess?(
     payload: TPayload,
-    ctx: PreProcessCtx<TAuth>,
+    ctx: PreProcessCtx<TAuth, TInputs>,
   ): Promise<PreProcessResult<TPayload, TExtra>>
 
-  wantsStream(payload: TPayload, input: ServeTemplateInput<TAuth>): boolean
+  wantsStream(payload: TPayload, input: ServeTemplateInput<TAuth, TInputs>): boolean
 
-  runAttempt(args: RunAttemptArgs<TPayload, TExtra, TAuth, TTelemetryCtx>): Promise<TAttemptResult>
+  runAttempt(args: RunAttemptArgs<TPayload, TExtra, TAuth, TTelemetryCtx, TInputs>): Promise<TAttemptResult>
 
   respond(
     result: TAttemptResult,
-    ctx: RespondCtx<TPayload, TExtra, TTelemetryCtx>,
+    ctx: RespondCtx<TPayload, TExtra, TTelemetryCtx, TInputs>,
   ): Promise<Response>
 }
 
@@ -190,9 +190,55 @@ export interface ServeTemplateResult<TExtra> {
   readonly extra: TExtra | undefined
 }
 
-export type PrepareTemplateResult<TPayload, TAttemptResult, TExtra = undefined, TTelemetryCtx = unknown> =
+const executionCapability = Symbol("prepared execution")
+
+export interface ExecuteTemplateResult<TPayload, TAttemptResult, TExtra = undefined, TTelemetryCtx = unknown, TInputs = Record<string, unknown>> {
+  readonly result: TAttemptResult
+  readonly context: RespondCtx<TPayload, TExtra, TTelemetryCtx, TInputs>
+  readonly extra: TExtra | undefined
+}
+
+export interface ReadyTemplateResult<TPayload, TAttemptResult, TExtra = undefined, TTelemetryCtx = unknown, TInputs = Record<string, unknown>> {
+  readonly kind: 'ready'
+  readonly context: RespondCtx<TPayload, TExtra, TTelemetryCtx, TInputs>
+  readonly extra: TExtra | undefined
+  readonly [executionCapability]: () => Promise<ExecuteTemplateResult<TPayload, TAttemptResult, TExtra, TTelemetryCtx, TInputs>>
+}
+
+export type PrepareTemplateResult<TPayload, TAttemptResult, TExtra = undefined, TTelemetryCtx = unknown, TInputs = Record<string, unknown>> =
   | { readonly kind: 'response'; readonly response: Response; readonly extra: TExtra | undefined }
-  | { readonly kind: 'attempt'; readonly result: TAttemptResult; readonly context: RespondCtx<TPayload, TExtra, TTelemetryCtx>; readonly extra: TExtra | undefined }
+  | ReadyTemplateResult<TPayload, TAttemptResult, TExtra, TTelemetryCtx, TInputs>
+
+// Keep the ready handoff independent of raw input and preparation dependencies.
+function createReadyTemplate<TPayload, TAttemptResult, TExtra, TAuth, TTelemetryCtx, TInputs>(
+  runner: (args: RunAttemptArgs<TPayload, TExtra, TAuth, TTelemetryCtx, TInputs>) => Promise<TAttemptResult>,
+  args: RunAttemptArgs<TPayload, TExtra, TAuth, TTelemetryCtx, TInputs>,
+  context: RespondCtx<TPayload, TExtra, TTelemetryCtx, TInputs>,
+  signal: AbortSignal | undefined,
+): ReadyTemplateResult<TPayload, TAttemptResult, TExtra, TTelemetryCtx, TInputs> {
+  let pendingRunner: typeof runner | undefined = runner
+  return {
+    kind: 'ready', context, extra: context.extra,
+    [executionCapability]: async () => {
+      const run = pendingRunner
+      if (!run) throw new Error('Prepared execution has already been consumed')
+      pendingRunner = undefined
+      const controller = context.downstreamAbortController
+      if (signal && signal !== controller.signal) {
+        if (signal.aborted) controller.abort(signal.reason)
+        else signal.addEventListener('abort', () => controller.abort(signal.reason), { once: true })
+      }
+      const result = await run(args)
+      return { result, context, extra: context.extra }
+    },
+  }
+}
+
+export function executeTemplate<TPayload, TAttemptResult, TExtra = undefined, TTelemetryCtx = unknown, TInputs = Record<string, unknown>>(
+  ready: ReadyTemplateResult<TPayload, TAttemptResult, TExtra, TTelemetryCtx, TInputs>,
+): Promise<ExecuteTemplateResult<TPayload, TAttemptResult, TExtra, TTelemetryCtx, TInputs>> {
+  return ready[executionCapability]()
+}
 
 export async function prepareTemplate<
   TPayload,
@@ -200,11 +246,12 @@ export async function prepareTemplate<
   TExtra = undefined,
   TAuth extends KitAuthCtx = KitAuthCtx,
   TTelemetryCtx = unknown,
+  TInputs = Record<string, unknown>,
 >(
-  hooks: ServeTemplateHooks<TPayload, TAttemptResult, TExtra, TAuth, TTelemetryCtx>,
-  input: ServeTemplateInput<TAuth>,
+  hooks: ServeTemplateHooks<TPayload, TAttemptResult, TExtra, TAuth, TTelemetryCtx, TInputs>,
+  input: ServeTemplateInput<TAuth, TInputs>,
   deps: ServeTemplateDeps<TAuth, TTelemetryCtx, TPayload, TExtra>,
-): Promise<PrepareTemplateResult<TPayload, TAttemptResult, TExtra, TTelemetryCtx>> {
+): Promise<PrepareTemplateResult<TPayload, TAttemptResult, TExtra, TTelemetryCtx, TInputs>> {
   const requestStartedAt = Date.now()
 
   // 1. Parse.
@@ -266,16 +313,12 @@ export async function prepareTemplate<
   const quotaResp = await deps.runQuotaGate(input.auth.apiKeyId)
   if (quotaResp) return { kind: 'response', response: quotaResp, extra }
 
-  // 6. Linked AbortController.
   const controller = input.downstreamAbortController ?? new AbortController()
-  const signal = input.signal
-  if (signal && signal !== controller.signal) {
-    if (signal.aborted) controller.abort(signal.reason)
-    else signal.addEventListener('abort', () => controller.abort(signal.reason), { once: true })
+  const context: RespondCtx<TPayload, TExtra, TTelemetryCtx, TInputs> = {
+    payload, extra, wantsStream, downstreamAbortController: controller,
+    telemetryCtx, extras: input.extras, dump: input.dump ?? null,
   }
-
-  // 7. runAttempt.
-  const result = await hooks.runAttempt({
+  return createReadyTemplate(hooks.runAttempt.bind(hooks), {
     dump: input.dump ?? null,
     payload,
     extra,
@@ -284,22 +327,22 @@ export async function prepareTemplate<
     downstreamAbortSignal: controller.signal,
     requestStartedAt,
     extras: input.extras,
-  })
-
-  return { kind: 'attempt', result, extra, context: {
-    payload, extra: extra as TExtra, wantsStream, downstreamAbortController: controller,
-    telemetryCtx, extras: input.extras, dump: input.dump ?? null,
-  } }
+  }, context, input.signal)
 }
 
-export async function serveTemplate<TPayload, TAttemptResult, TExtra = undefined, TAuth extends KitAuthCtx = KitAuthCtx, TTelemetryCtx = unknown>(
-  hooks: ServeTemplateHooks<TPayload, TAttemptResult, TExtra, TAuth, TTelemetryCtx>,
-  input: ServeTemplateInput<TAuth>,
+export async function serveTemplate<TPayload, TAttemptResult, TExtra = undefined, TAuth extends KitAuthCtx = KitAuthCtx, TTelemetryCtx = unknown, TInputs = Record<string, unknown>>(
+  hooks: ServeTemplateHooks<TPayload, TAttemptResult, TExtra, TAuth, TTelemetryCtx, TInputs>,
+  input: ServeTemplateInput<TAuth, TInputs>,
   deps: ServeTemplateDeps<TAuth, TTelemetryCtx, TPayload, TExtra>,
 ): Promise<ServeTemplateResult<TExtra>> {
   return withDumpExceptionCleanup(input.dump, async () => {
     const prepared = await prepareTemplate(hooks, input, deps)
-    const response = prepared.kind === 'response' ? prepared.response : await hooks.respond(prepared.result, prepared.context)
+    let response: Response
+    if (prepared.kind === 'response') response = prepared.response
+    else {
+      const executed = await executeTemplate(prepared)
+      response = await hooks.respond(executed.result, executed.context)
+    }
     const completion = canonicalResponses.get(response)
     canonicalResponses.delete(response)
     return { response: input.dump ? input.dump.finalize(response, completion) : response, extra: prepared.extra }

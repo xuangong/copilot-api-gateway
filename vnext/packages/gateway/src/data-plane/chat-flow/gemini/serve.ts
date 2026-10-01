@@ -58,6 +58,8 @@ export interface GeminiServeArgs {
 type GeminiPayload = Record<string, unknown> & { stream?: boolean }
 
 type GeminiServeAuth = GeminiAttemptAuth & KitAuthCtx & Pick<DataPlaneAuthCtx, 'routingPolicy'>
+type GeminiInputs = { readonly requestedModel: string; readonly forceStream: boolean }
+
 type GeminiExtra = { readonly affinity?: RequestAffinity; readonly incomingModel: string; readonly routedModel: string; readonly upstreamPin?: string }
 
 const geminiHooks: ServeTemplateHooks<
@@ -65,7 +67,8 @@ const geminiHooks: ServeTemplateHooks<
   GeminiAttemptResult,
   GeminiExtra,
   GeminiServeAuth,
-  TelemetryRequestContext
+  TelemetryRequestContext,
+  GeminiInputs
 > = {
   endpointTag: 'gemini',
 
@@ -107,7 +110,7 @@ const geminiHooks: ServeTemplateHooks<
 
   // Model is URL-derived (path param), not in the body. Keep the normalized
   // source separately so the dump always records what the caller requested.
-  extractRequestedModel: (_p, input) => input.extras.requestedModel as string | undefined,
+  extractRequestedModel: (_p, input) => input.extras.requestedModel,
 
   runAttempt: (a) => {
     const extra = a.extra

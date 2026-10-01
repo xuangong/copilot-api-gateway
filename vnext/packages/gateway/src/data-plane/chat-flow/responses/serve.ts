@@ -7,11 +7,10 @@ import { PerformanceRecorder } from "../../observability/performance-recorder"
 /**
  * /v1/responses HTTP serve layer (Spec 10 — chat-flow convergence).
  *
- * Migrated to the framework kit (@vibe-core/chat-flow-kit). The legacy
- * inline pipeline (parse → expandPreviousResponseId → telemetry → quota →
- * controller → attempt → respond) now flows through `serveTemplate(...)`;
- * this file declares the hooks, shapes auth, and maps the kit result back
- * to the existing `ResponsesServeResult` shape.
+ * The framework kit (@vibe-core/chat-flow-kit) separates preparation from
+ * execution. The existing Responses turn
+ * callback prepares and executes once, then owns delivery and completion.
+ * This file declares the hooks and shapes auth for that handoff.
  *
  * Why preProcess? Responses must expand `previous_response_id` against the
  * responses store BEFORE binding selection (the upstream payload includes
@@ -37,6 +36,7 @@ import { PerformanceRecorder } from "../../observability/performance-recorder"
  */
 import {
   prepareTemplate,
+  executeTemplate,
   type KitAuthCtx,
   type KitDumpSink,
   type KitObsCtx,
@@ -116,14 +116,19 @@ type ResponsesServeAuth = ResponsesAttemptAuth & KitAuthCtx & Pick<DataPlaneAuth
 
 type ResponsesExtra = { readonly affinity?: RequestAffinity; readonly mergedInputItems?: unknown[]; readonly incomingModel: string; readonly upstreamPin?: string; readonly onCompleted?: ResponsesCompletionWriter }
 
-type ResponsesPreparation = PrepareTemplateResult<ResponsesPayload, ResponsesAttemptResult, ResponsesExtra, TelemetryRequestContext>
+type ResponsesInputs = Pick<ResponsesServeArgs,
+  'localContinuation' | 'retainInputHistory' | 'warmup' | 'onPrepared' | 'requestId' | 'userAgent' | 'action'
+> & { readonly abortUpstream?: () => void }
+
+type ResponsesPreparation = PrepareTemplateResult<ResponsesPayload, ResponsesAttemptResult, ResponsesExtra, TelemetryRequestContext, ResponsesInputs>
 
 const responsesHooks: ServeTemplateHooks<
   ResponsesPayload,
   ResponsesAttemptResult,
   ResponsesExtra,
   ResponsesServeAuth,
-  TelemetryRequestContext
+  TelemetryRequestContext,
+  ResponsesInputs
 > = {
   endpointTag: 'responses',
 
@@ -150,7 +155,7 @@ const responsesHooks: ServeTemplateHooks<
     // payload.input so the snapshot writer persists the full input
     // history for the next turn.
     try {
-      const resolver = ctx.extras.localContinuation as ResponsesLocalContinuationResolver | undefined
+      const resolver = ctx.extras.localContinuation
       const local = payload.previous_response_id ? resolver?.resolve(payload.previous_response_id) : undefined
       const store = getResponsesStore()
       if (local) {
@@ -175,7 +180,7 @@ const responsesHooks: ServeTemplateHooks<
         : undefined
       const inputItems = Array.isArray(expanded) ? expanded : []
       const mergedInputItems = onCompleted ? structuredClone(inputItems) : ctx.extras.retainInputHistory ? inputItems : undefined
-      const onPrepared = ctx.extras.onPrepared as ResponsesServeArgs["onPrepared"]
+      const onPrepared = ctx.extras.onPrepared
       onPrepared?.(payload, compactTriggered)
       const resolved = resolveKeyModel(payload.model, ctx.auth.routingPolicy)
       const affinity = await createRequestAffinity("responses", { ...payload, model: resolved.routedModel }, ctx.auth)
@@ -211,18 +216,18 @@ const responsesHooks: ServeTemplateHooks<
 
   wantsStream: (p, input) =>
     // Compact wire is synchronous: force JSON regardless of caller's `stream`.
-    (input.extras.action as 'generate' | 'compact' | undefined) === 'compact' ? false : p.stream === true,
+    input.extras.action === 'compact' ? false : p.stream === true,
 
   runAttempt: (a) => (a.extras.warmup ? validateResponsesAttempt : responsesAttempt.generate)({
     payload: a.payload,
     affinity: a.extra?.affinity,
     auth: a.extra?.upstreamPin ? { ...a.auth, pin: a.extra.upstreamPin } : a.auth,
-    ctx: { requestStartedAt: a.requestStartedAt, downstreamAbortSignal: a.downstreamAbortSignal, apiKeyId: a.auth.apiKeyId, abortUpstream: a.extras.abortUpstream as (() => void) | undefined },
+    ctx: { requestStartedAt: a.requestStartedAt, downstreamAbortSignal: a.downstreamAbortSignal, apiKeyId: a.auth.apiKeyId, abortUpstream: a.extras.abortUpstream },
     dump: a.dump as DumpAccumulator | null,
     telemetryCtx: a.telemetryCtx,
-    requestId: a.extras.requestId as string,
-    userAgent: a.extras.userAgent as string,
-    action: a.extras.action as 'generate' | 'compact' | undefined,
+    requestId: a.extras.requestId,
+    userAgent: a.extras.userAgent,
+    action: a.extras.action,
   }),
 
   respond: (r, c) => respondResponses(r, {
@@ -254,8 +259,9 @@ export function startResponsesTurn(args: ResponsesServeArgs): ResponsesTurn {
   const turn = createResponsesTurn(async () => {
     const prepared = await prepareResponses(args, upstreamAbortController)
     if (prepared.kind === "response") return { result: { kind: "bridged-response" as const, response: prepared.response }, options: common }
-    const c = prepared.context
-    return { result: prepared.result, options: { ...common, affinity: c.extra?.affinity?.execution, onCompleted: c.extra?.onCompleted, mergedInputItems: c.extra?.mergedInputItems, telemetryCtx: warmup ? undefined : c.telemetryCtx } }
+    const executed = await executeTemplate(prepared)
+    const c = executed.context
+    return { result: executed.result, options: { ...common, affinity: c.extra?.affinity?.execution, onCompleted: c.extra?.onCompleted, mergedInputItems: c.extra?.mergedInputItems, telemetryCtx: warmup ? undefined : c.telemetryCtx } }
   }, common)
   void turn.completion.finally(unlinkAbort)
   return turn
@@ -280,8 +286,8 @@ async function prepareResponses(args: ResponsesServeArgs, upstreamAbortControlle
       // requestId / userAgent ride through extras so the image-gen
       // shortcut inside responsesAttempt can stamp them on upstream
       // image calls. They were dedicated args on the old serve; the
-      // kit's RunAttemptArgs only standardises payload/auth/telemetry,
-      // so per-endpoint passthroughs live in `extras`.
+      // kit's typed side-input contract keeps these request-local values
+      // separate from auth and preparation output.
       extras: { retainInputHistory: args.retainInputHistory !== false, localContinuation: args.localContinuation, warmup: args.warmup, onPrepared: args.onPrepared, requestId: args.requestId, userAgent: args.userAgent, action: args.action, abortUpstream: () => upstreamAbortController.abort() },
       dump: args.dump ?? null,
     },

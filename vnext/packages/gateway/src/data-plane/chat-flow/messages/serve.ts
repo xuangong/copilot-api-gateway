@@ -56,6 +56,8 @@ export interface MessagesServeArgs {
 type MessagesPayload = Record<string, unknown> & { model: string; stream?: boolean }
 
 type MessagesServeAuth = MessagesAttemptAuth & KitAuthCtx & Pick<DataPlaneAuthCtx, 'routingPolicy'>
+type MessagesInputs = Pick<MessagesServeArgs, 'inboundHeaders'>
+
 type MessagesExtra = { readonly affinity?: RequestAffinity; readonly incomingModel: string; readonly upstreamPin?: string }
 
 const messagesHooks: ServeTemplateHooks<
@@ -63,7 +65,8 @@ const messagesHooks: ServeTemplateHooks<
   MessagesAttemptResult,
   MessagesExtra,
   MessagesServeAuth,
-  TelemetryRequestContext
+  TelemetryRequestContext,
+  MessagesInputs
 > = {
   endpointTag: 'messages',
 
@@ -110,7 +113,7 @@ const messagesHooks: ServeTemplateHooks<
     telemetryCtx: a.telemetryCtx,
     // `extras` is the kit's only per-request passthrough slot; the hooks object
     // is module-level and so cannot close over serveMessages' args.
-    inboundHeaders: (a.extras as { inboundHeaders?: Headers }).inboundHeaders,
+    inboundHeaders: a.extras.inboundHeaders,
   }),
 
   respond: (r, c) => respondMessages(r, {
