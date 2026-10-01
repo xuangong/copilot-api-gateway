@@ -65,15 +65,15 @@
 
 **Interfaces:** Generic subscribe stays compatible. Bounded capability returns iterable plus synchronous terminal-state access/cancel. Queue 100 frames/256 KiB; frame 16 KiB; charge 2*encoded.length+128. Retain encoded strings with bounded-path lazy decoding. Overflow reasons queue_count/queue_bytes/frame_bytes, latch once, clear queued payloads/detach, reject next once then done. Route permits 4 per key/16 total, no wait queue, 429 Retry-After 5 before subscription/list. Keep permits until real started SQL/writer settlement.
 
-- [ ] RED broker and route cases for exact boundaries, pending-reader oversize, overflow before first pull/during SQL/blocked writes/post-await delivery, abort and graceful drain, reentrant codec, permit saturation and late-settlement retirement.
-- [ ] Implement bounded capability and production route use including legacy URLs. Keep raw abort immediate and subscribe-before-snapshot. No concurrent overflow write or unhandled pending-read rejection.
-- [ ] Add `?view=latest-v1`: bounded newest-fitting snapshot with view latest/limit 100/omittedRows/completeHistory false, and reconciliation_required {reason,recovery:latest_snapshot,completeHistory:false}; legacy event shapes stay intact and overflow closes. Correct stale cross-isolate replay claims.
-- [ ] Update dashboard to opt in, persist best-effort/continuity warning separately from network error, close explicit-overflow source and offer Refresh latest. Refresh starts a new generation, resets list/cursor using latest snapshot, ignores stale callbacks. Keep existing older browsing. No background polling or claim of complete recovery; browser accumulated history remains a documented gap.
-- [ ] Verify ordinary snapshot→appended ordering, auth failures, storage-before-notification, explicit overflow and missing-terminal disconnect behavior; test state transitions outside React hooks and render scope/refresh affordance. Focused suites/types/purity/scoped lint/protection. Commit source/tests and report.
+- [x] RED broker and route cases for exact boundaries, pending-reader oversize, overflow before first pull/during SQL/blocked writes/post-await delivery, abort and graceful drain, reentrant codec, permit saturation and late-settlement retirement.
+- [x] Implement bounded capability and production route use including legacy URLs. Keep raw abort immediate and subscribe-before-snapshot. No concurrent overflow write or unhandled pending-read rejection.
+- [x] Add `?view=latest-v1`: bounded newest-fitting snapshot with view latest/limit 100/omittedRows/completeHistory false plus SQL-page before/hasMore (including all-omitted pages), and reconciliation_required {reason,recovery:latest_snapshot,completeHistory:false}; legacy event shapes stay intact and overflow closes. Correct stale cross-isolate replay claims.
+- [x] Update dashboard to opt in, persist best-effort/continuity warning separately from network error, close explicit-overflow source and offer Refresh latest. Refresh starts a new generation, resets list/cursor using latest snapshot, ignores stale callbacks. Keep existing older browsing. No background polling or claim of complete recovery; browser accumulated history remains a documented gap.
+- [x] Verify ordinary snapshot→appended ordering, auth failures, storage-before-notification, explicit overflow and missing-terminal disconnect behavior; test state transitions outside React hooks and render scope/refresh affordance. Focused suites/types/purity/scoped lint/protection. Commit source/tests and report.
 
 ## Qualification and integration
 
-- [ ] Complete each implementation and independent task review, marking checked items after accepted evidence.
+- [x] Complete each implementation and independent task review, marking checked items after accepted evidence.
 - [ ] Complete whole-increment review and resolve findings.
 - [ ] Freeze a new artifact including protected overlays; run one complete `SETUP_TEST_CODEX=/Users/zhangxian/.local/bin/codex bun run ci:local`.
 - [ ] Fast-forward local vNext, verifying source identity, protection inventories, empty indexes and fixture identity.
