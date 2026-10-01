@@ -2,6 +2,8 @@
 
 Started: 2026-09-30. Implementation closeout: 2026-10-01. Implementation baseline: local `vNext` `57501ed3` plus the separately preserved collaboration overlay. This record follows the [implementation plan](../../plans/2026-09-30-subsystem-contract-refactors.md) and [quality attribute design](../../specs/2026-09-30-vnext-quality-attribute-architecture.md).
 
+Follow-on work: [reference-led request stage contracts](../../specs/2026-10-01-reference-led-stage-contracts.md) records the reference project's concrete strengths and the next preparation/execution boundary. This earlier batch named the preparation result union; separating preparation from inference is a subsequent deliverable tracked in the [request stage plan](../../plans/2026-10-01-request-stage-contracts.md).
+
 ## Architectural direction
 
 Keep the modular monolith. Strengthen the boundaries that carry authority, state lifetime and completion semantics rather than introduce more services or packages. Shared configuration supplies only admission/routing reads; current commands and credential recovery stay explicit. Catalog retention belongs to its cache owner. Translation describes its actual producer independently of telemetry. Execution facts precede optional projection receipts, while existing compatibility completion remains the transport contract.

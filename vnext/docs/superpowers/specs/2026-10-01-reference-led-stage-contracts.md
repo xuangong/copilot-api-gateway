@@ -23,7 +23,7 @@ The reference still uses ordered interceptor arrays and shared mutable invocatio
 
 | Responsibility | Input / output contract | Owner and extension boundary |
 | --- | --- | --- |
-| Admission at the transport edge | HTTP/WS request -> authenticated request context | Existing route/auth policy owns admission. HTTP and WS policy differences remain intentional. |
+| Admission at the transport edge | HTTP/WS request -> authenticated request context | Existing route/auth policy owns admission. Existing HTTP and WS policy differences are preserved. |
 | Input preparation | Raw payload + typed endpoint inputs -> protocol payload and preparation state, or protocol-shaped response | Protocol hooks own history hydration, compaction expansion and model mapping. Preparation may do state I/O, but never starts inference. |
 | Quota and execution readiness | Prepared payload + auth -> ready execution capability, or quota response | Existing kit order remains parse -> preprocess -> stream choice -> telemetry -> quota. This batch does not relocate routing or affinity authority. |
 | Routing and execution | Ready capability -> existing attempt result | Native attempt owns descriptor selection/materialization, provider preparation and dispatch. Tool loops and allowed retry remain inside this phase. |
@@ -53,13 +53,14 @@ Add a defaulted `TInputs` generic to `ServeTemplateInput`, `PreProcessCtx`, `Run
 - Gemini: requested model and forced stream choice.
 - Chat Completions: no endpoint side inputs.
 
-Remove side-input casts from these hooks. Preserve input object identity and auth references across the handoff. The kit remains domain-neutral. Optional preprocessing means response context must honestly allow `extra` to be undefined; do not disguise this with an assertion.
+Remove side-input casts from these hooks. Preserve input object identity and auth references across the handoff. These are borrowed request-local references: callers must not mutate them between preparation and execution; a readonly container is not a deep-freeze guarantee. The kit remains domain-neutral. Optional preprocessing means response context must honestly allow `extra` to be undefined; do not disguise this with an assertion.
 
 ### Compatibility and resource constraints
 
 - Preserve parse/preprocess/quota error precedence and protocol error envelopes.
 - Preserve request start time, requested-model stamping, auth authority and telemetry attribution.
 - Keep exceptional diagnostic cleanup at the existing owner, preserving the original exception; do not move cleanup to each phase.
+- A kit-owned abort listener captures only its signal/controller cancellation state. Create it outside the ready capability's lexical scope so a retained inbound signal cannot keep prepared payload/auth/telemetry alive through that scope.
 - Preserve single-consumer streaming, native JSON, producer-domain checks, eligible affinity candidates and provider materialization policy.
 - Introduce no schema, deployment, storage semantics or retry-policy changes.
 - Reuse `.worktrees/cfw-resource-rollback-fix` and installed dependencies. Preserve unrelated worktree bytes and existing processes.
@@ -78,6 +79,7 @@ Remove side-input casts from these hooks. Preserve input object identity and aut
 - Short circuits never produce an executable capability and retain original responses and extra state.
 - Stage handoff preserves prepared payload, auth, telemetry, endpoint inputs, timestamp and cancellation identity/reason.
 - Preparation alone attaches no kit-owned inbound abort listener; execution preserves existing linking behavior.
+- A retained inbound signal does not retain the completed prepared request through the kit's own abort-listener closure. Qualify this with a focused reachability probe as well as cancellation behavior tests; do not infer whole-isolate memory limits from it.
 - Both generic serve and Responses turn use the new boundary, including warmup and compact behavior.
 - Existing source/stream/continuation and exceptional dump cleanup suites pass; affected package typechecks and final local CI pass before integration.
 

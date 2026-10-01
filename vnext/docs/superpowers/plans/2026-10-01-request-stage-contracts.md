@@ -35,7 +35,7 @@
 - `RespondCtx.extra` is `TExtra | undefined`, consistent with optional preprocessing.
 - Existing serve exports and transport results remain unchanged.
 
-- [ ] **Write and run the failing contract test before implementation.** Extend the existing fixture so merely preparing does not invoke the attempt:
+- [x] **Write and run the failing contract test before implementation.** Extend the existing fixture so merely preparing does not invoke the attempt:
 
 ```ts
 const calls: string[] = []
@@ -51,7 +51,7 @@ expect(prepared.kind).toBe("ready")
 
 Run from `vnext`: `bun test packages/chat-flow-kit/src/serve-template.test.ts`. Record the expected failure, not a missing-import error.
 
-- [ ] **Implement the boundary.** After the existing quota check, assemble the context and prepared attempt arguments without calling the runner. Create the ready capability in a helper that captures only required prepared state, avoiding retention of raw input/dependency objects. At first execution, synchronously clear/consume its runner before calling it; repeat consumption throws a clear invariant error. Install an inbound abort link only when execution begins. Preserve already-aborted reason propagation and supplied-controller reuse. No new early-abort policy.
+- [x] **Implement the boundary.** After the existing quota check, assemble the context and prepared attempt arguments without calling the runner. Create the ready capability in a helper that captures only required prepared state, avoiding retention of raw input/dependency objects. At first execution, synchronously clear/consume its runner before calling it; repeat consumption throws a clear invariant error. Install an inbound abort link only when execution begins. Preserve already-aborted reason propagation and supplied-controller reuse. No new early-abort policy.
 
 ```ts
 const prepared = await prepareTemplate(hooks, input, deps)
@@ -63,17 +63,19 @@ if (prepared.kind === "response") {
 }
 ```
 
-- [ ] **Add lifecycle and identity assertions.** Use a deferred runner to prove concurrent second execution cannot increment the attempt count. Also cover duplicate execution after success and after rejection, unchanged rejection identity, between-stage abort reason, no abort listener added by preparation, and exact payload/auth/telemetry/side-input identity. Retain short-circuit and execution/respond failure cleanup coverage.
+- [x] **Add lifecycle and identity assertions.** Use a deferred runner to prove concurrent second execution cannot increment the attempt count. Also cover duplicate execution after success and after rejection, unchanged rejection identity, between-stage abort reason, no abort listener added by preparation, and exact payload/auth/telemetry/side-input identity. Retain short-circuit and execution/respond failure cleanup coverage.
 
-- [ ] **Migrate the actual consumers and side-input contracts.** Generic serve uses prepare -> execute -> respond. Responses performs both phases inside its current turn callback. Add explicit Responses/Messages/Gemini/Chat Completions side-input types and remove their dictionary-value casts. Keep warmup, `onPrepared`, local continuation, compact stream override and inbound headers unchanged. Update obsolete comments describing preparation as already executing.
+- [x] **Migrate the actual consumers and side-input contracts.** Generic serve uses prepare -> execute -> respond. Responses performs both phases inside its current turn callback. Add explicit Responses/Messages/Gemini/Chat Completions side-input types and remove their dictionary-value casts. Keep warmup, `onPrepared`, local continuation, compact stream override and inbound headers unchanged. Update obsolete comments describing preparation as already executing.
 
-- [ ] **Run focused validation and self-review.** Run the kit test and the four protocol serve tests plus Responses turn-barrier and dump exception ownership tests. Run kit and gateway typechecks and framework purity. Review the full diff for an extra inference, a moved quota/history gate, detached diagnostics or changed JSON/SSE semantics. Do not run benchmarks.
+- [x] **Run focused validation and self-review.** Run the kit test and the four protocol serve tests plus Responses turn-barrier and dump exception ownership tests. Run kit and gateway typechecks and framework purity. Review the full diff for an extra inference, a moved quota/history gate, detached diagnostics or changed JSON/SSE semantics. Do not run benchmarks.
 
-- [ ] **Commit only scoped source/tests.** Use `refactor(vnext): separate request preparation from execution`. Write the implementation report with RED/GREEN evidence, source files, commands and results. Report any unexplained failure rather than changing unrelated behavior.
+- [x] **Commit only scoped source/tests.** Use `refactor(vnext): separate request preparation from execution`. Write the implementation report with RED/GREEN evidence, source files, commands and results. Report any unexplained failure rather than changing unrelated behavior.
 
 ## Qualification and integration
 
-- [ ] Independently review task compliance and code quality; resolve findings and check overlay hashes.
-- [ ] Run `SETUP_TEST_CODEX=/Users/zhangxian/.local/bin/codex bun run ci:local` from the isolated `vnext` on the final artifact, recording the exact source commit and overlay.
-- [ ] Complete final combined review, record qualification and finish all checkboxes supported by evidence.
-- [ ] Fast-forward local `vNext`, verify scoped file equality and preservation of the original working-tree bytes, then report the reference mechanisms adopted and remaining architecture increments.
+- [x] Independently review task compliance and code quality; resolve findings and check overlay hashes.
+- [x] Run `SETUP_TEST_CODEX=/Users/zhangxian/.local/bin/codex bun run ci:local` from the isolated `vnext` on the final artifact, recording the exact source commit and overlay.
+- [x] Complete final combined review, record qualification and finish all checkboxes supported by evidence.
+- [x] Fast-forward local `vNext`, verify scoped file equality and preservation of the original working-tree bytes, then report the reference mechanisms adopted and remaining architecture increments.
+
+Evidence: [implementation and qualification record](../research/2026-10-01-request-stage-contracts/README.md). Source commits: `9b387b4c` and `717cd86e`; the latter resolves the independent review's request-retention finding. Final local CI: 5616 pass, 1 existing skip, 0 fail, with all qualification stages passing.
