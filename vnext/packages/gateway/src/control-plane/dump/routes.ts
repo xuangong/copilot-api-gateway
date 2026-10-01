@@ -105,36 +105,55 @@ export const dumpRoutes = new Hono<{ Bindings: Env }>()
     const owned = await ownedDumpKey(c)
     if (owned instanceof Response) return owned
 
-    // Subscribe first, then read the snapshot, so anything new during the
-    // snapshot query is still delivered via the live subscription.
+    const signal = c.req.raw.signal
+    if (signal.aborted) return c.body(null)
     const controller = new AbortController()
-    const subscription = getDumpBroker().subscribe(owned, controller.signal)
-    let snapshot
-    try {
-      snapshot = await getDumpStore().list(owned, { limit: LIST_LIMIT_DEFAULT })
-    } catch (err) {
+    let cleaned = false
+    const cleanup = () => {
+      if (cleaned) return
+      cleaned = true
+      signal.removeEventListener('abort', onAbort)
       controller.abort()
+    }
+    const onAbort = () => cleanup()
+    signal.addEventListener('abort', onAbort, { once: true })
+
+    try {
+      if (signal.aborted) {
+        cleanup()
+        return c.body(null)
+      }
+      // Subscribe first, then read the snapshot, so anything new during the
+      // snapshot query is still delivered via the live subscription.
+      const subscription = getDumpBroker().subscribe(owned, controller.signal)
+      if (controller.signal.aborted) return c.body(null)
+      // The store has no cancellation port. Observe its settlement, but never
+      // begin SSE delivery if the request closed while this read was pending.
+      const snapshot = await getDumpStore().list(owned, { limit: LIST_LIMIT_DEFAULT })
+      if (controller.signal.aborted) return c.body(null)
+
+      return streamSSE(c, async (stream) => {
+        stream.onAbort(cleanup)
+        try {
+          if (controller.signal.aborted) return
+          await stream.writeSSE({ event: 'snapshot', data: JSON.stringify({ records: snapshot }) })
+          try {
+            for await (const meta of subscription) {
+              await stream.writeSSE({ event: 'appended', data: JSON.stringify(meta) })
+            }
+          } catch (err) {
+            await stream.writeSSE({
+              event: 'error',
+              data: JSON.stringify({ message: err instanceof Error ? err.message : String(err) }),
+            })
+          }
+        } finally {
+          cleanup()
+        }
+      })
+    } catch (err) {
+      cleanup()
+      if (signal.aborted) return c.body(null)
       throw err
     }
-
-    return streamSSE(c, async (stream) => {
-      const onAbort = () => controller.abort()
-      c.req.raw.signal.addEventListener('abort', onAbort, { once: true })
-      try {
-        await stream.writeSSE({ event: 'snapshot', data: JSON.stringify({ records: snapshot }) })
-        try {
-          for await (const meta of subscription) {
-            await stream.writeSSE({ event: 'appended', data: JSON.stringify(meta) })
-          }
-        } catch (err) {
-          await stream.writeSSE({
-            event: 'error',
-            data: JSON.stringify({ message: err instanceof Error ? err.message : String(err) }),
-          })
-        }
-      } finally {
-        c.req.raw.signal.removeEventListener('abort', onAbort)
-        controller.abort()
-      }
-    })
   })
