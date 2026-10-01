@@ -1,6 +1,6 @@
 # Resource capacity policy evidence
 
-Date: 2026-10-01. Four implementation tasks and their independent task reviews are complete. Whole-increment review and the final minor-finding fix review are complete; frozen-artifact CI and local integration remain pending. This is not release qualification.
+Date: 2026-10-01. All four tasks, independent reviews, one fresh complete CI and local vNext integration are complete. CI: 5,880 pass / 1 skip / 0 fail. This is local source qualification, not release or performance acceptance.
 
 - [Binding specification](../../specs/2026-10-01-resource-capacity-policy.md)
 - [Implementation checklist](../../plans/2026-10-01-resource-capacity-policy.md)
@@ -24,3 +24,5 @@ These suites overlap; their counts are not a summed independent test total. See 
 
 - [Whole-increment architecture review](whole-review.md): no Critical/Important findings.
 - [Final fix report](final-fix-report.md) and [scoped approval](final-fix-review.md): both selected Minor findings addressed at 3ad2d0f1.
+
+- [Final qualification, integration and remaining gates](qualification.md) with [machine-readable receipt](qualification.json).

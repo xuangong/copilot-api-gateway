@@ -75,6 +75,8 @@
 
 - [x] Complete each implementation and independent task review, marking checked items after accepted evidence.
 - [x] Complete whole-increment review and resolve findings.
-- [ ] Freeze a new artifact including protected overlays; run one complete `SETUP_TEST_CODEX=/Users/zhangxian/.local/bin/codex bun run ci:local`.
-- [ ] Fast-forward local vNext, verifying source identity, protection inventories, empty indexes and fixture identity.
-- [ ] Archive evidence and remaining workerd/rollback/publication/history gates. Inspecting the runner is not completing measurement.
+- [x] Freeze a new artifact including protected overlays; run one complete `SETUP_TEST_CODEX=/Users/zhangxian/.local/bin/codex bun run ci:local`.
+- [x] Fast-forward local vNext, verifying source identity, protection inventories, empty indexes and fixture identity.
+- [x] Archive evidence and remaining workerd/rollback/publication/history gates. Inspecting the runner is not completing measurement.
+
+Final local qualification: [5,880 pass / 1 skip / 0 fail and exact-artifact integration](../research/2026-10-01-resource-capacity-policy/qualification.md). Workerd resource measurement and catalog/affinity recovery remain separate open release gates.

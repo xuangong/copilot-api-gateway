@@ -1,0 +1,54 @@
+{
+  "baseline_head": "648a521eaa6c20a4ce937525e01c87093f46c8f4",
+  "qualified_artifact": {
+    "source_head": "4ee3c58c1b87713f18e5969cae36604a2421a842",
+    "source_file_count": 1572,
+    "manifest_sha256": "95c1ca609eff1d5777a1915a3ccc95b7a31d668ed0f5f97e14f1f8fc671a5ec4",
+    "overlay": "14 protected isolated files included; separate from commits",
+    "main_protected": 38,
+    "isolated_protected": 14
+  },
+  "ci": {
+    "command": "SETUP_TEST_CODEX=/Users/zhangxian/.local/bin/codex bun run ci:local",
+    "cwd": "vnext",
+    "exit_code": 0,
+    "passed": 5880,
+    "skipped": 1,
+    "failed": 0,
+    "assertions": 237312,
+    "tests": 5881,
+    "files": 552,
+    "test_duration": "118.86s",
+    "typecheck_packages": 26,
+    "lint_errors": 0,
+    "lint_warnings": 34,
+    "log_sha256": "1481a9fc0c2414c727f2b76b914937ab492abc315661f59e784edc23a4ea1343",
+    "worker_dry_run": true,
+    "deployment": false
+  },
+  "source_identity_after_first_fast_forward": {
+    "checked_roots": [
+      "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix",
+      "/Volumes/Projects/copilot-api-gateway"
+    ],
+    "source_files": 1572,
+    "main_protected": 38,
+    "isolated_protected": 14
+  },
+  "workspaces_after_first_fast_forward": {
+    "/Volumes/Projects/copilot-api-gateway": {
+      "head": "4ee3c58c1b87713f18e5969cae36604a2421a842",
+      "branch": "vNext",
+      "dirty_files": 38,
+      "empty_index": true
+    },
+    "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix": {
+      "head": "4ee3c58c1b87713f18e5969cae36604a2421a842",
+      "branch": "fix/cfw-resource-rollback",
+      "dirty_files": 14,
+      "empty_index": true
+    },
+    "fixture": "90455 Wed Sep 30 05:16:07 2026     bun"
+  },
+  "scope": "Local source qualification with existing dependency tree and protected overlays; no performance, clean-install, cloud or rollback acceptance."
+}

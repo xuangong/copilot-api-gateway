@@ -1,6 +1,6 @@
 # Resource admission matrix
 
-Implementation/review status is tracked in the [plan](../../plans/2026-10-01-resource-capacity-policy.md). This matrix describes the candidate design; qualification is not yet complete.
+Implementation/review status is tracked in the [plan](../../plans/2026-10-01-resource-capacity-policy.md). This matrix describes the implemented contracts. [Local source qualification](qualification.md) is complete; resource measurements and rollback qualification remain open.
 
 | Phase | Owner | Decision before work | Excess outcome | Quantity not covered |
 | --- | --- | --- | --- | --- |
@@ -17,7 +17,7 @@ The existing cancellation/settlement, producer-domain, private-reader/writer and
 
 ## Release gates still separate
 
-1. One newly frozen exact-artifact local CI for this implementation.
+1. Complete: one newly frozen exact-artifact local CI and verified local vNext integration (5,880 pass / 1 skip / 0 fail).
 2. Correct and review the local workerd measurement runner, then compare the final candidate against deployed tag e660fb4d. Include representative hosted search and diagnostic saturation workloads separately from ordinary request timing.
 3. Verify catalog/affinity old/new rollback with real compatible schema/readers, and backup/restore procedures.
 4. Design aggregate diagnostic publication receipts and bounded browser history/full-detail policies separately. They are not covered by live queue limits.
