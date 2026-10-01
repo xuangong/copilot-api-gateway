@@ -80,7 +80,11 @@ expect(encoded).toBe(0)
 
 - [x] Independently review each task against its interfaces, behavior and preserved ownership.
 - [x] Archive the two source audits, record adopted reference strengths and unselected capacity policies.
-- [ ] Complete whole-branch review and resolve findings; freeze non-doc source/config/tests plus protected overlay.
-- [ ] Run one final `SETUP_TEST_CODEX=/Users/zhangxian/.local/bin/codex bun run ci:local` and verify post-CI hashes.
-- [ ] Fast-forward local `vNext`; compare both complete manifests, original38/14 files and existing fixture; commit scoped closeout documentation and integrate it locally.
-- [ ] Report exact local results and remaining search/publication/live-queue capacity, workerd measurement and rollback gates. No deployment/performance claim.
+- [x] Complete whole-branch review and resolve findings; freeze non-doc source/config/tests plus protected overlay.
+- [x] Run one final `SETUP_TEST_CODEX=/Users/zhangxian/.local/bin/codex bun run ci:local` and verify post-CI hashes.
+- [x] Fast-forward local `vNext`; compare both complete manifests, original38/14 files and existing fixture; commit scoped closeout documentation and integrate it locally.
+- [x] Report exact local results and remaining search/publication/live-queue capacity, workerd measurement and rollback gates. No deployment/performance claim.
+
+## Completion
+
+Both implementation tasks and independent reviews are complete. Qualified source is `ccc92ab2921c26023b91daea7c7d8a295f419860` plus the preserved overlay: one final complete CI passed **5,713 tests, 1 skip, 0 failures**, 26 package typechecks, purity, lint with 34 unchanged warnings, setup/dashboard builds and Worker dry-run. Both checkouts match the 1,556-file frozen source manifest and original main38/isolated14 hashes. Local `vNext` integration is complete; no push or deployment. See the [qualification](../research/2026-10-01-diagnostic-resource-contracts/qualification.md) and [remaining capacity/release priorities](../research/2026-10-01-diagnostic-resource-contracts/resource-contract-followup.md).
