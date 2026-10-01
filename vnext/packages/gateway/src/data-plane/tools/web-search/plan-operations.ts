@@ -29,6 +29,7 @@ import {
   type WebSearchExecutionSession,
   type WebSearchOperation,
   type WebSearchPageFetchMap,
+  type WebSearchWorkTracker,
 } from './operations.ts'
 
 /**
@@ -162,14 +163,17 @@ export const splitWebSearchCalls = (args: Record<string, unknown> | null): WebSe
 export const startWebSearchCallFetches = (
   plans: readonly WebSearchCallPlan[],
   session: WebSearchExecutionSession,
+  work?: WebSearchWorkTracker,
 ): Promise<WebSearchPageFetchMap> =>
-  startBatchFetch({ kind: 'ops', ops: plans.flatMap((plan) => plan.ops) }, session)
+  startBatchFetch({ kind: 'ops', ops: plans.flatMap((plan) => plan.ops) }, session, work)
 
 export const runWebSearchCallPlan = async (
   plan: WebSearchCallPlan,
   session: WebSearchExecutionSession,
   fetches: Promise<WebSearchPageFetchMap>,
+  work?: WebSearchWorkTracker,
 ): Promise<WebSearchCallIR> => {
+  session.signal?.throwIfAborted()
   if (plan.ops.length === 0) {
     return schemaErrorIr(
       'malformed shim call arguments',
@@ -181,12 +185,17 @@ export const runWebSearchCallPlan = async (
     return runBackendSearchMulti(
       plan.ops as Array<Extract<WebSearchOperation, { kind: 'search' }>>,
       session,
+      work,
     )
   }
-  return executeOperationToIr(plan.ops[0]!, session, await fetches)
+  const batch = await fetches
+  session.signal?.throwIfAborted()
+  const op = plan.ops[0]
+  if (op === undefined) throw new Error("Web search plan has no operation")
+  return executeOperationToIr(op, session, batch, work)
 }
 
-/** Split, then start every call. Both shims enter here. */
+/** Temporary unowned adapter until both hosted callers adopt execution scopes. */
 export const planWebSearchCalls = (
   args: Record<string, unknown> | null,
   session: WebSearchExecutionSession,

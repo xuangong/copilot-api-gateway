@@ -275,6 +275,14 @@ export interface WebSearchExecutionSession {
   signal?: AbortSignal
 }
 
+/** Internal ownership port for complete provider-plus-usage leaves. */
+export interface WebSearchWorkTracker {
+  run<T>(factory: () => Promise<T>): Promise<T>
+}
+
+const runProviderWork = <T>(work: WebSearchWorkTracker | undefined, factory: () => Promise<T>): Promise<T> =>
+  work === undefined ? factory() : work.run(factory)
+
 // ── IR construction ──
 
 export interface WebSearchCallIR {
@@ -469,7 +477,9 @@ const truncateString = (s: string, maxChars: number): string =>
 const resolveActiveProvider = async (
   session: WebSearchExecutionSession,
 ): Promise<{ provider: WebSearchProvider; providerName: WebSearchProviderName } | { unavailable: string }> => {
+  session.signal?.throwIfAborted()
   const configured = await session.getProvider()
+  session.signal?.throwIfAborted()
   if (configured.type === 'enabled') {
     return { provider: configured.impl, providerName: configured.provider }
   }
@@ -490,6 +500,7 @@ const runOneSearchQuery = async (
   query: string,
   session: WebSearchExecutionSession,
   active: { provider: WebSearchProvider; providerName: WebSearchProviderName },
+  work?: WebSearchWorkTracker,
 ): Promise<SearchQueryOutcome> => {
   try {
     const searchRequest = {
@@ -500,12 +511,14 @@ const runOneSearchQuery = async (
       userLocation: session.filters.userLocation,
       ...(session.signal !== undefined ? { signal: session.signal } : {}),
     }
-    const result = await searchWebAndRecordUsage({
+    session.signal?.throwIfAborted()
+    const result = await runProviderWork(work, () => searchWebAndRecordUsage({
       provider: active.provider,
       providerName: active.providerName,
       keyId: session.apiKeyId,
       request: searchRequest,
-    })
+    }))
+    session.signal?.throwIfAborted()
 
     if (result.type === 'error') {
       const msg = result.message ?? result.errorCode
@@ -523,6 +536,7 @@ const runOneSearchQuery = async (
       : undefined
     return sources !== undefined ? { results, sources } : { results }
   } catch (e) {
+    session.signal?.throwIfAborted()
     if (isAbortError(e)) throw e
     const msg = e instanceof Error ? e.message : String(e)
     return { results: [errorSnippet('Search error', searchFailedText(msg))] }
@@ -532,6 +546,7 @@ const runOneSearchQuery = async (
 const runBackendSearch = async (
   op: Extract<WebSearchOperation, { kind: 'search' }>,
   session: WebSearchExecutionSession,
+  work?: WebSearchWorkTracker,
 ): Promise<WebSearchCallIR> => {
   if (op.error !== undefined) {
     const title = op.errorKind === 'missing-arg' ? 'Missing argument' : 'Invalid ref_id'
@@ -541,20 +556,23 @@ const runBackendSearch = async (
   if ('unavailable' in active) {
     return searchIr(op.query, [errorSnippet('Search error', searchFailedText(active.unavailable))])
   }
-  const { results, sources } = await runOneSearchQuery(op.query, session, active)
+  const { results, sources } = await runOneSearchQuery(op.query, session, active, work)
+  session.signal?.throwIfAborted()
   return searchIr(op.query, results, sources)
 }
 
 export const runBackendSearchMulti = async (
   ops: Array<Extract<WebSearchOperation, { kind: 'search' }>>,
   session: WebSearchExecutionSession,
+  work?: WebSearchWorkTracker,
 ): Promise<WebSearchCallIR> => {
   const queries = ops.map(op => op.query)
   const active = await resolveActiveProvider(session)
   if ('unavailable' in active) {
     return searchIrFromQueries(queries, [errorSnippet('Search error', searchFailedText(active.unavailable))])
   }
-  const perQuery = await Promise.all(ops.map(op => runOneSearchQuery(op.query, session, active)))
+  const perQuery = await Promise.all(ops.map(op => runOneSearchQuery(op.query, session, active, work)))
+  session.signal?.throwIfAborted()
   const mergedResults = perQuery.flatMap(r => r.results)
   const mergedSources = session.includeSearchActionSources
     ? perQuery.flatMap(r => r.sources ?? [])
@@ -573,6 +591,7 @@ export type WebSearchPageFetchMap = Map<string, FetchAndCacheResult>
 const runBatchFetch = async (
   needFetch: string[],
   session: WebSearchExecutionSession,
+  work?: WebSearchWorkTracker,
 ): Promise<WebSearchPageFetchMap> => {
   const perUrl: WebSearchPageFetchMap = new Map()
   const active = await resolveActiveProvider(session)
@@ -587,12 +606,14 @@ const runBatchFetch = async (
       urls: needFetch,
       ...(session.signal !== undefined ? { signal: session.signal } : {}),
     }
-    const result = await fetchPageAndRecordUsage({
+    session.signal?.throwIfAborted()
+    const result = await runProviderWork(work, () => fetchPageAndRecordUsage({
       provider: active.provider,
       providerName: active.providerName,
       keyId: session.apiKeyId,
       request: fetchRequest,
-    })
+    }))
+    session.signal?.throwIfAborted()
 
     if (result.type === 'error') {
       const msg = result.message ?? result.errorCode
@@ -621,11 +642,13 @@ const runBatchFetch = async (
         fullContentBytes: page.fullContentBytes,
         title: page.title,
       }
+      session.signal?.throwIfAborted()
       session.pageCache.set(url, entry)
       perUrl.set(url, { ok: true, cached: entry })
     }
     return perUrl
   } catch (e) {
+    session.signal?.throwIfAborted()
     if (isAbortError(e)) throw e
     const msg = e instanceof Error ? e.message : String(e)
     for (const url of needFetch) {
@@ -638,6 +661,7 @@ const runBatchFetch = async (
 const fetchAndCacheManyPages = async (
   urls: string[],
   session: WebSearchExecutionSession,
+  work?: WebSearchWorkTracker,
 ): Promise<WebSearchPageFetchMap> => {
   const results: WebSearchPageFetchMap = new Map()
   const needFetch: string[] = []
@@ -655,7 +679,7 @@ const fetchAndCacheManyPages = async (
   }
 
   if (needFetch.length > 0) {
-    const perUrl = await runBatchFetch(needFetch, session)
+    const perUrl = await runBatchFetch(needFetch, session, work)
     for (const url of needFetch) {
       results.set(url, perUrl.get(url)!)
     }
@@ -666,7 +690,9 @@ const fetchAndCacheManyPages = async (
 export const startBatchFetch = async (
   parsed: ParsedWebSearchOperations,
   session: WebSearchExecutionSession,
+  work?: WebSearchWorkTracker,
 ): Promise<WebSearchPageFetchMap> => {
+  session.signal?.throwIfAborted()
   if (parsed.kind !== 'ops') return new Map()
   const batchUrls: string[] = []
   const blockedUrls: string[] = []
@@ -684,7 +710,8 @@ export const startBatchFetch = async (
     }
     batchUrls.push(url)
   }
-  const fetched = await fetchAndCacheManyPages(batchUrls, session)
+  const fetched = await fetchAndCacheManyPages(batchUrls, session, work)
+  session.signal?.throwIfAborted()
   for (const url of blockedUrls) {
     fetched.set(url, { ok: false, output: openFailedText(url, 'Blocked by tool filters') })
   }
@@ -752,14 +779,16 @@ const runBackendFind = async (
   }])
 }
 
-export const executeOperationToIr = (
+export const executeOperationToIr = async (
   op: WebSearchOperation,
   session: WebSearchExecutionSession,
   batch: WebSearchPageFetchMap,
+  work?: WebSearchWorkTracker,
 ): Promise<WebSearchCallIR> => {
+  session.signal?.throwIfAborted()
   switch (op.kind) {
   case 'search':
-    return runBackendSearch(op, session)
+    return runBackendSearch(op, session, work)
   case 'open':
     return runBackendOpenPage(op, batch)
   case 'find':

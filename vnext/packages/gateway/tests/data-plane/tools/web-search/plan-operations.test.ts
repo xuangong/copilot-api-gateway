@@ -133,3 +133,47 @@ describe('splitWebSearchCalls', () => {
     })
   })
 })
+
+describe('page cache cancellation', () => {
+  it('does not cache a late page success after a custom signal abort', async () => {
+    const { Database } = await import('bun:sqlite')
+    const { BunSqliteRepo } = await import('@vibe-llm/platform-bun/src/bun-sqlite-repo.ts')
+    const { initRepo } = await import('../../../../src/repo/index.ts')
+    const { __resetPlatformForTests } = await import('@vibe-core/platform')
+    const { startBatchFetch, parseWebSearchOperations } = await import('../../../../src/data-plane/tools/web-search/operations.ts')
+    __resetPlatformForTests()
+    const db = new Database(':memory:')
+    const repo = new BunSqliteRepo(db)
+    initRepo(repo)
+    await repo.apiKeys.save({ id: 'cache-key', key: 'cache-secret', name: 'Cache fixture', createdAt: '2026-10-01T00:00:00Z', modelMappingsEnabled: false, modelMappings: [] })
+    const key = await repo.apiKeys.getById('cache-key')
+    if (key === null) throw new Error('fixture key missing')
+    let finish: (() => void) | undefined
+    let started: (() => void) | undefined
+    const providerStarted = new Promise<void>(resolve => { started = resolve })
+    const gate = new Promise<void>(resolve => { finish = resolve })
+    const pageCache: import('../../../../src/data-plane/tools/web-search/operations.ts').WebSearchExecutionSession['pageCache'] = new Map()
+    const controller = new AbortController()
+    const result = startBatchFetch(parseWebSearchOperations({ open: [{ ref_id: 'https://a.example' }] }), {
+      apiKeyId: key.id, filters: { maxResults: 3 }, includeSearchActionSources: false, pageCache, signal: controller.signal,
+      getProvider: async () => ({ type: 'enabled', provider: 'jina', impl: {
+        search: async () => ({ type: 'ok', results: [] }),
+        fetchPage: async () => {
+          started?.()
+          await gate
+          return { type: 'ok', pages: [{ url: 'https://a.example', content: 'late', truncated: false, fullContentBytes: 4 }], failures: [] }
+        },
+      } }),
+    })
+    try {
+      await providerStarted
+      controller.abort('retired')
+      pageCache.clear()
+      finish?.()
+      let failure: unknown
+      try { await result } catch (error) { failure = error }
+      expect(pageCache.size).toBe(0)
+      expect(failure).toBe('retired')
+    } finally { db.close(); __resetPlatformForTests() }
+  })
+})

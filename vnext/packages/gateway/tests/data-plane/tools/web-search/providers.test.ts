@@ -3,6 +3,8 @@
 // tests cover success mapping + error surface behavior.
 
 import { test, expect } from 'bun:test'
+import { createJinaWebSearchProvider } from '../../../../src/data-plane/tools/web-search/providers/jina.ts'
+import { createMicrosoftGroundingWebSearchProvider } from '../../../../src/data-plane/tools/web-search/providers/microsoft-grounding.ts'
 import { createBingWebSearchProvider } from '../../../../src/data-plane/tools/web-search/providers/bing.ts'
 import { createCopilotWebSearchProvider } from '../../../../src/data-plane/tools/web-search/providers/copilot.ts'
 import { createLangSearchWebSearchProvider } from '../../../../src/data-plane/tools/web-search/providers/langsearch.ts'
@@ -215,3 +217,45 @@ test('copilot: fetchPage returns unavailable', async () => {
   const result = await provider.fetchPage({ urls: ['https://x'] })
   if (result.type === 'error') expect(result.errorCode).toBe('unavailable')
 })
+
+// Cancellation is enforced locally even when an injected transport ignores it.
+
+
+for (const name of ['jina reader', 'microsoft browse', 'microsoft search'] as const) {
+  const execute = (httpFetch: typeof fetch, signal: AbortSignal) => {
+    const provider = name === 'jina reader' ? createJinaWebSearchProvider('fixture', { fetch: httpFetch }) : createMicrosoftGroundingWebSearchProvider('fixture', { fetch: httpFetch })
+    return name === 'microsoft search' ? provider.search({ query: 'a', signal }) : provider.fetchPage({ urls: ['https://a.example'], signal })
+  }
+  test(`${name}: already-aborted signal starts no retry attempt`, async () => {
+    const controller = new AbortController()
+    controller.abort('retired')
+    let starts = 0
+    await execute((async () => { starts++; return new Response('{}') }) as typeof fetch, controller.signal)
+    expect(starts).toBe(0)
+  })
+  test(`${name}: abort at backoff completion prevents the next attempt`, async () => {
+    const controller = new AbortController()
+    const remove = controller.signal.removeEventListener.bind(controller.signal)
+    controller.signal.removeEventListener = (...args) => { remove(...args); controller.abort('retired at wakeup') }
+    let starts = 0
+    await execute((async () => { starts++; return new Response('{}', { status: starts === 1 ? 503 : 200 }) }) as typeof fetch, controller.signal)
+    expect(starts).toBe(1)
+  })
+}
+
+for (const name of ['jina reader', 'microsoft browse', 'microsoft search'] as const) {
+  test(`${name}: ordinary transient failures retain their retry and success mapping`, async () => {
+    let starts = 0
+    const payload = name === 'jina reader' ? { code: 200, data: { url: 'https://a.example', content: 'normal' } }
+      : name === 'microsoft browse' ? { url: 'https://a.example', content: 'normal' }
+        : { webResults: [{ url: 'https://a.example', title: 'A', content: 'normal' }] }
+    const httpFetch = (async () => {
+      starts++
+      return new Response(JSON.stringify(payload), { status: starts === 1 ? 503 : 200 })
+    }) as typeof fetch
+    const provider = name === 'jina reader' ? createJinaWebSearchProvider('fixture', { fetch: httpFetch }) : createMicrosoftGroundingWebSearchProvider('fixture', { fetch: httpFetch })
+    const result = name === 'microsoft search' ? await provider.search({ query: 'a' }) : await provider.fetchPage({ urls: ['https://a.example'] })
+    expect(result.type).toBe('ok')
+    expect(starts).toBe(2)
+  })
+}

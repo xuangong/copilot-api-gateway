@@ -86,6 +86,7 @@ const httpStatusToErrorCode = (status: number): WebSearchProviderErrorCode => {
 const fetchWithRetry = async (doFetch: () => Promise<Response>, signal?: AbortSignal): Promise<Response> => {
   let attempt = 0
   while (true) {
+    signal?.throwIfAborted()
     const response = await doFetch()
     if (!RETRYABLE_HTTP_STATUS.has(response.status)) return response
     if (attempt >= RETRY_DELAYS_MS.length) return response

@@ -364,3 +364,65 @@ describe('providerNameFor', () => {
     }
   })
 })
+
+
+describe('fallback cancellation boundaries', () => {
+  test('does not start a fallback after an engine swallows abort into an error envelope', async () => {
+    const controller = new AbortController()
+    const reason = { cancelled: true }
+    const starts: string[] = []
+    const provider = createFallbackWebSearchProvider([
+      { id: 'jina', impl: {
+        search: async () => {
+          starts.push('jina')
+          controller.abort(reason)
+          return { type: 'error', errorCode: 'unavailable' }
+        },
+        fetchPage: async () => ({ type: 'ok', pages: [], failures: [] }),
+      } },
+      { id: 'bing', impl: {
+        search: async () => { starts.push('bing'); return { type: 'ok', results: [] } },
+        fetchPage: async () => ({ type: 'ok', pages: [], failures: [] }),
+      } },
+    ])
+    let failure: unknown
+    try { await provider.search({ query: 'a', signal: controller.signal }) } catch (error) { failure = error }
+    expect(starts).toEqual(['jina'])
+    expect(failure).toBe(reason)
+  })
+
+  test('does not advance page fallback after a custom abort is swallowed', async () => {
+    const controller = new AbortController()
+    const starts: string[] = []
+    const provider = createFallbackWebSearchProvider([
+      { id: 'jina', impl: {
+        search: async () => ({ type: 'ok', results: [] }),
+        fetchPage: async () => {
+          starts.push('jina')
+          controller.abort('retired')
+          return { type: 'ok', pages: [], failures: [] }
+        },
+      } },
+      { id: 'bing', impl: {
+        search: async () => ({ type: 'ok', results: [] }),
+        fetchPage: async () => { starts.push('bing'); return { type: 'ok', pages: [], failures: [] } },
+      } },
+    ])
+    let failure: unknown
+    try { await provider.fetchPage({ urls: ['https://a.example'], signal: controller.signal }) } catch (error) { failure = error }
+    expect(starts).toEqual(['jina'])
+    expect(failure).toBe('retired')
+  })
+
+  test('propagates a recognized abort exception without a signal', async () => {
+    const reason = new DOMException('closed', 'AbortError')
+    const provider = createFallbackWebSearchProvider([
+      { id: 'jina', impl: {
+        search: async () => { throw reason },
+        fetchPage: async () => { throw reason },
+      } },
+    ])
+    await expect(provider.search({ query: 'a' })).rejects.toBe(reason)
+    await expect(provider.fetchPage({ urls: ['https://a.example'] })).rejects.toBe(reason)
+  })
+})
