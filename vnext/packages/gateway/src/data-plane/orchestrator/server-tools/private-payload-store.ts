@@ -1,22 +1,6 @@
-/**
- * In-memory private-payload store for server-tool slots.
- *
- * Server-tool result slots (e.g. image-generation partial images, web-search
- * intermediate query results) sometimes need to persist server-only blobs
- * that never leave the gateway — the wire-visible item id keys them, but
- * the payload itself must not be echoed back to the client.
- *
- * Reference: copilot-gateway's `StatefulResponsesStore.registerPrivatePayload`
- * (server-tool-shim.ts:846). That store is D1-backed for cross-request
- * replay; here we keep an in-memory Map with a 5-minute TTL because the
- * shim only reads the payload later in the same request via `transformItems`
- * on the next loop turn. Cross-request replay lands with the real store in
- * a later phase.
- *
- * TTL is deliberately loose: the loop consumes payloads within one request's
- * lifetime (seconds), so the TTL only bounds leak risk when a request is
- * abandoned mid-flight. A cheap sweep on write is enough — no timer.
- */
+import { decodeWebSearchPrivatePayload, type WebSearchCallPrivatePayload } from "./private-payload"
+
+/** Explicit legacy injection remains externally owned and unknown-valued. */
 
 export interface PrivatePayloadStore {
   /** Register a server-only payload keyed by wire item id. */
@@ -30,7 +14,41 @@ interface Entry {
   expiresAt: number
 }
 
-/** 5 minutes matches the reference project's read-window guarantee. */
+export interface ServerToolPrivatePayloadReader {
+  getPrivatePayload(itemId: string): WebSearchCallPrivatePayload | undefined
+}
+export interface ServerToolPrivatePayloadWriter {
+  registerPrivatePayload(itemId: string, payload: WebSearchCallPrivatePayload): undefined
+}
+export interface OwnedServerToolPrivatePayloadScope {
+  readonly reader: ServerToolPrivatePayloadReader
+  readonly writer: ServerToolPrivatePayloadWriter
+  dispose(): undefined
+}
+export interface OwnedServerToolPrivatePayloadSource {
+  readonly ownership: "owned"
+  createScope(): OwnedServerToolPrivatePayloadScope
+}
+export type ServerToolPrivatePayloadDependency = OwnedServerToolPrivatePayloadSource | PrivatePayloadStore
+
+export function isOwnedPrivatePayloadSource(dependency: ServerToolPrivatePayloadDependency): dependency is OwnedServerToolPrivatePayloadSource {
+  return "ownership" in dependency && dependency.ownership === "owned"
+}
+
+export function borrowPrivatePayloadStore(store: PrivatePayloadStore): OwnedServerToolPrivatePayloadScope {
+  let closed = false
+  return {
+    reader: { getPrivatePayload: id => closed ? undefined : decodeWebSearchPrivatePayload(store.getPrivatePayload(id)) },
+    writer: { registerPrivatePayload(id, payload) {
+      if (closed) throw new Error("Server-tool private state is closed")
+      store.registerPrivatePayload(id, payload)
+      return undefined
+    } },
+    dispose() { closed = true; return undefined },
+  }
+}
+
+/** Compatibility TTL for explicitly injected shared storage, not live owned state. */
 export const PRIVATE_PAYLOAD_TTL_MS = 5 * 60 * 1000
 
 export const createInMemoryPrivatePayloadStore = (
@@ -64,5 +82,20 @@ export const createInMemoryPrivatePayloadStore = (
   }
 }
 
-/** Process-wide default store — used when no explicit store is injected. */
-export const defaultPrivatePayloadStore: PrivatePayloadStore = createInMemoryPrivatePayloadStore()
+/** A descriptor has no retained entries. Only an active hosted invocation opens a scope. */
+export const defaultPrivatePayloadStore: OwnedServerToolPrivatePayloadSource = {
+  ownership: "owned",
+  createScope() {
+    const entries = new Map<string, WebSearchCallPrivatePayload>()
+    let closed = false
+    return {
+      reader: { getPrivatePayload: id => closed ? undefined : entries.get(id) },
+      writer: { registerPrivatePayload(id, payload) {
+        if (closed) throw new Error("Server-tool private state is closed")
+        entries.set(id, payload)
+        return undefined
+      } },
+      dispose() { closed = true; entries.clear(); return undefined },
+    }
+  },
+}

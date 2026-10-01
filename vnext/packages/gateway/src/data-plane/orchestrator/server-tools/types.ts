@@ -15,6 +15,7 @@ import type { DumpAccumulator } from "../../../shared/dump/accumulator.ts"
 
 import type { ApiKeyId } from '../../../repo/branded-ids.ts'
 import type { BindingScope } from '@vibe-llm/protocols/common'
+import type { WebSearchCallPrivatePayload } from "./private-payload"
 
 export type ResponsesTool = { type: string; [key: string]: unknown }
 export type ResponsesInputItem = { type: string; [key: string]: unknown }
@@ -33,8 +34,8 @@ export interface InterceptedFunctionCall {
 export interface ServerToolTerminal {
   item: ServerToolOutputItem
   endEvents: ServerToolLifecycleEvent[]
-  /** Server-only blob persisted via statefulResponsesContext.privatePayload. */
-  privatePayload?: unknown
+  /** Private replay data retained only by the hosted invocation's owner. */
+  privatePayload?: WebSearchCallPrivatePayload
 }
 
 export interface ServerToolResultSlot {
@@ -124,7 +125,7 @@ export type ServerToolRegistration<TInvocation, TRequest> = (
  */
 export interface ServerToolRequestCtx {
   readonly dump?: DumpAccumulator | null
-  readonly store: import('./private-payload-store').PrivatePayloadStore
+  readonly store: import('./private-payload-store').ServerToolPrivatePayloadReader
   readonly apiKeyId: ApiKeyId
   /** Immutable inbound model alias for server-tool subcall usage attribution. */
   readonly incomingModel?: string

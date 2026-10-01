@@ -44,7 +44,8 @@ import { serverToolTrace } from './server-tools/trace.ts'
 
 import type { ResponsesInterceptor } from './types'
 import { truncatePreservingCodePoints } from '../../shared/text'
-import type { PrivatePayloadStore } from '../../../orchestrator/server-tools/private-payload-store'
+import { borrowPrivatePayloadStore, isOwnedPrivatePayloadSource, type OwnedServerToolPrivatePayloadScope, type ServerToolPrivatePayloadDependency, type ServerToolPrivatePayloadWriter } from '../../../orchestrator/server-tools/private-payload-store'
+import { ServerToolLifetime, type ServerToolSlotLifetime } from './server-tool-lifetime'
 import type { ApiKeyId } from '../../../../repo/branded-ids.ts'
 import type {
   ResponsesTool,
@@ -932,21 +933,31 @@ export const synthesizeTerminalEnvelope = (
 export async function* materializeServerToolItems(
   dispatched: ReadonlyArray<{ slots: DispatchedServerToolSlot[] }>,
   merge: MergeState,
-  store: PrivatePayloadStore,
+  writer: ServerToolPrivatePayloadWriter,
+  lifetime: ServerToolSlotLifetime,
 ): AsyncGenerator<ProtocolFrame<ResponsesStreamEvent>, void> {
   for (const d of dispatched) {
     for (const { slot, outputIndex } of d.slots) {
+      lifetime.assertOpen()
       const lifecycle = slot.run()
-      let step = await lifecycle.next()
-      while (!step.done) {
-        yield stampServerToolEvent(merge, outputIndex, slot.id, step.value)
-        step = await lifecycle.next()
+      const resource = lifetime.trackIterator(lifecycle)
+      let finished = false
+      try {
+        while (true) {
+          const step = await lifetime.wait(Promise.resolve().then(() => lifecycle.next()))
+          lifetime.assertOpen()
+          if (step.done) {
+            finished = true
+            resource.finish()
+            if (step.value.privatePayload !== undefined) writer.registerPrivatePayload(slot.id, step.value.privatePayload)
+            yield* serverToolEndFrames(merge, outputIndex, slot, step.value)
+            break
+          }
+          yield stampServerToolEvent(merge, outputIndex, slot.id, step.value)
+        }
+      } finally {
+        if (!finished && !(await resource.close())) lifetime.recordIncompleteCleanup()
       }
-      // Register private dispatcher state under the emitted item id so
-      // output persistence captures it and replay-side `transformItems` can
-      // restore it on the next loop turn.
-      store.registerPrivatePayload(slot.id, step.value.privatePayload)
-      yield* serverToolEndFrames(merge, outputIndex, slot, step.value)
     }
   }
 }
@@ -964,12 +975,13 @@ async function* runMultiTurnLoop(args: {
   demoteForcedServerToolChoiceAfterFirstTurn: boolean
   turn1Iter: AsyncGenerator<ProtocolFrame<ResponsesStreamEvent>, TurnSummary>
   dispatchers: ReadonlyMap<string, ServerToolDispatcher>
-  store: PrivatePayloadStore
+  writer: ServerToolPrivatePayloadWriter
+  lifetime: ServerToolLifetime
   canonicalInput: ResponsesInputItem[]
   active: readonly ActiveServerTool[]
   metadata: LatestUpstreamMetadata
   incomingModel: string
-  resolveFinalMetadata: (m: EventResultMetadata) => void
+  settleFinalMetadata: () => void
 }): AsyncGenerator<ProtocolFrame<ResponsesStreamEvent>> {
   const {
     ctx,
@@ -979,27 +991,29 @@ async function* runMultiTurnLoop(args: {
     demoteForcedServerToolChoiceAfterFirstTurn,
     turn1Iter,
     dispatchers,
-    store,
+    writer,
+    lifetime,
     active,
     metadata,
     incomingModel,
-    resolveFinalMetadata,
+    settleFinalMetadata,
   } = args
   const baseInput = args.canonicalInput
   try {
     let currentTurn: TurnSummary = yield* turn1Iter
     merge.accumulatedUsage = sumUsage(merge.accumulatedUsage, currentTurn.turnUsage)
     while (true) {
+      lifetime.assertOpen()
       const turn = currentTurn
       const executedShim = turn.dispatched.length > 0
 
       if (turn.terminalStatus.kind === 'failed') {
-        if (executedShim) yield* materializeServerToolItems(turn.dispatched, merge, store)
+        if (executedShim) yield* materializeServerToolItems(turn.dispatched, merge, writer, lifetime)
         yield synthesizeTerminalEnvelope(merge, { kind: 'failed', error: turn.terminalStatus.response.error }, active)
         return
       }
       if (turn.terminalStatus.kind === 'incomplete') {
-        if (executedShim) yield* materializeServerToolItems(turn.dispatched, merge, store)
+        if (executedShim) yield* materializeServerToolItems(turn.dispatched, merge, writer, lifetime)
         yield synthesizeTerminalEnvelope(
           merge,
           { kind: 'incomplete', incompleteDetails: turn.terminalStatus.response.incomplete_details },
@@ -1020,7 +1034,7 @@ async function* runMultiTurnLoop(args: {
         return
       }
 
-      yield* materializeServerToolItems(turn.dispatched, merge, store)
+      yield* materializeServerToolItems(turn.dispatched, merge, writer, lifetime)
       if (turn.sawClientToolCall) {
         yield synthesizeTerminalEnvelope(merge, { kind: 'completed' }, active)
         return
@@ -1047,7 +1061,11 @@ async function* runMultiTurnLoop(args: {
       if (demoteForcedServerToolChoiceAfterFirstTurn) ctx.payload = { ...ctx.payload, tool_choice: 'auto' }
       loopState.iterationCount += 1
 
-      const nextResult = await run()
+      lifetime.assertOpen()
+      const nextResult = await lifetime.awaitResult(run(), async result => {
+        if (result.type === 'events') await lifetime.discardLate(result)
+      }, result => result.type === 'events' ? lifetime.ownProducer(result) : result)
+      lifetime.assertOpen()
       if (nextResult.type !== 'events') {
         yield synthesizeTerminalEnvelope(merge, { kind: 'failed', error: buildErrorFromResult(nextResult) }, active)
         return
@@ -1058,10 +1076,13 @@ async function* runMultiTurnLoop(args: {
         const resolved = nextResult.resolveModelIdentity?.(modelKey) ?? nextResult.modelIdentity
         return retainIncomingModel(resolved, incomingModel)
       }
-      currentTurn = yield* consumeTurnStreaming((await materializeResponsesSource(nextResult, ctx.payload.stream === true, args.signal, args.abortUpstream)).events, merge, false, dispatchers, loopState, active)
+      const source = await lifetime.wait(materializeResponsesSource(nextResult, ctx.payload.stream === true, args.signal, args.abortUpstream))
+      lifetime.assertOpen()
+      currentTurn = yield* consumeTurnStreaming(source.events === nextResult.events ? source.events : lifetime.ownSource(source.events), merge, false, dispatchers, loopState, active)
       merge.accumulatedUsage = sumUsage(merge.accumulatedUsage, currentTurn.turnUsage)
     }
   } catch (error) {
+    if (lifetime.isClosed) throw error
     if (merge.upstreamResponseSnapshot === undefined) {
       yield eventFrame({
         type: 'error',
@@ -1082,27 +1103,21 @@ async function* runMultiTurnLoop(args: {
       active,
     )
   } finally {
-    const observed = merge.lastSeenModel
-    const modelKey = observed === null
-      ? metadata.modelIdentity.modelKey
-      : pickUsageModelId(observed, metadata.modelIdentity.modelKey)
-    const modelIdentity = modelKey === metadata.modelIdentity.modelKey
-      ? metadata.modelIdentity
-      : metadata.resolveModelIdentity?.(modelKey) ?? metadata.modelIdentity
-    resolveFinalMetadata({
-      modelIdentity: retainIncomingModel(modelIdentity, incomingModel),
-      performance: metadata.performance,
-    })
+    settleFinalMetadata()
   }
 }
 
 export const withResponsesServerToolShim = (
   registrations: readonly ServerToolRegistration<Invocation, ServerToolRequestCtx>[],
-  store: PrivatePayloadStore,
+  dependency: ServerToolPrivatePayloadDependency,
 ): ResponsesInterceptor => async (ctx, gatewayCtx, run) => {
+  let scope: OwnedServerToolPrivatePayloadScope | undefined = isOwnedPrivatePayloadSource(dependency) ? undefined : borrowPrivatePayloadStore(dependency)
+  const reader = { getPrivatePayload: (id: string) => scope?.reader.getPrivatePayload(id) }
+  const closeState = (): undefined => { const owned = scope; scope = undefined; owned?.dispose(); return undefined }
+  let lifetime: ServerToolLifetime | undefined
   const requestCtx: ServerToolRequestCtx = {
     dump: (gatewayCtx as GatewayRequestContext).dump,
-    store,
+    store: reader,
     apiKeyId: (gatewayCtx.apiKeyId ?? '') as ApiKeyId,
     ...(gatewayCtx.incomingModel !== undefined ? { incomingModel: gatewayCtx.incomingModel } : {}),
     ...(gatewayCtx.bindingScope !== undefined ? { bindingScope: gatewayCtx.bindingScope } : {}),
@@ -1110,134 +1125,166 @@ export const withResponsesServerToolShim = (
   }
   const active: ActiveServerTool[] = []
 
-  for (const prepareServerTool of registrations) {
-    const prepared: ServerToolPrepareResult = await prepareServerTool(ctx, requestCtx)
-    if (prepared.type === 'inactive') continue
-    if (prepared.type === 'invalid-request') {
-      return invalidRequestEnvelope(prepared.message, prepared.param, prepared.code)
-    }
-    const currentTools = Array.isArray(ctx.payload.tools) ? (ctx.payload.tools as ResponsesTool[]) : []
-    const toolName = resolveServerToolName(prepared.baseToolName, currentTools)
-    const { hosted } = prepared
-    if (hosted !== undefined && historicalClientCallableUsesName(
-      toolName, Array.isArray(ctx.payload.input) ? ctx.payload.input as ResponsesInputItem[] : [],
-    )) {
-      return invalidRequestEnvelope(
-        `Historical client callable '${toolName}' conflicts with the hosted tool function name.`,
-        'input',
-        undefined,
-      )
-    }
-    let canonicalHostedTool: ResponsesHostedToolLoose | undefined = undefined
-    if (hosted !== undefined) {
-      const rewrite = rewriteToolsForHostedShim(currentTools, hosted, toolName)
-      canonicalHostedTool = rewrite.canonicalHostedTool
-      ctx.payload = { ...ctx.payload, tools: rewrite.rewritten }
-      // The hosted item is synthesized here, never upstream, so its `include`
-      // opt-ins are dead weight on the wire — and grok-* / mai-code-* reject
-      // rather than ignore them. Registrations have already read whatever they
-      // need out of `include` during prepare.
-      const owned = hosted.includeTokens
-      if (owned?.length && Array.isArray(ctx.payload.include)) {
-        const kept = (ctx.payload.include as unknown[]).filter(
-          (token) => typeof token !== 'string' || !owned.includes(token),
+  try {
+    for (const prepareServerTool of registrations) {
+      const prepared: ServerToolPrepareResult = await prepareServerTool(ctx, requestCtx)
+      if (prepared.type === 'inactive') continue
+      if (prepared.type === 'invalid-request') {
+        closeState()
+        return invalidRequestEnvelope(prepared.message, prepared.param, prepared.code)
+      }
+      const currentTools = Array.isArray(ctx.payload.tools) ? (ctx.payload.tools as ResponsesTool[]) : []
+      const toolName = resolveServerToolName(prepared.baseToolName, currentTools)
+      const { hosted } = prepared
+      if (hosted !== undefined && historicalClientCallableUsesName(
+        toolName, Array.isArray(ctx.payload.input) ? ctx.payload.input as ResponsesInputItem[] : [],
+      )) {
+        closeState()
+        return invalidRequestEnvelope(
+          `Historical client callable '${toolName}' conflicts with the hosted tool function name.`,
+          'input',
+          undefined,
         )
-        const { include: _dropped, ...rest } = ctx.payload as Record<string, unknown>
-        ctx.payload = (kept.length ? { ...rest, include: kept } : rest) as typeof ctx.payload
+      }
+      let canonicalHostedTool: ResponsesHostedToolLoose | undefined = undefined
+      if (hosted !== undefined) {
+        const rewrite = rewriteToolsForHostedShim(currentTools, hosted, toolName)
+        canonicalHostedTool = rewrite.canonicalHostedTool
+        ctx.payload = { ...ctx.payload, tools: rewrite.rewritten }
+        // The hosted item is synthesized here, never upstream, so its `include`
+        // opt-ins are dead weight on the wire — and grok-* / mai-code-* reject
+        // rather than ignore them. Registrations have already read whatever they
+        // need out of `include` during prepare.
+        const owned = hosted.includeTokens
+        if (owned?.length && Array.isArray(ctx.payload.include)) {
+          const kept = (ctx.payload.include as unknown[]).filter(
+            (token) => typeof token !== 'string' || !owned.includes(token),
+          )
+          const { include: _dropped, ...rest } = ctx.payload as Record<string, unknown>
+          ctx.payload = (kept.length ? { ...rest, include: kept } : rest) as typeof ctx.payload
+        }
+      }
+      const rawToolChoice = ctx.payload.tool_choice as ResponsesToolChoiceLoose
+      const originalToolChoice =
+        hosted !== undefined &&
+        typeof rawToolChoice === 'object' &&
+        rawToolChoice !== null &&
+        hosted.hostedTypes.includes(rawToolChoice.type)
+          ? rawToolChoice
+          : undefined
+      active.push({ ...prepared, toolName, canonicalHostedTool, originalToolChoice })
+    }
+
+    serverToolTrace('prepared', {
+      tools: active.map((e) => ({ name: e.toolName, hosted: e.hosted !== undefined })),
+    })
+    if (active.length === 0) { closeState(); return await run() }
+
+    const rewrittenToolChoice = rewriteHostedToolChoice(ctx.payload.tool_choice as ResponsesToolChoiceLoose, active)
+    if (rewrittenToolChoice !== (ctx.payload.tool_choice as unknown)) {
+      ctx.payload = { ...ctx.payload, tool_choice: rewrittenToolChoice }
+    }
+
+    const hostedActive = active.filter(
+      (entry): entry is ActiveServerTool & { hosted: ServerToolHostedDispatch } => entry.hosted !== undefined,
+    )
+    if (hostedActive.length > 0) {
+      if (isOwnedPrivatePayloadSource(dependency)) scope = dependency.createScope()
+      lifetime = new ServerToolLifetime(closeState, gatewayCtx.downstreamAbortSignal)
+      lifetime.assertOpen()
+    }
+    const canonicalInput = (ctx.payload.input as ResponsesInputItem[]) ?? []
+    const nextInput = transformServerToolItems(canonicalInput, active)
+    if (nextInput !== canonicalInput) ctx.payload = { ...ctx.payload, input: nextInput }
+    if (lifetime === undefined || scope === undefined) { closeState(); return await run() }
+    const writer = scope.writer
+
+    const dispatchers = new Map<string, ServerToolDispatcher>()
+    for (const entry of hostedActive) dispatchers.set(entry.toolName, entry.hosted.dispatcher)
+    const loopState: ServerToolLoopState = {
+      iterationCount: 1,
+      remainingToolCalls: typeof ctx.payload.max_tool_calls === 'number' ? (ctx.payload.max_tool_calls as number) : undefined,
+    }
+    const finalToolChoice = ctx.payload.tool_choice as ResponsesToolChoiceLoose
+    const demoteForcedServerToolChoiceAfterFirstTurn =
+      finalToolChoice === 'required' ||
+      (typeof finalToolChoice === 'object' &&
+        finalToolChoice !== null &&
+        finalToolChoice.type === 'function' &&
+        finalToolChoice.namespace === undefined &&
+        typeof finalToolChoice.name === 'string' &&
+        dispatchers.has(finalToolChoice.name))
+
+    const merge = createMergeState()
+    const owner = lifetime
+    const first = await owner.awaitResult(run(), async result => {
+      if (result.type === 'events') await owner.discardLate(result)
+    }, result => result.type === 'events' ? owner.ownProducer(result) : result)
+    owner.assertOpen()
+    if (first.type !== 'events') { await owner.close(); return first }
+    const firstResult = await owner.wait(materializeResponsesSource(first, ctx.payload.stream === true, gatewayCtx.downstreamAbortSignal, gatewayCtx.abortUpstream))
+    owner.assertOpen()
+    merge.lastSeenModel = firstResult.modelIdentity.modelKey
+    const turn1Iter = consumeTurnStreaming(firstResult.events === first.events ? firstResult.events : owner.ownSource(firstResult.events), merge, true, dispatchers, loopState, active)
+
+    const { promise: shimFinalMetadata, resolve: resolveFinalMetadata } = Promise.withResolvers<EventResultMetadata>()
+    const incomingModel = gatewayCtx.incomingModel ?? firstResult.modelIdentity.incomingModel
+    const metadata: LatestUpstreamMetadata = {
+      modelIdentity: retainIncomingModel(firstResult.modelIdentity, incomingModel),
+      performance: firstResult.performance,
+      resolveModelIdentity: (modelKey) => {
+        const resolved = firstResult.resolveModelIdentity?.(modelKey) ?? firstResult.modelIdentity
+        return retainIncomingModel(resolved, incomingModel)
+      },
+    }
+
+    let metadataSettled = false
+    const settleFinalMetadata = (): void => {
+      if (metadataSettled) return
+      metadataSettled = true
+      const observed = merge.lastSeenModel
+      const modelKey = observed === null ? metadata.modelIdentity.modelKey : pickUsageModelId(observed, metadata.modelIdentity.modelKey)
+      let modelIdentity = metadata.modelIdentity
+      try {
+        if (modelKey !== modelIdentity.modelKey) modelIdentity = metadata.resolveModelIdentity?.(modelKey) ?? modelIdentity
+      } finally {
+        // Binding identity remains available even if an optional resolver fails.
+        resolveFinalMetadata({ modelIdentity: retainIncomingModel(modelIdentity, incomingModel), performance: metadata.performance })
       }
     }
-    const rawToolChoice = ctx.payload.tool_choice as ResponsesToolChoiceLoose
-    const originalToolChoice =
-      hosted !== undefined &&
-      typeof rawToolChoice === 'object' &&
-      rawToolChoice !== null &&
-      hosted.hostedTypes.includes(rawToolChoice.type)
-        ? rawToolChoice
-        : undefined
-    active.push({ ...prepared, toolName, canonicalHostedTool, originalToolChoice })
-  }
-
-  serverToolTrace('prepared', {
-    tools: active.map((e) => ({ name: e.toolName, hosted: e.hosted !== undefined })),
-  })
-  if (active.length === 0) return await run()
-
-  const rewrittenToolChoice = rewriteHostedToolChoice(ctx.payload.tool_choice as ResponsesToolChoiceLoose, active)
-  if (rewrittenToolChoice !== (ctx.payload.tool_choice as unknown)) {
-    ctx.payload = { ...ctx.payload, tool_choice: rewrittenToolChoice }
-  }
-
-  const canonicalInput = (ctx.payload.input as ResponsesInputItem[]) ?? []
-  const nextInput = transformServerToolItems(canonicalInput, active)
-  if (nextInput !== canonicalInput) ctx.payload = { ...ctx.payload, input: nextInput }
-
-  const hostedActive = active.filter(
-    (entry): entry is ActiveServerTool & { hosted: ServerToolHostedDispatch } => entry.hosted !== undefined,
-  )
-  if (hostedActive.length === 0) return await run()
-
-  const dispatchers = new Map<string, ServerToolDispatcher>()
-  for (const entry of hostedActive) dispatchers.set(entry.toolName, entry.hosted.dispatcher)
-  const loopState: ServerToolLoopState = {
-    iterationCount: 1,
-    remainingToolCalls: typeof ctx.payload.max_tool_calls === 'number' ? (ctx.payload.max_tool_calls as number) : undefined,
-  }
-  const finalToolChoice = ctx.payload.tool_choice as ResponsesToolChoiceLoose
-  const demoteForcedServerToolChoiceAfterFirstTurn =
-    finalToolChoice === 'required' ||
-    (typeof finalToolChoice === 'object' &&
-      finalToolChoice !== null &&
-      finalToolChoice.type === 'function' &&
-      finalToolChoice.namespace === undefined &&
-      typeof finalToolChoice.name === 'string' &&
-      dispatchers.has(finalToolChoice.name))
-
-  const merge = createMergeState()
-  const first = await run()
-  if (first.type !== 'events') return first
-  const firstResult = await materializeResponsesSource(first, ctx.payload.stream === true, gatewayCtx.downstreamAbortSignal, gatewayCtx.abortUpstream)
-  merge.lastSeenModel = firstResult.modelIdentity.modelKey
-  const turn1Iter = consumeTurnStreaming(firstResult.events, merge, true, dispatchers, loopState, active)
-
-  let resolveFinalMetadata!: (m: EventResultMetadata) => void
-  const shimFinalMetadata = new Promise<EventResultMetadata>((resolve) => {
-    resolveFinalMetadata = resolve
-  })
-  const incomingModel = gatewayCtx.incomingModel ?? firstResult.modelIdentity.incomingModel
-  const metadata: LatestUpstreamMetadata = {
-    modelIdentity: retainIncomingModel(firstResult.modelIdentity, incomingModel),
-    performance: firstResult.performance,
-    resolveModelIdentity: (modelKey) => {
-      const resolved = firstResult.resolveModelIdentity?.(modelKey) ?? firstResult.modelIdentity
-      return retainIncomingModel(resolved, incomingModel)
-    },
-  }
-
-  return {
-    ...firstResult,
-    __interceptorReplaced: true,
-    events: runMultiTurnLoop({
-      signal: gatewayCtx.downstreamAbortSignal,
-      abortUpstream: gatewayCtx.abortUpstream,
-      ctx,
-      run,
-      merge,
-      loopState,
-      demoteForcedServerToolChoiceAfterFirstTurn,
-      turn1Iter,
-      dispatchers,
-      store,
-      canonicalInput,
-      active,
-      metadata,
-      incomingModel,
-      resolveFinalMetadata,
-    }),
-    finalMetadata: shimFinalMetadata,
-    resolveModelIdentity: (modelKey) => retainIncomingModel(
-      metadata.resolveModelIdentity?.(modelKey) ?? metadata.modelIdentity,
-      incomingModel,
-    ),
+    owner.onClose(settleFinalMetadata)
+    return {
+      ...firstResult,
+      __interceptorReplaced: true,
+      discardProducer: () => owner.close(),
+      events: owner.wrap(runMultiTurnLoop({
+        signal: gatewayCtx.downstreamAbortSignal,
+        abortUpstream: gatewayCtx.abortUpstream,
+        ctx,
+        run,
+        merge,
+        loopState,
+        demoteForcedServerToolChoiceAfterFirstTurn,
+        turn1Iter,
+        dispatchers,
+        writer,
+        lifetime: owner,
+        canonicalInput,
+        active,
+        metadata,
+        incomingModel,
+        settleFinalMetadata,
+      })),
+      finalMetadata: shimFinalMetadata,
+      resolveModelIdentity: (modelKey) => retainIncomingModel(
+        metadata.resolveModelIdentity?.(modelKey) ?? metadata.modelIdentity,
+        incomingModel,
+      ),
+    }
+  } catch (error) {
+    if (lifetime) await lifetime.close().catch(() => {})
+    else closeState()
+    throw error
   }
 }
 

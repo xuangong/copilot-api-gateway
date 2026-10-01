@@ -21,6 +21,9 @@
  *     `planShimSlots` `executeAlpha` fast path) are removed rather than left
  *     dormant behind a flag.
  */
+import { decodeWebSearchPrivatePayload, type WebSearchCallPrivatePayload } from '../../../../orchestrator/server-tools/private-payload'
+export type { WebSearchCallPrivatePayload } from '../../../../orchestrator/server-tools/private-payload'
+
 import { shortId } from '../../../../../data-plane/shared/short-id.ts'
 import { normalizeDomainEntry } from '../../../../tools/web-search/domain-normalize.ts'
 import {
@@ -310,51 +313,6 @@ export const prepareToolsForShim = (
 // context window through the diagnostic that explains it.
 const MAX_MALFORMED_WIRE_DUMP_CHARS = 1024
 
-/**
- * Persistent `payload.private` shape for one `web_search_call`. A shim call
- * carrying several operations fans out into one wsc per operation, each with
- * its own payload — so this is always one wsc and one op, never an array to
- * denormalize. The persisted-payload key IS the wsc id, so we don't repeat it
- * inside.
- *
- * - `functionCallItem` is the function_call this wsc replays as: the
- *   upstream's own item when the call produced a single wsc, otherwise a
- *   synthetic per-slot one (suffixed call_id, `arguments` naming only this
- *   slot's operation) so N replayed calls read as N honest requests rather
- *   than N copies of the same one. Either way `arguments` is the
- *   jsonrepair-canonical strict-JSON form, and type/name/status pass through
- *   untouched, so the upstream model's prior assistant turn stays well-formed.
- *
- * - `ir` stores the action, structured results, and optional upstream
- *   model-facing output straight from `planShimSlots`. Replay uses
- *   `renderWebSearchCallOutput`, which preserves that output when present
- *   and otherwise renders the action and results.
- *
- * Version-tagged: an unknown `v` falls through the no-payload branch in
- * `transformInputItemsForWebSearch` (action re-serialized into the
- * shim call shape, output replaced with the not-preserved notice). Starts
- * at 1; bump only on a wire-incompatible change after release.
- */
-export interface WebSearchCallPrivatePayload {
-  v: 1
-  functionCallItem: ResponsesFunctionToolCallItem
-  ir: WebSearchCallIR
-}
-
-const isWebSearchCallPrivatePayload = (value: unknown): value is WebSearchCallPrivatePayload => {
-  if (value === null || typeof value !== 'object') return false
-  const obj = value as Record<string, unknown>
-  if (obj.v !== 1) return false
-  const fc = obj.functionCallItem
-  if (fc === null || typeof fc !== 'object') return false
-  const fcObj = fc as Record<string, unknown>
-  if (fcObj.type !== 'function_call' || typeof fcObj.call_id !== 'string' || typeof fcObj.name !== 'string' || typeof fcObj.arguments !== 'string') return false
-  const ir = obj.ir
-  if (ir === null || typeof ir !== 'object') return false
-  const irObj = ir as Record<string, unknown>
-  return irObj.action !== undefined && Array.isArray(irObj.results)
-}
-
 export const synthesizeWebSearchCallId = (): string => createRandomResponsesItemId('web_search_call')
 
 // Distinct id namespace (cc_replay_*) from web-search item ids (ws_*) so a
@@ -412,6 +370,12 @@ export const transformInputItemsForWebSearch = (
   input: ResponsesInputItem[],
   toolName: string,
   getPrivatePayload?: (id: string) => unknown,
+): ResponsesInputItem[] => transformTypedInputItemsForWebSearch(input, toolName, id => decodeWebSearchPrivatePayload(getPrivatePayload?.(id)))
+
+const transformTypedInputItemsForWebSearch = (
+  input: ResponsesInputItem[],
+  toolName: string,
+  getPrivatePayload: (id: string) => WebSearchCallPrivatePayload | undefined,
 ): ResponsesInputItem[] => {
   const out: ResponsesInputItem[] = []
 
@@ -423,7 +387,7 @@ export const transformInputItemsForWebSearch = (
 
     const wireItem = item as ResponsesInputItem & { id?: string; action?: ResponsesWebSearchAction }
     const candidatePayload = wireItem.id !== undefined ? getPrivatePayload?.(wireItem.id) : undefined
-    if (isWebSearchCallPrivatePayload(candidatePayload)) {
+    if (candidatePayload !== undefined) {
       out.push(
         candidatePayload.functionCallItem as unknown as ResponsesInputItem,
         {
@@ -593,7 +557,7 @@ export const webSearchServerTool: ServerToolRegistration<Invocation, ServerToolR
     type: 'active',
     baseToolName: SHIM_TOOL_NAME,
     transformItems: (items, toolName) =>
-      transformInputItemsForWebSearch(items, toolName, (id) => requestCtx.store.getPrivatePayload(id)),
+      transformTypedInputItemsForWebSearch(items, toolName, (id) => requestCtx.store.getPrivatePayload(id)),
     ...(hasHostedWebSearch
       ? {
           hosted: {

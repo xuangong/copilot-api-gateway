@@ -68,7 +68,7 @@ for (const stream of [false, true]) {
     inv.payload.tools = [{ type: "web_search" }]
     let dispatched = 0
     const slot: ServerToolResultSlot = { id: "ws", startItem: { type: "web_search_call", status: "in_progress" }, startEvents: [],
-      run: async function* () { yield* []; dispatched++; return { item: { type: "web_search_call", status: "completed" }, endEvents: [], privatePayload: null } } }
+      run: async function* () { yield* []; dispatched++; return { item: { type: "web_search_call", status: "completed" }, endEvents: [] } } }
     const registration: ServerToolRegistration<Invocation, Record<string, unknown>> = () => ({ type: "active", baseToolName: "web_search", hosted: {
       hostedTypes: ["web_search"], canonicalize: raw => raw.type === "web_search" ? { type: "web_search" } : undefined,
       buildFunctionTool: (_tool, name) => ({ type: "function", name }), dispatcher: () => [slot],

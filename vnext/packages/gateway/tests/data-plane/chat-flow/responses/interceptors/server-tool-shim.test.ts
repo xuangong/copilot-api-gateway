@@ -574,7 +574,7 @@ test('withResponsesServerToolShim retains the outer incoming model across two ho
   const store = createInMemoryPrivatePayloadStore()
   const slot: ServerToolResultSlot = {
     id: 'ws_1', startItem: { type: 'web_search_call', status: 'in_progress' }, startEvents: [],
-    run: async function* () { return { item: { type: 'web_search_call', status: 'completed' }, endEvents: [], privatePayload: null } },
+    run: async function* () { return { item: { type: 'web_search_call', status: 'completed' }, endEvents: [] } },
   }
   const registration: ServerToolRegistration<Invocation, Record<string, unknown>> = () => ({
     type: 'active', baseToolName: 'web_search', hosted: {
