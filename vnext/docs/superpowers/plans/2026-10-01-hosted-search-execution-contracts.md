@@ -23,7 +23,7 @@
 
 **Files:** Create `vnext/packages/gateway/src/data-plane/tools/web-search/execution-scope.ts` and matching `tests/data-plane/tools/web-search/execution-scope.test.ts`. Modify `plan-operations.ts`, `operations.ts`, `key-config.ts`, `providers/jina.ts`, `providers/microsoft-grounding.ts` in that source directory. Extend existing plan-operations, key-config, providers tests. Keep Alpha direct API compatible; test existing Alpha route coverage after low-level changes.
 
-**Interfaces:** Produce `createWebSearchExecutionScope(session: Omit<WebSearchExecutionSession, "pageCache">): WebSearchExecutionScope`. Scope methods: `prepare(args: Record<string, unknown> | null): PreparedWebSearchBatch`, `assertOpen(): void`, `cancel(): void`, `settled(): Promise<void>`. Prepared batch exposes readonly `plans` and single-use `start(): StartedWebSearchBatch`; started batch exposes readonly `calls` with readonly `plan` and `result(): Promise<WebSearchCallIR>`. Implementation may use module-private tracker types shared with operations; no chat-flow dependency.
+**Interfaces:** Produce `createWebSearchExecutionScope(session: Omit<WebSearchExecutionSession, "pageCache">): WebSearchExecutionScope`. Scope methods: `prepare(args: Record<string, unknown> | null): PreparedWebSearchBatch`, `assertOpen(): void`, `cancel(): undefined`, `settled(): Promise<void>`. Prepared batch exposes readonly `plans` and single-use `start(): StartedWebSearchBatch`; started batch exposes readonly `calls` with readonly `plan` and `result(): Promise<WebSearchCallIR>`. Implementation may use module-private tracker types shared with operations; no chat-flow dependency.
 
 - [ ] Write discriminating RED cases for fallback after swallowed abort, late cache writes, cancelled delayed provider resolution, and pure prepare/single start. Scope tests may initially fail on the missing export; preserve the real old-code fallback failure separately.
 
@@ -46,16 +46,17 @@ await expect(batch.calls[0]?.result()).rejects.toBeDefined()
 
 **Files:** Modify `vnext/packages/gateway/src/data-plane/orchestrator/server-tools/types.ts`, `data-plane/chat-flow/responses/interceptors/server-tool-lifetime.ts`, `server-tool-shim.ts`, `server-tools/web-search.ts`, `data-plane/chat-flow/chat-completions/interceptors/with-chat-completions-web-search-shim.ts`, and shared planner. Create a narrowly scoped Chat lifecycle helper beside its interceptor if needed. Extend `tests/data-plane/chat-flow/responses/interceptors/server-tool-private-lifecycle.test.ts`, actual web-search fanout/lifetime coverage, and Chat shim tests. Add source-included contract assertions if public capability shape needs them. Do not edit protected attempt/registry overlays.
 
-**Interfaces:** Consume Task 1 scope. Add `ServerToolHostedWork` with `cancel(): void; settled(): Promise<void>` and optional `ServerToolHostedDispatch.work`. Add `ServerToolLifetime.ownWork(work: ServerToolHostedWork): void` which adopts synchronously and cancels synchronously on close, then uses existing cleanup settlement policy. The slot lifetime view remains unable to cancel the invocation. Protocol terminal and writer interfaces stay unchanged.
+**Interfaces:** Consume Task 1 scope. Add `ServerToolHostedWork` with `cancel(): undefined; settled(): Promise<void>` and optional `ServerToolHostedDispatch.work`. Add `ServerToolLifetime.ownWork(work: ServerToolHostedWork): void` which adopts synchronously and cancels synchronously on close, then uses existing cleanup settlement policy. The slot lifetime view remains unable to cancel the invocation. Protocol terminal and writer interfaces stay unchanged.
 
 - [ ] Write RED tests using the actual search registration: discard after eager dispatch but before slot acquisition cancels provider signal, late results cannot write/reenter, and an unconsumed rejected branch stays observed. Add preparation rejection/invalid request after an earlier work owner was returned.
 
 ```ts
 const pending = iterator.next()
 await providerStarted
-await result.discardProducer?.()
+const closing = result.discardProducer?.()
 expect(providerSignal.aborted).toBe(true)
 providerDeferred.resolve(success)
+await closing
 await pending.catch(() => undefined)
 expect(nextRunCount).toBe(0)
 expect(privateWrites).toEqual([])
