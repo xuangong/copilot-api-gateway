@@ -45,7 +45,7 @@ Keep `ChannelBroker`'s public publish/subscribe/close shape and eager subscripti
 
 Distinguish termination intent:
 
-- Channel close stops new delivery, releases listeners and channel ownership, and preserves already-buffered FIFO frames for the subscriber to drain before `done`.
+- Channel close stops new delivery, releases channel listeners and channel ownership, and preserves already-buffered FIFO frames for the subscriber to drain before `done`. Keep the abort listener only while a residual buffer exists, so an abort after graceful close can still discard it; detach that listener when the buffer is drained or canceled.
 - Abort, iterator return and iterator throw cancel consumption: clear buffered frames, detach listeners, resolve a pending read with `done`, and release ownership. `throw` then rejects with the supplied error. This also works before the first pull and with an already-aborted signal.
 - Repeated termination is idempotent. Cancellation after graceful close can discard the remaining buffer. Resubscription after close gets a fresh channel that old cleanup cannot delete.
 

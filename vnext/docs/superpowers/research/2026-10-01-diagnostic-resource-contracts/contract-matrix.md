@@ -1,0 +1,21 @@
+# Diagnostic resource contract matrix
+
+This matrix extends the [earlier contract inventory](../2026-10-01-contract-strengthening/contract-matrix.md). The [specification](../../specs/2026-10-01-diagnostic-resource-contracts.md) defines the implementation requirements; qualification records whether the final candidate meets them.
+
+| Boundary | Input and guaranteed output | Mutation authority and lifetime | Failure and termination |
+| --- | --- | --- | --- |
+| Budget to owner | `open()` returns a scope with a capture capability and `retire(work, preparation)` | Environment budget owns shared accounting; raw counter adjustment is absent from public types and runtime. A caller cannot construct a reservation with a foreign owner. | Existing omission limits remain authoritative; no new resource policy. |
+| Owner to capture consumer | `bytes`, `graph`, `project`, `frame`; readonly omission and invalid-JSON facts | Capture consumer can request admission but cannot release accounting or retire the owner. No per-frame wrapper/clone is required. | Omission remains monotonic. Every admission path refuses after retirement; pending retirement still admits response-drain work. |
+| Owner to retirement | First call binds terminal work and preparation and returns one memoized receipt | Scope owns release once both operations settle. Repeated calls return the same Promise and cannot replace the owned work. | Either rejection retains charges until the other phase settles. Preparation error has precedence; otherwise preserve work outcome. Observe both immediately. |
+| Accumulator to persistence | Existing preparation, staged upload, SQL and notification work | Accumulator keeps the scope and lends only capture admission internally. Its existing terminal branch selects work and scheduling. | Diagnostic failure stays diagnostic-only. Preserve storage-before-notification and original request completion authority. |
+| Subscriber to channel | Eager `subscribe(channelId, signal)` with one shared iterator state | One active subscription reference; last release removes only its matching channel entry. No unobserved channel allocation during publish. | Already-aborted signals acquire no live channel; signaled termination releases exactly once. |
+| Publisher to active recipients | Encode and fan out to existing recipients | Broker holds only active entries. With no recipients, publish resolves before codec invocation. | Encode is a delivery concern; persistence remains authoritative. This is process/isolate-local delivery, without historical replay. |
+| Channel to graceful consumer | `closeChannel` stops new frames and preserves already-buffered FIFO | Remove the old entry before close delivery; old cleanup cannot delete a fresh same-ID subscription. Retain abort observation only while a residual FIFO needs drain/cancel. | Drain the buffer, then `done`; a later explicit cancel may discard remaining data. |
+| Consumer to cancellation | Abort, iterator `return`, iterator `throw` | Clear buffered data, detach, release, resolve any pending read with `done`. | Idempotent; works before first pull and after graceful close. `throw` rejects with its original error after cancellation. |
+| Consumer to pending read | Sequential `next()` calls | One pending read per subscription, shared by repeated iterator retrieval | A concurrent second pending read rejects rather than overwriting the first or allocating a waiter queue. |
+
+## Extension rules
+
+A new diagnostic codec may shape delivery, but must not become the validation owner for all persisted records: it is intentionally skipped when no subscriber exists. A new capture consumer receives admission only; ownership and completion remain with the accumulator. A new platform broker must document eager registration, pending-read termination, channel recreation and queue-overflow behavior, rather than relying on the shape of `AsyncIterable` alone.
+
+Numeric active-queue/publication admission, search operation admission and retained replay policy are still separate design work. See the [follow-up matrix](resource-contract-followup.md). Neither structural typing nor successful unit tests establishes measured CFW CPU/memory/latency improvements.

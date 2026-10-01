@@ -58,6 +58,8 @@ The [contract matrix](contract-matrix.md) covers the earlier ready capability an
 
 The source contracts now require explicit preparation with exact successful extra data, synchronous readonly observation, a translated producer domain matching runtime support, and typed reader/writer/disposer capabilities. Default private state belongs to the complete lazy hosted response; closure revokes access, settles existing metadata and retains incomplete-cleanup facts. Borrowed external stores remain externally owned, and malformed replay values fall back to the established missing-history output.
 
+Continuation (2026-10-01): the [diagnostic resource increment](../../plans/2026-10-01-diagnostic-resource-contracts.md) now tracks capture authority and subscription ownership, with [separate capacity follow-up](../2026-10-01-diagnostic-resource-contracts/resource-contract-followup.md). Its validation is recorded independently of the results above.
+
 Remaining work is recorded separately from this completed batch:
 
 1. Define count/byte admission and overflow behavior for active private state and diagnostic capture, then measure the exact candidate under local workerd for CPU, memory and latency. Owned lifetime can retain a long-running request's values longer than the previous TTL; no lower active peak is promised.
