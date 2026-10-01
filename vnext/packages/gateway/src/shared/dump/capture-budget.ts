@@ -69,81 +69,120 @@ function projectGraph(root: unknown, limit: number): Estimate {
   try { return visit(root, 0) } catch { return { reason: "unsupported_payload" } }
 }
 
+export interface DumpCapture {
+  readonly reason: DumpCaptureOmission | undefined
+  readonly invalidJson: boolean
+  bytes(bytes: number): boolean
+  graph(value: unknown): boolean
+  project<T>(value: T): { value: T } | undefined
+  frame<T>(value: T): { value: T } | undefined
+}
+
+export interface DumpCaptureScope {
+  readonly capture: DumpCapture
+  retire(work: Promise<void>, preparation: Promise<void>): Promise<void>
+}
+
+interface BudgetState { readonly limits: Readonly<Limits>; retained: number }
+interface CaptureState {
+  readonly budget: BudgetState
+  retained: number
+  frames: number
+  retired: boolean
+  omitted: DumpCaptureOmission | undefined
+  invalidSerialization: boolean
+}
+
 /** Per-environment payload reservations only. Metadata/publication slots and
  * runtime/codec working memory are separate resource domains. No wait queue. */
 export class DumpCaptureBudget {
-  readonly limits: Readonly<Limits>
-  private retained = 0
+  #state: BudgetState
   constructor(limits: Partial<Limits> = {}) {
-    this.limits = Object.freeze({ ...DUMP_CAPTURE_LIMITS, ...limits })
+    const policy = Object.freeze({ ...DUMP_CAPTURE_LIMITS, ...limits })
     for (const key of ["captureBytes", "environmentBytes", "frames"] as const) {
-      if (!Number.isSafeInteger(this.limits[key]) || this.limits[key] < 0 || this.limits[key] > DUMP_CAPTURE_LIMITS[key]) {
+      if (!Number.isSafeInteger(policy[key]) || policy[key] < 0 || policy[key] > DUMP_CAPTURE_LIMITS[key]) {
         throw new TypeError("Invalid dump capture policy")
       }
     }
+    this.#state = { limits: policy, retained: 0 }
   }
-  get retainedBytes(): number { return this.retained }
-  get availableBytes(): number { return this.limits.environmentBytes - this.retained }
-  open(): DumpCaptureReservation { return new DumpCaptureReservation(this) }
-  reserve(bytes: number): boolean {
-    if (bytes > this.availableBytes) return false
-    this.retained += bytes
-    return true
-  }
-  release(bytes: number): void { this.retained -= bytes }
+  get limits(): Readonly<Limits> { return this.#state.limits }
+  get retainedBytes(): number { return this.#state.retained }
+  get availableBytes(): number { return this.#state.limits.environmentBytes - this.#state.retained }
+  open(): DumpCaptureScope { return new CaptureScope(this.#state) }
 }
 
-export class DumpCaptureReservation {
-  private retained = 0
-  private frames = 0
-  private released = false
-  private omitted: DumpCaptureOmission | undefined
-  private invalidSerialization = false
-  constructor(private readonly owner: DumpCaptureBudget) {}
-  get reason(): DumpCaptureOmission | undefined { return this.omitted }
-  get invalidJson(): boolean { return this.invalidSerialization }
+class CaptureFacade implements DumpCapture {
+  #state: CaptureState
+  constructor(state: CaptureState) { this.#state = state }
+  get reason(): DumpCaptureOmission | undefined { return this.#state.omitted }
+  get invalidJson(): boolean { return this.#state.invalidSerialization }
 
   bytes(bytes: number): boolean {
-    if (this.released || this.omitted) return false
-    if (!Number.isSafeInteger(bytes) || bytes < 0 || bytes > this.owner.limits.captureBytes - this.retained) {
-      this.omitted = "capture_limit"
+    const state = this.#state, budget = state.budget
+    if (state.retired || state.omitted) return false
+    if (!Number.isSafeInteger(bytes) || bytes < 0 || bytes > budget.limits.captureBytes - state.retained) {
+      state.omitted = "capture_limit"
       return false
     }
-    if (!this.owner.reserve(bytes)) { this.omitted = "environment_limit"; return false }
-    this.retained += bytes
+    if (bytes > budget.limits.environmentBytes - budget.retained) { state.omitted = "environment_limit"; return false }
+    budget.retained += bytes
+    state.retained += bytes
     return true
   }
   graph(value: unknown): boolean { return this.project(value) !== undefined }
   project<T>(value: T): { value: T } | undefined {
-    if (this.released || this.omitted) return undefined
-    const available = Math.min(this.owner.limits.captureBytes - this.retained, this.owner.availableBytes)
+    const state = this.#state, budget = state.budget
+    if (state.retired || state.omitted) return undefined
+    const available = Math.min(budget.limits.captureBytes - state.retained, budget.limits.environmentBytes - budget.retained)
     const estimate = projectGraph(value, available)
     if ("reason" in estimate) {
-      this.invalidSerialization = estimate.reason === "invalid_json"
-      this.omitted = estimate.reason === "unsupported_payload" || this.invalidSerialization ? "unsupported_payload"
-        : this.owner.availableBytes < this.owner.limits.captureBytes - this.retained ? "environment_limit" : "capture_limit"
+      state.invalidSerialization = estimate.reason === "invalid_json"
+      state.omitted = estimate.reason === "unsupported_payload" || state.invalidSerialization ? "unsupported_payload"
+        : budget.limits.environmentBytes - budget.retained < budget.limits.captureBytes - state.retained ? "environment_limit" : "capture_limit"
       return undefined
     }
     return this.bytes(estimate.bytes) ? { value: estimate.value as T } : undefined
   }
   frame<T>(value: T): { value: T } | undefined {
-    if (this.released || this.omitted) return undefined
-    if (this.frames >= this.owner.limits.frames) { this.omitted = "frame_limit"; return undefined }
+    const state = this.#state
+    if (state.retired || state.omitted) return undefined
+    if (state.frames >= state.budget.limits.frames) { state.omitted = "frame_limit"; return undefined }
     const captured = this.project(value)
     if (!captured) return undefined
-    this.frames++
+    state.frames++
     return captured
-  }
-  release(): void {
-    if (this.released) return
-    this.released = true
-    this.owner.release(this.retained)
-    this.retained = 0
   }
 }
 
-// The completion retains only a small reservation and a body-free preparation
-// receipt. Rejection does not release accounting while preparation still runs.
-export function retireDumpCapture(work: Promise<void>, preparation: Promise<void>, capture: DumpCaptureReservation): Promise<void> {
-  return work.finally(async () => { await preparation; capture.release() })
+// This reaction retains only scalar accounting state and the void completion
+// receipt, never the caller's work/preparation promises or payload graphs.
+function finishRetirement(state: CaptureState, completion: PromiseWithResolvers<void>) {
+  return ([work, preparation]: [PromiseSettledResult<void>, PromiseSettledResult<void>]): void => {
+    state.retired = true
+    state.budget.retained -= state.retained
+    state.retained = 0
+    if (preparation.status === "rejected") completion.reject(preparation.reason)
+    else if (work.status === "rejected") completion.reject(work.reason)
+    else completion.resolve()
+  }
+}
+
+class CaptureScope implements DumpCaptureScope {
+  #state: CaptureState
+  #capture: DumpCapture
+  #retirement: Promise<void> | undefined
+  constructor(budget: BudgetState) {
+    this.#state = { budget, retained: 0, frames: 0, retired: false, omitted: undefined, invalidSerialization: false }
+    this.#capture = new CaptureFacade(this.#state)
+  }
+  get capture(): DumpCapture { return this.#capture }
+  retire(work: Promise<void>, preparation: Promise<void>): Promise<void> {
+    if (this.#retirement) return this.#retirement
+    const completion = Promise.withResolvers<void>()
+    // Bind the receipt before observing promises whose then() may reenter.
+    this.#retirement = completion.promise
+    void Promise.allSettled([work, preparation]).then(finishRetirement(this.#state, completion))
+    return this.#retirement
+  }
 }

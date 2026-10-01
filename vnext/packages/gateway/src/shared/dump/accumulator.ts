@@ -18,7 +18,7 @@ import type { ProtocolFrame } from "@vibe-core/result"
 import type { TelemetryModelIdentity } from "@vibe-llm/protocols/common"
 
 import { getDumpBroker, getDumpCaptureBudget, getDumpStore } from "./registry.ts"
-import { retireDumpCapture, type DumpCaptureBudget, type DumpCaptureReservation } from "./capture-budget.ts"
+import type { DumpCapture, DumpCaptureBudget, DumpCaptureScope } from "./capture-budget.ts"
 import { UpstreamExchangeCollector } from "./upstream-attempts.ts"
 import { createUpstreamDialObservationContext } from "./upstream-dial-adapter.ts"
 import type { UpstreamExchanges } from "./upstream-attempts.ts"
@@ -159,7 +159,8 @@ export class DumpAccumulator {
   private errorMeta: DumpErrorMeta | null = null
   private preparedRequestBody: Promise<PreparedDumpRequestBody> | null
   private readonly preparationSettled: Promise<void>
-  private readonly capture: DumpCaptureReservation
+  private readonly captureScope: DumpCaptureScope
+  private readonly capture: DumpCapture
   private captureOmitted = false
   private upstreamExchangeCollector: UpstreamExchangeCollector | null = null
   private ownsUpstreamCollector = false
@@ -179,7 +180,8 @@ export class DumpAccumulator {
     budget: DumpCaptureBudget = getDumpCaptureBudget(),
   ) {
     this.recordId = ulid(startedAt) as DumpRecordId
-    this.capture = budget.open()
+    this.captureScope = budget.open()
+    this.capture = this.captureScope.capture
     try {
       this.preparedRequestBody = this.capture.bytes(requestBody.buffer.byteLength * 3 + 256)
         ? getDumpStore().prepareRequestBody(requestBody) : Promise.resolve(emptyRequestBody())
@@ -211,7 +213,7 @@ export class DumpAccumulator {
   }
 
   private retire(work: Promise<void>): Promise<void> {
-    return retireDumpCapture(work, this.preparationSettled, this.capture)
+    return this.captureScope.retire(work, this.preparationSettled)
   }
 
   // --- mid-flight hooks (called from per-protocol respond layer) ---
