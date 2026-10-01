@@ -1,5 +1,7 @@
 import { expect, spyOn, test } from "bun:test"
 import { Database } from "bun:sqlite"
+import { SSEStreamingApi } from "hono/streaming"
+import type { BoundedChannelSubscription, ChannelQueuePolicy } from "../src/shared/runtime/channel-broker-contract.ts"
 import { Hono } from "hono"
 import { BunSqliteRepo } from "@vibe-llm/platform-bun/src/bun-sqlite-repo.ts"
 import { dumpRoutes } from "../src/control-plane/dump/routes.ts"
@@ -42,15 +44,16 @@ class SnapshotStore implements DumpStore {
 class ObservedBroker extends EventTargetChannelBroker<DumpMetadata> {
   readonly subscriptions: Array<{ signal: AbortSignal; iterable: AsyncIterable<DumpMetadata> }> = []
   encoded = 0
+  onDecode: (() => void) | undefined
 
   constructor() {
-    super({ encode: value => { this.encoded++; return dumpCodec.encode(value) }, decode: dumpCodec.decode })
+    super({ encode: value => { this.encoded++; return dumpCodec.encode(value) }, decode: payload => { const value = dumpCodec.decode(payload); this.onDecode?.(); return value } })
   }
 
-  override subscribe(channelId: string, signal: AbortSignal): AsyncIterable<DumpMetadata> {
-    const iterable = super.subscribe(channelId, signal)
-    this.subscriptions.push({ signal, iterable })
-    return iterable
+  override subscribeBounded(channelId: string, signal: AbortSignal, policy: ChannelQueuePolicy): BoundedChannelSubscription<DumpMetadata> {
+    const handle = super.subscribeBounded(channelId, signal, policy)
+    this.subscriptions.push({ signal, iterable: handle.iterable })
+    return handle
   }
 
   first() {
@@ -84,6 +87,12 @@ async function fixture() {
     id: keyId, ownerId, name: "lifetime", key: "raw_lifetime", createdAt: now,
     modelMappingsEnabled: false, modelMappings: [], dumpRetentionSeconds: 3600,
   })
+  for (let index = 1; index <= 4; index++) {
+    await repo.apiKeys.save({
+      id: `dump_lifetime_key_${index}` as ApiKeyId, ownerId, name: `lifetime ${index}`, key: `raw_lifetime_${index}`, createdAt: now,
+      modelMappingsEnabled: false, modelMappings: [], dumpRetentionSeconds: 3600,
+    })
+  }
   const store = new SnapshotStore()
   const broker = new ObservedBroker()
   resetDumpRegistryForTests()
@@ -95,10 +104,10 @@ async function fixture() {
   app.route("/api/keys", dumpRoutes)
   app.onError((error, c) => { failures.push(error); return c.text("Internal Server Error", 500) })
   const requests: Array<ReturnType<typeof request>> = []
-  function request(options: { aborted?: boolean; authorized?: boolean; key?: string } = {}) {
+  function request(options: { aborted?: boolean; authorized?: boolean; key?: string; latest?: boolean } = {}) {
     const controller = new AbortController()
     if (options.aborted) controller.abort()
-    const raw = new Request(`http://local.test/api/keys/${options.key ?? keyId}/stream`, {
+    const raw = new Request(`http://local.test/api/keys/${options.key ?? keyId}/stream${options.latest ? "?view=latest-v1" : ""}`, {
       signal: controller.signal,
       headers: options.authorized === false ? undefined : { cookie: `session_token=${token}` },
     })
@@ -293,4 +302,260 @@ test("response-body cancellation releases the live subscription without aborting
     reader?.releaseLock()
     await f.close()
   }
+})
+
+
+test("route saturation precedes subscribe/list and abort holds permits until SQL settles", async () => {
+  const f = await fixture()
+  try {
+    const held = Array.from({ length: 4 }, () => f.request())
+    await f.store.started.promise
+    // Let all four authenticated owners enter their reads.
+    await new Promise(resolve => setTimeout(resolve, 0))
+    const rejected = await f.request().response
+    expect(rejected.status).toBe(429)
+    expect(rejected.headers.get("Retry-After")).toBe("5")
+    expect(f.store.reads).toBe(4)
+    expect(f.broker.subscriptions).toHaveLength(4)
+    for (const request of held) request.controller.abort()
+    expect((await f.request().response).status).toBe(429)
+    f.store.read.resolve([])
+    await Promise.all(held.map(request => request.response))
+    const fresh = f.request()
+    const response = await fresh.response
+    expect(response.status).toBe(200)
+    fresh.controller.abort()
+    await response.body?.cancel()
+  } finally { await f.close() }
+})
+
+test("SQL-time overflow sends latest reconciliation only; legacy closes without changed shape", async () => {
+  for (const latest of [true, false]) {
+    const f = await fixture()
+    const request = f.request({ latest })
+    try {
+      await f.store.started.promise
+      await f.broker.publish("dump_lifetime_key", { ...meta("oversized"), path: "x".repeat(10000) })
+      f.store.read.resolve([meta("snapshot")])
+      const response = await request.response
+      const text = await response.text()
+      expect(text).not.toContain("event: snapshot")
+      expect(text).toBe(latest ? 'event: reconciliation_required\ndata: {"reason":"frame_bytes","recovery":"latest_snapshot","completeHistory":false}\n\n' : "")
+    } finally { await f.close() }
+  }
+})
+
+test("latest snapshot exposes omissions and preserves snapshot before append ordering", async () => {
+  const f = await fixture()
+  const request = f.request({ latest: true })
+  try {
+    await f.store.started.promise
+    await f.broker.publish("dump_lifetime_key", meta("appended"))
+    f.store.read.resolve([meta("snapshot"), { ...meta("oversized"), path: "x".repeat(10000) }])
+    const response = await request.response
+    await f.broker.closeChannel("dump_lifetime_key", "done")
+    const text = await response.text()
+    expect(text).toBe(`event: snapshot\ndata: ${JSON.stringify({ records: [meta("snapshot")], view: "latest", limit: 100, omittedRows: 1, completeHistory: false, hasMore: false, before: "oversized" })}\n\n` +
+      `event: appended\ndata: ${JSON.stringify(meta("appended"))}\n\n`)
+  } finally { await f.close() }
+})
+
+test("blocked snapshot write owns its permit after raw abort until actual write settlement", async () => {
+  const f = await fixture()
+  const entered = deferred<void>()
+  const settle = deferred<void>()
+  const original = SSEStreamingApi.prototype.writeSSE
+  const write = spyOn(SSEStreamingApi.prototype, "writeSSE").mockImplementation(async function (message) {
+    entered.resolve()
+    await settle.promise
+    return await original.call(this, message)
+  })
+  const held = Array.from({ length: 4 }, () => f.request({ latest: true }))
+  try {
+    await f.store.started.promise
+    f.store.read.resolve([])
+    const responses = await Promise.all(held.map(request => request.response))
+    await entered.promise
+    for (const request of held) request.controller.abort()
+    expect((await f.request().response).status).toBe(429)
+    settle.resolve()
+    await Promise.all(responses.map(response => response.text()))
+    const fresh = f.request()
+    const response = await fresh.response
+    expect(response.status).toBe(200)
+    fresh.controller.abort()
+    await response.body?.cancel()
+  } finally {
+    settle.resolve()
+    write.mockRestore()
+    await f.close()
+  }
+})
+
+test("overflow during blocked snapshot awaits writer then sends one terminal and no append", async () => {
+  const f = await fixture()
+  const entered = deferred<void>()
+  const settle = deferred<void>()
+  const original = SSEStreamingApi.prototype.writeSSE
+  const events: string[] = []
+  const write = spyOn(SSEStreamingApi.prototype, "writeSSE").mockImplementation(async function (message) {
+    events.push(message.event ?? "")
+    if (message.event === "snapshot") { entered.resolve(); await settle.promise }
+    return await original.call(this, message)
+  })
+  const request = f.request({ latest: true })
+  try {
+    await f.store.started.promise
+    f.store.read.resolve([])
+    const response = await request.response
+    await entered.promise
+    await f.broker.publish("dump_lifetime_key", { ...meta("oversized"), path: "x".repeat(10000) })
+    expect(events).toEqual(["snapshot"])
+    settle.resolve()
+    const text = await response.text()
+    expect(events).toEqual(["snapshot", "reconciliation_required"])
+    expect(text).not.toContain("event: appended")
+  } finally { settle.resolve(); write.mockRestore(); await f.close() }
+})
+
+
+test("overflow during blocked appended write serializes terminal after the admitted write", async () => {
+  const f = await fixture()
+  const entered = deferred<void>()
+  const settle = deferred<void>()
+  const original = SSEStreamingApi.prototype.writeSSE
+  const events: string[] = []
+  const write = spyOn(SSEStreamingApi.prototype, "writeSSE").mockImplementation(async function (message) {
+    events.push(message.event ?? "")
+    if (message.event === "appended") { entered.resolve(); await settle.promise }
+    return await original.call(this, message)
+  })
+  const request = f.request({ latest: true })
+  try {
+    await f.store.started.promise
+    f.store.read.resolve([])
+    const response = await request.response
+    const text = response.text()
+    await f.broker.publish("dump_lifetime_key", meta("admitted"))
+    await entered.promise
+    await f.broker.publish("dump_lifetime_key", { ...meta("oversized"), path: "x".repeat(10000) })
+    expect(events).toEqual(["snapshot", "appended"])
+    settle.resolve()
+    expect(await text).toContain("reconciliation_required")
+    expect(events).toEqual(["snapshot", "appended", "reconciliation_required"])
+  } finally { settle.resolve(); write.mockRestore(); await f.close() }
+})
+
+test("overflow between resolved iterator read and route continuation suppresses appended delivery", async () => {
+  const f = await fixture()
+  const request = f.request({ latest: true })
+  try {
+    await f.store.started.promise
+    f.store.read.resolve([])
+    const response = await request.response
+    if (!response.body) throw new Error("missing body")
+    const reader = response.body.getReader()
+    await reader.read()
+    f.broker.onDecode = () => queueMicrotask(() => {
+      void f.broker.publish("dump_lifetime_key", { ...meta("oversized"), path: "x".repeat(10000) })
+    })
+    await f.broker.publish("dump_lifetime_key", meta("resolved"))
+    const next = new TextDecoder().decode((await reader.read()).value)
+    expect(next).toContain("event: reconciliation_required")
+    expect(next).not.toContain("event: appended")
+    expect((await reader.read()).done).toBe(true)
+    reader.releaseLock()
+  } finally { await f.close() }
+})
+
+test("actual Hono backpressure retains route permits across raw abort until the blocked writer settles", async () => {
+  const f = await fixture()
+  const snapshotSettled = deferred<void>()
+  const appendsStarted = deferred<void>()
+  const original = SSEStreamingApi.prototype.writeSSE
+  let snapshots = 0
+  let started = 0
+  let settled = 0
+  const write = spyOn(SSEStreamingApi.prototype, "writeSSE").mockImplementation(async function (message) {
+    if (message.event === "appended" && ++started === 4) appendsStarted.resolve()
+    await original.call(this, message)
+    if (message.event === "snapshot" && ++snapshots === 4) snapshotSettled.resolve()
+    if (message.event === "appended") settled++
+  })
+  const held = Array.from({ length: 4 }, () => f.request())
+  try {
+    await f.store.started.promise
+    f.store.read.resolve([])
+    const responses = await Promise.all(held.map(request => request.response))
+    await snapshotSettled.promise
+    await f.broker.publish("dump_lifetime_key", meta("blocked"))
+    await appendsStarted.promise
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(settled).toBe(0)
+    for (const request of held) request.controller.abort()
+    expect((await f.request().response).status).toBe(429)
+    await Promise.all(responses.map(response => response.text()))
+    expect(settled).toBe(4)
+    const fresh = f.request()
+    const response = await fresh.response
+    expect(response.status).toBe(200)
+    fresh.controller.abort()
+    await response.body?.cancel()
+  } finally { write.mockRestore(); await f.close() }
+})
+
+
+test("isolate admission is sixteen authenticated route owners and never overrides auth failures", async () => {
+  const f = await fixture()
+  try {
+    const held = Array.from({ length: 16 }, (_, index) => f.request({
+      key: index < 4 ? "dump_lifetime_key" : `dump_lifetime_key_${Math.floor(index / 4)}`,
+    }))
+    await f.store.started.promise
+    await new Promise(resolve => setTimeout(resolve, 0))
+    const rejected = await f.request({ key: "dump_lifetime_key_4" }).response
+    expect(rejected.status).toBe(429)
+    expect(f.store.reads).toBe(16)
+    expect(f.broker.subscriptions).toHaveLength(16)
+    expect((await f.request({ authorized: false }).response).status).toBe(403)
+    expect((await f.request({ key: "missing" }).response).status).toBe(404)
+    for (const request of held) request.controller.abort()
+    f.store.read.resolve([])
+    await Promise.all(held.map(request => request.response))
+  } finally { await f.close() }
+})
+
+
+test("all omitted SQL-page rows still expose the older boundary in latest-v1", async () => {
+  const f = await fixture()
+  const request = f.request({ latest: true })
+  try {
+    await f.store.started.promise
+    f.store.read.resolve(Array.from({ length: 100 }, (_, index) => ({ ...meta(`row-${index}`), path: "x".repeat(10000) })))
+    const response = await request.response
+    await f.broker.closeChannel("dump_lifetime_key", "done")
+    const text = await response.text()
+    expect(text).toContain('"records":[]')
+    expect(text).toContain('"before":"row-99"')
+    expect(text).toContain('"hasMore":true')
+    expect(text).toContain('"omittedRows":100')
+  } finally { await f.close() }
+})
+
+
+test("an oversized SQL page cursor sends safe capacity terminal instead of a broken snapshot", async () => {
+  const f = await fixture()
+  const request = f.request({ latest: true })
+  try {
+    await f.store.started.promise
+    const snapshot = Array.from({ length: 100 }, (_, index) => meta(`row-${index}`))
+    snapshot[99] = meta("x".repeat(200000))
+    f.store.read.resolve(snapshot)
+    const response = await request.response
+    const text = await response.text()
+    expect(text).toBe('event: reconciliation_required\ndata: {"reason":"queue_bytes","recovery":"latest_snapshot","completeHistory":false}\n\n')
+    expect(text).not.toContain("snapshot\n")
+    await f.broker.publish("dump_lifetime_key", meta("retired"))
+    expect(f.broker.encoded).toBe(0)
+  } finally { await f.close() }
 })

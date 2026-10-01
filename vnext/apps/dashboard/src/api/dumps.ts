@@ -38,7 +38,7 @@ export const listDumpRecords = (keyId: string, before: string | undefined, signa
 export const getDumpRecord = (keyId: string, recordId: string, signal: AbortSignal) =>
   api<DumpRecord>(recordPath(keyId, recordId), { signal })
 
-export const dumpStreamUrl = (keyId: string) => `${base(keyId)}/stream`
+export const dumpStreamUrl = (keyId: string) => `${base(keyId)}/stream?view=latest-v1`
 
 export async function downloadRedactedDump(keyId: string, recordId: string, signal: AbortSignal): Promise<void> {
   const response = await fetch(`${recordPath(keyId, recordId)}/export`, { credentials: "include", signal })

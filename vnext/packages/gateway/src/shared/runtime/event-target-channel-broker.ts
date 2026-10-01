@@ -1,4 +1,5 @@
-import type { ChannelBroker, Codec } from "./channel-broker-contract.ts"
+import { boundedChannelSubscription } from "./bounded-channel-subscription.ts"
+import type { BoundedChannelBroker, BoundedChannelSubscription, ChannelQueuePolicy, Codec } from "./channel-broker-contract.ts"
 
 interface ChannelEntry {
   readonly target: EventTarget
@@ -8,7 +9,7 @@ interface ChannelEntry {
 // In-process per-channel fan-out backed by EventTarget. The Bun deployment
 // target only ever runs one worker process per gateway instance, so a Map of
 // plain emitters is enough — no IPC, no cross-process broadcast.
-export class EventTargetChannelBroker<T> implements ChannelBroker<T> {
+export class EventTargetChannelBroker<T> implements BoundedChannelBroker<T> {
   private readonly channels = new Map<string, ChannelEntry>()
 
   constructor(private readonly codec: Codec<T>) {}
@@ -42,6 +43,13 @@ export class EventTargetChannelBroker<T> implements ChannelBroker<T> {
     // Close listeners may create a new subscription for this ID during cleanup.
     this.channels.delete(channelId)
     entry.target.dispatchEvent(new Event("close"))
+  }
+
+  subscribeBounded(channelId: string, signal: AbortSignal, policy: ChannelQueuePolicy): BoundedChannelSubscription<T> {
+    const entry = signal.aborted ? undefined : this.acquire(channelId)
+    return boundedChannelSubscription(entry?.target, signal, this.codec, policy, () => {
+      if (entry) this.release(channelId, entry)
+    })
   }
 
   subscribe(channelId: string, signal: AbortSignal): AsyncIterable<T> {

@@ -1,5 +1,6 @@
 import { useState } from "react"
 import type { DumpBody } from "../../api/dumps"
+import type { DumpLiveView } from "../../state/dump-live-session"
 import { useDumps } from "../../state/dumps"
 import { useT } from "../../state/i18n"
 
@@ -19,6 +20,22 @@ function BodyView({ body }: { body: DumpBody }) {
   )
 }
 
+export function RequestsLiveStatus({ continuity, omittedRows, loading, onRefresh }: {
+  continuity: DumpLiveView["continuity"]; omittedRows: number; loading: boolean; onRefresh: () => void,
+}) {
+  const t = useT()
+  return (
+    <div className="mb-3 text-xs text-themed-dim">
+      <p>{t("dash.requests.liveScope")}</p>
+      {continuity ? <p role="status" className="mt-1">{t(`dash.requests.continuity.${continuity}`)}</p> : null}
+      {omittedRows > 0 ? <p role="status" className="mt-1">{t("dash.requests.liveOmitted", { count: omittedRows })}</p> : null}
+      <button type="button" className="btn-secondary text-xs mt-2" disabled={loading} onClick={onRefresh}>
+        {t("dash.requests.refreshLatest")}
+      </button>
+    </div>
+  )
+}
+
 export function RequestsPanel({ keyId, keyName, onClose }: { keyId: string; keyName: string; onClose: () => void }) {
   const dumps = useDumps(keyId)
   const t = useT()
@@ -31,6 +48,7 @@ export function RequestsPanel({ keyId, keyName, onClose }: { keyId: string; keyN
         </div>
         <button type="button" className="btn-secondary text-xs" onClick={onClose}>{t("dash.requests.close")}</button>
       </div>
+      <RequestsLiveStatus continuity={dumps.continuity} omittedRows={dumps.omittedRows} loading={dumps.loading} onRefresh={dumps.refreshLatest} />
       {dumps.listError ? <p role="alert" className="text-accent-red text-sm mb-3">{dumps.listError}</p> : null}
       {dumps.liveError ? <p role="status" className="text-accent-red text-sm mb-3">{dumps.liveError}</p> : null}
       {dumps.loading && dumps.records.length === 0 ? <p className="text-sm text-themed-dim">{t("dash.requests.loading")}</p> : null}

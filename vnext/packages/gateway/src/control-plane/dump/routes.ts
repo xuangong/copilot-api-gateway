@@ -12,11 +12,14 @@ import { streamSSE } from 'hono/streaming'
 import type { Context } from 'hono'
 import type { Env } from '../../app.ts'
 import { getRepo } from '../../repo/index.ts'
-import { getDumpBroker, getDumpStore } from '../../shared/dump/registry.ts'
+import { getDumpLiveBroker, getDumpStore, getDumpStreamPermits } from '../../shared/dump/registry.ts'
 import { dumpRecordToWire } from '../../shared/dump/wire.ts'
 import { dumpRecordToExport } from '../../shared/dump/export.ts'
 import type { DumpRecordId, StoredDumpRecord } from '../../shared/dump/types.ts'
 import type { ApiKeyId } from '../../repo/branded-ids.ts'
+
+import { DUMP_LIVE_QUEUE_POLICY, selectLatestDumpSnapshot } from '../../shared/dump/live-policy.ts'
+import { ChannelCapacityError, type ChannelCapacityReason } from '../../shared/runtime/channel-broker-contract.ts'
 
 const LIST_LIMIT_DEFAULT = 100
 const LIST_LIMIT_MAX = 200
@@ -107,8 +110,15 @@ export const dumpRoutes = new Hono<{ Bindings: Env }>()
 
     const signal = c.req.raw.signal
     if (signal.aborted) return c.body(null)
+    const retire = getDumpStreamPermits().acquire(owned)
+    if (!retire) {
+      c.header('Retry-After', '5')
+      return c.json({ error: 'Diagnostic live stream capacity is unavailable.' }, 429)
+    }
+    const latest = c.req.query('view') === 'latest-v1'
     const controller = new AbortController()
     let cleaned = false
+    let writerOwnsPermit = false
     const cleanup = () => {
       if (cleaned) return
       cleaned = true
@@ -123,37 +133,77 @@ export const dumpRoutes = new Hono<{ Bindings: Env }>()
         cleanup()
         return c.body(null)
       }
-      // Subscribe first, then read the snapshot, so anything new during the
-      // snapshot query is still delivered via the live subscription.
-      const subscription = getDumpBroker().subscribe(owned, controller.signal)
+      // Subscribe before SQL; cancellation detaches immediately, but started SQL
+      // still owns its permit until actual settlement (there is no cancel port).
+      const subscription = getDumpLiveBroker().subscribeBounded(owned, controller.signal, DUMP_LIVE_QUEUE_POLICY)
       if (controller.signal.aborted) return c.body(null)
-      // The store has no cancellation port. Observe its settlement, but never
-      // begin SSE delivery if the request closed while this read was pending.
       const snapshot = await getDumpStore().list(owned, { limit: LIST_LIMIT_DEFAULT })
       if (controller.signal.aborted) return c.body(null)
-
-      return streamSSE(c, async (stream) => {
-        stream.onAbort(cleanup)
+      let snapshotData: string | undefined
+      let snapshotFailure: ChannelCapacityReason | undefined
+      if (subscription.state.status !== 'reconciliation_required') {
         try {
-          if (controller.signal.aborted) return
-          await stream.writeSSE({ event: 'snapshot', data: JSON.stringify({ records: snapshot }) })
+          snapshotData = JSON.stringify(latest ? selectLatestDumpSnapshot(snapshot) : { records: snapshot })
+        } catch (error) {
+          if (!(error instanceof ChannelCapacityError)) throw error
+          snapshotFailure = error.reason
+          subscription.cancel()
+        }
+      }
+
+      const response = streamSSE(c, async (stream) => {
+        stream.onAbort(cleanup)
+        const overflowed = () => snapshotFailure !== undefined || subscription.state.status === 'reconciliation_required'
+        const writable = () => !controller.signal.aborted && !stream.aborted
+        const reconcile = async () => {
+          const state = subscription.state
+          const reason = state.status === 'reconciliation_required' ? state.reason : snapshotFailure
+          if (latest && writable() && reason !== undefined) {
+            await stream.writeSSE({ event: 'reconciliation_required', data: JSON.stringify({
+              reason, recovery: 'latest_snapshot', completeHistory: false,
+            }) })
+          }
+        }
+        try {
+          if (!writable()) return
+          if (overflowed()) { await reconcile(); return }
+          if (snapshotData === undefined) return
+          await stream.writeSSE({ event: 'snapshot', data: snapshotData })
+          if (!writable()) return
+          if (overflowed()) { await reconcile(); return }
           try {
-            for await (const meta of subscription) {
-              await stream.writeSSE({ event: 'appended', data: JSON.stringify(meta) })
+            for await (const meta of subscription.iterable) {
+              // A resolved read is not authority after overflow/abort reentry.
+              if (!writable()) return
+              if (overflowed()) { await reconcile(); return }
+              const data = JSON.stringify(meta)
+              if (!writable()) return
+              if (overflowed()) { await reconcile(); return }
+              await stream.writeSSE({ event: 'appended', data })
+              if (!writable()) return
+              if (overflowed()) { await reconcile(); return }
             }
           } catch (err) {
-            await stream.writeSSE({
-              event: 'error',
-              data: JSON.stringify({ message: err instanceof Error ? err.message : String(err) }),
-            })
+            if (!writable()) return
+            if (err instanceof ChannelCapacityError) { await reconcile(); return }
+            await stream.writeSSE({ event: 'error', data: JSON.stringify({
+              message: err instanceof Error ? err.message : String(err),
+            }) })
           }
         } finally {
           cleanup()
+          // Hono returns Response before this callback settles. Its close is
+          // also asynchronous; retire only after all started writer work ends.
+          try { await stream.close() } finally { retire() }
         }
       })
+      writerOwnsPermit = true
+      return response
     } catch (err) {
       cleanup()
       if (signal.aborted) return c.body(null)
       throw err
+    } finally {
+      if (!writerOwnsPermit) { cleanup(); retire() }
     }
   })

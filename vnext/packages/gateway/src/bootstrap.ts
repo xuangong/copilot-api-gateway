@@ -18,8 +18,8 @@ export { initOAuthKV } from './control-plane/auth/stores.ts'
 
 /**
  * 装配 dump 子系统（Spec 14）。存储走 SqlDatabase + FileProvider，broker 是
- * 进程内的（Bun 每容器一个，CFW 每 isolate 一个；跨 isolate 重放靠客户端
- * 重连后 list() 对账）。
+ * process/isolate-local. Refresh reconciles only a bounded latest window;
+ * it cannot replay cross-isolate notifications or prove complete history.
  *
  * 零参数是有意的：两个宿主唯一的差异是 FileProvider 的实现，而那个差异已经
  * 由 initFileProvider 表达过了，再让宿主传一遍只会多一处可以写歪的地方。

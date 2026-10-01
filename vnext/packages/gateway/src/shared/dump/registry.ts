@@ -1,11 +1,25 @@
 import { DUMP_DISABLED_REASON, type DumpBroker } from "./broker.ts"
 import type { DumpStore } from "./store-contract.ts"
 import type { ApiKeyId } from "../../repo/branded-ids.ts"
+import { DumpStreamPermits } from "./stream-permits.ts"
+import type { BoundedChannelBroker } from "../runtime/channel-broker-contract.ts"
+import type { DumpMetadata } from "./types.ts"
 import { DumpCaptureBudget } from "./capture-budget.ts"
 
 let _store: DumpStore | null = null
 let _broker: DumpBroker | null = null
+let _streamPermits = new DumpStreamPermits()
 let _captureBudget = new DumpCaptureBudget()
+
+export const getDumpStreamPermits = (): DumpStreamPermits => _streamPermits
+
+export const getDumpLiveBroker = (): BoundedChannelBroker<DumpMetadata> => {
+  const broker = getDumpBroker()
+  if (!("subscribeBounded" in broker) || typeof broker.subscribeBounded !== "function") {
+    throw new Error("Dump live broker requires bounded subscription support")
+  }
+  return broker as BoundedChannelBroker<DumpMetadata>
+}
 
 export const getDumpCaptureBudget = (): DumpCaptureBudget => _captureBudget
 
@@ -32,6 +46,7 @@ export const resetDumpRegistryForTests = (): void => {
   _store = null
   _broker = null
   _captureBudget = new DumpCaptureBudget()
+  _streamPermits = new DumpStreamPermits()
 }
 
 // Best-effort by contract: a broker outage must never fail the surrounding

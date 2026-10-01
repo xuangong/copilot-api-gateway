@@ -20,3 +20,36 @@ export interface ChannelBroker<T> {
   // drain or are canceled. Later subscriptions acquire a fresh channel.
   closeChannel(channelId: string, reason: string): Promise<void>
 }
+
+export interface ChannelQueuePolicy {
+  readonly maxFrames: number
+  readonly maxQueueBytes: number
+  readonly maxFrameBytes: number
+}
+
+export type BoundedChannelState =
+  | { readonly status: "active" | "closed" | "canceled" }
+  | { readonly status: "reconciliation_required"; readonly reason: ChannelCapacityReason }
+
+export type ChannelCapacityReason = "queue_count" | "queue_bytes" | "frame_bytes"
+
+export class ChannelCapacityError extends Error {
+  constructor(readonly reason: ChannelCapacityReason) {
+    super(`Live notification capacity exceeded: ${reason}`)
+    this.name = "ChannelCapacityError"
+  }
+}
+
+export interface BoundedChannelSubscription<T> {
+  readonly iterable: AsyncIterable<T>
+  readonly state: BoundedChannelState
+  cancel(): void
+}
+
+export interface BoundedChannelBroker<T> extends ChannelBroker<T> {
+  // Encoded strings are admitted eagerly, but decoding is lazy on pull.
+  // Overflow discards/detaches, rejects one read, then remains done.
+  subscribeBounded(channelId: string, signal: AbortSignal, policy: ChannelQueuePolicy): BoundedChannelSubscription<T>
+}
+
+export const encodedFrameCharge = (encoded: string): number => 2 * encoded.length + 128

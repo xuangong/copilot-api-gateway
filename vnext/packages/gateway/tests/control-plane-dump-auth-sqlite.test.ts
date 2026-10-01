@@ -7,7 +7,9 @@ import { app } from "../src/app.ts"
 import { initRepo } from "../src/repo/index.ts"
 import { FileDumpStore } from "../src/repo/dump-store.ts"
 import { UpstreamExchangeCollector } from "../src/shared/dump/upstream-attempts.ts"
-import { initDumpStore, resetDumpRegistryForTests } from "../src/shared/dump/registry.ts"
+import { initDumpStore, initDumpBroker, resetDumpRegistryForTests } from "../src/shared/dump/registry.ts"
+import { EventTargetChannelBroker } from "../src/shared/runtime/event-target-channel-broker.ts"
+import { dumpCodec } from "../src/shared/dump/codec.ts"
 import { isDevAuthEnabled } from "../src/control-plane/auth/dev-auth.ts"
 import type { ApiKey, User, UserSession } from "../src/repo/types.ts"
 import type { ApiKeyId, DumpRecordId, SessionToken, UserId } from "../src/repo/branded-ids.ts"
@@ -181,6 +183,20 @@ test("dump readers require an explicit owner or admin identity through app.fetch
     expect((await request("/api/keys/dump_owned/records/01H0000000000000000000AAAA", "raw_dump_owned", "apiKey")).status).toBe(200)
     expect((await request("/api/keys/dump_ownerless/records", "dump_admin")).status).toBe(200)
     expect((await request("/api/keys/dump_ownerless/records/01H0000000000000000000NONE", "dump_admin")).status).toBe(200)
+
+    const liveBroker = new EventTargetChannelBroker(dumpCodec)
+    initDumpBroker(liveBroker)
+    const live = await request("/api/keys/dump_owned/stream?view=latest-v1", "dump_owner")
+    await liveBroker.closeChannel("dump_owned", "SQLite snapshot verified")
+    const liveText = await live.text()
+    const snapshotLine = liveText.split("\n").find(line => line.startsWith("data: "))
+    if (!snapshotLine) throw new Error("missing latest snapshot")
+    const snapshot = JSON.parse(snapshotLine.slice(6)) as { records: DumpMetadata[]; view: string; limit: number; omittedRows: number; completeHistory: boolean }
+    expect(snapshot.records.map(record => record.id)).toEqual(["01H0000000000000000000AAAB", "01H0000000000000000000AAAA"])
+    expect(snapshot.view).toBe("latest")
+    expect(snapshot.limit).toBe(100)
+    expect(snapshot.omittedRows).toBe(0)
+    expect(snapshot.completeHistory).toBe(false)
 
     const page = await request("/api/keys/dump_owned/records?limit=1&before=01H0000000000000000000AAAB", "dump_owner")
     expect((await page.json() as { records: DumpMetadata[] }).records.map((record) => record.id))
