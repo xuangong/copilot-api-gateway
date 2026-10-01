@@ -25,7 +25,7 @@ The reference still gives these around-interceptors `run` and shared mutable sta
 | Result transformation / observation | Reads or replaces a returned event source, may detect failures or abort upstream | Retain stream cancellation, cleanup and terminal semantics; not a request-only normalizer |
 | Provider wire adaptation | Applies selected-provider knowledge at the innermost provider boundary | Existing provider declaration and attempt placement remain authoritative |
 
-These roles are not contiguous universal phases. Responses runs translation inside its terminal; Messages and Chat Completions traverse a different target before their source registry; Gemini performs source cleanup before traversing its hub. Moving all normalizers before routing would change behavior. Keep native JSON, source/producer domains and each endpoint's existing placement.
+These roles are not contiguous universal phases. Responses runs translation inside its terminal; Messages and Chat Completions cross-target requests bypass their native source registry and enter the selected target chain; Gemini performs source cleanup before traversing its hub. Moving all normalizers before routing would change behavior. Keep native JSON, source/producer domains and each endpoint's existing placement.
 
 ## Selected implementation
 
