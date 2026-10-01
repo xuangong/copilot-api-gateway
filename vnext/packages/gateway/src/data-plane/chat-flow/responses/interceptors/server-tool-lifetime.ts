@@ -164,6 +164,7 @@ export class ServerToolLifetime {
         if (this.closed) { await this.close(); return { done: true, value: undefined } }
         try {
           const step = await this.wait(generator.next(value))
+          this.assertOpen()
           if (step.done) { resource.finish(); await this.close() }
           return step
         } catch (error) {
