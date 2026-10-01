@@ -1,6 +1,6 @@
 import type { WebSearchCallIR, WebSearchExecutionSession, WebSearchWorkTracker } from "./operations.ts"
 import { runWebSearchCallPlan, splitWebSearchCalls, startWebSearchCallFetches, type WebSearchCallPlan } from "./plan-operations.ts"
-import { countWebSearchOperations, validateWebSearchCapacityPolicy, WebSearchCapacityError, type WebSearchCapacityPolicy } from "./capacity.ts"
+import { createOwnedRetainedMap, countWebSearchOperations, validateWebSearchCapacityPolicy, WebSearchCapacityError, type WebSearchCapacityPolicy } from "./capacity.ts"
 
 declare const admissionBrand: unique symbol
 export interface WebSearchAdmission { readonly [admissionBrand]: true }
@@ -42,7 +42,11 @@ export const createWebSearchExecutionScope = (
   const admissions = new Map<WebSearchAdmission, Record<string, unknown> | null>()
   const controller = new AbortController()
   const session: WebSearchExecutionSession = {
-    ...config, pageCache: new Map(), signal: controller.signal,
+    ...config, pageCache: createOwnedRetainedMap({
+      entries: policy.pageEntries, bytes: policy.pageBytes,
+      entriesCategory: "pageEntries", bytesCategory: "pageBytes",
+      assertOpen: () => assertOpen(), fail: error => { cancel(error) },
+    }), signal: controller.signal,
     ingress: {
       responseBodyBytes: policy.responseBodyBytes,
       assertOpen: () => assertOpen(),

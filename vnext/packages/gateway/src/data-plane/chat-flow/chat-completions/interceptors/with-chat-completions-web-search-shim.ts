@@ -47,6 +47,7 @@ import {
   type WebSearchFilters,
 } from '../../../tools/web-search/operations.ts'
 import { createWebSearchExecutionScope, type WebSearchExecutionScope } from '../../../tools/web-search/execution-scope.ts'
+import { createGeneratedStateAdmission } from "../../../tools/web-search/capacity.ts"
 import { ChatWebSearchResultOwner } from './web-search-result-owner'
 import { providerNameFor } from '../../../tools/web-search/key-config.ts'
 import { resolveWebSearchForKey } from '../../../tools/web-search/resolve-for-key.ts'
@@ -72,6 +73,8 @@ interface BufferedToolCall {
   id: string
   name: string
   arguments: string
+  extensions?: Record<string, unknown>
+  functionExtensions?: Record<string, unknown>
 }
 
 type ShimResult = LlmExecuteResult<ProtocolFrame<ChatCompletionsStreamEvent>>
@@ -251,6 +254,7 @@ async function* driveSearchLoop(
   let created = 0
   let model = ''
   let usage: ChatCompletionsUsage | undefined
+  const admitGenerated = createGeneratedStateAdmission()
   const annotations: ChatCompletionsAnnotation[] = []
   const citedUrls = new Set<string>()
   let searchTurns = 0
@@ -293,6 +297,10 @@ async function* driveSearchLoop(
             const idx = typeof rawCall.index === 'number' ? rawCall.index : 0
             const fn = rawCall.function as Record<string, unknown> | undefined
             const entry = buffered.get(idx) ?? { id: '', name: '', arguments: '' }
+            const { index: _index, id: _id, type: _type, function: _function, ...extensions } = rawCall
+            const { name: _name, arguments: _arguments, ...functionExtensions } = fn ?? {}
+            entry.extensions = { ...entry.extensions, ...extensions }
+            entry.functionExtensions = { ...entry.functionExtensions, ...functionExtensions }
             if (typeof rawCall.id === 'string' && rawCall.id !== '') entry.id = rawCall.id
             if (typeof fn?.name === 'string' && fn.name !== '') entry.name = fn.name
             if (typeof fn?.arguments === 'string') entry.arguments += fn.arguments
@@ -357,8 +365,10 @@ async function* driveSearchLoop(
         content = irs.map(renderWebSearchCallOutput).join('\n\n')
         for (const result of irs.flatMap((ir) => ir.results)) {
           if (citedUrls.has(result.url)) continue
+          const annotation: ChatCompletionsAnnotation = { type: 'url_citation', url_citation: { url: result.url, title: result.title } }
+          admitGenerated(annotation)
           citedUrls.add(result.url)
-          annotations.push({ type: 'url_citation', url_citation: { url: result.url, title: result.title } })
+          annotations.push(annotation)
         }
       }
       toolMessages.push({ role: 'tool', tool_call_id: callId, content })
@@ -368,19 +378,21 @@ async function* driveSearchLoop(
     const messages = Array.isArray(inv.payload.messages)
       ? (inv.payload.messages as Array<Record<string, unknown>>)
       : []
-    inv.payload.messages = [
-      ...messages,
+    const additions = [
       {
         role: 'assistant',
         content: assistantText === '' ? null : assistantText,
         tool_calls: shimCalls.map((c) => ({
+          ...c.extensions,
           id: c.id,
           type: 'function',
-          function: { name: c.name, arguments: c.arguments },
+          function: { ...c.functionExtensions, name: c.name, arguments: c.arguments },
         })),
       },
       ...toolMessages,
     ]
+    admitGenerated(additions)
+    inv.payload.messages = [...messages, ...additions]
 
     owner.assertOpen()
     const rawNext = await owner.run(run)
@@ -420,10 +432,11 @@ function* finalizeTurn(args: {
         index: 0,
         delta: {
           tool_calls: args.clientCalls.map((c, index) => ({
+            ...c.extensions,
             index,
             id: c.id,
             type: 'function' as const,
-            function: { name: c.name, arguments: c.arguments },
+            function: { ...c.functionExtensions, name: c.name, arguments: c.arguments },
           })),
         },
         finish_reason: null,

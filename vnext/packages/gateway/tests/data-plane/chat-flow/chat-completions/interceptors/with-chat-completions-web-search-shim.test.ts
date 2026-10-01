@@ -666,3 +666,48 @@ test("successful body capacity terminates Chat before adding tool output or anot
   const messages = inv.payload.messages as Array<{ role: string }>
   expect(messages.filter(message => message.role === "tool")).toHaveLength(0)
 })
+
+test("generated Chat argument excess rejects before retention and reentry", async () => {
+  globalThis.fetch = (async () => tavilyResponse([])) as typeof fetch
+  const base = [{ role: "user", content: "b".repeat(3 * 1024 * 1024) }]
+  const args = JSON.stringify({ search_query: [{ q: "q" }], ignored: "x".repeat(2 * 1024 * 1024) })
+  const script = scriptedRun([toolCallTurn("web_search", args), [textChunk("answer")]])
+  const inv = invocation({ model: "m", messages: base, web_search_options: {} })
+  await expect(collect(await withChatCompletionsWebSearchShim(inv, ctx, script.run))).rejects.toMatchObject({ category: "chatContinuationBytes" })
+  expect(script.calls()).toBe(1)
+  expect(inv.payload.messages).toBe(base)
+})
+
+test("Chat excludes caller history from repeated continuation admission", async () => {
+  globalThis.fetch = (async () => tavilyResponse([])) as typeof fetch
+  const history = Object.defineProperty({ role: "user" }, "content", { get() { throw new Error("base history inspected") } })
+  const script = scriptedRun([toolCallTurn("web_search", '{"search_query":[{"q":"q"}]}'), toolCallTurn("web_search", '{"search_query":[{"q":"q"}]}'), [textChunk("answer")]])
+  const inv = invocation({ model: "m", messages: [history], web_search_options: {} })
+  await collect(await withChatCompletionsWebSearchShim(inv, ctx, script.run))
+  expect(script.calls()).toBe(3)
+  expect((inv.payload.messages as unknown[])[0]).toBe(history)
+})
+
+test("Chat retains and admits generated tool-call extension fields", async () => {
+  globalThis.fetch = (async () => tavilyResponse([])) as typeof fetch
+  const turn = toolCallTurn("web_search", '{"search_query":[{"q":"q"}]}')
+  turn[0] = chunk([{ index: 0, delta: { tool_calls: [{ index: 0, id: "call_0", type: "function", vendor: { nested: "kept" }, function: { name: "web_search", arguments: "", vendor_fn: "kept" } }] }, finish_reason: null }])
+  const inv = invocation({ model: "m", messages: [], web_search_options: {} })
+  await collect(await withChatCompletionsWebSearchShim(inv, ctx, scriptedRun([turn, [textChunk("answer")]]).run))
+  expect((inv.payload.messages as Array<Record<string, unknown>>)[0]?.tool_calls).toEqual([{ id: "call_0", type: "function", vendor: { nested: "kept" }, function: { name: "web_search", arguments: '{"search_query":[{"q":"q"}]}', vendor_fn: "kept" } }])
+})
+
+test("Chat rendered tool strings and new annotations cumulatively exhaust their generated domain", async () => {
+  let fetches = 0
+  globalThis.fetch = (async () => {
+    fetches++
+    return Response.json({ results: Array.from({ length: 40 }, (_, index) => ({ url: `https://large.test/${fetches}/${index}`, title: "t".repeat(18000), content: "snippet" })) })
+  }) as typeof fetch
+  const turn = toolCallTurn("web_search", '{"search_query":[{"q":"q"}]}')
+  const script = scriptedRun([turn, turn, [textChunk("answer")]])
+  const inv = invocation({ model: "m", messages: [], web_search_options: { search_context_size: "high" } })
+  await expect(collect(await withChatCompletionsWebSearchShim(inv, ctx, script.run))).rejects.toMatchObject({ category: "chatContinuationBytes" })
+  expect(script.calls()).toBe(2)
+  expect(fetches).toBe(2)
+  expect(inv.payload.messages as unknown[]).toHaveLength(2)
+})

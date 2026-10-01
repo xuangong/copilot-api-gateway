@@ -463,3 +463,19 @@ for (const [name, create] of [["jina", createJinaWebSearchProvider], ["microsoft
     await expect(batch.calls[0]?.result()).rejects.toBe(reason)
   })
 }
+
+test("page cache excess latches fatal invocation failure before publication or later starts", async () => {
+  const scope = createWebSearchExecutionScope(session, { pageEntries: 1 })
+  const batch = scope.prepare(scope.admit({ open: [{ ref_id: "https://a.example" }, { ref_id: "https://b.example" }] })).start()
+  await expect(batch.calls[0]?.result()).rejects.toMatchObject({ category: "pageEntries" })
+  expect(() => scope.admit({ search_query: [{ q: "later" }] })).toThrow("pageEntries")
+  await scope.settled()
+})
+
+test("page bytes admit actual normalized title graph instead of trusting source size", async () => {
+  const scope = createWebSearchExecutionScope({ ...session, getProvider: async () => configured(provider({ fetchPage: async ({ urls }) => ({ type: "ok", pages: urls.map(url => ({ url, title: "t".repeat(1000), content: "x", truncated: false, fullContentBytes: 1 })), failures: [] }) })) }, { pageBytes: 1000 })
+  const batch = scope.prepare(scope.admit({ open: [{ ref_id: "https://a.example" }] })).start()
+  await expect(batch.calls[0]?.result()).rejects.toMatchObject({ category: "pageBytes", limit: 1000 })
+  expect(() => scope.admit(null)).toThrow("pageBytes")
+  await scope.settled()
+})

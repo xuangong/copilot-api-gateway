@@ -1,4 +1,4 @@
-import { WebSearchCapacityError, type WebSearchIngress } from "./capacity.ts"
+import { WebSearchCapacityError, type RetainedMap, type WebSearchIngress } from "./capacity.ts"
 // Ported 1:1 from copilot-gateway data-plane/tools/web-search/operations.ts,
 // with import path adaptations for vNext:
 //   - truncatePreservingCodePoints → chat-flow (not chat) sub-tree
@@ -271,7 +271,7 @@ export interface WebSearchExecutionSession {
   getProvider: () => Promise<ConfiguredWebSearchProvider>
   filters: WebSearchFilters
   apiKeyId: ApiKeyId
-  pageCache: Map<string, PageCacheEntry>
+  pageCache: RetainedMap<PageCacheEntry>
   includeSearchActionSources: boolean
   signal?: AbortSignal
   ingress?: WebSearchIngress

@@ -1,6 +1,8 @@
+import { createOwnedRetainedMap, DEFAULT_WEB_SEARCH_CAPACITY_POLICY } from "../../tools/web-search/capacity"
 import { decodeWebSearchPrivatePayload, type WebSearchCallPrivatePayload } from "./private-payload"
 
-/** Explicit legacy injection remains externally owned and unknown-valued. */
+/** Explicit legacy injection remains externally owned and unknown-valued.
+ * Delegated legacy stores are outside owned retention capacity guarantees. */
 
 export interface PrivatePayloadStore {
   /** Register a server-only payload keyed by wire item id. */
@@ -86,7 +88,11 @@ export const createInMemoryPrivatePayloadStore = (
 export const defaultPrivatePayloadStore: OwnedServerToolPrivatePayloadSource = {
   ownership: "owned",
   createScope() {
-    const entries = new Map<string, WebSearchCallPrivatePayload>()
+    const entries = createOwnedRetainedMap<WebSearchCallPrivatePayload>({
+      entries: DEFAULT_WEB_SEARCH_CAPACITY_POLICY.privateEntries,
+      bytes: DEFAULT_WEB_SEARCH_CAPACITY_POLICY.privateBytes,
+      entriesCategory: "privateEntries", bytesCategory: "privateBytes",
+    })
     let closed = false
     return {
       reader: { getPrivatePayload: id => closed ? undefined : entries.get(id) },

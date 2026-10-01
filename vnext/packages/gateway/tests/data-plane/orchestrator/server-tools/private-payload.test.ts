@@ -77,3 +77,14 @@ for (const field of ["results", "queries", "sources"] as const) test(`sparse for
   expect(store.getPrivatePayload("sparse")).toBe(value)
   scope.dispose()
 })
+
+test("owned private replay rejects extension bytes and entry overflow without eviction", () => {
+  const scope = defaultPrivatePayloadStore.createScope()
+  scope.writer.registerPrivatePayload("old", payload)
+  expect(() => scope.writer.registerPrivatePayload("old", { ...payload, functionCallItem: { ...payload.functionCallItem, ignored: "x".repeat(2 * 1024 * 1024) } })).toThrow("privateBytes")
+  expect(scope.reader.getPrivatePayload("old")).toBe(payload)
+  for (let i = 0; i < 63; i++) scope.writer.registerPrivatePayload(`id${i}`, payload)
+  expect(() => scope.writer.registerPrivatePayload("overflow", payload)).toThrow("privateEntries")
+  expect(scope.reader.getPrivatePayload("old")).toBe(payload)
+  scope.dispose()
+})

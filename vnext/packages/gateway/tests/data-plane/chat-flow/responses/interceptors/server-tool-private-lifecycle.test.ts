@@ -479,3 +479,21 @@ test("actual hosted native JSON loop uses existing adapters and preserves privat
     expect(runs).toBe(2)
   } finally { globalThis.fetch = originalFetch; db.close() }
 })
+
+test("private capacity writer failure precedes completed item and keeps existing failed lifecycle owner", async () => {
+  const oversized = { ...payload, functionCallItem: { ...payload.functionCallItem, extension: "x".repeat(2 * 1024 * 1024) } }
+  const slot: ServerToolResultSlot = { id: "ws_overflow", startItem: { type: "web_search_call", status: "in_progress" }, startEvents: [], run: async function* () {
+    yield* []
+    return { item: { type: "web_search_call", status: "completed" }, endEvents: [], privatePayload: oversized }
+  } }
+  let calls = 0
+  const result = requireEvents(await withResponsesServerToolShim([registration(undefined, slot)], defaultPrivatePayloadStore)(invocation(), { requestStartedAt: 0 }, async () => llmEventResult(frames(++calls === 1 ? "first" : undefined), identity)))
+  const output = await drain(result)
+  expect(calls).toBe(1)
+  expect(output.some(event => event.type === "response.output_item.done" && event.item.id === "ws_overflow")).toBe(false)
+  expect(output.some(event => event.type === "response.completed")).toBe(false)
+  const failed = output.find(event => event.type === "response.failed")
+  expect(failed).toBeDefined()
+  if (failed?.type === "response.failed") expect(failed.response.error?.message).toContain("privateBytes")
+  expect(await settles(result.finalMetadata ?? Promise.reject(new Error("Missing metadata")))).not.toBe("timeout")
+})
