@@ -46,9 +46,19 @@ const optionalString = (value: unknown): boolean => value === undefined || typeo
 const action = (value: unknown): value is ResponsesWebSearchAction => {
   if (!object(value)) return false
   switch (value.type) {
-    case "search": return optionalString(value.query)
-      && (value.queries === undefined || (Array.isArray(value.queries) && value.queries.every(query => typeof query === "string")))
-      && (value.sources === undefined || (Array.isArray(value.sources) && value.sources.every(source => object(source) && source.type === "url" && typeof source.url === "string")))
+    case "search":
+      if (!optionalString(value.query)) return false
+      if (value.queries !== undefined) {
+        if (!Array.isArray(value.queries)) return false
+        for (const query of value.queries) if (typeof query !== "string") return false
+      }
+      if (value.sources !== undefined) {
+        if (!Array.isArray(value.sources)) return false
+        for (const source of value.sources) {
+          if (!object(source) || source.type !== "url" || typeof source.url !== "string") return false
+        }
+      }
+      return true
     case "open_page": return optionalString(value.url)
     case "find_in_page": return typeof value.url === "string" && typeof value.pattern === "string"
     default: return false
@@ -63,7 +73,10 @@ export function decodeWebSearchPrivatePayload(value: unknown): WebSearchCallPriv
   if (call.type !== "function_call" || typeof call.call_id !== "string" || typeof call.name !== "string"
     || typeof call.arguments !== "string" || !optionalString(call.status)) return undefined
   if (!action(ir.action) || !Array.isArray(ir.results) || !optionalString(ir.outputText)) return undefined
-  if (!ir.results.every(result => object(result) && result.type === "text_result" && typeof result.url === "string"
-    && typeof result.title === "string" && typeof result.snippet === "string")) return undefined
+  // Iteration visits sparse holes as undefined, so foreign arrays cannot bypass validation.
+  for (const result of ir.results) {
+    if (!object(result) || result.type !== "text_result" || typeof result.url !== "string"
+      || typeof result.title !== "string" || typeof result.snippet !== "string") return undefined
+  }
   return value as unknown as WebSearchCallPrivatePayload
 }

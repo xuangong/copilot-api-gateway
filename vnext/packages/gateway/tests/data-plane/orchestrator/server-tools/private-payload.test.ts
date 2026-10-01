@@ -59,3 +59,21 @@ test("malformed foreign replay uses the existing missing-private-payload fallbac
   expect(items[1]).toMatchObject({ type: "function_call_output", output: "Prior search results were not preserved in the conversation history. Call web_search again if you need them." })
   scope.dispose()
 })
+
+for (const field of ["results", "queries", "sources"] as const) test(`sparse foreign ${field} is rejected and borrowed replay falls back`, async () => {
+  const { transformInputItemsForWebSearch } = await import("../../../../src/data-plane/chat-flow/responses/interceptors/server-tools/web-search")
+  const sparse = new Array<unknown>(1)
+  const ir = field === "results"
+    ? { action: { type: "open_page", url: "https://example.test" }, results: sparse }
+    : { action: { type: "search", query: "q", [field]: sparse }, results: payload.ir.results }
+  const value = { ...payload, ir }
+  expect(decodeWebSearchPrivatePayload(value)).toBeUndefined()
+  const store = createInMemoryPrivatePayloadStore()
+  store.registerPrivatePayload("sparse", value)
+  const scope = borrowPrivatePayloadStore(store)
+  expect(scope.reader.getPrivatePayload("sparse")).toBeUndefined()
+  const items = transformInputItemsForWebSearch([{ id: "sparse", type: "web_search_call", action: { type: "search", query: "q" } }], "web_search", scope.reader.getPrivatePayload)
+  expect(items[1]).toMatchObject({ type: "function_call_output", output: "Prior search results were not preserved in the conversation history. Call web_search again if you need them." })
+  expect(store.getPrivatePayload("sparse")).toBe(value)
+  scope.dispose()
+})
