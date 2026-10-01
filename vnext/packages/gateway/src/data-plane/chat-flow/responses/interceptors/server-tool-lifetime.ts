@@ -26,8 +26,11 @@ export class ServerToolLifetime {
   assertOpen(): void { if (this.closed) throw new Error("Server-tool invocation is closed") }
   recordIncompleteCleanup(): void { this.incomplete = true }
   onClose(callback: () => void): void {
+    if (this.closed) {
+      callback()
+      return
+    }
     this.onClosed = callback
-    if (this.closed) callback()
   }
 
   private resource(operation: () => Promise<boolean>): Resource {
@@ -118,16 +121,19 @@ export class ServerToolLifetime {
 
   close(): Promise<void> {
     if (this.cleanup) return this.cleanup
+    // Publish the one cleanup promise before synchronous callbacks can reenter close().
+    this.cleanup = Promise.resolve().then(async () => {
+      await Promise.all([...this.resources].map(resource => resource.close()))
+      if (this.incomplete) throw new Error("Server-tool resource cleanup incomplete")
+    })
     this.closed = true
+    const callback = this.onClosed
+    this.onClosed = undefined
     this.signal?.removeEventListener("abort", this.onAbort)
     try { this.disposeState() } catch { this.recordIncompleteCleanup() }
     for (const reject of this.reads) reject(new Error("Server-tool invocation is closed"))
     this.reads.clear()
-    try { this.onClosed?.() } catch { this.recordIncompleteCleanup() }
-    this.cleanup = (async () => {
-      await Promise.all([...this.resources].map(resource => resource.close()))
-      if (this.incomplete) throw new Error("Server-tool resource cleanup incomplete")
-    })()
+    try { callback?.() } catch { this.recordIncompleteCleanup() }
     return this.cleanup
   }
 
