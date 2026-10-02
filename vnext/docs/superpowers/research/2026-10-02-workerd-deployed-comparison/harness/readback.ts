@@ -171,7 +171,7 @@ export function validateSidecar(input: unknown, row: LogicalDump, dispatch: Capt
   if (envelope.version !== 1 || envelope.representation !== "fetch-body" || !Array.isArray(envelope.attempts) || envelope.attempts.length !== 1 || envelope.omittedAttempts !== 0 || envelope.metadataTruncated !== false) throw new Error("Invalid native upstream capture envelope")
   const attempt = obj(envelope.attempts[0])
   const operation = dispatch.protocol === "chat" ? "chat.completions" : dispatch.protocol === "messages" ? "messages.create" : "responses.create"
-  if (attempt.method !== "POST" || attempt.operation !== operation || attempt.status !== dispatch.status || attempt.representation !== "fetch-body" || attempt.url !== "url_omitted" || attempt.errorCategory !== null || attempt.order !== 0
+  if (attempt.method !== "POST" || attempt.operation !== operation || attempt.status !== dispatch.status || attempt.representation !== "fetch-body" || attempt.url !== "url_omitted" || attempt.errorCategory !== null || attempt.order !== 1
     || typeof attempt.id !== "string" || typeof attempt.parentCallId !== "string" || typeof attempt.upstreamId !== "string"
     || typeof attempt.startedOffsetMs !== "number" || !Number.isFinite(attempt.startedOffsetMs) || attempt.startedOffsetMs < 0
     || typeof attempt.completedOffsetMs !== "number" || !Number.isFinite(attempt.completedOffsetMs) || attempt.completedOffsetMs < attempt.startedOffsetMs) throw new Error("Native attempt metadata mismatch")

@@ -3,6 +3,7 @@ import { Database as Sqlite } from "bun:sqlite"
 import { readDumps, dumpStatusEvidence, validateSidecar, type Bucket, type Database, type LogicalDump } from "./readback.ts"
 import { sha } from "./manifest.ts"
 import { oracle } from "./oracle.ts"
+import { UpstreamExchangeCollector } from "../../../../../packages/gateway/src/shared/dump/upstream-attempts.ts"
 
 function storage(variant: "A" | "B") {
   const raw = new Sqlite(":memory:")
@@ -19,13 +20,34 @@ function storage(variant: "A" | "B") {
   }
   const values = ["architecture-key", "dump", JSON.stringify({ id: "dump", method: "POST", path: "/v1/responses", status: 200, requestBytes: request.length }), descriptor("request", request), descriptor("response", response)]
   const dispatch = { id: "logical", status: 200, protocol: "responses", bodyBytes: request.length, requestPrefixSha256: sha(request), responseBytes: response.length, responsePrefixSha256: sha(response), responsePrefixBase64: Buffer.from(response).toString("base64") }
-  const envelope = { version: 1, representation: "fetch-body", omittedAttempts: 0, metadataTruncated: false, metadataBytes: 1024, capturedBodyBytes: request.length + response.length, attempts: [{ id: "attempt", parentCallId: "call", upstreamId: "custom:architecture-responses", order: 0, startedOffsetMs: 0, completedOffsetMs: 1, method: "POST", operation: "responses.create", url: "url_omitted", status: 200, representation: "fetch-body", errorCategory: null, request: { source: "prepared", observedBytes: request.length, totalBytes: request.length, capturedBytes: request.length, prefixBase64: Buffer.from(request).toString("base64"), truncated: false }, response: { source: "fetch-body", observedBytes: response.length, totalBytes: response.length, capturedBytes: response.length, prefixBase64: Buffer.from(response).toString("base64"), truncated: false, terminal: "eof" } }] }
+  const envelope = { version: 1, representation: "fetch-body", omittedAttempts: 0, metadataTruncated: false, metadataBytes: 1024, capturedBodyBytes: request.length + response.length, attempts: [{ id: "attempt-1", parentCallId: "call_1", upstreamId: "upstream_omitted", order: 1, startedOffsetMs: 0, completedOffsetMs: 1, method: "POST", operation: "responses.create", url: "url_omitted", status: 200, representation: "fetch-body", errorCategory: null, request: { source: "prepared", observedBytes: request.length, totalBytes: request.length, capturedBytes: request.length, prefixBase64: Buffer.from(request).toString("base64"), truncated: false }, response: { source: "fetch-body", observedBytes: response.length, totalBytes: response.length, capturedBytes: response.length, prefixBase64: Buffer.from(response).toString("base64"), truncated: false, terminal: "eof" } }] }
   if (variant === "B") values.push(descriptor("upstream", JSON.stringify(envelope)))
   raw.run(`INSERT INTO dump_records VALUES(${values.map(() => "?").join(",")})`, values)
   const db: Database = { prepare: sql => ({ async all<T>() { return { results: raw.query(sql).all() as T[] } } }) }
   const bucket: Bucket = { async list() { return { truncated: false, objects: [...objects].map(([key, value]) => ({ key, size: value.byteLength })) } }, async get(key) { const bytes = objects.get(key); return bytes ? { async arrayBuffer() { return Uint8Array.from(bytes).buffer } } : null } }
   return { raw, db, bucket, logical, objects, dispatch, envelope }
 }
+test("sidecar accepts the producer's one-based first attempt and rejects invalid order, operation and status", async () => {
+  const s = storage("B")
+  try {
+    const collector = new UpstreamExchangeCollector()
+    const capture = collector.begin({ parentCallId: "call_1", upstreamId: "custom:architecture-chat", method: "POST", operation: "responses.create" })
+    if (!capture) throw new Error("Producer did not create attempt")
+    capture.observePreparedText("request")
+    const observed = capture.observeResponse(200, [], new Response("response").body)
+    expect(await new Response(observed).text()).toBe("response")
+    const envelope = collector.finish()
+    const attempt = envelope.attempts[0]
+    if (!attempt) throw new Error("Producer missing first attempt")
+    expect(attempt.id).toBe("attempt-1")
+    expect(attempt.order).toBe(1)
+    validateSidecar(envelope, s.logical, s.dispatch)
+    for (const patch of [{ order: 0 }, { order: 2 }, { operation: "chat.completions" }, { status: 201 }]) {
+      const invalid = { ...envelope, attempts: [{ ...attempt, ...patch }] }
+      expect(() => validateSidecar(invalid, s.logical, s.dispatch)).toThrow("Native attempt metadata mismatch")
+    }
+  } finally { s.raw.close() }
+})
 test("legacy A reads actual legacy SQL without fabricating a sidecar", async () => {
   const s = storage("A")
   try { const result = await readDumps(s.db, s.bucket, [s.logical], [s.dispatch], { checked: new Set() }, "A"); expect(result.ownedObjects).toBe(2) } finally { s.raw.close() }
