@@ -75,11 +75,32 @@ test("runtime identity rejects a different actual Bun identity while frozen byte
 test("stage timeout names the independently bounded stage", async () => {
   await expect(deadline("binding", 20, () => new Promise<void>(() => {}))).rejects.toThrow("binding timed out")
 })
-test("inspector never selects unrelated or ambiguous targets", () => {
-  expect(selectTarget([{ title: "Cloudflare Worker", webSocketDebuggerUrl: "ws://127.0.0.1:1/gateway-exact" }], "gateway-exact").title).toBe("Cloudflare Worker")
-  expect(() => selectTarget([{ title: "other", webSocketDebuggerUrl: "ws://127.0.0.1:1" }], "gateway-exact")).toThrow("exact")
-  expect(selectTarget([{ title: "gateway-exact", webSocketDebuggerUrl: "ws://127.0.0.1:1/gateway-exact" }], "gateway-exact").title).toBe("gateway-exact")
-  expect(() => selectTarget([{ title: "gateway-exact", webSocketDebuggerUrl: "ws://127.0.0.1:1/gateway-exact" }, { title: "gateway-exact", webSocketDebuggerUrl: "ws://127.0.0.1:2/gateway-exact" }], "gateway-exact")).toThrow("exact")
+const inspectorURL = new URL("ws://127.0.0.1:54373/")
+const inspectorName = "comparison-inspector-diagnostic-A"
+const rawTarget = { id: "core:user:comparison-inspector-diagnostic-A", title: "workerd: worker core:user:comparison-inspector-diagnostic-A", webSocketDebuggerUrl: "ws://127.0.0.1:54373/core:user:comparison-inspector-diagnostic-A" }
+test("inspector selects the observed raw named workerd target among unrelated runtime targets", () => {
+  // Identity/path observed in inspector-diagnostic-01; internal targets may precede it.
+  const targets = [{ id: "core:entry", title: "workerd: worker core:entry", webSocketDebuggerUrl: "ws://127.0.0.1:54373/core:entry" }, rawTarget]
+  expect(selectTarget(targets, inspectorName, inspectorURL)).toBe(rawTarget)
+})
+test("inspector rejects proxy paths, wrong IDs, ambiguous raw identities and host escape", () => {
+  const invalid = [
+    { ...rawTarget, webSocketDebuggerUrl: "ws://127.0.0.1:54373/comparison-inspector-diagnostic-A" },
+    { ...rawTarget, id: "core:user:another-worker" },
+    { ...rawTarget, webSocketDebuggerUrl: "ws://127.0.0.1:54373/core:user:another-worker" },
+    { ...rawTarget, webSocketDebuggerUrl: "ws://127.0.0.1:54374/core:user:comparison-inspector-diagnostic-A" },
+    { ...rawTarget, webSocketDebuggerUrl: "ws://localhost:54373/core:user:comparison-inspector-diagnostic-A" },
+    { ...rawTarget, webSocketDebuggerUrl: "ws://example.invalid:54373/core:user:comparison-inspector-diagnostic-A" },
+    { ...rawTarget, webSocketDebuggerUrl: rawTarget.webSocketDebuggerUrl + "?target=other" },
+  ]
+  for (const target of invalid) expect(() => selectTarget([target], inspectorName, inspectorURL)).toThrow("exact")
+  expect(() => selectTarget([rawTarget, rawTarget], inspectorName, inspectorURL)).toThrow("exact")
+  expect(() => selectTarget([{ title: inspectorName, webSocketDebuggerUrl: "ws://127.0.0.1:54373/core:entry" }], inspectorName, inspectorURL)).toThrow("exact")
+})
+test("inspector mismatch error preserves expected and observed target identities", () => {
+  const target = { id: "core:entry", title: "unrelated", webSocketDebuggerUrl: "ws://127.0.0.1:54373/core:entry" }
+  expect(() => selectTarget([target], inspectorName, inspectorURL)).toThrow("core:user:comparison-inspector-diagnostic-A")
+  expect(() => selectTarget([target], inspectorName, inspectorURL)).toThrow("core:entry")
 })
 test("whole-child deadline physically kills an owned loopback child while leaving unrelated child alive", async () => {
   const directory = temp()

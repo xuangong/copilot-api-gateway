@@ -66,8 +66,9 @@ export async function runUnit(manifestPath: string, output: string, unit: Unit |
         await settle(r, "ordinary")
         if (!r.active) throw new Error("Gateway not ready")
         r.inspector = await runtime.stage(`${variant}/inspector attach`, 35000, () => attach(() => r.active ? r.active.mf.getInspectorURL() : Promise.reject(new Error("Gateway missing")), r.active?.name ?? "missing"))
+        journal.append({ event: "inspector_target", variant, phase: "canary", ...r.inspector.identity })
         const heap = await r.inspector.send("Runtime.getHeapUsage")
-        durableJson(join(r.active.directory, "canary-inspector.json"), { exactTarget: r.active.name, heap }, true)
+        durableJson(join(r.active.directory, "canary-inspector.json"), { exactTarget: r.active.name, identity: r.inspector.identity, heap }, true)
       }
     } else {
       const variant: Variant = unit.startsWith("A-") ? "A" : "B"
@@ -82,6 +83,7 @@ export async function runUnit(manifestPath: string, output: string, unit: Unit |
       } else {
         if (!r.active) throw new Error("Gateway not ready")
         r.inspector = await runtime.stage(`${variant}/inspector attach`, 35000, () => attach(() => r.active ? r.active.mf.getInspectorURL() : Promise.reject(new Error("Gateway missing")), r.active?.name ?? "missing"))
+        journal.append({ event: "inspector_target", variant, phase, ...r.inspector.identity })
         await r.inspector.send("Profiler.enable")
         await r.inspector.send("Profiler.setSamplingInterval", { interval: 100 })
         for (const stream of [false, true]) {
@@ -95,7 +97,7 @@ export async function runUnit(manifestPath: string, output: string, unit: Unit |
           // Persist profile immediately, before further inspector commands.
           durableJson(join(r.active.directory, `${mode}.cpuprofile`), result.profile, true)
           const heapSettled = await r.inspector.send("Runtime.getHeapUsage")
-          const summary = { variant, mode, heapStart, heapSettled, cpu: cpuSummary(result.profile, 40) }
+          const summary = { variant, mode, inspector: r.inspector.identity, heapStart, heapSettled, cpu: cpuSummary(result.profile, 40) }
           durableJson(join(r.active.directory, `${mode}-diagnostic.json`), summary, true)
           journal.append({ event: "diagnostic", ...summary })
           journal.append({ event: "mode_end", variant, phase, mode })

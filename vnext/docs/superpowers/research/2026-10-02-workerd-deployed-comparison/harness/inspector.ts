@@ -2,18 +2,20 @@ import { deadline } from "./supervisor.ts"
 
 type Obj = Record<string, unknown>
 export interface Target { title?: string; id?: string; webSocketDebuggerUrl?: string }
-export function selectTarget(targets: Target[], name: string): Target {
-  const matched = targets.filter(target => {
-    if (!target.webSocketDebuggerUrl) return false
-    try { return new URL(target.webSocketDebuggerUrl).pathname === `/${encodeURIComponent(name)}` } catch { return false }
-  })
+export function selectTarget(targets: Target[], name: string, inspectorURL: URL): Target {
+  const id = `core:user:${name}`
+  const observed = targets.map(target => ({ id: target.id, title: target.title, webSocketDebuggerUrl: target.webSocketDebuggerUrl }))
+  const mismatch = (reason: string) => new Error(`Inspector requires exactly one exact raw target ${id} at ${inspectorURL.host}: ${reason}; observed=${JSON.stringify(observed)}`)
+  if (inspectorURL.protocol !== "ws:" || !["127.0.0.1", "localhost", "[::1]"].includes(inspectorURL.hostname)) throw mismatch("discovery must be local ws")
+  const matched = targets.filter(target => target.id === id)
   const target = matched[0]
-  if (matched.length !== 1 || !target?.webSocketDebuggerUrl) throw new Error(`Inspector requires exactly one exact target ${name}`)
-  const url = new URL(target.webSocketDebuggerUrl)
-  if (!["127.0.0.1", "localhost", "[::1]"].includes(url.hostname) || url.protocol !== "ws:") throw new Error("Inspector target must be local")
+  if (matched.length !== 1 || !target?.webSocketDebuggerUrl) throw mismatch("missing or ambiguous identity")
+  let url: URL
+  try { url = new URL(target.webSocketDebuggerUrl) } catch { throw mismatch("invalid socket URL") }
+  if (url.protocol !== "ws:" || url.host !== inspectorURL.host || url.pathname !== `/${id}` || url.search || url.hash || url.username || url.password) throw mismatch("socket must match exact ID/path and inspector host/port")
   return target
 }
-export interface Inspector { send(method: string, params?: Obj): Promise<unknown>; close(): Promise<void> }
+export interface Inspector { identity: { inspectorURL: string; target: Target }; send(method: string, params?: Obj): Promise<unknown>; close(): Promise<void> }
 export async function attach(getURL: () => Promise<URL>, name: string): Promise<Inspector> {
   const inspectorURL = await deadline("inspector URL", 10000, getURL)
   const targets = await deadline("inspector discovery", 10000, async () => {
@@ -25,9 +27,8 @@ export async function attach(getURL: () => Promise<URL>, name: string): Promise<
     if (!Array.isArray(value)) throw new Error("Invalid inspector targets")
     return value as Target[]
   })
-  const target = selectTarget(targets, name)
+  const target = selectTarget(targets, name, inspectorURL)
   if (!target.webSocketDebuggerUrl) throw new Error("Missing inspector socket")
-  if (new URL(target.webSocketDebuggerUrl).host !== inspectorURL.host) throw new Error("Inspector target escaped the exact inspector host/port")
   const socket = new WebSocket(target.webSocketDebuggerUrl)
   const waiting = new Map<number, { resolve(value: unknown): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> }>()
   const rejectAll = (error: Error) => { for (const task of waiting.values()) { clearTimeout(task.timer); task.reject(error) }; waiting.clear() }
@@ -53,6 +54,7 @@ export async function attach(getURL: () => Promise<URL>, name: string): Promise<
   }
   let nextId = 0
   return {
+    identity: { inspectorURL: String(inspectorURL), target },
     send(method, params = {}) {
       return new Promise((resolve, reject) => {
         const id = ++nextId
