@@ -18,6 +18,7 @@ export interface Manifest {
   version: 1; id: string; createdAt: string
   count: 40; warmup: 12; expected: 716
   variants: Record<"A" | "B", VariantInput>
+  execution: FileIdentity
   resolution: ResolutionEdge[]; tools: FileIdentity[]; dependencies: FileIdentity[]; artifacts: FileIdentity[]
   runtime: { bun: string; miniflare: string; workerd: string; wrangler: string; compatibilityDate: "2025-06-01"; compatibilityFlags: ["nodejs_compat"] }
   build: string[]
@@ -32,6 +33,16 @@ export function verifyFiles(files: FileIdentity[]) {
     const actual = fileIdentity(expected.path)
     if (actual.sha256 !== expected.sha256 || actual.bytes !== expected.bytes) throw new Error(`Input drift: ${expected.path}`)
   }
+}
+/** Supported execution excludes ambient alternate binaries and debugger bootloaders. */
+export function verifyExecution(expected?: FileIdentity): FileIdentity {
+  for (const key of ["MINIFLARE_WORKERD_PATH", "VSCODE_INSPECTOR_OPTIONS", "NODE_OPTIONS"]) {
+    if (process.env[key] !== undefined) throw new Error(`Unsafe runtime environment: ${key}`)
+  }
+  if (Bun.version !== "1.3.0") throw new Error("Current Bun version drift")
+  const actual = fileIdentity(realpathSync(process.execPath))
+  if (expected && (actual.path !== expected.path || actual.bytes !== expected.bytes || actual.sha256 !== expected.sha256)) throw new Error("Current Bun executable drift")
+  return actual
 }
 function walk(root: string, source = false): string[] {
   return readdirSync(root).sort().flatMap(name => {
@@ -109,6 +120,7 @@ function runtimeInputs(roots: string[]) {
 }
 const git = (root: string, args: string[]) => execFileSync("git", ["-C", root, ...args], { encoding: "utf8", timeout: 15000 }).trim()
 export async function freeze(a: string, b: string, output: string): Promise<string> {
+  const execution = verifyExecution()
   a = realpathSync(a); b = realpathSync(b); output = resolve(output)
   if (existsSync(output)) throw new Error("Freeze output already exists")
   if (git(a, ["rev-parse", "HEAD"]) !== EXPECTED_A) throw new Error("Deployed A HEAD mismatch")
@@ -127,6 +139,7 @@ export async function freeze(a: string, b: string, output: string): Promise<stri
     mkdirSync(directory, { mode: 0o700 })
     const approved = join(directory, "approved-inputs.json")
     durableJson(approved, [...source[variant], ...dependencies], true)
+    verifyExecution(execution)
     const result = await supervise({ command: process.execPath, args: [join(HARNESS, "build.ts"), variants[variant], b, `${directory}/bundle`, approved], directory, timeoutMs: 120000 })
     durableJson(join(directory, "build-receipt.json"), result, true)
     if (result.exitCode !== 0 || !result.cleanupComplete || result.timedOut || result.interrupted) throw new Error(`Matched build failed ${variant}; inspect preserved stderr.log`)
@@ -136,7 +149,7 @@ export async function freeze(a: string, b: string, output: string): Promise<stri
   }
   if (!inputs.A || !inputs.B) throw new Error("Incomplete matched builds")
   const artifacts = ["A", "B"].flatMap(variant => [...walk(join(output, variant, "bundle")), join(output, variant, "resolved-modules.json"), join(output, variant, "approved-inputs.json")]).sort().map(fileIdentity)
-  const manifest: Manifest = { version: 1, id: randomUUID(), createdAt: new Date().toISOString(), count: 40, warmup: 12, expected: 716, variants: { A: inputs.A, B: inputs.B }, tools, dependencies, artifacts, runtime, build, resolution }
+  const manifest: Manifest = { version: 1, id: randomUUID(), createdAt: new Date().toISOString(), count: 40, warmup: 12, expected: 716, execution, variants: { A: inputs.A, B: inputs.B }, tools, dependencies, artifacts, runtime, build, resolution }
   verifyManifest(manifest)
   const path = join(output, "manifest.json")
   durableJson(path, manifest, true)
@@ -151,6 +164,9 @@ export function loadManifest(path: string): Manifest {
   return value
 }
 export function verifyManifest(manifest: Manifest) {
+  if (!manifest.execution) throw new Error("Missing frozen Bun executable identity")
+  verifyExecution(manifest.execution)
+  if (manifest.runtime.bun !== Bun.version) throw new Error("Current Bun version drift")
   verifyResolution(manifest.resolution)
   verifyFiles([...manifest.tools, ...manifest.dependencies, ...manifest.artifacts])
   for (const variant of ["A", "B"] as const) {

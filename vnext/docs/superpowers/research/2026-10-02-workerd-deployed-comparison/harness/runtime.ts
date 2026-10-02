@@ -177,7 +177,7 @@ export class Runtime {
   const path = cell.protocol === "responses" ? "/v1/responses" : cell.protocol === "messages" ? "/v1/messages" : "/v1/chat/completions"
   this.journal.append({ event: "offered", id, variant, phase, block, ...cell, requestSha256: sha(body) })
   const start = performance.now()
-  let status = 0, firstSemanticMs: number | null = null, terminalMs: number | null = null, responseBytes = 0, raw = "", transportCompleted = false, dumpRecordId: string | null = null
+  let status = 0, eofMs: number | null = null, firstSemanticMs: number | null = null, terminalMs: number | null = null, responseBytes = 0, raw = "", transportCompleted = false, dumpRecordId: string | null = null
   const events: unknown[] = []
   let done = false
   try {
@@ -193,7 +193,7 @@ export class Runtime {
     try {
       for (;;) {
         const part = await reader.read()
-        if (part.done) break
+        if (part.done) { eofMs = performance.now() - start; break }
         responseBytes += part.value.byteLength
         const decoded = decoder.decode(part.value, { stream: true })
         raw += decoded
@@ -222,14 +222,14 @@ export class Runtime {
     } finally { if (!transportCompleted) await deadline("request cancellation", 1000, () => reader.cancel()).catch(() => {}); reader.releaseLock() }
     })
     const result = oracle(status, events, done, { ...cell, variant })
-    const row: Row = { event: "terminal", wireEvents: events, wireDone: done, variant, phase, block, ...cell, id, status, eofMs: performance.now() - start, firstSemanticMs, terminalMs, responseBytes, wireBytes: Buffer.byteLength(body), requestSha256: sha(body), dumpRecordId, responseSha256: sha(raw), transportCompleted, ...result }
+    const row: Row = { event: "terminal", wireEvents: events, wireDone: done, variant, phase, block, ...cell, id, status, eofMs, failureElapsedMs: null, firstSemanticMs, terminalMs, responseBytes, wireBytes: Buffer.byteLength(body), requestSha256: sha(body), dumpRecordId, responseSha256: sha(raw), transportCompleted, ...result }
     if (!row.ok && phase === "matrix") write(join(active.directory, `${id}-mismatch.json`), { row, response: raw })
     write(join(active.directory, `${id}-wire.json`), { requestBody: body, response: raw, parsedEvents: events, done, row })
     this.journal.append({ ...row, wireEvidence: join(active.directory, `${id}-wire.json`) })
     this.rows.push(row)
     return row
   } catch (error) {
-    const row: Row = { event: "terminal", wireEvents: events, wireDone: done, variant, phase, block, ...cell, id, status, eofMs: performance.now() - start, firstSemanticMs, terminalMs, responseBytes, wireBytes: Buffer.byteLength(body), requestSha256: sha(body), dumpRecordId, responseSha256: sha(raw), transportCompleted, ok: false, errors: [error instanceof Error ? `${error.name}: ${error.message}` : String(error)], classification: "transport_or_parse_failure" }
+    const row: Row = { event: "terminal", wireEvents: events, wireDone: done, variant, phase, block, ...cell, id, status, eofMs, failureElapsedMs: performance.now() - start, firstSemanticMs, terminalMs, responseBytes, wireBytes: Buffer.byteLength(body), requestSha256: sha(body), dumpRecordId, responseSha256: sha(raw), transportCompleted, ok: false, errors: [error instanceof Error ? `${error.name}: ${error.message}` : String(error)], classification: "transport_or_parse_failure" }
     write(join(active.directory, `${id}-wire.json`), { requestBody: body, response: raw, parsedEvents: events, done, row })
     this.journal.append({ ...row, wireEvidence: join(active.directory, `${id}-wire.json`) })
     this.rows.push(row)

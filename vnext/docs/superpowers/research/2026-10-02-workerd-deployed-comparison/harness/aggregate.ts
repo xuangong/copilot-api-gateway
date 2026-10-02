@@ -60,11 +60,11 @@ export function qualifyUnits(units: UnitEvidence[], manifestId: string, manifest
   const a = matrices.filter(row => row.variant === "A")
   const b = matrices.filter(row => row.variant === "B")
   const regressions = b.filter(row => row.ok !== true && a.some(before => before.ok === true && signature(before) === signature(row)))
-  // Every B declared matrix contract is required; inherited failures stay explicit.
   const candidateFailures = b.filter(row => row.ok !== true)
+  const collectionCompleted = errors.length === 0
+  const noRegression = regressions.length === 0
   if (regressions.length) errors.push("B semantic regression")
-  if (candidateFailures.length) errors.push("B declared matrix semantics failed")
-  return { completed: errors.length === 0, errors, expected, offered: offered.length, terminal: terminal.length, regressions, candidateFailures, baselineFailures: a.filter(row => row.ok !== true) }
+  return { completed: collectionCompleted && noRegression, collectionCompleted, noRegression, errors, expected, offered: offered.length, terminal: terminal.length, regressions, candidateFailures, baselineFailures: a.filter(row => row.ok !== true) }
 }
 export function readEvidence(directory: string): UnitEvidence {
   const receipt = JSON.parse(readFileSync(join(directory, "receipt.json"), "utf8")) as Receipt
@@ -107,7 +107,7 @@ export function aggregate(manifest: Manifest, manifestSha256: string, output: st
   const rows = units.flatMap(unit => unit.rows)
   const physicalObjects = rows.filter(row => row.event === "dump_readback").flatMap(row => Array.isArray(row.records) ? row.records as { objects: { side: string; compressedBytes: number; decodedBytes: number }[] }[] : []).flatMap(record => record.objects)
   const storage = ["request", "response", "upstream"].map(side => ({ side, objects: physicalObjects.filter(object => object.side === side).length, compressedBytes: physicalObjects.filter(object => object.side === side).reduce((sum, object) => sum + object.compressedBytes, 0), decodedBytes: physicalObjects.filter(object => object.side === side).reduce((sum, object) => sum + object.decodedBytes, 0) }))
-  if (physicalObjects.length !== (canary ? 10 : 1790)) { qualification.completed = false; qualification.errors.push("Physical object total mismatch") }
+  if (physicalObjects.length !== (canary ? 10 : 1790)) { qualification.completed = false; qualification.collectionCompleted = false; qualification.errors.push("Physical object total mismatch") }
   return { version: 1, manifestSha256, experimentId: manifest.id, kind: canary ? "canary" : "formal", ...qualification, latency: measurements(rows), diagnostic: rows.filter(row => row.event === "diagnostic"), storage,
     boundary: "Local synthetic direct_fetch only. V8 sampled non-idle time is not billed/process CPU; settled heap is not peak/RSS/leak proof or the cloud limit. No production parity or saturation coverage is inferred." }
 }

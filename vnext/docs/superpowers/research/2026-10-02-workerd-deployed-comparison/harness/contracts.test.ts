@@ -1,11 +1,11 @@
 import { test, expect } from "bun:test"
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs"
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Journal, readJournal, collectionEvidence } from "./journal.ts"
 import { deadline, supervise } from "./supervisor.ts"
 import { selectTarget } from "./inspector.ts"
-import { fileIdentity, verifyFiles } from "./manifest.ts"
+import { fileIdentity, verifyFiles, verifyManifest, type Manifest } from "./manifest.ts"
 
 const temp = () => mkdtempSync(join(tmpdir(), "bounded-workerd-test-"))
 const terminal = (id: string) => ({ event: "terminal" as const, id, phase: "latency", transportCompleted: true, ok: true })
@@ -40,6 +40,37 @@ test("detects actual manifest input drift", () => {
   verifyFiles([identity])
   writeFileSync(path, "drifted")
   expect(() => verifyFiles([identity])).toThrow("drift")
+})
+function executionManifest(): Manifest {
+  const root = temp()
+  for (const name of ["apps", "packages", "scripts"]) mkdirSync(join(root, "vnext", name), { recursive: true })
+  const bun = fileIdentity(realpathSync(process.execPath))
+  const input = { root, head: "fixture", files: [], bundle: "unused", migrationRoot: "unused" }
+  return { version: 1, id: "fixture", createdAt: "fixture", count: 40, warmup: 12, expected: 716,
+    execution: bun, variants: { A: { ...input, representation: "deployed-legacy" }, B: { ...input, representation: "current-v1" } },
+    resolution: [], tools: [], dependencies: [bun], artifacts: [], build: [],
+    runtime: { bun: "1.3.0", miniflare: "4.20260601.0", workerd: "1.20260601.1", wrangler: "4.97.0", compatibilityDate: "2025-06-01", compatibilityFlags: ["nodejs_compat"] } } as Manifest
+}
+test("runtime identity rejects ambient workerd/debug overrides without launching runtime", () => {
+  const manifest = executionManifest()
+  verifyManifest(manifest)
+  for (const key of ["MINIFLARE_WORKERD_PATH", "VSCODE_INSPECTOR_OPTIONS", "NODE_OPTIONS"]) {
+    const original = process.env[key]
+    try {
+      for (const value of ["disposable-override", ""]) {
+        process.env[key] = value
+        expect(() => verifyManifest(manifest)).toThrow(`Unsafe runtime environment: ${key}`)
+      }
+    } finally { if (original === undefined) delete process.env[key]; else process.env[key] = original }
+  }
+})
+test("runtime identity rejects a different actual Bun identity while frozen bytes still exist", () => {
+  const manifest = executionManifest()
+  const alternative = join(temp(), "alternative-bun")
+  writeFileSync(alternative, "disposable executable identity")
+  const changed = { ...manifest, execution: fileIdentity(alternative) }
+  expect(() => verifyManifest(changed)).toThrow("Current Bun executable drift")
+  verifyFiles(manifest.dependencies)
 })
 test("stage timeout names the independently bounded stage", async () => {
   await expect(deadline("binding", 20, () => new Promise<void>(() => {}))).rejects.toThrow("binding timed out")

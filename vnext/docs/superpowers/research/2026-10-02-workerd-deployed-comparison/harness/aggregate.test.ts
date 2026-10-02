@@ -47,7 +47,7 @@ test("aggregate rejects count-preserving duplicate matrix cells and global reque
   b.receipt.evidence = collectionEvidence(b.rows, 150, b.receipt.flags)
   expect(qualifyUnits(fresh, "experiment", "sha").errors).toContain("Global request ID collision")
 })
-test("baseline matrix defects remain explicit but B declared failures cannot qualify", () => {
+test("matched matrix semantic failures complete with explicit evidence while regressions cannot qualify", () => {
   const units = UNITS.map(evidence)
   const a = units[1], b = units[2]
   if (!a || !b) throw new Error("Fixture missing matrices")
@@ -57,5 +57,20 @@ test("baseline matrix defects remain explicit but B declared failures cannot qua
   ar.ok = false
   expect(qualifyUnits(units, "experiment", "sha").completed).toBe(true)
   br.ok = false
-  expect(qualifyUnits(units, "experiment", "sha").completed).toBe(false)
+  const inherited = qualifyUnits(units, "experiment", "sha")
+  expect(inherited.completed).toBe(true)
+  expect(inherited.collectionCompleted).toBe(true)
+  expect(inherited.noRegression).toBe(true)
+  expect(inherited.baselineFailures).toEqual([ar])
+  expect(inherited.candidateFailures).toEqual([br])
+  expect(inherited.regressions).toEqual([])
+  ar.ok = true
+  const regressed = qualifyUnits(units, "experiment", "sha")
+  expect(regressed.completed).toBe(false)
+  expect(regressed.collectionCompleted).toBe(true)
+  expect(regressed.noRegression).toBe(false)
+  expect(regressed.regressions).toEqual([br])
+  br.transportCompleted = false
+  b.receipt.evidence = collectionEvidence(b.rows, 150, b.receipt.flags)
+  expect(qualifyUnits(units, "experiment", "sha").collectionCompleted).toBe(false)
 })

@@ -8,7 +8,7 @@ export interface Dispatch {
 }
 export interface Row extends Cell {
   event: "terminal"; variant: Variant; phase: string; block: number; id: string; status: number
-  eofMs: number; firstSemanticMs: number | null; terminalMs: number | null
+  eofMs: number | null; failureElapsedMs: number | null; firstSemanticMs: number | null; terminalMs: number | null
   transportCompleted: boolean; responseBytes: number; wireBytes: number
   responseSha256: string; requestSha256: string; dumpRecordId: string | null
   wireEvents: unknown[]; wireDone: boolean; ok: boolean; errors: string[]; classification: string
