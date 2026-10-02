@@ -1,0 +1,49 @@
+// Reused from 2026-09-30-cfw-request-boundaries/harness/entry.mjs.template; see README provenance.
+import worker from __WORKER__
+
+const pending = new Set()
+const failures = []
+let registered = 0
+let settled = 0
+let activeFetches = 0
+
+function observedContext(ctx) {
+  return {
+    waitUntil(value) {
+      registered++
+      const task = Promise.resolve(value).then(
+        () => { settled++ },
+        error => { settled++; failures.push({ name: error?.name ?? "Error" }); throw error },
+      ).finally(() => pending.delete(task))
+      pending.add(task)
+      ctx.waitUntil(task)
+    },
+    passThroughOnException() { ctx.passThroughOnException() },
+    props: ctx.props,
+  }
+}
+
+async function barrier() {
+  const started = Date.now()
+  for (;;) {
+    const generation = registered
+    await Promise.allSettled([...pending])
+    // Yield to tasks that register follow-up work after a fulfilled job.
+    await new Promise(resolve => setTimeout(resolve, 0))
+    if (pending.size === 0 && activeFetches === 0 && generation === registered) {
+      return { registered, settled, pending: 0, activeFetches, failures, elapsedMs: Date.now() - started }
+    }
+  }
+}
+
+export default {
+  async fetch(req, env, ctx) {
+    if (new URL(req.url).pathname === "/__harness/settled") {
+      if (req.headers.get("x-harness-key") !== "architecture-local-only") return new Response("Unauthorized", { status: 401 })
+      return Response.json(await barrier())
+    }
+    activeFetches++
+    try { return await worker.fetch(req, env, observedContext(ctx)) }
+    finally { activeFetches-- }
+  },
+}
