@@ -1,0 +1,778 @@
+{
+  "version": 1,
+  "experimentId": "00c2f87e-4e64-470b-a770-edda1aa3e1a9",
+  "manifestSha256": "75b56a29dfa45e59360323ace390d2c8eb5d2a4fd5e40a8aefac69e755d8434d",
+  "source": {
+    "A": {
+      "root": "/Volumes/Projects/copilot-api-gateway-cfw-validation-20260930-001627/baseline",
+      "head": "e660fb4dfcf1734d10f89e52e2d739b2985c634b",
+      "representation": "deployed-legacy",
+      "frozenFiles": 1265
+    },
+    "B": {
+      "root": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix",
+      "head": "c3f5923fe406675ec7a95c68d72485714f117590",
+      "representation": "current-v1",
+      "frozenFiles": 1580
+    }
+  },
+  "candidateProductBase": "e90b8ee5a5feb6e99ef45cad8ca4463c245c25e7",
+  "candidateProtectedOverlayFiles": 14,
+  "qualifiedProductFiles": 1572,
+  "runtime": {
+    "bun": "1.3.0",
+    "miniflare": "4.20260601.0",
+    "workerd": "1.20260601.1",
+    "wrangler": "4.97.0",
+    "compatibilityDate": "2025-06-01",
+    "compatibilityFlags": [
+      "nodejs_compat"
+    ]
+  },
+  "aggregateClaims": {
+    "completed": true,
+    "collectionCompleted": true,
+    "noRegression": true,
+    "errors": []
+  },
+  "independentRecordedEvidence": {
+    "rowsComplete": true,
+    "ordinaryFidelityComplete": true,
+    "matrixOutcomesComplete": true,
+    "matrixNoPassToFailRegression": true,
+    "diagnosticsComplete": true,
+    "runtimeQualificationVerified": false,
+    "problems": [],
+    "offered": 716,
+    "terminal": 716,
+    "phaseCounts": {
+      "latency_warmup": 48,
+      "latency": 160,
+      "matrix_warmup": 48,
+      "matrix": 252,
+      "diagnostic_warmup": 48,
+      "diagnostic": 160
+    }
+  },
+  "latency": [
+    {
+      "mode": "json",
+      "A": {
+        "n": 40,
+        "valid": 40,
+        "p50EofMs": 13.669166000001496,
+        "p95EofMs": 25.532666999999492,
+        "blockP50EofMs": {
+          "0": 13.170249999999214,
+          "1": 17.158000000001266,
+          "2": 11.999832999999853,
+          "3": 13.669166000001496
+        },
+        "p50FirstSemanticMs": 13.674000000000888,
+        "p95FirstSemanticMs": 25.54016700000011,
+        "blockP50FirstSemanticMs": {
+          "0": 13.174208999999792,
+          "1": 17.162208000001556,
+          "2": 12.003458000001046,
+          "3": 13.674000000000888
+        }
+      },
+      "B": {
+        "n": 40,
+        "valid": 40,
+        "p50EofMs": 14.498375000000124,
+        "p95EofMs": 21.658832999999504,
+        "blockP50EofMs": {
+          "0": 15.398917000000438,
+          "1": 14.832916000001205,
+          "2": 13.115166999999929,
+          "3": 14.373625000000175
+        },
+        "p50FirstSemanticMs": 14.501916999999594,
+        "p95FirstSemanticMs": 21.667083000000275,
+        "blockP50FirstSemanticMs": {
+          "0": 15.403667000000496,
+          "1": 14.838375000001179,
+          "2": 13.119833999999173,
+          "3": 14.378124999999272
+        }
+      },
+      "comparison": {
+        "p50EofMs": {
+          "delta": 0.8292089999986274,
+          "percent": 6.066273538550471
+        },
+        "p95EofMs": {
+          "delta": -3.873833999999988,
+          "percent": -15.172069568760937
+        },
+        "p50FirstSemanticMs": {
+          "delta": 0.8279169999987062,
+          "percent": 6.054680415377001
+        },
+        "p95FirstSemanticMs": {
+          "delta": -3.873083999999835,
+          "percent": -15.164677662443705
+        }
+      },
+      "blockComparison": {
+        "0": {
+          "delta": 2.2286670000012236,
+          "percent": 16.921979461296143
+        },
+        "1": {
+          "delta": -2.3250840000000608,
+          "percent": -13.551019932392405
+        },
+        "2": {
+          "delta": 1.1153340000000753,
+          "percent": 9.294579349563348
+        },
+        "3": {
+          "delta": 0.7044589999986783,
+          "percent": 5.1536355619545615
+        }
+      },
+      "blockFirstSemanticComparison": {
+        "0": {
+          "delta": 2.2294580000007045,
+          "percent": 16.92289836908416
+        },
+        "1": {
+          "delta": -2.323833000000377,
+          "percent": -13.540408087351963
+        },
+        "2": {
+          "delta": 1.1163759999981266,
+          "percent": 9.300453252704589
+        },
+        "3": {
+          "delta": 0.7041249999983847,
+          "percent": 5.149371069170239
+        }
+      }
+    },
+    {
+      "mode": "sse",
+      "A": {
+        "n": 40,
+        "valid": 40,
+        "p50EofMs": 66.25779200000034,
+        "p95EofMs": 94.16454199999862,
+        "blockP50EofMs": {
+          "0": 64.09704099999999,
+          "1": 71.29429100000016,
+          "2": 63.09129100000064,
+          "3": 62.420624999998836
+        },
+        "p50FirstSemanticMs": 45.39154100000087,
+        "p95FirstSemanticMs": 72.58170900000005,
+        "blockP50FirstSemanticMs": {
+          "0": 40.335415999999896,
+          "1": 45.47449999999844,
+          "2": 41.571625000000495,
+          "3": 41.80883299999914
+        }
+      },
+      "B": {
+        "n": 40,
+        "valid": 40,
+        "p50EofMs": 71.00224999999955,
+        "p95EofMs": 102.15550000000076,
+        "blockP50EofMs": {
+          "0": 77.21945800000049,
+          "1": 70.29216600000109,
+          "2": 68.79025000000001,
+          "3": 73.91345799999908
+        },
+        "p50FirstSemanticMs": 50.193750000000364,
+        "p95FirstSemanticMs": 83.85662500000035,
+        "blockP50FirstSemanticMs": {
+          "0": 48.722374999999374,
+          "1": 50.193750000000364,
+          "2": 48.0825420000001,
+          "3": 52.3432499999999
+        }
+      },
+      "comparison": {
+        "p50EofMs": {
+          "delta": 4.744457999999213,
+          "percent": 7.160603842638147
+        },
+        "p95EofMs": {
+          "delta": 7.990958000002138,
+          "percent": 8.48616456925182
+        },
+        "p50FirstSemanticMs": {
+          "delta": 4.802208999999493,
+          "percent": 10.579524057135226
+        },
+        "p95FirstSemanticMs": {
+          "delta": 11.274916000000303,
+          "percent": 15.534101022614788
+        }
+      },
+      "blockComparison": {
+        "0": {
+          "delta": 13.122417000000496,
+          "percent": 20.47273445899085
+        },
+        "1": {
+          "delta": -1.0021249999990687,
+          "percent": -1.4056174568017887
+        },
+        "2": {
+          "delta": 5.698958999999377,
+          "percent": 9.032877453719124
+        },
+        "3": {
+          "delta": 11.492833000000246,
+          "percent": 18.411915933235946
+        }
+      },
+      "blockFirstSemanticComparison": {
+        "0": {
+          "delta": 8.386958999999479,
+          "percent": 20.79303954618814
+        },
+        "1": {
+          "delta": 4.719250000001921,
+          "percent": 10.377794148373454
+        },
+        "2": {
+          "delta": 6.510916999999608,
+          "percent": 15.661925652412023
+        },
+        "3": {
+          "delta": 10.534417000000758,
+          "percent": 25.196630099675275
+        }
+      }
+    }
+  ],
+  "diagnostics": [
+    {
+      "variant": "A",
+      "mode": "json",
+      "windowVerified": true,
+      "summaryMatches": true,
+      "cpu": {
+        "requests": 40,
+        "wallWindowUs": 844073,
+        "sampledNonIdleUs": 503623,
+        "sampledIdleUs": 90337,
+        "sampledWeightUs": 593960,
+        "sampledNonIdleUsPerRequest": 12590.575,
+        "samples": 72
+      },
+      "heapStart": {
+        "usedSize": 23009124,
+        "totalSize": 29638656,
+        "embedderHeapUsedSize": 386896,
+        "backingStorageSize": 4054687
+      },
+      "heapSettled": {
+        "usedSize": 28798388,
+        "totalSize": 38813696,
+        "embedderHeapUsedSize": 644816,
+        "backingStorageSize": 6129409
+      }
+    },
+    {
+      "variant": "A",
+      "mode": "sse",
+      "windowVerified": true,
+      "summaryMatches": true,
+      "cpu": {
+        "requests": 40,
+        "wallWindowUs": 3230502,
+        "sampledNonIdleUs": 2781243,
+        "sampledIdleUs": 174496,
+        "sampledWeightUs": 2955739,
+        "sampledNonIdleUsPerRequest": 69531.075,
+        "samples": 262
+      },
+      "heapStart": {
+        "usedSize": 28798388,
+        "totalSize": 38813696,
+        "embedderHeapUsedSize": 644816,
+        "backingStorageSize": 6129409
+      },
+      "heapSettled": {
+        "usedSize": 33613224,
+        "totalSize": 43270144,
+        "embedderHeapUsedSize": 902736,
+        "backingStorageSize": 6124187
+      }
+    },
+    {
+      "variant": "B",
+      "mode": "json",
+      "windowVerified": true,
+      "summaryMatches": true,
+      "cpu": {
+        "requests": 40,
+        "wallWindowUs": 1212892,
+        "sampledNonIdleUs": 692368,
+        "sampledIdleUs": 207606,
+        "sampledWeightUs": 899974,
+        "sampledNonIdleUsPerRequest": 17309.2,
+        "samples": 112
+      },
+      "heapStart": {
+        "usedSize": 26907148,
+        "totalSize": 36405248,
+        "embedderHeapUsedSize": 515856,
+        "backingStorageSize": 5614636
+      },
+      "heapSettled": {
+        "usedSize": 28851376,
+        "totalSize": 43483136,
+        "embedderHeapUsedSize": 644816,
+        "backingStorageSize": 5441937
+      }
+    },
+    {
+      "variant": "B",
+      "mode": "sse",
+      "windowVerified": true,
+      "summaryMatches": true,
+      "cpu": {
+        "requests": 40,
+        "wallWindowUs": 3593052,
+        "sampledNonIdleUs": 2853415,
+        "sampledIdleUs": 320259,
+        "sampledWeightUs": 3173674,
+        "sampledNonIdleUsPerRequest": 71335.375,
+        "samples": 360
+      },
+      "heapStart": {
+        "usedSize": 28851376,
+        "totalSize": 43483136,
+        "embedderHeapUsedSize": 644816,
+        "backingStorageSize": 5441937
+      },
+      "heapSettled": {
+        "usedSize": 29338788,
+        "totalSize": 44269568,
+        "embedderHeapUsedSize": 395224,
+        "backingStorageSize": 6247738
+      }
+    }
+  ],
+  "storage": [
+    {
+      "variant": "A",
+      "records": 358,
+      "sides": [
+        {
+          "side": "request",
+          "objects": 358,
+          "compressedBytes": 97428,
+          "decodedBytes": 23529427
+        },
+        {
+          "side": "response",
+          "objects": 358,
+          "compressedBytes": 139649,
+          "decodedBytes": 538765
+        },
+        {
+          "side": "upstream",
+          "objects": 0,
+          "compressedBytes": 0,
+          "decodedBytes": 0
+        }
+      ],
+      "objects": 716,
+      "compressedBytes": 237077,
+      "decodedBytes": 24068192
+    },
+    {
+      "variant": "B",
+      "records": 358,
+      "sides": [
+        {
+          "side": "request",
+          "objects": 358,
+          "compressedBytes": 97493,
+          "decodedBytes": 23529429
+        },
+        {
+          "side": "response",
+          "objects": 358,
+          "compressedBytes": 139778,
+          "decodedBytes": 539321
+        },
+        {
+          "side": "upstream",
+          "objects": 358,
+          "compressedBytes": 512447,
+          "decodedBytes": 32014428
+        }
+      ],
+      "objects": 1074,
+      "compressedBytes": 749718,
+      "decodedBytes": 56083178
+    }
+  ],
+  "matrix": {
+    "wire": {
+      "complete": true,
+      "comparisons": 126,
+      "baselineFailures": 19,
+      "candidateFailures": 0,
+      "regressions": 0,
+      "improvements": 19,
+      "sharedFailures": 0,
+      "noRegression": true,
+      "failedBaselineCells": [
+        {
+          "cell": [
+            "responses",
+            "chat",
+            "ok",
+            true
+          ],
+          "classification": "semantic_mismatch",
+          "errors": [
+            "output_or_history_length_mismatch",
+            "text_delta_mismatch"
+          ]
+        },
+        {
+          "cell": [
+            "responses",
+            "chat",
+            "tool",
+            true
+          ],
+          "classification": "semantic_mismatch",
+          "errors": [
+            "tool_identity_mismatch",
+            "invalid_tool_arguments",
+            "tool_delta_mismatch"
+          ]
+        },
+        {
+          "cell": [
+            "responses",
+            "chat",
+            "refusal",
+            false
+          ],
+          "classification": "semantic_mismatch",
+          "errors": [
+            "refusal_semantics_missing"
+          ]
+        },
+        {
+          "cell": [
+            "responses",
+            "chat",
+            "refusal",
+            true
+          ],
+          "classification": "semantic_mismatch",
+          "errors": [
+            "refusal_semantics_missing"
+          ]
+        },
+        {
+          "cell": [
+            "responses",
+            "chat",
+            "truncated",
+            true
+          ],
+          "classification": "false_success",
+          "errors": [
+            "false_success_on_fault"
+          ]
+        },
+        {
+          "cell": [
+            "responses",
+            "chat",
+            "slow",
+            true
+          ],
+          "classification": "semantic_mismatch",
+          "errors": [
+            "output_or_history_length_mismatch",
+            "text_delta_mismatch"
+          ]
+        },
+        {
+          "cell": [
+            "responses",
+            "messages",
+            "refusal",
+            false
+          ],
+          "classification": "semantic_mismatch",
+          "errors": [
+            "refusal_semantics_missing"
+          ]
+        },
+        {
+          "cell": [
+            "responses",
+            "messages",
+            "refusal",
+            true
+          ],
+          "classification": "semantic_mismatch",
+          "errors": [
+            "refusal_semantics_missing"
+          ]
+        },
+        {
+          "cell": [
+            "chat",
+            "responses",
+            "refusal",
+            false
+          ],
+          "classification": "semantic_mismatch",
+          "errors": [
+            "refusal_semantics_missing"
+          ]
+        },
+        {
+          "cell": [
+            "chat",
+            "responses",
+            "refusal",
+            true
+          ],
+          "classification": "semantic_mismatch",
+          "errors": [
+            "refusal_semantics_missing"
+          ]
+        },
+        {
+          "cell": [
+            "chat",
+            "responses",
+            "failed",
+            true
+          ],
+          "classification": "false_success",
+          "errors": [
+            "false_success_on_fault",
+            "missing_explicit_failure_event"
+          ]
+        },
+        {
+          "cell": [
+            "chat",
+            "responses",
+            "truncated",
+            true
+          ],
+          "classification": "false_success",
+          "errors": [
+            "false_success_on_fault"
+          ]
+        },
+        {
+          "cell": [
+            "chat",
+            "messages",
+            "refusal",
+            true
+          ],
+          "classification": "semantic_mismatch",
+          "errors": [
+            "refusal_semantics_missing"
+          ]
+        },
+        {
+          "cell": [
+            "chat",
+            "messages",
+            "failed",
+            true
+          ],
+          "classification": "false_success",
+          "errors": [
+            "false_success_on_fault",
+            "missing_explicit_failure_event"
+          ]
+        },
+        {
+          "cell": [
+            "messages",
+            "responses",
+            "refusal",
+            false
+          ],
+          "classification": "semantic_mismatch",
+          "errors": [
+            "refusal_semantics_missing"
+          ]
+        },
+        {
+          "cell": [
+            "messages",
+            "responses",
+            "refusal",
+            true
+          ],
+          "classification": "semantic_mismatch",
+          "errors": [
+            "refusal_semantics_missing"
+          ]
+        },
+        {
+          "cell": [
+            "messages",
+            "chat",
+            "refusal",
+            false
+          ],
+          "classification": "semantic_mismatch",
+          "errors": [
+            "refusal_semantics_missing"
+          ]
+        },
+        {
+          "cell": [
+            "messages",
+            "chat",
+            "refusal",
+            true
+          ],
+          "classification": "semantic_mismatch",
+          "errors": [
+            "refusal_semantics_missing"
+          ]
+        },
+        {
+          "cell": [
+            "messages",
+            "chat",
+            "truncated",
+            true
+          ],
+          "classification": "false_success",
+          "errors": [
+            "false_success_on_fault"
+          ]
+        }
+      ]
+    },
+    "captureFidelity": {
+      "complete": true,
+      "comparisons": 126,
+      "baselineFailures": 4,
+      "candidateFailures": 0,
+      "regressions": 0,
+      "improvements": 4,
+      "sharedFailures": 0,
+      "noRegression": true,
+      "failedBaselineCells": [
+        {
+          "cell": [
+            "responses",
+            "messages",
+            "ok",
+            true
+          ],
+          "classification": "frame_value_mismatch",
+          "errors": [
+            "Canonical/wire frame fidelity mismatch 00c2f87e4e64470ba770edda1aa3e1a9_A_matrix_A_53"
+          ]
+        },
+        {
+          "cell": [
+            "responses",
+            "messages",
+            "tool",
+            true
+          ],
+          "classification": "frame_value_mismatch",
+          "errors": [
+            "Canonical/wire frame fidelity mismatch 00c2f87e4e64470ba770edda1aa3e1a9_A_matrix_A_55"
+          ]
+        },
+        {
+          "cell": [
+            "responses",
+            "messages",
+            "refusal",
+            true
+          ],
+          "classification": "frame_value_mismatch",
+          "errors": [
+            "Canonical/wire frame fidelity mismatch 00c2f87e4e64470ba770edda1aa3e1a9_A_matrix_A_57"
+          ]
+        },
+        {
+          "cell": [
+            "responses",
+            "messages",
+            "slow",
+            true
+          ],
+          "classification": "frame_value_mismatch",
+          "errors": [
+            "Canonical/wire frame fidelity mismatch 00c2f87e4e64470ba770edda1aa3e1a9_A_matrix_A_65"
+          ]
+        }
+      ]
+    }
+  },
+  "evidenceRoot": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-02-workerd-deployed-comparison",
+  "inputHashes": {
+    "formal-02/latency-pair/journal.jsonl": "650e55052250458e749f2324c2c9ec8a8ef939605826b40f31e7e9b709596232",
+    "formal-02/latency-pair/receipt.json": "5607b96c6d2b9beba16d598e48594a739f4b04c5fda7b48abbbc8b8021ff466b",
+    "formal-02/A-matrix/journal.jsonl": "733670c10f741a7d2c323d22dbefb0dc0b3fee6510cd0db2c08e4525d046c7db",
+    "formal-02/A-matrix/receipt.json": "fd8e318c100bdd0cbd2d71cf8ce8d5b5e1240230ce2a39d0b3dbd17f25d602a3",
+    "formal-02/B-matrix/journal.jsonl": "7bb92523a5e7fd4e9db020d50b755d2b91304b02afb8f79081505bc95a2be156",
+    "formal-02/B-matrix/receipt.json": "4c476011a42056f42e2b39ee9e756ed77f8c983c9843f3abf55a906e9c4682fc",
+    "formal-02/B-diagnostic/journal.jsonl": "b33acaa5dfe8a7832e81f7a3a54c1db2e7b03081b8733cc12db1f71fe4752ed6",
+    "formal-02/B-diagnostic/receipt.json": "3ebacd0fd99ee12f6ce34053e3fade0978cad0dfdc2bcd7131b5e6106fc87ded",
+    "formal-02/A-diagnostic/journal.jsonl": "fa0d75b87b04faa372f74177570089126939614e621a313fc70d49e46ef7414c",
+    "formal-02/A-diagnostic/receipt.json": "61e66f68498adcca5a31da72accc24f46e826b73a5b1d826f82848b69e9a94cd",
+    "formal-02/A-diagnostic/A-diagnostic/json-diagnostic.json": "80137a3b6786c55f1f0cf98df764cc685274bf55c1ac535400327e7ec084a266",
+    "formal-02/A-diagnostic/A-diagnostic/json.cpuprofile": "e74e703a83c12994c607bdfe2db67f330f69d61a61de519e9edea576b362308c",
+    "formal-02/A-diagnostic/A-diagnostic/sse-diagnostic.json": "f4c6a1a9d78de864748f099af3f49764ceac8065236cf9d4acbc2b162058288a",
+    "formal-02/A-diagnostic/A-diagnostic/sse.cpuprofile": "134ff982770f6a6985a3974e38ee18ec4756e825ae09a525c3977a6a866826f7",
+    "formal-02/B-diagnostic/B-diagnostic/json-diagnostic.json": "0713e38e02f54c10e22e033c28acf9b622824d00b91d66bcaaeb49cd7c84ebb4",
+    "formal-02/B-diagnostic/B-diagnostic/json.cpuprofile": "563d532f2cebf917e9f03dd719a4fa1079fb5c5865ce42b2d6b23f3145c3c0a5",
+    "formal-02/B-diagnostic/B-diagnostic/sse-diagnostic.json": "8151617d994f895c3c8d6bc30e0f19c4cc71635f6c1431b6f3318722fabc86a8",
+    "formal-02/B-diagnostic/B-diagnostic/sse.cpuprofile": "02a45d37a973bb3c105a7c97359d58b482c4d4d4da52dab01125b3a1b8bb490c",
+    "freeze-04/manifest.json": "75b56a29dfa45e59360323ace390d2c8eb5d2a4fd5e40a8aefac69e755d8434d",
+    "canary-04/aggregate.json": "42ac8d9e8df61ffabd8febc7257b59214ef25f6753c13389f09199a206e341f0",
+    "formal-02/aggregate.json": "50bad61fe672b0030d6bdb548d480bf75b13221db578ce50346a151f11344dda",
+    "formal-02-independent-analysis.json": "80b526ea88d77c3b2eeaff65d9c0884fb526acf13fe4146b4b8137cfdcfd36ef",
+    "analyze-independent.py": "979644b64e6c19b9342c4185a9d7688ea82dfbe9278679a8b38464d5cac0fb7f",
+    "test_analyze_independent.py": "48a05ea4ec11770a06e08e2bdd22e91230fb31710c28287d7a141eed8af4d3e0"
+  },
+  "boundary": "Read-only descriptive nearest-rank percentiles and matched AB/BA block medians. Matrix independently joins supplied wire/capture comparator outcomes, not a rerun of raw wire or R2 oracles. Capture classifications retain JSON canonical-source versus SSE frame-value meaning. No pass-to-fail regression is limited to these two binary oracles; every fail/fail pair remains unresolved with both details. rowsComplete and matrixOutcomesComplete are not runtime qualification: manifest/source, raw wire, physical D1/KV/R2, dispatch, background settlement and process cleanup require separate review. Weighted isolate samples are not billed/process CPU; inspector start/settled heap is not peak/RSS/leak or a cloud limit.",
+  "independentPhysicalReview": {
+    "passed": true,
+    "formalRequests": 716,
+    "formalOwnedObjects": 1790,
+    "canaryRequests": 4,
+    "canaryOwnedObjects": 10,
+    "consistencyChecks": 39523,
+    "uniqueFrozenFiles": 9536,
+    "originalEvidenceFilesUnchanged": 2825,
+    "problems": [],
+    "scope": "Fixed fresh local synthetic direct-fetch experiment and its declared binary wire/capture predicates; not a release or cloud resource qualification."
+  },
+  "reviewEvidenceHashes": {
+    "formal-02-evidence-review.md": "400f9d755042158ede158012f8ade128b6aedf5aa35b6705de195ac55cfe7ca2",
+    "formal-02-independent-audit/result.json": "f17b808fcb6cfcee466938994cecd44647a45d46f110fc89f8d4ece24f451117",
+    "formal-02-independent-audit/capture-improvements.json": "2e6a799be973afd173c476c95d648d6b29185144f7444a157fe7438ad97370b4",
+    "formal-02-profile-interpretation.md": "c69200fb11fe30911f39441ed2f45baf512aa61131a7fc58943023e9309a2876",
+    "formal-02-profile-analysis-final.json": "f62c92f388192bee107746715df3a9e64efc116857b35931b61e3922b7836c36",
+    "formal-02-source-map-lookup-check.json": "2cf3ef8db32758941c8c750583949264c3efb35b1db1fc0a9e579276d1998b48",
+    "formal-02-profile-input-preservation-and-tls.json": "6070205d00affe78313e84d5c427c91090610f31f0d06ff261e510e979481660",
+    "final-identity-check.log": "47de816f9afc521f9a1b8e869c36d89f28246e1c30ef2cfbe4c7899fed562194",
+    "final-increment-review.md": "a81888e234c875ba0415cb8f7a0ae1f63b52d7702730b12e62694fcedd4085e5"
+  }
+}
