@@ -1,10 +1,12 @@
-import { existsSync, readFileSync } from "node:fs"
+import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { collectionEvidence, readJournal, type Event } from "./journal.ts"
 import { EXPECTED, PROTOCOLS, SCENARIOS, UNITS, type Unit, type Variant } from "./types.ts"
 import { sha, type Manifest, verifyManifest } from "./manifest.ts"
 import type { Receipt } from "./unit.ts"
 import type { Supervision } from "./supervisor.ts"
+import { matrixOutcomes } from "./matrix.ts"
+import { verifyWireEvidence } from "./readback.ts"
 
 export const signature = (row: Event) => JSON.stringify([row.protocol, row.upstream, row.scenario, row.stream])
 export function validateShape(rows: Event[], unit: Unit | "canary") {
@@ -61,10 +63,13 @@ export function qualifyUnits(units: UnitEvidence[], manifestId: string, manifest
   const b = matrices.filter(row => row.variant === "B")
   const regressions = b.filter(row => row.ok !== true && a.some(before => before.ok === true && signature(before) === signature(row)))
   const candidateFailures = b.filter(row => row.ok !== true)
+  const observed = matrixOutcomes(allRows, canary)
+  errors.push(...observed.errors)
   const collectionCompleted = errors.length === 0
-  const noRegression = regressions.length === 0
+  const noRegression = observed.matrix.wire.noRegression && observed.matrix.captureFidelity.noRegression
   if (regressions.length) errors.push("B semantic regression")
-  return { completed: collectionCompleted && noRegression, collectionCompleted, noRegression, errors, expected, offered: offered.length, terminal: terminal.length, regressions, candidateFailures, baselineFailures: a.filter(row => row.ok !== true) }
+  if (observed.matrix.captureFidelity.regressions.length) errors.push("B capture fidelity regression")
+  return { completed: collectionCompleted && noRegression, collectionCompleted, noRegression, errors, expected, offered: offered.length, terminal: terminal.length, regressions, candidateFailures, baselineFailures: a.filter(row => row.ok !== true), matrix: observed.matrix }
 }
 export function readEvidence(directory: string): UnitEvidence {
   const receipt = JSON.parse(readFileSync(join(directory, "receipt.json"), "utf8")) as Receipt
@@ -85,9 +90,7 @@ export function readEvidence(directory: string): UnitEvidence {
     const captured = rows.filter(row => row.event === "dump_readback" && row.variant === variant).flatMap(row => Array.isArray(row.records) ? row.records as { logicalId: string }[] : [])
     if (captured.length !== logical.length || new Set(captured.map(row => row.logicalId)).size !== logical.length || !logical.every(row => captured.some(record => record.logicalId === row.id))) throw new Error(`Incomplete durable physical reads ${variant}`)
     for (const row of logical) {
-      if (typeof row.wireEvidence !== "string" || !existsSync(row.wireEvidence)) throw new Error("Missing raw wire evidence")
-      const wire = JSON.parse(readFileSync(row.wireEvidence, "utf8")) as { requestBody: string; response: string; row: { id: string }; parsedEvents: unknown[] }
-      if (wire.row.id !== row.id || sha(wire.requestBody) !== row.requestSha256 || sha(wire.response) !== row.responseSha256 || JSON.stringify(wire.parsedEvents) !== JSON.stringify(row.wireEvents)) throw new Error("Raw wire identity mismatch")
+      verifyWireEvidence(row as unknown as import("./readback.ts").LogicalDump)
     }
   }
   return { receipt, supervision, rows }

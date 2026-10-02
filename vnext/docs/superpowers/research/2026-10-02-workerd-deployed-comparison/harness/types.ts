@@ -12,6 +12,7 @@ export interface Row extends Cell {
   transportCompleted: boolean; responseBytes: number; wireBytes: number
   responseSha256: string; requestSha256: string; dumpRecordId: string | null
   wireEvents: unknown[]; wireDone: boolean; ok: boolean; errors: string[]; classification: string
+  wireEvidence: string
 }
 export const PROTOCOLS: Protocol[] = ["responses", "chat", "messages"]
 export const SCENARIOS = ["ok", "tool", "refusal", "failed", "truncated", "http503", "slow"]

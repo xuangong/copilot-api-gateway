@@ -6,6 +6,7 @@ import { Runtime } from "./runtime.ts"
 import { Journal, readJournal } from "./journal.ts"
 import type { Manifest } from "./manifest.ts"
 import { hot } from "./types.ts"
+import { verifyWireEvidence } from "./readback.ts"
 
 test("fetch failure observes an already durable offer and leaves one durable terminal with original input", async () => {
   const directory = mkdtempSync(join(tmpdir(), "durable-request-proof-"))
@@ -29,6 +30,9 @@ test("fetch failure observes an already durable offer and leaves one durable ter
     expect(rows[0]?.id).toBe(rows[1]?.id)
     const wirePath = rows[1]?.wireEvidence
     if (typeof wirePath !== "string") throw new Error("Missing wire evidence")
+    expect(row.wireEvidence).toBe(wirePath)
+    expect(runtime.rows[0]?.wireEvidence).toBe(wirePath)
+    verifyWireEvidence(row)
     const wire = JSON.parse(readFileSync(wirePath, "utf8")) as { requestBody: string }
     expect(wire.requestBody).toContain("BENCH_PAYLOAD:" + "x".repeat(65536) + ":END_PAYLOAD")
   } finally { globalThis.fetch = originalFetch; journal.close() }
@@ -67,5 +71,8 @@ test("EOF latency stops at reader.done before JSON parsing and wire oracle work"
     expect(row.eofMs).toBe(40)
     expect(row.failureElapsedMs).toBeNull()
     expect(clock).toBeGreaterThanOrEqual(2140)
+    expect(runtime.rows[0]?.wireEvidence).toBe(row.wireEvidence)
+    expect(readJournal(journal.path)[1]?.wireEvidence).toBe(row.wireEvidence)
+    verifyWireEvidence(row)
   } finally { globalThis.fetch = originalFetch; performance.now = originalNow; JSON.parse = originalParse; journal.close() }
 })

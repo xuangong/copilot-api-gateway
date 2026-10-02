@@ -762,5 +762,48 @@
         "ts": 39
       }
     ]
+  },
+  {
+    "name": "A_34",
+    "source": "formal-01/A-matrix original D1/R2 and independent wire journal; payload reconstructed from its exact repeated fixture bytes",
+    "requestTemplate": "{\"model\":\"bench-responses-http503\",\"stream\":false,\"max_tokens\":128,\"input\":[{\"role\":\"user\",\"content\":\"BENCH_ID:74aaa8a82e644edcbd06250f2c250bce_A_matrix_A_34 BENCH_PAYLOAD:{{FIXTURE_PAYLOAD}}:END_PAYLOAD\"}]}",
+    "payloadBytes": 65536,
+    "wireResponse": "{\"error\":{\"message\":\"Synthetic unavailable\",\"type\":\"server_error\"}}",
+    "row": {
+      "variant": "A",
+      "id": "74aaa8a82e644edcbd06250f2c250bce_A_matrix_A_34",
+      "dumpRecordId": "01M3XKTQS71HH1AP1YZFB4Q8E2",
+      "requestSha256": "2efda8108a2f162533ff991f7a1cdc37344db9f4c1d0c87dd56210a0a2ad64aa",
+      "responseSha256": "4513c94f5f59a68c37c1409f1b2676d5dc1937a0e2cec24ca0c8de4bbcb6c034",
+      "protocol": "responses",
+      "upstream": "responses",
+      "scenario": "http503",
+      "bytes": 65536,
+      "stream": false,
+      "wireEvents": [
+        {
+          "error": {
+            "message": "Synthetic unavailable",
+            "type": "server_error"
+          }
+        }
+      ],
+      "wireDone": false,
+      "status": 503,
+      "wireBytes": 65724,
+      "responseBytes": 67,
+      "ok": true,
+      "classification": "http_failure",
+      "transportCompleted": true
+    },
+    "record": {
+      "key_id": "architecture-key",
+      "id": "01M3XKTQS71HH1AP1YZFB4Q8E2",
+      "meta_json": "{\"id\":\"01M3XKTQS71HH1AP1YZFB4Q8E2\",\"startedAt\":1790921498407,\"completedAt\":1790921498417,\"method\":\"POST\",\"path\":\"/v1/responses\",\"status\":503,\"model\":\"bench-responses-http503\",\"inputTokens\":null,\"outputTokens\":null,\"requestBytes\":65724,\"responseBytes\":67,\"durationMs\":10,\"error\":{\"kind\":\"upstream\"}}",
+      "request_body_descriptor": "{\"key\":\"dumps/v1/architecture-key/2026100206/01M3XKTQS71HH1AP1YZFB4Q8E2-e71b2a52-54dc-4b85-b1d0-39d7ca0af21b.req.gz\",\"type\":\"bytes\"}",
+      "response_body_descriptor": "{\"key\":\"dumps/v1/architecture-key/2026100206/01M3XKTQS71HH1AP1YZFB4Q8E2-f98e84c8-30cd-4c5a-ad25-977ca871456e.resp.gz\",\"type\":\"bytes\"}"
+    },
+    "storedFrames": [],
+    "storedBytes": "{\"error\":{\"message\":\"Synthetic unavailable\",\"type\":\"server_error\"}}"
   }
 ]

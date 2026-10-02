@@ -1,7 +1,9 @@
 // Adapted from the previous canonical reader; explicit A/B schemas and no A refusal-status exemption.
 import { createHash } from "node:crypto"
+import { existsSync, readFileSync } from "node:fs"
 import type { Variant } from "./types.ts"
 import { oracle } from "./oracle.ts"
+import { parseWireResponse } from "./wire.ts"
 
 type Obj = Record<string, unknown>
 export interface Database { prepare(sql: string): { all<T>(): Promise<{ results: T[] }> } }
@@ -18,6 +20,7 @@ interface SqlDump {
   upstream_exchanges_descriptor: string | null
 }
 export interface LogicalDump {
+  phase?: string; wireEvidence?: string
   variant?: Variant; id: string; dumpRecordId: string | null; requestSha256: string; responseSha256: string
   protocol: string; upstream: string; scenario: string; bytes: number; stream: boolean
   wireEvents?: unknown[]; wireDone?: boolean; status: number; wireBytes: number; responseBytes: number; ok: boolean
@@ -30,6 +33,37 @@ export interface CapturedDispatch {
   responsePrefixBase64: string
 }
 export interface DumpState { checked: Set<string> }
+export interface CaptureFidelity {
+  comparator: "response-frame-fidelity-v1"
+  passed: boolean
+  classification: "exact_wire_bytes" | "wire_bytes_mismatch" | "exact_wire_frames" | "renderer_appended_error" | "frame_value_mismatch" | "canonical_source_semantics" | "canonical_semantics_mismatch"
+  errors: string[]
+  storedSha256: string; wireSha256: string
+  evidence: { wireEvidence: string; responseKey: string; responseType: string }
+  details: Record<string, unknown>
+}
+export function verifyWireEvidence(row: LogicalDump) {
+  if (typeof row.wireEvidence !== "string" || !existsSync(row.wireEvidence)) throw new Error(`Missing raw wire evidence ${row.id}`)
+  const wire = obj(JSON.parse(readFileSync(row.wireEvidence, "utf8")))
+  const identity = obj(wire.row)
+  const parsed = typeof wire.response === "string" ? parseWireResponse(wire.response) : null
+  if (typeof wire.requestBody !== "string" || typeof wire.response !== "string" || !Array.isArray(wire.parsedEvents)
+    || Buffer.byteLength(wire.requestBody) !== row.wireBytes || Buffer.byteLength(wire.response) !== row.responseBytes
+    || sha(wire.requestBody) !== row.requestSha256 || sha(wire.response) !== row.responseSha256
+    || JSON.stringify(wire.parsedEvents) !== JSON.stringify(row.wireEvents) || wire.done !== row.wireDone
+    || !parsed || JSON.stringify(parsed.events) !== JSON.stringify(row.wireEvents) || parsed.done !== row.wireDone || row.transportCompleted && parsed.format === "empty"
+    || ["id", "phase", "status", "protocol", "upstream", "scenario", "stream", "bytes", "requestSha256", "responseSha256", "dumpRecordId", "transportCompleted", "ok", "classification"].some(key => identity[key] !== (row as unknown as Obj)[key])) throw new Error(`Raw wire identity mismatch ${row.id}`)
+}
+function differences(stored: unknown, wire: unknown, path = ""): unknown[] {
+  if (JSON.stringify(stored) === JSON.stringify(wire)) return []
+  if (stored && wire && typeof stored === "object" && typeof wire === "object" && Array.isArray(stored) === Array.isArray(wire)) {
+    const a = stored as Obj, b = wire as Obj
+    return [...new Set([...Object.keys(a), ...Object.keys(b)])].flatMap(key => !Object.hasOwn(a, key) || !Object.hasOwn(b, key)
+      ? [{ path: `${path}/${key}`, storedPresent: Object.hasOwn(a, key), wirePresent: Object.hasOwn(b, key), stored: a[key] ?? null, wire: b[key] ?? null }]
+      : differences(a[key], b[key], `${path}/${key}`))
+  }
+  return [{ path, stored, wire }]
+}
 
 /** Renderer catch frames are appended after canonical capture, with exact protocol-specific payloads. */
 function appendedError(input: unknown, protocol: string) {
@@ -108,6 +142,7 @@ export async function readDumps(db: Database, bucket: Bucket, logical: LogicalDu
   for (const stored of rows) {
     const row = requested.get(stored.id)
     if (!row || stored.key_id !== "architecture-key") throw new Error("Unmatched physical dump row")
+    if (row.phase !== undefined || row.wireEvidence !== undefined) verifyWireEvidence(row)
     const meta = obj(JSON.parse(stored.meta_json))
     const statusEvidence = dumpStatusEvidence({ ...row, variant }, meta.status, meta.error)
     if (meta.id !== stored.id || meta.method !== "POST" || meta.path !== (row.protocol === "responses" ? "/v1/responses" : row.protocol === "messages" ? "/v1/messages" : "/v1/chat/completions") || !statusEvidence.accepted || meta.requestBytes !== row.wireBytes) throw new Error(`Dump metadata mismatch ${row.id}`)
@@ -115,8 +150,9 @@ export async function readDumps(db: Database, bucket: Bucket, logical: LogicalDu
     const parsedResponse = stored.response_body_descriptor ? obj(JSON.parse(stored.response_body_descriptor)) : null
     const resp = descriptor(stored.response_body_descriptor, parsedResponse?.type === "events" ? "events" : "bytes")
     const up = variant === "B" ? descriptor(stored.upstream_exchanges_descriptor, "upstreamExchanges") : null
-    if (!req || row.responseBytes > 0 && !resp || variant === "B" && !up) throw new Error(`Missing fixture dump body/sidecar ${row.id}`)
+    if (!req || !resp || variant === "B" && !up) throw new Error(`Missing fixture dump body/sidecar ${row.id}`)
     let canonicalEvidence: unknown = null
+    let captureFidelity: CaptureFidelity | null = null
     const objects: { side: string; key: string; type: string; compressedBytes: number; decodedBytes: number; sha256: string }[] = []
     for (const [side, value] of [["request", req], ["response", resp], ["upstream", up]] as const) {
       if (!value) continue
@@ -135,17 +171,27 @@ export async function readDumps(db: Database, bucket: Bucket, logical: LogicalDu
       if (side === "request") {
         if (decoded.byteLength !== row.wireBytes || sha(decoded) !== row.requestSha256) throw new Error(`Dump request digest mismatch ${row.id}`)
       } else if (side === "response") {
+        const fidelity = (passed: boolean, classification: CaptureFidelity["classification"], errors: string[], details: Record<string, unknown> = {}): CaptureFidelity => ({ comparator: "response-frame-fidelity-v1", passed, classification, errors, storedSha256: sha(decoded), wireSha256: row.responseSha256, evidence: { wireEvidence: row.wireEvidence ?? "", responseKey: value.key, responseType: value.type }, details })
         if (value.type === "bytes") {
-          if (sha(decoded) !== row.responseSha256) throw new Error(`Dump response digest mismatch ${row.id}`)
+          if (row.phase !== undefined || row.wireEvidence !== undefined) {
+            const storedBody = parseWireResponse(new TextDecoder("utf-8", { fatal: true }).decode(decoded))
+            if (storedBody.format !== parseWireResponse(String(obj(JSON.parse(readFileSync(row.wireEvidence ?? "", "utf8"))).response)).format) throw new Error("Stored response format mismatch")
+          }
+          const passed = sha(decoded) === row.responseSha256
+          captureFidelity = fidelity(passed, passed ? "exact_wire_bytes" : "wire_bytes_mismatch", passed ? [] : [`Dump response digest mismatch ${row.id}`])
         } else {
-          const events: unknown = JSON.parse(new TextDecoder().decode(decoded))
+          const events: unknown = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(decoded))
           if (!Array.isArray(events)) throw new Error("Dump frame log is not an array")
           const data: unknown[] = []
           let done = false
           for (const event of events) {
             const entry = obj(event), frame = obj(entry.frame)
             if (typeof entry.ts !== "number" || !Number.isFinite(entry.ts) || entry.ts < 0) throw new Error("Invalid dump frame timestamp")
-            if (frame.type === "event") data.push(frame.event)
+            if (frame.type === "event") {
+              const event = obj(frame.event)
+              if (!(typeof event.type === "string" && event.type.length > 0) && !Array.isArray(event.choices)) throw new Error("Invalid stored protocol event")
+              data.push(event)
+            }
             else if (frame.type === "done") done = true
             else throw new Error("Invalid stored protocol frame")
           }
@@ -161,10 +207,17 @@ export async function readDumps(db: Database, bucket: Bucket, logical: LogicalDu
               && JSON.stringify(data) === JSON.stringify(row.wireEvents.slice(0, data.length))
               && extra.length === 1 && appendedError(extra[0], row.protocol)
               && done === row.wireDone
-            if (!exactFrames && !appendedFailure) throw new Error(`Canonical/wire frame fidelity mismatch ${row.id}`)
-          } else if (!result.ok) throw new Error(`Canonical upstream semantics mismatch ${row.id}: ${result.errors.join(",")}`)
+            const passed = exactFrames || appendedFailure
+            captureFidelity = fidelity(passed, exactFrames ? "exact_wire_frames" : appendedFailure ? "renderer_appended_error" : "frame_value_mismatch", passed ? [] : [`Canonical/wire frame fidelity mismatch ${row.id}`], {
+              storedEventsSha256: sha(JSON.stringify(data)), wireEventsSha256: sha(JSON.stringify(row.wireEvents)), storedDone: done, wireDone: row.wireDone,
+              differences: passed ? [] : differences(data, row.wireEvents),
+            })
+          } else captureFidelity = fidelity(result.ok, result.ok ? "canonical_source_semantics" : "canonical_semantics_mismatch", result.ok ? [] : [`Canonical upstream semantics mismatch ${row.id}: ${result.errors.join(",")}`])
 
         }
+        if (!captureFidelity) throw new Error("Missing capture fidelity result")
+        if (row.phase !== "matrix" && !captureFidelity.passed) throw new Error(captureFidelity.errors.join(","))
+
       } else {
         const actual = dispatches.filter(dispatch => dispatch.id === row.id)
         if (actual.length !== 1) throw new Error("Native sidecar requires exactly one independent dispatch")
@@ -174,8 +227,9 @@ export async function readDumps(db: Database, bucket: Bucket, logical: LogicalDu
       }
     }
     if (!state.checked.has(stored.id)) {
+      if (!captureFidelity) throw new Error("Missing capture fidelity result")
       state.checked.add(stored.id)
-      newRecords.push({ logicalId: row.id, recordId: stored.id, status: row.status, statusEvidence, canonicalEvidence, objects, metadataSha256: sha(stored.meta_json) })
+      newRecords.push({ logicalId: row.id, recordId: stored.id, status: row.status, statusEvidence, canonicalEvidence, captureFidelity, objects, metadataSha256: sha(stored.meta_json) })
     }
   }
   if (inventory.size !== references.size || files.length !== references.size) throw new Error("Unexpected unreferenced/staged R2 dump files")
