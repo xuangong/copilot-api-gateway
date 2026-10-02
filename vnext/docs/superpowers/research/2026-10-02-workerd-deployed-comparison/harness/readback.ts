@@ -31,6 +31,21 @@ export interface CapturedDispatch {
 }
 export interface DumpState { checked: Set<string> }
 
+/** Renderer catch frames are appended after canonical capture, with exact protocol-specific payloads. */
+function appendedError(input: unknown, protocol: string) {
+  const object = (value: unknown): Obj | null => value !== null && typeof value === "object" && !Array.isArray(value) ? value as Obj : null
+  const keys = (value: Obj, expected: string[]) => Object.keys(value).length === expected.length && expected.every(key => Object.hasOwn(value, key))
+  const message = (value: unknown) => typeof value === "string" && value.trim().length > 0
+  const event = object(input)
+  if (!event) return false
+  if (protocol === "responses") return keys(event, ["type", "message"]) && event.type === "error" && message(event.message)
+  const error = object(event.error)
+  if (!error) return false
+  if (protocol === "chat") return keys(event, ["error"]) && keys(error, ["message"]) && message(error.message)
+  if (protocol === "messages") return keys(event, ["type", "error"]) && event.type === "error" && keys(error, ["type", "message"]) && error.type === "api_error" && message(error.message)
+  return false
+}
+
 export function dumpStatusEvidence(row: LogicalDump, dumpStatus: unknown, metadataError?: unknown) {
   const error = metadataError === undefined || metadataError === null ? null : obj(metadataError)
   const inheritedRefusal = row.variant === "B" && row.ok && row.transportCompleted === true && row.classification === "expected_refusal" && row.protocol === "responses"
@@ -140,9 +155,11 @@ export async function readDumps(db: Database, bucket: Bucket, logical: LogicalDu
             if (!Array.isArray(row.wireEvents)) throw new Error("Missing independent parsed wire evidence")
             const exactFrames = JSON.stringify(data) === JSON.stringify(row.wireEvents) && done === row.wireDone
             const extra = row.wireEvents.slice(data.length)
-            const appendedFailure = ["failed", "truncated"].includes(row.scenario) && obj(meta.error).kind === "failed"
+            const error = meta.error === undefined || meta.error === null ? null : obj(meta.error)
+            const appendedFailure = !exactFrames && ["failed", "truncated"].includes(row.scenario) && error?.kind === "failed"
+              && typeof error.reason === "string" && error.reason.trim().length > 0
               && JSON.stringify(data) === JSON.stringify(row.wireEvents.slice(0, data.length))
-              && extra.length === 1 && obj(extra[0]).type === "error" && typeof obj(extra[0]).message === "string"
+              && extra.length === 1 && appendedError(extra[0], row.protocol)
               && done === row.wireDone
             if (!exactFrames && !appendedFailure) throw new Error(`Canonical/wire frame fidelity mismatch ${row.id}`)
           } else if (!result.ok) throw new Error(`Canonical upstream semantics mismatch ${row.id}: ${result.errors.join(",")}`)

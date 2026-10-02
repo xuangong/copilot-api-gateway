@@ -1,0 +1,766 @@
+[
+  {
+    "name": "A_33",
+    "source": "formal-01/A-matrix original D1/R2 and independent wire journal; payload reconstructed from its exact repeated fixture bytes",
+    "requestTemplate": "{\"model\":\"bench-responses-truncated\",\"stream\":true,\"max_tokens\":128,\"input\":[{\"role\":\"user\",\"content\":\"BENCH_ID:74aaa8a82e644edcbd06250f2c250bce_A_matrix_A_33 BENCH_PAYLOAD:{{FIXTURE_PAYLOAD}}:END_PAYLOAD\"}]}",
+    "payloadBytes": 65536,
+    "wireResponse": "event: response.created\ndata: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_74aaa8a82e644edcbd06250f2c250bce_A_matrix_A_33\",\"object\":\"response\",\"created_at\":1790726400,\"status\":\"in_progress\",\"model\":\"bench-responses-truncated\",\"output\":[],\"error\":null,\"incomplete_details\":null,\"usage\":null},\"sequence_number\":0}\n\nevent: response.output_item.added\ndata: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"id\":\"msg_bench\",\"type\":\"message\",\"role\":\"assistant\",\"status\":\"in_progress\",\"content\":[]},\"sequence_number\":1}\n\nevent: response.content_part.added\ndata: {\"type\":\"response.content_part.added\",\"item_id\":\"msg_bench\",\"output_index\":0,\"content_index\":0,\"part\":{\"type\":\"output_text\",\"text\":\"\",\"annotations\":[]},\"sequence_number\":2}\n\nevent: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"item_id\":\"msg_bench\",\"output_index\":0,\"content_index\":0,\"delta\":\"BENCH_OK:65536\",\"sequence_number\":3}\n\n",
+    "row": {
+      "variant": "A",
+      "id": "74aaa8a82e644edcbd06250f2c250bce_A_matrix_A_33",
+      "dumpRecordId": "01M3XKTQQE5ZSWPGSBZMMF68WQ",
+      "requestSha256": "e0286db78eadcfd57a5a469c9740f43c54f276ea3b0fac030bcafc6f76785df8",
+      "responseSha256": "197ebc9b5f31bc8995982289fda94cd236cca10bebe2b5e7827f39f223b0ad53",
+      "protocol": "responses",
+      "upstream": "responses",
+      "scenario": "truncated",
+      "bytes": 65536,
+      "stream": true,
+      "wireEvents": [
+        {
+          "type": "response.created",
+          "response": {
+            "id": "resp_74aaa8a82e644edcbd06250f2c250bce_A_matrix_A_33",
+            "object": "response",
+            "created_at": 1790726400,
+            "status": "in_progress",
+            "model": "bench-responses-truncated",
+            "output": [],
+            "error": null,
+            "incomplete_details": null,
+            "usage": null
+          },
+          "sequence_number": 0
+        },
+        {
+          "type": "response.output_item.added",
+          "output_index": 0,
+          "item": {
+            "id": "msg_bench",
+            "type": "message",
+            "role": "assistant",
+            "status": "in_progress",
+            "content": []
+          },
+          "sequence_number": 1
+        },
+        {
+          "type": "response.content_part.added",
+          "item_id": "msg_bench",
+          "output_index": 0,
+          "content_index": 0,
+          "part": {
+            "type": "output_text",
+            "text": "",
+            "annotations": []
+          },
+          "sequence_number": 2
+        },
+        {
+          "type": "response.output_text.delta",
+          "item_id": "msg_bench",
+          "output_index": 0,
+          "content_index": 0,
+          "delta": "BENCH_OK:65536",
+          "sequence_number": 3
+        }
+      ],
+      "wireDone": false,
+      "status": 200,
+      "wireBytes": 65725,
+      "responseBytes": 928,
+      "ok": true,
+      "classification": "truncated_no_terminal",
+      "transportCompleted": true
+    },
+    "record": {
+      "key_id": "architecture-key",
+      "id": "01M3XKTQQE5ZSWPGSBZMMF68WQ",
+      "meta_json": "{\"id\":\"01M3XKTQQE5ZSWPGSBZMMF68WQ\",\"startedAt\":1790921498350,\"completedAt\":1790921498383,\"method\":\"POST\",\"path\":\"/v1/responses\",\"status\":200,\"model\":\"bench-responses-truncated\",\"inputTokens\":null,\"outputTokens\":null,\"requestBytes\":65725,\"responseBytes\":928,\"durationMs\":33,\"error\":null}",
+      "request_body_descriptor": "{\"key\":\"dumps/v1/architecture-key/2026100206/01M3XKTQQE5ZSWPGSBZMMF68WQ-8e3ef57c-e95b-48fa-a901-a9088e2a7b6d.req.gz\",\"type\":\"bytes\"}",
+      "response_body_descriptor": "{\"key\":\"dumps/v1/architecture-key/2026100206/01M3XKTQQE5ZSWPGSBZMMF68WQ-c26fa343-799e-410e-9de8-60bf5a558ece.resp.gz\",\"type\":\"events\"}"
+    },
+    "storedFrames": [
+      {
+        "frame": {
+          "type": "event",
+          "event": {
+            "type": "response.created",
+            "response": {
+              "id": "resp_74aaa8a82e644edcbd06250f2c250bce_A_matrix_A_33",
+              "object": "response",
+              "created_at": 1790726400,
+              "status": "in_progress",
+              "model": "bench-responses-truncated",
+              "output": [],
+              "error": null,
+              "incomplete_details": null,
+              "usage": null
+            },
+            "sequence_number": 0
+          }
+        },
+        "ts": 10
+      },
+      {
+        "frame": {
+          "type": "event",
+          "event": {
+            "type": "response.output_item.added",
+            "output_index": 0,
+            "item": {
+              "id": "msg_bench",
+              "type": "message",
+              "role": "assistant",
+              "status": "in_progress",
+              "content": []
+            },
+            "sequence_number": 1
+          }
+        },
+        "ts": 16
+      },
+      {
+        "frame": {
+          "type": "event",
+          "event": {
+            "type": "response.content_part.added",
+            "item_id": "msg_bench",
+            "output_index": 0,
+            "content_index": 0,
+            "part": {
+              "type": "output_text",
+              "text": "",
+              "annotations": []
+            },
+            "sequence_number": 2
+          }
+        },
+        "ts": 25
+      },
+      {
+        "frame": {
+          "type": "event",
+          "event": {
+            "type": "response.output_text.delta",
+            "item_id": "msg_bench",
+            "output_index": 0,
+            "content_index": 0,
+            "delta": "BENCH_OK:65536",
+            "sequence_number": 3
+          }
+        },
+        "ts": 32
+      }
+    ]
+  },
+  {
+    "name": "A_87",
+    "source": "formal-01/A-matrix original D1/R2 and independent wire journal; payload reconstructed from its exact repeated fixture bytes",
+    "requestTemplate": "{\"model\":\"bench-chat-failed\",\"stream\":true,\"max_tokens\":128,\"messages\":[{\"role\":\"user\",\"content\":\"BENCH_ID:74aaa8a82e644edcbd06250f2c250bce_A_matrix_A_87 BENCH_PAYLOAD:{{FIXTURE_PAYLOAD}}:END_PAYLOAD\"}],\"stream_options\":{\"include_usage\":true}}",
+    "payloadBytes": 65536,
+    "wireResponse": "data: {\"id\":\"chatcmpl_74aaa8a82e644edcbd06250f2c250bce_A_matrix_A_87\",\"object\":\"chat.completion.chunk\",\"created\":1790726400,\"model\":\"bench-chat-failed\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl_74aaa8a82e644edcbd06250f2c250bce_A_matrix_A_87\",\"object\":\"chat.completion.chunk\",\"created\":1790726400,\"model\":\"bench-chat-failed\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"BENCH_OK:65536\"},\"finish_reason\":null}]}\n\nevent: error\ndata: {\"error\":{\"message\":\"Upstream Chat Completions SSE error: api_error: Synthetic partial failure\"}}\n\n",
+    "row": {
+      "variant": "A",
+      "id": "74aaa8a82e644edcbd06250f2c250bce_A_matrix_A_87",
+      "dumpRecordId": "01M3XKTZNYK78CG7QK0R9S0DTJ",
+      "requestSha256": "71fcdb7809e2f0cb579d58ae875f33444e82f3c742aa0a78d685c31984d8a6c3",
+      "responseSha256": "67d668efe731eda1bf9c67fe138cb78a39154ac2b302f526e00cf9aee69c7c36",
+      "protocol": "chat",
+      "upstream": "chat",
+      "scenario": "failed",
+      "bytes": 65536,
+      "stream": true,
+      "wireEvents": [
+        {
+          "id": "chatcmpl_74aaa8a82e644edcbd06250f2c250bce_A_matrix_A_87",
+          "object": "chat.completion.chunk",
+          "created": 1790726400,
+          "model": "bench-chat-failed",
+          "choices": [
+            {
+              "index": 0,
+              "delta": {
+                "role": "assistant"
+              },
+              "finish_reason": null
+            }
+          ]
+        },
+        {
+          "id": "chatcmpl_74aaa8a82e644edcbd06250f2c250bce_A_matrix_A_87",
+          "object": "chat.completion.chunk",
+          "created": 1790726400,
+          "model": "bench-chat-failed",
+          "choices": [
+            {
+              "index": 0,
+              "delta": {
+                "content": "BENCH_OK:65536"
+              },
+              "finish_reason": null
+            }
+          ]
+        },
+        {
+          "error": {
+            "message": "Upstream Chat Completions SSE error: api_error: Synthetic partial failure"
+          }
+        }
+      ],
+      "wireDone": false,
+      "status": 200,
+      "wireBytes": 65760,
+      "responseBytes": 582,
+      "ok": true,
+      "classification": "explicit_failure",
+      "transportCompleted": true
+    },
+    "record": {
+      "key_id": "architecture-key",
+      "id": "01M3XKTZNYK78CG7QK0R9S0DTJ",
+      "meta_json": "{\"id\":\"01M3XKTZNYK78CG7QK0R9S0DTJ\",\"startedAt\":1790921506494,\"completedAt\":1790921506516,\"method\":\"POST\",\"path\":\"/v1/chat/completions\",\"status\":200,\"model\":\"bench-chat-failed\",\"inputTokens\":null,\"outputTokens\":null,\"requestBytes\":65760,\"responseBytes\":582,\"durationMs\":22,\"error\":{\"kind\":\"failed\",\"reason\":\"chat-completions stream failed\"}}",
+      "request_body_descriptor": "{\"key\":\"dumps/v1/architecture-key/2026100206/01M3XKTZNYK78CG7QK0R9S0DTJ-2d8df1f2-e1a6-45b2-be8d-f126b8430e16.req.gz\",\"type\":\"bytes\"}",
+      "response_body_descriptor": "{\"key\":\"dumps/v1/architecture-key/2026100206/01M3XKTZNYK78CG7QK0R9S0DTJ-ac0dae74-280f-4d7a-8558-c38456bad808.resp.gz\",\"type\":\"events\"}"
+    },
+    "storedFrames": [
+      {
+        "frame": {
+          "type": "event",
+          "event": {
+            "id": "chatcmpl_74aaa8a82e644edcbd06250f2c250bce_A_matrix_A_87",
+            "object": "chat.completion.chunk",
+            "created": 1790726400,
+            "model": "bench-chat-failed",
+            "choices": [
+              {
+                "index": 0,
+                "delta": {
+                  "role": "assistant"
+                },
+                "finish_reason": null
+              }
+            ]
+          }
+        },
+        "ts": 10
+      },
+      {
+        "frame": {
+          "type": "event",
+          "event": {
+            "id": "chatcmpl_74aaa8a82e644edcbd06250f2c250bce_A_matrix_A_87",
+            "object": "chat.completion.chunk",
+            "created": 1790726400,
+            "model": "bench-chat-failed",
+            "choices": [
+              {
+                "index": 0,
+                "delta": {
+                  "content": "BENCH_OK:65536"
+                },
+                "finish_reason": null
+              }
+            ]
+          }
+        },
+        "ts": 16
+      }
+    ]
+  },
+  {
+    "name": "A_129",
+    "source": "formal-01/A-matrix original D1/R2 and independent wire journal; payload reconstructed from its exact repeated fixture bytes",
+    "requestTemplate": "{\"model\":\"bench-chat-failed\",\"stream\":true,\"max_tokens\":128,\"messages\":[{\"role\":\"user\",\"content\":\"BENCH_ID:74aaa8a82e644edcbd06250f2c250bce_A_matrix_A_129 BENCH_PAYLOAD:{{FIXTURE_PAYLOAD}}:END_PAYLOAD\"}]}",
+    "payloadBytes": 65536,
+    "wireResponse": "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"chatcmpl_74aaa8a82e644edcbd06250f2c250bce_A_matrix_A_129\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"bench-chat-failed\",\"content\":[],\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"output_tokens\":0}}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"BENCH_OK:65536\"}}\n\nevent: error\ndata: {\"type\":\"error\",\"error\":{\"type\":\"api_error\",\"message\":\"Upstream Chat Completions SSE error: api_error: Synthetic partial failure\"}}\n\n",
+    "row": {
+      "variant": "A",
+      "id": "74aaa8a82e644edcbd06250f2c250bce_A_matrix_A_129",
+      "dumpRecordId": "01M3XKV5DVG4VD7VE0V9BC6V5T",
+      "requestSha256": "dcb65d4c4e42d4b42e7eebfa778f9707305e02d42914fe5e23ede92acf8a13ed",
+      "responseSha256": "fbce7402e63bbe33537952002547ddc8c4ecfd337eb3f59cc4f5224c89796a81",
+      "protocol": "messages",
+      "upstream": "chat",
+      "scenario": "failed",
+      "bytes": 65536,
+      "stream": true,
+      "wireEvents": [
+        {
+          "type": "message_start",
+          "message": {
+            "id": "chatcmpl_74aaa8a82e644edcbd06250f2c250bce_A_matrix_A_129",
+            "type": "message",
+            "role": "assistant",
+            "model": "bench-chat-failed",
+            "content": [],
+            "stop_reason": null,
+            "stop_sequence": null,
+            "usage": {
+              "output_tokens": 0
+            }
+          }
+        },
+        {
+          "type": "content_block_start",
+          "index": 0,
+          "content_block": {
+            "type": "text",
+            "text": ""
+          }
+        },
+        {
+          "type": "content_block_delta",
+          "index": 0,
+          "delta": {
+            "type": "text_delta",
+            "text": "BENCH_OK:65536"
+          }
+        },
+        {
+          "type": "error",
+          "error": {
+            "type": "api_error",
+            "message": "Upstream Chat Completions SSE error: api_error: Synthetic partial failure"
+          }
+        }
+      ],
+      "wireDone": false,
+      "status": 200,
+      "wireBytes": 65721,
+      "responseBytes": 672,
+      "ok": true,
+      "classification": "explicit_failure",
+      "transportCompleted": true
+    },
+    "record": {
+      "key_id": "architecture-key",
+      "id": "01M3XKV5DVG4VD7VE0V9BC6V5T",
+      "meta_json": "{\"id\":\"01M3XKV5DVG4VD7VE0V9BC6V5T\",\"startedAt\":1790921512379,\"completedAt\":1790921512401,\"method\":\"POST\",\"path\":\"/v1/messages\",\"status\":200,\"model\":\"bench-chat-failed\",\"inputTokens\":null,\"outputTokens\":null,\"requestBytes\":65721,\"responseBytes\":672,\"durationMs\":22,\"error\":{\"kind\":\"failed\",\"reason\":\"messages stream failed\"}}",
+      "request_body_descriptor": "{\"key\":\"dumps/v1/architecture-key/2026100206/01M3XKV5DVG4VD7VE0V9BC6V5T-4c75bcdf-2b2e-4f88-91be-9c5cdd6ba926.req.gz\",\"type\":\"bytes\"}",
+      "response_body_descriptor": "{\"key\":\"dumps/v1/architecture-key/2026100206/01M3XKV5DVG4VD7VE0V9BC6V5T-981d4c6e-9e28-491b-8437-0064710858f5.resp.gz\",\"type\":\"events\"}"
+    },
+    "storedFrames": [
+      {
+        "frame": {
+          "type": "event",
+          "event": {
+            "type": "message_start",
+            "message": {
+              "id": "chatcmpl_74aaa8a82e644edcbd06250f2c250bce_A_matrix_A_129",
+              "type": "message",
+              "role": "assistant",
+              "model": "bench-chat-failed",
+              "content": [],
+              "stop_reason": null,
+              "stop_sequence": null,
+              "usage": {
+                "output_tokens": 0
+              }
+            }
+          }
+        },
+        "ts": 10
+      },
+      {
+        "frame": {
+          "type": "event",
+          "event": {
+            "type": "content_block_start",
+            "index": 0,
+            "content_block": {
+              "type": "text",
+              "text": ""
+            }
+          }
+        },
+        "ts": 15
+      },
+      {
+        "frame": {
+          "type": "event",
+          "event": {
+            "type": "content_block_delta",
+            "index": 0,
+            "delta": {
+              "type": "text_delta",
+              "text": "BENCH_OK:65536"
+            }
+          }
+        },
+        "ts": 15
+      }
+    ]
+  },
+  {
+    "name": "A_53",
+    "source": "formal-01/A-matrix original D1/R2 and independent wire journal; payload reconstructed from its exact repeated fixture bytes",
+    "requestTemplate": "{\"model\":\"bench-messages-ok\",\"stream\":true,\"max_tokens\":128,\"input\":[{\"role\":\"user\",\"content\":\"BENCH_ID:74aaa8a82e644edcbd06250f2c250bce_A_matrix_A_53 BENCH_PAYLOAD:{{FIXTURE_PAYLOAD}}:END_PAYLOAD\"}]}",
+    "payloadBytes": 65536,
+    "wireResponse": "event: response.created\ndata: {\"type\":\"response.created\",\"sequence_number\":0,\"response\":{\"id\":\"resp_7f06bffd4fcb4986aa8b83b9\",\"object\":\"response\",\"model\":\"bench-messages-ok\",\"status\":\"in_progress\",\"output\":[],\"output_text\":\"\",\"usage\":{\"input_tokens\":7}}}\n\nevent: response.in_progress\ndata: {\"type\":\"response.in_progress\",\"sequence_number\":1,\"response\":{\"id\":\"resp_7f06bffd4fcb4986aa8b83b9\",\"object\":\"response\",\"model\":\"bench-messages-ok\",\"status\":\"in_progress\",\"output\":[],\"output_text\":\"\",\"usage\":{\"input_tokens\":7}}}\n\nevent: response.output_item.added\ndata: {\"type\":\"response.output_item.added\",\"sequence_number\":2,\"output_index\":0,\"item\":{\"type\":\"message\",\"id\":\"msg_0\",\"status\":\"in_progress\",\"role\":\"assistant\",\"content\":[]}}\n\nevent: response.content_part.added\ndata: {\"type\":\"response.content_part.added\",\"sequence_number\":3,\"output_index\":0,\"item_id\":\"msg_0\",\"content_index\":0,\"part\":{\"type\":\"output_text\",\"text\":\"\"}}\n\nevent: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"sequence_number\":4,\"output_index\":0,\"item_id\":\"msg_0\",\"content_index\":0,\"delta\":\"BENCH_OK:65536\"}\n\nevent: response.output_text.done\ndata: {\"type\":\"response.output_text.done\",\"sequence_number\":5,\"output_index\":0,\"item_id\":\"msg_0\",\"content_index\":0,\"text\":\"BENCH_OK:65536\"}\n\nevent: response.content_part.done\ndata: {\"type\":\"response.content_part.done\",\"sequence_number\":6,\"output_index\":0,\"item_id\":\"msg_0\",\"content_index\":0,\"part\":{\"type\":\"output_text\",\"text\":\"BENCH_OK:65536\"}}\n\nevent: response.output_item.done\ndata: {\"type\":\"response.output_item.done\",\"sequence_number\":7,\"output_index\":0,\"item\":{\"type\":\"message\",\"id\":\"msg_0\",\"status\":\"completed\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"BENCH_OK:65536\"}]}}\n\nevent: response.completed\ndata: {\"type\":\"response.completed\",\"sequence_number\":8,\"response\":{\"id\":\"resp_7f06bffd4fcb4986aa8b83b9\",\"object\":\"response\",\"model\":\"bench-messages-ok\",\"status\":\"completed\",\"output\":[{\"type\":\"message\",\"id\":\"msg_0\",\"status\":\"completed\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"BENCH_OK:65536\"}]}],\"output_text\":\"BENCH_OK:65536\",\"usage\":{\"input_tokens\":7,\"output_tokens\":3,\"total_tokens\":10}}}\n\n",
+    "row": {
+      "variant": "A",
+      "id": "74aaa8a82e644edcbd06250f2c250bce_A_matrix_A_53",
+      "dumpRecordId": "01M3XKTV2CYQPET0ZZR7Q88BNJ",
+      "requestSha256": "3ef7fb07855e321f6b144bc70e642f34ecb4e1082200675b03828771e87a7b24",
+      "responseSha256": "954af83a532043d27f9a647a0239aac43c86d033df2a1e9ece65eb90e919d0c0",
+      "protocol": "responses",
+      "upstream": "messages",
+      "scenario": "ok",
+      "bytes": 65536,
+      "stream": true,
+      "wireEvents": [
+        {
+          "type": "response.created",
+          "sequence_number": 0,
+          "response": {
+            "id": "resp_7f06bffd4fcb4986aa8b83b9",
+            "object": "response",
+            "model": "bench-messages-ok",
+            "status": "in_progress",
+            "output": [],
+            "output_text": "",
+            "usage": {
+              "input_tokens": 7
+            }
+          }
+        },
+        {
+          "type": "response.in_progress",
+          "sequence_number": 1,
+          "response": {
+            "id": "resp_7f06bffd4fcb4986aa8b83b9",
+            "object": "response",
+            "model": "bench-messages-ok",
+            "status": "in_progress",
+            "output": [],
+            "output_text": "",
+            "usage": {
+              "input_tokens": 7
+            }
+          }
+        },
+        {
+          "type": "response.output_item.added",
+          "sequence_number": 2,
+          "output_index": 0,
+          "item": {
+            "type": "message",
+            "id": "msg_0",
+            "status": "in_progress",
+            "role": "assistant",
+            "content": []
+          }
+        },
+        {
+          "type": "response.content_part.added",
+          "sequence_number": 3,
+          "output_index": 0,
+          "item_id": "msg_0",
+          "content_index": 0,
+          "part": {
+            "type": "output_text",
+            "text": ""
+          }
+        },
+        {
+          "type": "response.output_text.delta",
+          "sequence_number": 4,
+          "output_index": 0,
+          "item_id": "msg_0",
+          "content_index": 0,
+          "delta": "BENCH_OK:65536"
+        },
+        {
+          "type": "response.output_text.done",
+          "sequence_number": 5,
+          "output_index": 0,
+          "item_id": "msg_0",
+          "content_index": 0,
+          "text": "BENCH_OK:65536"
+        },
+        {
+          "type": "response.content_part.done",
+          "sequence_number": 6,
+          "output_index": 0,
+          "item_id": "msg_0",
+          "content_index": 0,
+          "part": {
+            "type": "output_text",
+            "text": "BENCH_OK:65536"
+          }
+        },
+        {
+          "type": "response.output_item.done",
+          "sequence_number": 7,
+          "output_index": 0,
+          "item": {
+            "type": "message",
+            "id": "msg_0",
+            "status": "completed",
+            "role": "assistant",
+            "content": [
+              {
+                "type": "output_text",
+                "text": "BENCH_OK:65536"
+              }
+            ]
+          }
+        },
+        {
+          "type": "response.completed",
+          "sequence_number": 8,
+          "response": {
+            "id": "resp_7f06bffd4fcb4986aa8b83b9",
+            "object": "response",
+            "model": "bench-messages-ok",
+            "status": "completed",
+            "output": [
+              {
+                "type": "message",
+                "id": "msg_0",
+                "status": "completed",
+                "role": "assistant",
+                "content": [
+                  {
+                    "type": "output_text",
+                    "text": "BENCH_OK:65536"
+                  }
+                ]
+              }
+            ],
+            "output_text": "BENCH_OK:65536",
+            "usage": {
+              "input_tokens": 7,
+              "output_tokens": 3,
+              "total_tokens": 10
+            }
+          }
+        }
+      ],
+      "wireDone": false,
+      "status": 200,
+      "wireBytes": 65717,
+      "responseBytes": 2171,
+      "ok": true,
+      "classification": "success",
+      "transportCompleted": true
+    },
+    "record": {
+      "key_id": "architecture-key",
+      "id": "01M3XKTV2CYQPET0ZZR7Q88BNJ",
+      "meta_json": "{\"id\":\"01M3XKTV2CYQPET0ZZR7Q88BNJ\",\"startedAt\":1790921501772,\"completedAt\":1790921501812,\"method\":\"POST\",\"path\":\"/v1/responses\",\"status\":200,\"model\":\"bench-messages-ok\",\"inputTokens\":7,\"outputTokens\":3,\"requestBytes\":65717,\"responseBytes\":2171,\"durationMs\":40,\"error\":null}",
+      "request_body_descriptor": "{\"key\":\"dumps/v1/architecture-key/2026100206/01M3XKTV2CYQPET0ZZR7Q88BNJ-05445090-104f-40d1-89c8-91f242264974.req.gz\",\"type\":\"bytes\"}",
+      "response_body_descriptor": "{\"key\":\"dumps/v1/architecture-key/2026100206/01M3XKTV2CYQPET0ZZR7Q88BNJ-bd0332be-bf01-479f-87ee-a3fbf1b4a479.resp.gz\",\"type\":\"events\"}"
+    },
+    "storedFrames": [
+      {
+        "frame": {
+          "type": "event",
+          "event": {
+            "type": "response.created",
+            "sequence_number": 0,
+            "response": {
+              "id": "resp_7f06bffd4fcb4986aa8b83b9",
+              "object": "response",
+              "model": "bench-messages-ok",
+              "status": "in_progress",
+              "output": [
+                {
+                  "type": "message",
+                  "id": "msg_0",
+                  "status": "completed",
+                  "role": "assistant",
+                  "content": [
+                    {
+                      "type": "output_text",
+                      "text": "BENCH_OK:65536"
+                    }
+                  ]
+                }
+              ],
+              "output_text": "",
+              "usage": {
+                "input_tokens": 7
+              }
+            }
+          }
+        },
+        "ts": 11
+      },
+      {
+        "frame": {
+          "type": "event",
+          "event": {
+            "type": "response.in_progress",
+            "sequence_number": 1,
+            "response": {
+              "id": "resp_7f06bffd4fcb4986aa8b83b9",
+              "object": "response",
+              "model": "bench-messages-ok",
+              "status": "in_progress",
+              "output": [
+                {
+                  "type": "message",
+                  "id": "msg_0",
+                  "status": "completed",
+                  "role": "assistant",
+                  "content": [
+                    {
+                      "type": "output_text",
+                      "text": "BENCH_OK:65536"
+                    }
+                  ]
+                }
+              ],
+              "output_text": "",
+              "usage": {
+                "input_tokens": 7
+              }
+            }
+          }
+        },
+        "ts": 11
+      },
+      {
+        "frame": {
+          "type": "event",
+          "event": {
+            "type": "response.output_item.added",
+            "sequence_number": 2,
+            "output_index": 0,
+            "item": {
+              "type": "message",
+              "id": "msg_0",
+              "status": "in_progress",
+              "role": "assistant",
+              "content": []
+            }
+          }
+        },
+        "ts": 15
+      },
+      {
+        "frame": {
+          "type": "event",
+          "event": {
+            "type": "response.content_part.added",
+            "sequence_number": 3,
+            "output_index": 0,
+            "item_id": "msg_0",
+            "content_index": 0,
+            "part": {
+              "type": "output_text",
+              "text": ""
+            }
+          }
+        },
+        "ts": 15
+      },
+      {
+        "frame": {
+          "type": "event",
+          "event": {
+            "type": "response.output_text.delta",
+            "sequence_number": 4,
+            "output_index": 0,
+            "item_id": "msg_0",
+            "content_index": 0,
+            "delta": "BENCH_OK:65536"
+          }
+        },
+        "ts": 22
+      },
+      {
+        "frame": {
+          "type": "event",
+          "event": {
+            "type": "response.output_text.done",
+            "sequence_number": 5,
+            "output_index": 0,
+            "item_id": "msg_0",
+            "content_index": 0,
+            "text": "BENCH_OK:65536"
+          }
+        },
+        "ts": 28
+      },
+      {
+        "frame": {
+          "type": "event",
+          "event": {
+            "type": "response.content_part.done",
+            "sequence_number": 6,
+            "output_index": 0,
+            "item_id": "msg_0",
+            "content_index": 0,
+            "part": {
+              "type": "output_text",
+              "text": "BENCH_OK:65536"
+            }
+          }
+        },
+        "ts": 28
+      },
+      {
+        "frame": {
+          "type": "event",
+          "event": {
+            "type": "response.output_item.done",
+            "sequence_number": 7,
+            "output_index": 0,
+            "item": {
+              "type": "message",
+              "id": "msg_0",
+              "status": "completed",
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "output_text",
+                  "text": "BENCH_OK:65536"
+                }
+              ]
+            }
+          }
+        },
+        "ts": 28
+      },
+      {
+        "frame": {
+          "type": "event",
+          "event": {
+            "type": "response.completed",
+            "sequence_number": 8,
+            "response": {
+              "id": "resp_7f06bffd4fcb4986aa8b83b9",
+              "object": "response",
+              "model": "bench-messages-ok",
+              "status": "completed",
+              "output": [
+                {
+                  "type": "message",
+                  "id": "msg_0",
+                  "status": "completed",
+                  "role": "assistant",
+                  "content": [
+                    {
+                      "type": "output_text",
+                      "text": "BENCH_OK:65536"
+                    }
+                  ]
+                }
+              ],
+              "output_text": "BENCH_OK:65536",
+              "usage": {
+                "input_tokens": 7,
+                "output_tokens": 3,
+                "total_tokens": 10
+              }
+            }
+          }
+        },
+        "ts": 39
+      }
+    ]
+  }
+]
