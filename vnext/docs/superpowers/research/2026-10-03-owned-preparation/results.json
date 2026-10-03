@@ -1,0 +1,2151 @@
+{
+  "version": 1,
+  "date": "2026-10-03",
+  "status": "Local qualification complete; final local integration receipt is maintained separately. No push or deployment.",
+  "conclusion": "Contracts preserved; no demonstrated overall latency or CPU improvement. JSON and tail latency remain above the deployed baseline; settled heap is not peak-memory evidence.",
+  "rawRoot": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-03-owned-preparation",
+  "manifestSha256": "cab25076654be13791f6e0d166f7cd3468fe7627842964b089fec26c4abab442",
+  "experimentId": "05f341af-02b0-4c30-8c5d-9958b29ac722",
+  "variantHeads": {
+    "A": "e660fb4dfcf1734d10f89e52e2d739b2985c634b",
+    "B": "cb5ca3b17736dabc6f217c36d3961a40f111cfe5"
+  },
+  "candidateProtectedOverlayFiles": 14,
+  "candidateProductInventoryFiles": 1573,
+  "runtime": {
+    "bun": "1.3.0",
+    "miniflare": "4.20260601.0",
+    "workerd": "1.20260601.1",
+    "wrangler": "4.97.0",
+    "compatibilityDate": "2025-06-01",
+    "compatibilityFlags": [
+      "nodejs_compat"
+    ]
+  },
+  "ci": {
+    "exitCode": 0,
+    "passed": 5966,
+    "skipped": 1,
+    "failed": 0,
+    "expectations": 237774,
+    "files": 560,
+    "lintErrors": 0,
+    "lintWarnings": 38
+  },
+  "qualification": {
+    "formalRequests": 716,
+    "formalObjects": 1790,
+    "canaryRequests": 4,
+    "canaryObjects": 10,
+    "checks": 39524,
+    "problems": [],
+    "frozenFiles": 9537,
+    "originalExperimentEvidenceFiles": 2825,
+    "changedOriginalExperimentEvidenceFiles": [],
+    "priorEvidenceFiles": 7973,
+    "priorEvidenceBytes": 863347799,
+    "candidateAllWireAndCapturePass": true,
+    "buildAndCollectionProcessesAbsent": 8
+  },
+  "latency": [
+    {
+      "mode": "json",
+      "A": {
+        "n": 40,
+        "valid": 40,
+        "p50EofMs": 13.348833999999442,
+        "p95EofMs": 17.79083300000002,
+        "blockP50EofMs": {
+          "0": 13.348833999999442,
+          "1": 15.401249999998981,
+          "2": 11.66979100000026,
+          "3": 11.558582999999999
+        },
+        "p50FirstSemanticMs": 13.353624999999738,
+        "p95FirstSemanticMs": 17.795750000000226,
+        "blockP50FirstSemanticMs": {
+          "0": 13.353624999999738,
+          "1": 15.408166999999594,
+          "2": 11.675874999998996,
+          "3": 11.56316599999991
+        }
+      },
+      "B": {
+        "n": 40,
+        "valid": 40,
+        "p50EofMs": 14.702417000000423,
+        "p95EofMs": 25.94762499999888,
+        "blockP50EofMs": {
+          "0": 15.099291999999878,
+          "1": 15.741792000000714,
+          "2": 13.83483299999898,
+          "3": 13.855457999999999
+        },
+        "p50FirstSemanticMs": 14.707707999999911,
+        "p95FirstSemanticMs": 25.954459000000497,
+        "blockP50FirstSemanticMs": {
+          "0": 15.104333000000224,
+          "1": 15.74579199999971,
+          "2": 13.838832999999795,
+          "3": 13.86279099999956
+        }
+      },
+      "comparison": {
+        "p50EofMs": {
+          "delta": 1.353583000000981,
+          "percent": 10.14008414518479
+        },
+        "p95EofMs": {
+          "delta": 8.156791999998859,
+          "percent": 45.84828602459958
+        },
+        "p50FirstSemanticMs": {
+          "delta": 1.3540830000001733,
+          "percent": 10.140190397739946
+        },
+        "p95FirstSemanticMs": {
+          "delta": 8.158709000000272,
+          "percent": 45.84639028981734
+        }
+      },
+      "blockComparison": {
+        "0": {
+          "delta": 1.7504580000004353,
+          "percent": 13.113190260666286
+        },
+        "1": {
+          "delta": 0.34054200000173296,
+          "percent": 2.2111322133057776
+        },
+        "2": {
+          "delta": 2.1650419999987207,
+          "percent": 18.552534488395487
+        },
+        "3": {
+          "delta": 2.296875,
+          "percent": 19.87159671734848
+        }
+      },
+      "blockFirstSemanticComparison": {
+        "0": {
+          "delta": 1.7507080000004862,
+          "percent": 13.11035767441815
+        },
+        "1": {
+          "delta": 0.3376250000001164,
+          "percent": 2.1912080781583354
+        },
+        "2": {
+          "delta": 2.162958000000799,
+          "percent": 18.525018467575105
+        },
+        "3": {
+          "delta": 2.2996249999996508,
+          "percent": 19.88750312846559
+        }
+      }
+    },
+    {
+      "mode": "sse",
+      "A": {
+        "n": 40,
+        "valid": 40,
+        "p50EofMs": 69.2049160000006,
+        "p95EofMs": 95.96979199999987,
+        "blockP50EofMs": {
+          "0": 70.55525000000034,
+          "1": 69.50016599999981,
+          "2": 65.5570000000007,
+          "3": 71.57441699999981
+        },
+        "p50FirstSemanticMs": 48.43620799999917,
+        "p95FirstSemanticMs": 59.171416999999565,
+        "blockP50FirstSemanticMs": {
+          "0": 49.16641600000003,
+          "1": 49.44449999999961,
+          "2": 42.444917000000714,
+          "3": 48.43620799999917
+        }
+      },
+      "B": {
+        "n": 40,
+        "valid": 40,
+        "p50EofMs": 69.97504199999912,
+        "p95EofMs": 93.45724999999948,
+        "blockP50EofMs": {
+          "0": 62.842915999999605,
+          "1": 71.63179200000013,
+          "2": 82.11029199999939,
+          "3": 65.68974999999955
+        },
+        "p50FirstSemanticMs": 48.25733299999956,
+        "p95FirstSemanticMs": 72.4902089999996,
+        "blockP50FirstSemanticMs": {
+          "0": 45.78729099999964,
+          "1": 51.343166999999085,
+          "2": 50.3135829999992,
+          "3": 44.24879200000032
+        }
+      },
+      "comparison": {
+        "p50EofMs": {
+          "delta": 0.7701259999985268,
+          "percent": 1.1128197886961066
+        },
+        "p95EofMs": {
+          "delta": -2.512542000000394,
+          "percent": -2.6180550646607625
+        },
+        "p50FirstSemanticMs": {
+          "delta": -0.1788749999996071,
+          "percent": -0.36930017312587493
+        },
+        "p95FirstSemanticMs": {
+          "delta": 13.31879200000003,
+          "percent": 22.508827192696977
+        }
+      },
+      "blockComparison": {
+        "0": {
+          "delta": -7.712334000000737,
+          "percent": -10.930914425220939
+        },
+        "1": {
+          "delta": 2.131626000000324,
+          "percent": 3.0670804440961152
+        },
+        "2": {
+          "delta": 16.55329199999869,
+          "percent": 25.250228045820442
+        },
+        "3": {
+          "delta": -5.884667000000263,
+          "percent": -8.22174632592575
+        }
+      },
+      "blockFirstSemanticComparison": {
+        "0": {
+          "delta": -3.3791250000003856,
+          "percent": -6.872831649962818
+        },
+        "1": {
+          "delta": 1.8986669999994774,
+          "percent": 3.8399963595536324
+        },
+        "2": {
+          "delta": 7.868665999998484,
+          "percent": 18.538535485882445
+        },
+        "3": {
+          "delta": -4.187415999998848,
+          "percent": -8.645218469618676
+        }
+      }
+    }
+  ],
+  "diagnostics": [
+    {
+      "mode": "json",
+      "A": {
+        "requests": 40,
+        "sampledNonIdleMsPerRequest": 14.872774999999999,
+        "samples": 73,
+        "sampledWeightUs": 658275,
+        "wallWindowUs": 946758,
+        "heapStart": {
+          "usedSize": 23010444,
+          "totalSize": 29900800,
+          "embedderHeapUsedSize": 386896,
+          "backingStorageSize": 4054696
+        },
+        "heapSettled": {
+          "usedSize": 28799940,
+          "totalSize": 38813696,
+          "embedderHeapUsedSize": 644816,
+          "backingStorageSize": 6129453
+        }
+      },
+      "B": {
+        "requests": 40,
+        "sampledNonIdleMsPerRequest": 21.2112,
+        "samples": 143,
+        "sampledWeightUs": 1089364,
+        "wallWindowUs": 1424689,
+        "heapStart": {
+          "usedSize": 26653652,
+          "totalSize": 36159488,
+          "embedderHeapUsedSize": 515856,
+          "backingStorageSize": 5460109
+        },
+        "heapSettled": {
+          "usedSize": 28304772,
+          "totalSize": 43499520,
+          "embedderHeapUsedSize": 644816,
+          "backingStorageSize": 5133345
+        }
+      },
+      "changePercent": {
+        "sampledNonIdleMsPerRequest": 42.61763524291871,
+        "settledUsedHeap": -1.7193369152852411
+      }
+    },
+    {
+      "mode": "sse",
+      "A": {
+        "requests": 40,
+        "sampledNonIdleMsPerRequest": 67.164375,
+        "samples": 282,
+        "sampledWeightUs": 2936398,
+        "wallWindowUs": 3254466,
+        "heapStart": {
+          "usedSize": 28799940,
+          "totalSize": 38813696,
+          "embedderHeapUsedSize": 644816,
+          "backingStorageSize": 6129453
+        },
+        "heapSettled": {
+          "usedSize": 33613360,
+          "totalSize": 43532288,
+          "embedderHeapUsedSize": 902736,
+          "backingStorageSize": 6124224
+        }
+      },
+      "B": {
+        "requests": 40,
+        "sampledNonIdleMsPerRequest": 73.875375,
+        "samples": 354,
+        "sampledWeightUs": 3210033,
+        "wallWindowUs": 3703272,
+        "heapStart": {
+          "usedSize": 28304772,
+          "totalSize": 43499520,
+          "embedderHeapUsedSize": 644816,
+          "backingStorageSize": 5133345
+        },
+        "heapSettled": {
+          "usedSize": 28088124,
+          "totalSize": 45334528,
+          "embedderHeapUsedSize": 315704,
+          "backingStorageSize": 6190834
+        }
+      },
+      "changePercent": {
+        "sampledNonIdleMsPerRequest": 9.991904190279444,
+        "settledUsedHeap": -16.437618851551882
+      }
+    }
+  ],
+  "matrix": {
+    "cells": {
+      "A": 126,
+      "B": 126
+    },
+    "wire": {
+      "comparisonCount": 126,
+      "baselineFailureCount": 19,
+      "candidateFailureCount": 0,
+      "regressionCount": 0,
+      "improvementCount": 19,
+      "sharedFailureCount": 0,
+      "noRegression": true,
+      "baselineFailures": [
+        {
+          "cell": [
+            "responses",
+            "chat",
+            "ok",
+            true
+          ],
+          "logicalId": "05f341af02b04c308c5d9958b29ac722_A_matrix_A_39",
+          "recordId": "01M40ETAHJ81M9XVJV2WX6TRWS",
+          "passed": false,
+          "errors": [
+            "output_or_history_length_mismatch",
+            "text_delta_mismatch"
+          ],
+          "classification": "semantic_mismatch",
+          "evidence": {
+            "wireEvidence": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-03-owned-preparation/formal-01/A-matrix/A-matrix/05f341af02b04c308c5d9958b29ac722_A_matrix_A_39-wire.json",
+            "requestSha256": "1d18f95a10fe8d43731f8557f7504743a43183f1de179dbc06b3fd0c5cb03973",
+            "responseSha256": "1724858c36170714b300e2d2a13ff5d07b715f71a1403b59befa45a5bad34cd9",
+            "captureFidelity": {
+              "comparator": "response-frame-fidelity-v1",
+              "passed": true,
+              "classification": "exact_wire_frames",
+              "errors": [],
+              "storedSha256": "15ab0fdb870363db68f4c660f93bde8a457d01ba578ab0316bf9f10ad5cc3085",
+              "wireSha256": "1724858c36170714b300e2d2a13ff5d07b715f71a1403b59befa45a5bad34cd9",
+              "evidence": {
+                "wireEvidence": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-03-owned-preparation/formal-01/A-matrix/A-matrix/05f341af02b04c308c5d9958b29ac722_A_matrix_A_39-wire.json",
+                "responseKey": "dumps/v1/architecture-key/2026100308/01M40ETAHJ81M9XVJV2WX6TRWS-5ca1569e-a3d3-4a65-b4a2-27c40126509a.resp.gz",
+                "responseType": "events"
+              },
+              "details": {
+                "storedEventsSha256": "ec9a0d73baf324a6435df952826d0ab22202dde5d8976a861880f306bca5f048",
+                "wireEventsSha256": "ec9a0d73baf324a6435df952826d0ab22202dde5d8976a861880f306bca5f048",
+                "storedDone": false,
+                "wireDone": false,
+                "differences": []
+              }
+            },
+            "canonicalEvidence": {
+              "wireOraclePassed": false,
+              "canonicalOraclePassed": false,
+              "errors": [
+                "output_or_history_length_mismatch",
+                "text_delta_mismatch"
+              ],
+              "classification": "semantic_mismatch",
+              "protocol": "responses"
+            },
+            "objects": [
+              {
+                "side": "request",
+                "key": "dumps/v1/architecture-key/2026100308/01M40ETAHJ81M9XVJV2WX6TRWS-b25ffac8-650e-48a5-ab92-ed8b7f015c28.req.gz",
+                "type": "bytes",
+                "compressedBytes": 264,
+                "decodedBytes": 65713,
+                "sha256": "1d18f95a10fe8d43731f8557f7504743a43183f1de179dbc06b3fd0c5cb03973"
+              },
+              {
+                "side": "response",
+                "key": "dumps/v1/architecture-key/2026100308/01M40ETAHJ81M9XVJV2WX6TRWS-5ca1569e-a3d3-4a65-b4a2-27c40126509a.resp.gz",
+                "type": "events",
+                "compressedBytes": 439,
+                "decodedBytes": 2005,
+                "sha256": "15ab0fdb870363db68f4c660f93bde8a457d01ba578ab0316bf9f10ad5cc3085"
+              }
+            ],
+            "metadataSha256": "c9cfc77d3de0a4eaf626142db904fea20f645d6c5018ab00abb414ccd319573b"
+          }
+        },
+        {
+          "cell": [
+            "responses",
+            "chat",
+            "tool",
+            true
+          ],
+          "logicalId": "05f341af02b04c308c5d9958b29ac722_A_matrix_A_41",
+          "recordId": "01M40ETAMVSR2ADCGT751S2TP4",
+          "passed": false,
+          "errors": [
+            "tool_identity_mismatch",
+            "invalid_tool_arguments",
+            "tool_delta_mismatch"
+          ],
+          "classification": "semantic_mismatch",
+          "evidence": {
+            "wireEvidence": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-03-owned-preparation/formal-01/A-matrix/A-matrix/05f341af02b04c308c5d9958b29ac722_A_matrix_A_41-wire.json",
+            "requestSha256": "fbee5b436e6bc6987e54b8718354e0c717520ea6e4a5b2df2cd752e43bbbf603",
+            "responseSha256": "2482e17711a580743004dab9a5e5ceaa17a10d4cb8c642fbca43eab260112103",
+            "captureFidelity": {
+              "comparator": "response-frame-fidelity-v1",
+              "passed": true,
+              "classification": "exact_wire_frames",
+              "errors": [],
+              "storedSha256": "2e32ecd7adc68be9654fab6cb966568e4cbdafc1f610813d886f863b45237b1e",
+              "wireSha256": "2482e17711a580743004dab9a5e5ceaa17a10d4cb8c642fbca43eab260112103",
+              "evidence": {
+                "wireEvidence": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-03-owned-preparation/formal-01/A-matrix/A-matrix/05f341af02b04c308c5d9958b29ac722_A_matrix_A_41-wire.json",
+                "responseKey": "dumps/v1/architecture-key/2026100308/01M40ETAMVSR2ADCGT751S2TP4-52baccc1-9c8f-4832-8d3b-b91f2f5fd287.resp.gz",
+                "responseType": "events"
+              },
+              "details": {
+                "storedEventsSha256": "94f0dc6b8545c2e56c14f6be06415907932a8c973377dd4461467b50f3b28416",
+                "wireEventsSha256": "94f0dc6b8545c2e56c14f6be06415907932a8c973377dd4461467b50f3b28416",
+                "storedDone": false,
+                "wireDone": false,
+                "differences": []
+              }
+            },
+            "canonicalEvidence": {
+              "wireOraclePassed": false,
+              "canonicalOraclePassed": false,
+              "errors": [
+                "tool_identity_mismatch",
+                "invalid_tool_arguments",
+                "tool_delta_mismatch"
+              ],
+              "classification": "semantic_mismatch",
+              "protocol": "responses"
+            },
+            "objects": [
+              {
+                "side": "request",
+                "key": "dumps/v1/architecture-key/2026100308/01M40ETAMVSR2ADCGT751S2TP4-68fb0dee-b6c0-456b-b1d3-511299b30693.req.gz",
+                "type": "bytes",
+                "compressedBytes": 266,
+                "decodedBytes": 65715,
+                "sha256": "fbee5b436e6bc6987e54b8718354e0c717520ea6e4a5b2df2cd752e43bbbf603"
+              },
+              {
+                "side": "response",
+                "key": "dumps/v1/architecture-key/2026100308/01M40ETAMVSR2ADCGT751S2TP4-52baccc1-9c8f-4832-8d3b-b91f2f5fd287.resp.gz",
+                "type": "events",
+                "compressedBytes": 351,
+                "decodedBytes": 1223,
+                "sha256": "2e32ecd7adc68be9654fab6cb966568e4cbdafc1f610813d886f863b45237b1e"
+              }
+            ],
+            "metadataSha256": "b8c02d43e23fad3e66d906fe4bfd3579ae63b9d4fd0895fcfc37206c6554ee71"
+          }
+        },
+        {
+          "cell": [
+            "responses",
+            "chat",
+            "refusal",
+            false
+          ],
+          "logicalId": "05f341af02b04c308c5d9958b29ac722_A_matrix_A_42",
+          "recordId": "01M40ETAPJJH2F441D10SKX6D0",
+          "passed": false,
+          "errors": [
+            "refusal_semantics_missing"
+          ],
+          "classification": "semantic_mismatch",
+          "evidence": {
+            "wireEvidence": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-03-owned-preparation/formal-01/A-matrix/A-matrix/05f341af02b04c308c5d9958b29ac722_A_matrix_A_42-wire.json",
+            "requestSha256": "72df8e37eef9a0eed0e8d4ded0dc5607b470072a05da08584104d20aed8babcf",
+            "responseSha256": "8b1afd0d1d406429acb045b327b20ea4d423be1f9c5d4bbfdd4e89f12e3dcd1a",
+            "captureFidelity": {
+              "comparator": "response-frame-fidelity-v1",
+              "passed": true,
+              "classification": "canonical_source_semantics",
+              "errors": [],
+              "storedSha256": "6fb922c77db1e1d38ac9d6be32616cad925573ac82452bf2f2515607a6342eb8",
+              "wireSha256": "8b1afd0d1d406429acb045b327b20ea4d423be1f9c5d4bbfdd4e89f12e3dcd1a",
+              "evidence": {
+                "wireEvidence": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-03-owned-preparation/formal-01/A-matrix/A-matrix/05f341af02b04c308c5d9958b29ac722_A_matrix_A_42-wire.json",
+                "responseKey": "dumps/v1/architecture-key/2026100308/01M40ETAPJJH2F441D10SKX6D0-ad18bf8b-3de1-41fd-a4d8-cda4bcc910dc.resp.gz",
+                "responseType": "events"
+              },
+              "details": {}
+            },
+            "canonicalEvidence": {
+              "wireOraclePassed": false,
+              "canonicalOraclePassed": true,
+              "errors": [],
+              "classification": "expected_refusal",
+              "protocol": "chat"
+            },
+            "objects": [
+              {
+                "side": "request",
+                "key": "dumps/v1/architecture-key/2026100308/01M40ETAPJJH2F441D10SKX6D0-88c90ee5-231b-40d2-b526-9914a9ec3acb.req.gz",
+                "type": "bytes",
+                "compressedBytes": 269,
+                "decodedBytes": 65719,
+                "sha256": "72df8e37eef9a0eed0e8d4ded0dc5607b470072a05da08584104d20aed8babcf"
+              },
+              {
+                "side": "response",
+                "key": "dumps/v1/architecture-key/2026100308/01M40ETAPJJH2F441D10SKX6D0-ad18bf8b-3de1-41fd-a4d8-cda4bcc910dc.resp.gz",
+                "type": "events",
+                "compressedBytes": 303,
+                "decodedBytes": 442,
+                "sha256": "6fb922c77db1e1d38ac9d6be32616cad925573ac82452bf2f2515607a6342eb8"
+              }
+            ],
+            "metadataSha256": "8c5d92cf82a15e513ee21973dd710eeedfd847ce7657fccfb176f5be3a970fa3"
+          }
+        },
+        {
+          "cell": [
+            "responses",
+            "chat",
+            "refusal",
+            true
+          ],
+          "logicalId": "05f341af02b04c308c5d9958b29ac722_A_matrix_A_43",
+          "recordId": "01M40ETAQJCREWEETGHTXR7ZDK",
+          "passed": false,
+          "errors": [
+            "refusal_semantics_missing"
+          ],
+          "classification": "semantic_mismatch",
+          "evidence": {
+            "wireEvidence": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-03-owned-preparation/formal-01/A-matrix/A-matrix/05f341af02b04c308c5d9958b29ac722_A_matrix_A_43-wire.json",
+            "requestSha256": "8cb52ddeb3ab6d77fec5fe79969c2b758f4796f6cb077c48e67d84a949a540ee",
+            "responseSha256": "2e2ad120a78ff94e2418bea6ab2824005d16c85f95aaaf0d17b6d5b101142599",
+            "captureFidelity": {
+              "comparator": "response-frame-fidelity-v1",
+              "passed": true,
+              "classification": "exact_wire_frames",
+              "errors": [],
+              "storedSha256": "bc7805ad15b870a19fd55c93e2e97e8f941b0581c0d7f466fe99e97d45db251c",
+              "wireSha256": "2e2ad120a78ff94e2418bea6ab2824005d16c85f95aaaf0d17b6d5b101142599",
+              "evidence": {
+                "wireEvidence": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-03-owned-preparation/formal-01/A-matrix/A-matrix/05f341af02b04c308c5d9958b29ac722_A_matrix_A_43-wire.json",
+                "responseKey": "dumps/v1/architecture-key/2026100308/01M40ETAQJCREWEETGHTXR7ZDK-027eda0f-01fd-4412-957b-92ff49c4bc20.resp.gz",
+                "responseType": "events"
+              },
+              "details": {
+                "storedEventsSha256": "680a553eddf8f028503a0433edd690825ff128e0c73c5555415d41cf07a2f821",
+                "wireEventsSha256": "680a553eddf8f028503a0433edd690825ff128e0c73c5555415d41cf07a2f821",
+                "storedDone": false,
+                "wireDone": false,
+                "differences": []
+              }
+            },
+            "canonicalEvidence": {
+              "wireOraclePassed": false,
+              "canonicalOraclePassed": false,
+              "errors": [
+                "refusal_semantics_missing"
+              ],
+              "classification": "semantic_mismatch",
+              "protocol": "responses"
+            },
+            "objects": [
+              {
+                "side": "request",
+                "key": "dumps/v1/architecture-key/2026100308/01M40ETAQJCREWEETGHTXR7ZDK-79e902e6-b2eb-435b-8885-fafe7c7d080f.req.gz",
+                "type": "bytes",
+                "compressedBytes": 268,
+                "decodedBytes": 65718,
+                "sha256": "8cb52ddeb3ab6d77fec5fe79969c2b758f4796f6cb077c48e67d84a949a540ee"
+              },
+              {
+                "side": "response",
+                "key": "dumps/v1/architecture-key/2026100308/01M40ETAQJCREWEETGHTXR7ZDK-027eda0f-01fd-4412-957b-92ff49c4bc20.resp.gz",
+                "type": "events",
+                "compressedBytes": 240,
+                "decodedBytes": 737,
+                "sha256": "bc7805ad15b870a19fd55c93e2e97e8f941b0581c0d7f466fe99e97d45db251c"
+              }
+            ],
+            "metadataSha256": "78897e4392309a7a3c40f29e22d011fa86cc3df013b4a1eba32c6e5011e3ce85"
+          }
+        },
+        {
+          "cell": [
+            "responses",
+            "chat",
+            "truncated",
+            true
+          ],
+          "logicalId": "05f341af02b04c308c5d9958b29ac722_A_matrix_A_47",
+          "recordId": "01M40ETAWSR4ZJJGM6YV4618S6",
+          "passed": false,
+          "errors": [
+            "false_success_on_fault"
+          ],
+          "classification": "false_success",
+          "evidence": {
+            "wireEvidence": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-03-owned-preparation/formal-01/A-matrix/A-matrix/05f341af02b04c308c5d9958b29ac722_A_matrix_A_47-wire.json",
+            "requestSha256": "ac67ac059729f078e3142795fe70f8ba1c578ade14631d16075a711f8d31e003",
+            "responseSha256": "b8324b5e5c23873e6d23f5948af7db41e1b961ecce09891c87a28abbbe3240e4",
+            "captureFidelity": {
+              "comparator": "response-frame-fidelity-v1",
+              "passed": true,
+              "classification": "exact_wire_frames",
+              "errors": [],
+              "storedSha256": "188be0bac275470f2fafe40c4289f8abbc39230c661e688d09ccca5e79f879fe",
+              "wireSha256": "b8324b5e5c23873e6d23f5948af7db41e1b961ecce09891c87a28abbbe3240e4",
+              "evidence": {
+                "wireEvidence": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-03-owned-preparation/formal-01/A-matrix/A-matrix/05f341af02b04c308c5d9958b29ac722_A_matrix_A_47-wire.json",
+                "responseKey": "dumps/v1/architecture-key/2026100308/01M40ETAWSR4ZJJGM6YV4618S6-3367ef75-6a64-4b60-880f-d9372373e28c.resp.gz",
+                "responseType": "events"
+              },
+              "details": {
+                "storedEventsSha256": "ae3fa8c0de98f0c64058074666908c10d912949732bdd3dffa5ca35d05160a65",
+                "wireEventsSha256": "ae3fa8c0de98f0c64058074666908c10d912949732bdd3dffa5ca35d05160a65",
+                "storedDone": false,
+                "wireDone": false,
+                "differences": []
+              }
+            },
+            "canonicalEvidence": {
+              "wireOraclePassed": false,
+              "canonicalOraclePassed": false,
+              "errors": [
+                "unexpected_captured_success_terminal"
+              ],
+              "classification": "false_success",
+              "protocol": "responses"
+            },
+            "objects": [
+              {
+                "side": "request",
+                "key": "dumps/v1/architecture-key/2026100308/01M40ETAWSR4ZJJGM6YV4618S6-e800129b-702b-4b90-8f68-0a6c16397e0c.req.gz",
+                "type": "bytes",
+                "compressedBytes": 270,
+                "decodedBytes": 65720,
+                "sha256": "ac67ac059729f078e3142795fe70f8ba1c578ade14631d16075a711f8d31e003"
+              },
+              {
+                "side": "response",
+                "key": "dumps/v1/architecture-key/2026100308/01M40ETAWSR4ZJJGM6YV4618S6-3367ef75-6a64-4b60-880f-d9372373e28c.resp.gz",
+                "type": "events",
+                "compressedBytes": 410,
+                "decodedBytes": 1963,
+                "sha256": "188be0bac275470f2fafe40c4289f8abbc39230c661e688d09ccca5e79f879fe"
+              }
+            ],
+            "metadataSha256": "52d9a3628a4d3d11c31baec020c2641ce407a76894af9b13f66c7e651ed174f2"
+          }
+        },
+        {
+          "cell": [
+            "responses",
+            "chat",
+            "slow",
+            true
+          ],
+          "logicalId": "05f341af02b04c308c5d9958b29ac722_A_matrix_A_51",
+          "recordId": "01M40ETB0GWWJVXF8RKVEZN49B",
+          "passed": false,
+          "errors": [
+            "output_or_history_length_mismatch",
+            "text_delta_mismatch"
+          ],
+          "classification": "semantic_mismatch",
+          "evidence": {
+            "wireEvidence": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-03-owned-preparation/formal-01/A-matrix/A-matrix/05f341af02b04c308c5d9958b29ac722_A_matrix_A_51-wire.json",
+            "requestSha256": "6b0d7e1cbaa3c76a2c4a9367b51652ea89845bed364b73ada8596f2873df1a68",
+            "responseSha256": "9227a108f90433dab9d7aeef329e751976191be047ea862438f6be662be09a4c",
+            "captureFidelity": {
+              "comparator": "response-frame-fidelity-v1",
+              "passed": true,
+              "classification": "exact_wire_frames",
+              "errors": [],
+              "storedSha256": "f76df66e5679782f1dae915a8cad947189d788eb03119ce8d74541031612bc52",
+              "wireSha256": "9227a108f90433dab9d7aeef329e751976191be047ea862438f6be662be09a4c",
+              "evidence": {
+                "wireEvidence": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-03-owned-preparation/formal-01/A-matrix/A-matrix/05f341af02b04c308c5d9958b29ac722_A_matrix_A_51-wire.json",
+                "responseKey": "dumps/v1/architecture-key/2026100308/01M40ETB0GWWJVXF8RKVEZN49B-5b0b8693-06e3-42ce-9393-eb0ddf330094.resp.gz",
+                "responseType": "events"
+              },
+              "details": {
+                "storedEventsSha256": "5cf085386daf687323cb1ebedf53c43dd3b0a70dc89458c599c8b0c9228cc1e2",
+                "wireEventsSha256": "5cf085386daf687323cb1ebedf53c43dd3b0a70dc89458c599c8b0c9228cc1e2",
+                "storedDone": false,
+                "wireDone": false,
+                "differences": []
+              }
+            },
+            "canonicalEvidence": {
+              "wireOraclePassed": false,
+              "canonicalOraclePassed": false,
+              "errors": [
+                "output_or_history_length_mismatch",
+                "text_delta_mismatch"
+              ],
+              "classification": "semantic_mismatch",
+              "protocol": "responses"
+            },
+            "objects": [
+              {
+                "side": "request",
+                "key": "dumps/v1/architecture-key/2026100308/01M40ETB0GWWJVXF8RKVEZN49B-f619af0c-340b-42a6-b63e-5e0d2822a76a.req.gz",
+                "type": "bytes",
+                "compressedBytes": 266,
+                "decodedBytes": 65715,
+                "sha256": "6b0d7e1cbaa3c76a2c4a9367b51652ea89845bed364b73ada8596f2873df1a68"
+              },
+              {
+                "side": "response",
+                "key": "dumps/v1/architecture-key/2026100308/01M40ETB0GWWJVXF8RKVEZN49B-5b0b8693-06e3-42ce-9393-eb0ddf330094.resp.gz",
+                "type": "events",
+                "compressedBytes": 450,
+                "decodedBytes": 2024,
+                "sha256": "f76df66e5679782f1dae915a8cad947189d788eb03119ce8d74541031612bc52"
+              }
+            ],
+            "metadataSha256": "ce386267d436ac870defbb4605b29fcd73df11119f6e4663e6d95761d23e676a"
+          }
+        },
+        {
+          "cell": [
+            "responses",
+            "messages",
+            "refusal",
+            false
+          ],
+          "logicalId": "05f341af02b04c308c5d9958b29ac722_A_matrix_A_56",
+          "recordId": "01M40ETC8V7FDRGAGZNZ4T03WD",
+          "passed": false,
+          "errors": [
+            "refusal_semantics_missing"
+          ],
+          "classification": "semantic_mismatch",
+          "evidence": {
+            "wireEvidence": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-03-owned-preparation/formal-01/A-matrix/A-matrix/05f341af02b04c308c5d9958b29ac722_A_matrix_A_56-wire.json",
+            "requestSha256": "584616f21c48bed6508557a80b151139d31886213acbc11709b86aa9a8a11760",
+            "responseSha256": "d94d7adf5430ba856369b3e4b60b39ada42f85d309fed60ef340dda146954fb8",
+            "captureFidelity": {
+              "comparator": "response-frame-fidelity-v1",
+              "passed": true,
+              "classification": "canonical_source_semantics",
+              "errors": [],
+              "storedSha256": "a8c2968d081399f579c208a753b1a32e45aca001c14dd9b975cb1de021c97df1",
+              "wireSha256": "d94d7adf5430ba856369b3e4b60b39ada42f85d309fed60ef340dda146954fb8",
+              "evidence": {
+                "wireEvidence": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-03-owned-preparation/formal-01/A-matrix/A-matrix/05f341af02b04c308c5d9958b29ac722_A_matrix_A_56-wire.json",
+                "responseKey": "dumps/v1/architecture-key/2026100308/01M40ETC8V7FDRGAGZNZ4T03WD-e2815213-244f-4287-b4ca-f5fa0a772858.resp.gz",
+                "responseType": "events"
+              },
+              "details": {}
+            },
+            "canonicalEvidence": {
+              "wireOraclePassed": false,
+              "canonicalOraclePassed": true,
+              "errors": [],
+              "classification": "expected_refusal",
+              "protocol": "messages"
+            },
+            "objects": [
+              {
+                "side": "request",
+                "key": "dumps/v1/architecture-key/2026100308/01M40ETC8V7FDRGAGZNZ4T03WD-602fbfd2-8001-4c90-bc9e-6b2dbd772940.req.gz",
+                "type": "bytes",
+                "compressedBytes": 272,
+                "decodedBytes": 65723,
+                "sha256": "584616f21c48bed6508557a80b151139d31886213acbc11709b86aa9a8a11760"
+              },
+              {
+                "side": "response",
+                "key": "dumps/v1/architecture-key/2026100308/01M40ETC8V7FDRGAGZNZ4T03WD-e2815213-244f-4287-b4ca-f5fa0a772858.resp.gz",
+                "type": "events",
+                "compressedBytes": 321,
+                "decodedBytes": 864,
+                "sha256": "a8c2968d081399f579c208a753b1a32e45aca001c14dd9b975cb1de021c97df1"
+              }
+            ],
+            "metadataSha256": "43dc34536b43a0a25c164f4f7609b9ae82b513c8ec93e3df0dfe38863086474e"
+          }
+        },
+        {
+          "cell": [
+            "responses",
+            "messages",
+            "refusal",
+            true
+          ],
+          "logicalId": "05f341af02b04c308c5d9958b29ac722_A_matrix_A_57",
+          "recordId": "01M40ETC9Q0993G78N1JE6HZ2Q",
+          "passed": false,
+          "errors": [
+            "refusal_semantics_missing"
+          ],
+          "classification": "semantic_mismatch",
+          "evidence": {
+            "wireEvidence": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-03-owned-preparation/formal-01/A-matrix/A-matrix/05f341af02b04c308c5d9958b29ac722_A_matrix_A_57-wire.json",
+            "requestSha256": "42924c1bb226875db0c84b1fd2e1d0427776ac919fa1ce1dfb784b1953533c92",
+            "responseSha256": "bdda9820b79eca32e4965b9d45cf21b9ab086b1c614cd9ebe2f192187c605c6f",
+            "captureFidelity": {
+              "comparator": "response-frame-fidelity-v1",
+              "passed": false,
+              "classification": "frame_value_mismatch",
+              "errors": [
+                "Canonical/wire frame fidelity mismatch 05f341af02b04c308c5d9958b29ac722_A_matrix_A_57"
+              ],
+              "storedSha256": "e5dc8f1af3fd0111fe388d6756523b17b33a5bdda488c2bea8f0467812fa63ef",
+              "wireSha256": "bdda9820b79eca32e4965b9d45cf21b9ab086b1c614cd9ebe2f192187c605c6f",
+              "evidence": {
+                "wireEvidence": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-03-owned-preparation/formal-01/A-matrix/A-matrix/05f341af02b04c308c5d9958b29ac722_A_matrix_A_57-wire.json",
+                "responseKey": "dumps/v1/architecture-key/2026100308/01M40ETC9Q0993G78N1JE6HZ2Q-e34815ff-3f3e-4441-b20b-674936b9294c.resp.gz",
+                "responseType": "events"
+              },
+              "details": {
+                "storedEventsSha256": "20f86bdb4cabb2d5d875c63ba24975f195eb855a3b53ec2ca90d1e5da59e76c7",
+                "wireEventsSha256": "d2db4da06814a95f3b0805e9daa9b4685283723856f3accf2e0c52bec1f9aa63",
+                "storedDone": false,
+                "wireDone": false,
+                "differences": [
+                  {
+                    "path": "/0/response/output/0",
+                    "storedPresent": true,
+                    "wirePresent": false,
+                    "stored": {
+                      "type": "message",
+                      "id": "msg_0",
+                      "status": "completed",
+                      "role": "assistant",
+                      "content": [
+                        {
+                          "type": "output_text",
+                          "text": "BENCH_REFUSAL"
+                        }
+                      ]
+                    },
+                    "wire": null
+                  },
+                  {
+                    "path": "/1/response/output/0",
+                    "storedPresent": true,
+                    "wirePresent": false,
+                    "stored": {
+                      "type": "message",
+                      "id": "msg_0",
+                      "status": "completed",
+                      "role": "assistant",
+                      "content": [
+                        {
+                          "type": "output_text",
+                          "text": "BENCH_REFUSAL"
+                        }
+                      ]
+                    },
+                    "wire": null
+                  }
+                ]
+              }
+            },
+            "canonicalEvidence": {
+              "wireOraclePassed": false,
+              "canonicalOraclePassed": false,
+              "errors": [
+                "refusal_semantics_missing"
+              ],
+              "classification": "semantic_mismatch",
+              "protocol": "responses"
+            },
+            "objects": [
+              {
+                "side": "request",
+                "key": "dumps/v1/architecture-key/2026100308/01M40ETC9Q0993G78N1JE6HZ2Q-a8c7400d-eb4e-4804-8d82-a7e7d17e1fae.req.gz",
+                "type": "bytes",
+                "compressedBytes": 271,
+                "decodedBytes": 65722,
+                "sha256": "42924c1bb226875db0c84b1fd2e1d0427776ac919fa1ce1dfb784b1953533c92"
+              },
+              {
+                "side": "response",
+                "key": "dumps/v1/architecture-key/2026100308/01M40ETC9Q0993G78N1JE6HZ2Q-e34815ff-3f3e-4441-b20b-674936b9294c.resp.gz",
+                "type": "events",
+                "compressedBytes": 462,
+                "decodedBytes": 2482,
+                "sha256": "e5dc8f1af3fd0111fe388d6756523b17b33a5bdda488c2bea8f0467812fa63ef"
+              }
+            ],
+            "metadataSha256": "b5cb87f5e7325ae75046b1111a4c26444ddc07840afa5076c26a42295ba40b55"
+          }
+        },
+        {
+          "cell": [
+            "chat",
+            "responses",
+            "refusal",
+            false
+          ],
+          "logicalId": "05f341af02b04c308c5d9958b29ac722_A_matrix_A_70",
+          "recordId": "01M40ETE9ARR23CZESNJ6D63TF",
+          "passed": false,
+          "errors": [
+            "refusal_semantics_missing"
+          ],
+          "classification": "semantic_mismatch",
+          "evidence": {
+            "wireEvidence": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-03-owned-preparation/formal-01/A-matrix/A-matrix/05f341af02b04c308c5d9958b29ac722_A_matrix_A_70-wire.json",
+            "requestSha256": "88f4d83b1c1dedd9dc619da1328388465e369e0579cd4b273a80c2ced8db0a53",
+            "responseSha256": "340f58d4f0696cb506d075922674683004d6001fe0b93dd5cb7ddbca232a1886",
+            "captureFidelity": {
+              "comparator": "response-frame-fidelity-v1",
+              "passed": true,
+              "classification": "canonical_source_semantics",
+              "errors": [],
+              "storedSha256": "0858c858c482086a19a1fe32af9efae06d5a8bc9c486674bf96b2b15610e5883",
+              "wireSha256": "340f58d4f0696cb506d075922674683004d6001fe0b93dd5cb7ddbca232a1886",
+              "evidence": {
+                "wireEvidence": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-03-owned-preparation/formal-01/A-matrix/A-matrix/05f341af02b04c308c5d9958b29ac722_A_matrix_A_70-wire.json",
+                "responseKey": "dumps/v1/architecture-key/2026100308/01M40ETE9ARR23CZESNJ6D63TF-9bfdc303-de15-4f1c-aff0-ef644389738d.resp.gz",
+                "responseType": "events"
+              },
+              "details": {}
+            },
+            "canonicalEvidence": {
+              "wireOraclePassed": false,
+              "canonicalOraclePassed": true,
+              "errors": [],
+              "classification": "expected_refusal",
+              "protocol": "responses"
+            },
+            "objects": [
+              {
+                "side": "request",
+                "key": "dumps/v1/architecture-key/2026100308/01M40ETE9ARR23CZESNJ6D63TF-12770962-36f1-4fe8-a8e5-a3ed57d4827e.req.gz",
+                "type": "bytes",
+                "compressedBytes": 277,
+                "decodedBytes": 65727,
+                "sha256": "88f4d83b1c1dedd9dc619da1328388465e369e0579cd4b273a80c2ced8db0a53"
+              },
+              {
+                "side": "response",
+                "key": "dumps/v1/architecture-key/2026100308/01M40ETE9ARR23CZESNJ6D63TF-9bfdc303-de15-4f1c-aff0-ef644389738d.resp.gz",
+                "type": "events",
+                "compressedBytes": 412,
+                "decodedBytes": 1781,
+                "sha256": "0858c858c482086a19a1fe32af9efae06d5a8bc9c486674bf96b2b15610e5883"
+              }
+            ],
+            "metadataSha256": "b8458d7096742555ed915afbd9ddc1005641b533fb821a737744d7cbb3b3d849"
+          }
+        },
+        {
+          "cell": [
+            "chat",
+            "responses",
+            "refusal",
+            true
+          ],
+          "logicalId": "05f341af02b04c308c5d9958b29ac722_A_matrix_A_71",
+          "recordId": "01M40ETEA8Q359Z5FH0B7VDGQZ",
+          "passed": false,
+          "errors": [
+            "refusal_semantics_missing"
+          ],
+          "classification": "semantic_mismatch",
+          "evidence": {
+            "wireEvidence": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-03-owned-preparation/formal-01/A-matrix/A-matrix/05f341af02b04c308c5d9958b29ac722_A_matrix_A_71-wire.json",
+            "requestSha256": "fe8e4c1cc6cf2040db0c76870a0c6cf9b07ba0e124de571b6be726426a3bd993",
+            "responseSha256": "105dfd84f42756715d7e4e39eae46036afe81621282f07564e0c33a0674ff2ee",
+            "captureFidelity": {
+              "comparator": "response-frame-fidelity-v1",
+              "passed": true,
+              "classification": "exact_wire_frames",
+              "errors": [],
+              "storedSha256": "4b9dbd63d039df657a2f42a5bb783f67863b0b7875fb4bb47213a6c6eb59814a",
+              "wireSha256": "105dfd84f42756715d7e4e39eae46036afe81621282f07564e0c33a0674ff2ee",
+              "evidence": {
+                "wireEvidence": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-03-owned-preparation/formal-01/A-matrix/A-matrix/05f341af02b04c308c5d9958b29ac722_A_matrix_A_71-wire.json",
+                "responseKey": "dumps/v1/architecture-key/2026100308/01M40ETEA8Q359Z5FH0B7VDGQZ-a1d8be62-0a73-49c9-9f05-4b226efe20f4.resp.gz",
+                "responseType": "events"
+              },
+              "details": {
+                "storedEventsSha256": "729015c61763db98344463dd25f95f005527b171d4d910487e47e694066eb394",
+                "wireEventsSha256": "729015c61763db98344463dd25f95f005527b171d4d910487e47e694066eb394",
+                "storedDone": true,
+                "wireDone": true,
+                "differences": []
+              }
+            },
+            "canonicalEvidence": {
+              "wireOraclePassed": false,
+              "canonicalOraclePassed": false,
+              "errors": [
+                "refusal_semantics_missing"
+              ],
+              "classification": "semantic_mismatch",
+              "protocol": "chat"
+            },
+            "objects": [
+              {
+                "side": "request",
+                "key": "dumps/v1/architecture-key/2026100308/01M40ETEA8Q359Z5FH0B7VDGQZ-a5ce94c1-9a68-4624-b855-e87e70b37ec0.req.gz",
+                "type": "bytes",
+                "compressedBytes": 307,
+                "decodedBytes": 65766,
+                "sha256": "fe8e4c1cc6cf2040db0c76870a0c6cf9b07ba0e124de571b6be726426a3bd993"
+              },
+              {
+                "side": "response",
+                "key": "dumps/v1/architecture-key/2026100308/01M40ETEA8Q359Z5FH0B7VDGQZ-a1d8be62-0a73-49c9-9f05-4b226efe20f4.resp.gz",
+                "type": "events",
+                "compressedBytes": 282,
+                "decodedBytes": 824,
+                "sha256": "4b9dbd63d039df657a2f42a5bb783f67863b0b7875fb4bb47213a6c6eb59814a"
+              }
+            ],
+            "metadataSha256": "1894ba7e0c59622dca61eef639ab2006ec2f0110d04e65b049f08ec251f86b45"
+          }
+        },
+        {
+          "cell": [
+            "chat",
+            "responses",
+            "failed",
+            true
+          ],
+          "logicalId": "05f341af02b04c308c5d9958b29ac722_A_matrix_A_73",
+          "recordId": "01M40ETED1EB6V1MGM0VARM8QF",
+          "passed": false,
+          "errors": [
+            "false_success_on_fault",
+            "missing_explicit_failure_event"
+          ],
+          "classification": "false_success",
+          "evidence": {
+            "wireEvidence": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-03-owned-preparation/formal-01/A-matrix/A-matrix/05f341af02b04c308c5d9958b29ac722_A_matrix_A_73-wire.json",
+            "requestSha256": "3c4069624d8fb5cbfce4ef193585e5d974188599b1d0d49a401b906ba37f9415",
+            "responseSha256": "8b2a001ff8315dbb4e144c68697cf60f8a2488dcadfaf05e192828c2a758ea54",
+            "captureFidelity": {
+              "comparator": "response-frame-fidelity-v1",
+              "passed": true,
+              "classification": "exact_wire_frames",
+              "errors": [],
+              "storedSha256": "cf29630a49e1bbff02e8fb71b32f77fb3b598ecceeddeb329a4755ecf02dd385",
+              "wireSha256": "8b2a001ff8315dbb4e144c68697cf60f8a2488dcadfaf05e192828c2a758ea54",
+              "evidence": {
+                "wireEvidence": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-03-owned-preparation/formal-01/A-matrix/A-matrix/05f341af02b04c308c5d9958b29ac722_A_matrix_A_73-wire.json",
+                "responseKey": "dumps/v1/architecture-key/2026100308/01M40ETED1EB6V1MGM0VARM8QF-956b977b-cddf-49a5-858c-54f01a902aa4.resp.gz",
+                "responseType": "events"
+              },
+              "details": {
+                "storedEventsSha256": "0d87071e7c2da643a08d97407debe6531fc043b5e04d2dd99eafe30c0ba16c71",
+                "wireEventsSha256": "0d87071e7c2da643a08d97407debe6531fc043b5e04d2dd99eafe30c0ba16c71",
+                "storedDone": true,
+                "wireDone": true,
+                "differences": []
+              }
+            },
+            "canonicalEvidence": {
+              "wireOraclePassed": false,
+              "canonicalOraclePassed": false,
+              "errors": [
+                "unexpected_captured_success_terminal",
+                "missing_explicit_failure_event"
+              ],
+              "classification": "false_success",
+              "protocol": "chat"
+            },
+            "objects": [
+              {
+                "side": "request",
+                "key": "dumps/v1/architecture-key/2026100308/01M40ETED1EB6V1MGM0VARM8QF-9f637d6c-8f97-4cc4-b999-a6a07e23b948.req.gz",
+                "type": "bytes",
+                "compressedBytes": 306,
+                "decodedBytes": 65765,
+                "sha256": "3c4069624d8fb5cbfce4ef193585e5d974188599b1d0d49a401b906ba37f9415"
+              },
+              {
+                "side": "response",
+                "key": "dumps/v1/architecture-key/2026100308/01M40ETED1EB6V1MGM0VARM8QF-956b977b-cddf-49a5-858c-54f01a902aa4.resp.gz",
+                "type": "events",
+                "compressedBytes": 276,
+                "decodedBytes": 822,
+                "sha256": "cf29630a49e1bbff02e8fb71b32f77fb3b598ecceeddeb329a4755ecf02dd385"
+              }
+            ],
+            "metadataSha256": "21308b490562511a52ac15043dab2007e1516cafa2ce4babd42e71220026ac0f"
+          }
+        },
+        {
+          "cell": [
+            "chat",
+            "responses",
+            "truncated",
+            true
+          ],
+          "logicalId": "05f341af02b04c308c5d9958b29ac722_A_matrix_A_75",
+          "recordId": "01M40ETEFDDJD3RG3XNN48S85D",
+          "passed": false,
+          "errors": [
+            "false_success_on_fault"
+          ],
+          "classification": "false_success",
+          "evidence": {
+            "wireEvidence": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-03-owned-preparation/formal-01/A-matrix/A-matrix/05f341af02b04c308c5d9958b29ac722_A_matrix_A_75-wire.json",
+            "requestSha256": "9c0563a1affab97cce46ddcf4b3df2a723fe9b9c7580d8df109a70d7ae4f26f6",
+            "responseSha256": "361eb461cfd6944f9868bb9051ca63211ab3c84ea2560f84523dd8e3afdef5cd",
+            "captureFidelity": {
+              "comparator": "response-frame-fidelity-v1",
+              "passed": true,
+              "classification": "exact_wire_frames",
+              "errors": [],
+              "storedSha256": "8338b0410fb7318cad16f3933fd4af0d7444db9f10785a7921f8f7e5aa15268e",
+              "wireSha256": "361eb461cfd6944f9868bb9051ca63211ab3c84ea2560f84523dd8e3afdef5cd",
+              "evidence": {
+                "wireEvidence": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-03-owned-preparation/formal-01/A-matrix/A-matrix/05f341af02b04c308c5d9958b29ac722_A_matrix_A_75-wire.json",
+                "responseKey": "dumps/v1/architecture-key/2026100308/01M40ETEFDDJD3RG3XNN48S85D-11c67247-93a7-4b70-b291-21404d9d465d.resp.gz",
+                "responseType": "events"
+              },
+              "details": {
+                "storedEventsSha256": "4c63e817c6cb03cb7d81dcd0061dce9d8850d07724d0c5bfeaba0408fffc88a8",
+                "wireEventsSha256": "4c63e817c6cb03cb7d81dcd0061dce9d8850d07724d0c5bfeaba0408fffc88a8",
+                "storedDone": true,
+                "wireDone": true,
+                "differences": []
+              }
+            },
+            "canonicalEvidence": {
+              "wireOraclePassed": false,
+              "canonicalOraclePassed": false,
+              "errors": [
+                "unexpected_captured_success_terminal"
+              ],
+              "classification": "false_success",
+              "protocol": "chat"
+            },
+            "objects": [
+              {
+                "side": "request",
+                "key": "dumps/v1/architecture-key/2026100308/01M40ETEFDDJD3RG3XNN48S85D-0f19be21-8884-47f6-b664-7cb311c0ee2a.req.gz",
+                "type": "bytes",
+                "compressedBytes": 308,
+                "decodedBytes": 65768,
+                "sha256": "9c0563a1affab97cce46ddcf4b3df2a723fe9b9c7580d8df109a70d7ae4f26f6"
+              },
+              {
+                "side": "response",
+                "key": "dumps/v1/architecture-key/2026100308/01M40ETEFDDJD3RG3XNN48S85D-11c67247-93a7-4b70-b291-21404d9d465d.resp.gz",
+                "type": "events",
+                "compressedBytes": 277,
+                "decodedBytes": 830,
+                "sha256": "8338b0410fb7318cad16f3933fd4af0d7444db9f10785a7921f8f7e5aa15268e"
+              }
+            ],
+            "metadataSha256": "dd29d3bee02787e2fb884ac9bb5f8746b25e85a817f9f5d5f897223318f03e98"
+          }
+        },
+        {
+          "cell": [
+            "chat",
+            "messages",
+            "refusal",
+            true
+          ],
+          "logicalId": "05f341af02b04c308c5d9958b29ac722_A_matrix_A_99",
+          "recordId": "01M40ETHX740CW4DHFDSMCT6HM",
+          "passed": false,
+          "errors": [
+            "refusal_semantics_missing"
+          ],
+          "classification": "semantic_mismatch",
+          "evidence": {
+            "wireEvidence": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-03-owned-preparation/formal-01/A-matrix/A-matrix/05f341af02b04c308c5d9958b29ac722_A_matrix_A_99-wire.json",
+            "requestSha256": "17138e6b306a8a1482341b278dc93f04dcea784189a011dd0a07b48de318dd6c",
+            "responseSha256": "0efbcf5f75a9395c18c69c86eab6e377bf1f929236d3a7a9628cc5aefa32c613",
+            "captureFidelity": {
+              "comparator": "response-frame-fidelity-v1",
+              "passed": true,
+              "classification": "exact_wire_frames",
+              "errors": [],
+              "storedSha256": "05ea15434a0adb30c10dbd9c14fa04dced2c61eff2e5748a4fced249a4d06762",
+              "wireSha256": "0efbcf5f75a9395c18c69c86eab6e377bf1f929236d3a7a9628cc5aefa32c613",
+              "evidence": {
+                "wireEvidence": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-03-owned-preparation/formal-01/A-matrix/A-matrix/05f341af02b04c308c5d9958b29ac722_A_matrix_A_99-wire.json",
+                "responseKey": "dumps/v1/architecture-key/2026100308/01M40ETHX740CW4DHFDSMCT6HM-08515c19-5439-4ec5-9530-60c420034764.resp.gz",
+                "responseType": "events"
+              },
+              "details": {
+                "storedEventsSha256": "a1d45a726db29d107084bdea7f33984dd01593d2472dc32c3f5087ebcf9374e1",
+                "wireEventsSha256": "a1d45a726db29d107084bdea7f33984dd01593d2472dc32c3f5087ebcf9374e1",
+                "storedDone": true,
+                "wireDone": true,
+                "differences": []
+              }
+            },
+            "canonicalEvidence": {
+              "wireOraclePassed": false,
+              "canonicalOraclePassed": false,
+              "errors": [
+                "refusal_semantics_missing"
+              ],
+              "classification": "semantic_mismatch",
+              "protocol": "chat"
+            },
+            "objects": [
+              {
+                "side": "request",
+                "key": "dumps/v1/architecture-key/2026100308/01M40ETHX740CW4DHFDSMCT6HM-effdd9a3-98e3-475c-8704-ed96b336f8dc.req.gz",
+                "type": "bytes",
+                "compressedBytes": 303,
+                "decodedBytes": 65765,
+                "sha256": "17138e6b306a8a1482341b278dc93f04dcea784189a011dd0a07b48de318dd6c"
+              },
+              {
+                "side": "response",
+                "key": "dumps/v1/architecture-key/2026100308/01M40ETHX740CW4DHFDSMCT6HM-08515c19-5439-4ec5-9530-60c420034764.resp.gz",
+                "type": "events",
+                "compressedBytes": 315,
+                "decodedBytes": 1088,
+                "sha256": "05ea15434a0adb30c10dbd9c14fa04dced2c61eff2e5748a4fced249a4d06762"
+              }
+            ],
+            "metadataSha256": "41c6d767cedd8b297ded73da52b7d9a9856ee17b6e82e9547c909791b310db11"
+          }
+        },
+        {
+          "cell": [
+            "chat",
+            "messages",
+            "failed",
+            true
+          ],
+          "logicalId": "05f341af02b04c308c5d9958b29ac722_A_matrix_A_101",
+          "recordId": "01M40ETJ0WDJ4K7BJDRC3YT3E2",
+          "passed": false,
+          "errors": [
+            "false_success_on_fault",
+            "missing_explicit_failure_event"
+          ],
+          "classification": "false_success",
+          "evidence": {
+            "wireEvidence": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-03-owned-preparation/formal-01/A-matrix/A-matrix/05f341af02b04c308c5d9958b29ac722_A_matrix_A_101-wire.json",
+            "requestSha256": "0b7192f0174f4e85e10e1d771fb41c99ecf9de94dd56540d1d4962a133431e4b",
+            "responseSha256": "63ee8252dfb9bacc773cec6f5f8faeecc473b7f58a4b02dbfc37a4c63af190bb",
+            "captureFidelity": {
+              "comparator": "response-frame-fidelity-v1",
+              "passed": true,
+              "classification": "exact_wire_frames",
+              "errors": [],
+              "storedSha256": "74c3a9057764af2c8e558237935088904790dcf88c79ac863f96df1fe84fb576",
+              "wireSha256": "63ee8252dfb9bacc773cec6f5f8faeecc473b7f58a4b02dbfc37a4c63af190bb",
+              "evidence": {
+                "wireEvidence": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-03-owned-preparation/formal-01/A-matrix/A-matrix/05f341af02b04c308c5d9958b29ac722_A_matrix_A_101-wire.json",
+                "responseKey": "dumps/v1/architecture-key/2026100308/01M40ETJ0WDJ4K7BJDRC3YT3E2-f04e87ae-e91b-4e8b-9941-91762aabd50e.resp.gz",
+                "responseType": "events"
+              },
+              "details": {
+                "storedEventsSha256": "5d6ddf0846b43897556638d85e56f400f579b52568f5fd453b04e09f751357df",
+                "wireEventsSha256": "5d6ddf0846b43897556638d85e56f400f579b52568f5fd453b04e09f751357df",
+                "storedDone": true,
+                "wireDone": true,
+                "differences": []
+              }
+            },
+            "canonicalEvidence": {
+              "wireOraclePassed": false,
+              "canonicalOraclePassed": false,
+              "errors": [
+                "unexpected_captured_success_terminal",
+                "missing_explicit_failure_event"
+              ],
+              "classification": "false_success",
+              "protocol": "chat"
+            },
+            "objects": [
+              {
+                "side": "request",
+                "key": "dumps/v1/architecture-key/2026100308/01M40ETJ0WDJ4K7BJDRC3YT3E2-9c63c213-abee-4e39-ab9c-dc42647f3930.req.gz",
+                "type": "bytes",
+                "compressedBytes": 303,
+                "decodedBytes": 65765,
+                "sha256": "0b7192f0174f4e85e10e1d771fb41c99ecf9de94dd56540d1d4962a133431e4b"
+              },
+              {
+                "side": "response",
+                "key": "dumps/v1/architecture-key/2026100308/01M40ETJ0WDJ4K7BJDRC3YT3E2-f04e87ae-e91b-4e8b-9941-91762aabd50e.resp.gz",
+                "type": "events",
+                "compressedBytes": 276,
+                "decodedBytes": 818,
+                "sha256": "74c3a9057764af2c8e558237935088904790dcf88c79ac863f96df1fe84fb576"
+              }
+            ],
+            "metadataSha256": "48024e86d4d401c97b656d88488d29a34efcdcebbfd18b4d6a450c97b929e657"
+          }
+        },
+        {
+          "cell": [
+            "messages",
+            "responses",
+            "refusal",
+            false
+          ],
+          "logicalId": "05f341af02b04c308c5d9958b29ac722_A_matrix_A_112",
+          "recordId": "01M40ETKSYDBBV6CG765NN8YQD",
+          "passed": false,
+          "errors": [
+            "refusal_semantics_missing"
+          ],
+          "classification": "semantic_mismatch",
+          "evidence": {
+            "wireEvidence": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-03-owned-preparation/formal-01/A-matrix/A-matrix/05f341af02b04c308c5d9958b29ac722_A_matrix_A_112-wire.json",
+            "requestSha256": "a714734debd718dfbba2025f84aee8e5deff26e5382889040be22ecff6a03583",
+            "responseSha256": "adc4557d8cbef2723760d82eba6cb8f3c7c7e20f4362954960703c4c3a7bbe0d",
+            "captureFidelity": {
+              "comparator": "response-frame-fidelity-v1",
+              "passed": true,
+              "classification": "canonical_source_semantics",
+              "errors": [],
+              "storedSha256": "26e370ed269b47745e4506b9832a6994440e2036b74ae4e006c06762409b43a6",
+              "wireSha256": "adc4557d8cbef2723760d82eba6cb8f3c7c7e20f4362954960703c4c3a7bbe0d",
+              "evidence": {
+                "wireEvidence": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-03-owned-preparation/formal-01/A-matrix/A-matrix/05f341af02b04c308c5d9958b29ac722_A_matrix_A_112-wire.json",
+                "responseKey": "dumps/v1/architecture-key/2026100308/01M40ETKSYDBBV6CG765NN8YQD-c6688222-61c2-4791-8910-51cda717b12b.resp.gz",
+                "responseType": "events"
+              },
+              "details": {}
+            },
+            "canonicalEvidence": {
+              "wireOraclePassed": false,
+              "canonicalOraclePassed": true,
+              "errors": [],
+              "classification": "expected_refusal",
+              "protocol": "responses"
+            },
+            "objects": [
+              {
+                "side": "request",
+                "key": "dumps/v1/architecture-key/2026100308/01M40ETKSYDBBV6CG765NN8YQD-07baaeee-04a1-4cec-9c45-0246d215077d.req.gz",
+                "type": "bytes",
+                "compressedBytes": 278,
+                "decodedBytes": 65728,
+                "sha256": "a714734debd718dfbba2025f84aee8e5deff26e5382889040be22ecff6a03583"
+              },
+              {
+                "side": "response",
+                "key": "dumps/v1/architecture-key/2026100308/01M40ETKSYDBBV6CG765NN8YQD-c6688222-61c2-4791-8910-51cda717b12b.resp.gz",
+                "type": "events",
+                "compressedBytes": 412,
+                "decodedBytes": 1784,
+                "sha256": "26e370ed269b47745e4506b9832a6994440e2036b74ae4e006c06762409b43a6"
+              }
+            ],
+            "metadataSha256": "8687e7867086017ed97f15988b2e1ede106500bf4d5babb9ff36be55fb77a562"
+          }
+        },
+        {
+          "cell": [
+            "messages",
+            "responses",
+            "refusal",
+            true
+          ],
+          "logicalId": "05f341af02b04c308c5d9958b29ac722_A_matrix_A_113",
+          "recordId": "01M40ETKTBY1EWVBZ9SG3G77KJ",
+          "passed": false,
+          "errors": [
+            "refusal_semantics_missing"
+          ],
+          "classification": "semantic_mismatch",
+          "evidence": {
+            "wireEvidence": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-03-owned-preparation/formal-01/A-matrix/A-matrix/05f341af02b04c308c5d9958b29ac722_A_matrix_A_113-wire.json",
+            "requestSha256": "5ab97ddd0a32b4e646dd0b174599b97d9d17f181a0bf7bc60779552131a5d29c",
+            "responseSha256": "c708d13cee6e756f8252b595a12a20333fdc5fb96017d5d78ed1b9db7a47c45e",
+            "captureFidelity": {
+              "comparator": "response-frame-fidelity-v1",
+              "passed": true,
+              "classification": "exact_wire_frames",
+              "errors": [],
+              "storedSha256": "71f14a33f10e47c7d8ebcf4b1bbdd66dc5fcdaca11b8ea8128a10ac63476efe9",
+              "wireSha256": "c708d13cee6e756f8252b595a12a20333fdc5fb96017d5d78ed1b9db7a47c45e",
+              "evidence": {
+                "wireEvidence": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-03-owned-preparation/formal-01/A-matrix/A-matrix/05f341af02b04c308c5d9958b29ac722_A_matrix_A_113-wire.json",
+                "responseKey": "dumps/v1/architecture-key/2026100308/01M40ETKTBY1EWVBZ9SG3G77KJ-00533132-5087-4bd3-b234-48871f52f113.resp.gz",
+                "responseType": "events"
+              },
+              "details": {
+                "storedEventsSha256": "bba2ec244e309e45cfb85c768f8b14e86bd848f7423fca8a73da61298cfc8048",
+                "wireEventsSha256": "bba2ec244e309e45cfb85c768f8b14e86bd848f7423fca8a73da61298cfc8048",
+                "storedDone": false,
+                "wireDone": false,
+                "differences": []
+              }
+            },
+            "canonicalEvidence": {
+              "wireOraclePassed": false,
+              "canonicalOraclePassed": false,
+              "errors": [
+                "refusal_semantics_missing"
+              ],
+              "classification": "semantic_mismatch",
+              "protocol": "messages"
+            },
+            "objects": [
+              {
+                "side": "request",
+                "key": "dumps/v1/architecture-key/2026100308/01M40ETKTBY1EWVBZ9SG3G77KJ-a9b396e6-f691-4d76-8e38-da467f187191.req.gz",
+                "type": "bytes",
+                "compressedBytes": 278,
+                "decodedBytes": 65727,
+                "sha256": "5ab97ddd0a32b4e646dd0b174599b97d9d17f181a0bf7bc60779552131a5d29c"
+              },
+              {
+                "side": "response",
+                "key": "dumps/v1/architecture-key/2026100308/01M40ETKTBY1EWVBZ9SG3G77KJ-00533132-5087-4bd3-b234-48871f52f113.resp.gz",
+                "type": "events",
+                "compressedBytes": 258,
+                "decodedBytes": 527,
+                "sha256": "71f14a33f10e47c7d8ebcf4b1bbdd66dc5fcdaca11b8ea8128a10ac63476efe9"
+              }
+            ],
+            "metadataSha256": "afb1b2076ea4151d63a5dc307dff55474561bd79684187f58c302f94c46c2f4d"
+          }
+        },
+        {
+          "cell": [
+            "messages",
+            "chat",
+            "refusal",
+            false
+          ],
+          "logicalId": "05f341af02b04c308c5d9958b29ac722_A_matrix_A_126",
+          "recordId": "01M40ETNXF2E84THCS5QKJQ5H8",
+          "passed": false,
+          "errors": [
+            "refusal_semantics_missing"
+          ],
+          "classification": "semantic_mismatch",
+          "evidence": {
+            "wireEvidence": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-03-owned-preparation/formal-01/A-matrix/A-matrix/05f341af02b04c308c5d9958b29ac722_A_matrix_A_126-wire.json",
+            "requestSha256": "e60783ee7f6e4a051c6edd081092258bfd75546fe565958720bc6e027603474b",
+            "responseSha256": "5ed9d400b84c2aa41f5002b6e0d5237d5278539c447128cd8062234185860447",
+            "captureFidelity": {
+              "comparator": "response-frame-fidelity-v1",
+              "passed": true,
+              "classification": "canonical_source_semantics",
+              "errors": [],
+              "storedSha256": "330448c8b04965d2e03192db89267ff1ab4c80ce7adb74d96acd699168cd01de",
+              "wireSha256": "5ed9d400b84c2aa41f5002b6e0d5237d5278539c447128cd8062234185860447",
+              "evidence": {
+                "wireEvidence": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-03-owned-preparation/formal-01/A-matrix/A-matrix/05f341af02b04c308c5d9958b29ac722_A_matrix_A_126-wire.json",
+                "responseKey": "dumps/v1/architecture-key/2026100308/01M40ETNXF2E84THCS5QKJQ5H8-a02596ab-fb0e-456f-bfac-4608a8db30f9.resp.gz",
+                "responseType": "events"
+              },
+              "details": {}
+            },
+            "canonicalEvidence": {
+              "wireOraclePassed": false,
+              "canonicalOraclePassed": true,
+              "errors": [],
+              "classification": "expected_refusal",
+              "protocol": "chat"
+            },
+            "objects": [
+              {
+                "side": "request",
+                "key": "dumps/v1/architecture-key/2026100308/01M40ETNXF2E84THCS5QKJQ5H8-260c36fc-d4e1-4496-a67f-f9f346210766.req.gz",
+                "type": "bytes",
+                "compressedBytes": 272,
+                "decodedBytes": 65723,
+                "sha256": "e60783ee7f6e4a051c6edd081092258bfd75546fe565958720bc6e027603474b"
+              },
+              {
+                "side": "response",
+                "key": "dumps/v1/architecture-key/2026100308/01M40ETNXF2E84THCS5QKJQ5H8-a02596ab-fb0e-456f-bfac-4608a8db30f9.resp.gz",
+                "type": "events",
+                "compressedBytes": 304,
+                "decodedBytes": 443,
+                "sha256": "330448c8b04965d2e03192db89267ff1ab4c80ce7adb74d96acd699168cd01de"
+              }
+            ],
+            "metadataSha256": "e44e86778689533bb47c3a5ec380e84d77d58160c01c61fab7b200a688f1153f"
+          }
+        },
+        {
+          "cell": [
+            "messages",
+            "chat",
+            "refusal",
+            true
+          ],
+          "logicalId": "05f341af02b04c308c5d9958b29ac722_A_matrix_A_127",
+          "recordId": "01M40ETNXT2V305VX145QXK87Y",
+          "passed": false,
+          "errors": [
+            "refusal_semantics_missing"
+          ],
+          "classification": "semantic_mismatch",
+          "evidence": {
+            "wireEvidence": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-03-owned-preparation/formal-01/A-matrix/A-matrix/05f341af02b04c308c5d9958b29ac722_A_matrix_A_127-wire.json",
+            "requestSha256": "2f9b5358c3d1e7b96f275b838ee18d0198f3a706005298dcf7df9d56f2bb6548",
+            "responseSha256": "30ab30f53ba9e93e83716d7937ecbccd9a01153fa6339a369afa0f3112ec7e59",
+            "captureFidelity": {
+              "comparator": "response-frame-fidelity-v1",
+              "passed": true,
+              "classification": "exact_wire_frames",
+              "errors": [],
+              "storedSha256": "e92c8c5c7949d11c93e1a8889708470add7ea7930a5877d9e4253798f903c06c",
+              "wireSha256": "30ab30f53ba9e93e83716d7937ecbccd9a01153fa6339a369afa0f3112ec7e59",
+              "evidence": {
+                "wireEvidence": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-03-owned-preparation/formal-01/A-matrix/A-matrix/05f341af02b04c308c5d9958b29ac722_A_matrix_A_127-wire.json",
+                "responseKey": "dumps/v1/architecture-key/2026100308/01M40ETNXT2V305VX145QXK87Y-4e4b2d7f-dd9d-443b-a0fc-f477583a35ed.resp.gz",
+                "responseType": "events"
+              },
+              "details": {
+                "storedEventsSha256": "fb5fea3298c8ffeabe7fe272a4a5bb0e367df0c4f14e933065761d4fffab3ecc",
+                "wireEventsSha256": "fb5fea3298c8ffeabe7fe272a4a5bb0e367df0c4f14e933065761d4fffab3ecc",
+                "storedDone": false,
+                "wireDone": false,
+                "differences": []
+              }
+            },
+            "canonicalEvidence": {
+              "wireOraclePassed": false,
+              "canonicalOraclePassed": false,
+              "errors": [
+                "refusal_semantics_missing"
+              ],
+              "classification": "semantic_mismatch",
+              "protocol": "messages"
+            },
+            "objects": [
+              {
+                "side": "request",
+                "key": "dumps/v1/architecture-key/2026100308/01M40ETNXT2V305VX145QXK87Y-bf6d1989-fa94-4732-9e58-9f30a76a1f75.req.gz",
+                "type": "bytes",
+                "compressedBytes": 271,
+                "decodedBytes": 65722,
+                "sha256": "2f9b5358c3d1e7b96f275b838ee18d0198f3a706005298dcf7df9d56f2bb6548"
+              },
+              {
+                "side": "response",
+                "key": "dumps/v1/architecture-key/2026100308/01M40ETNXT2V305VX145QXK87Y-4e4b2d7f-dd9d-443b-a0fc-f477583a35ed.resp.gz",
+                "type": "events",
+                "compressedBytes": 254,
+                "decodedBytes": 525,
+                "sha256": "e92c8c5c7949d11c93e1a8889708470add7ea7930a5877d9e4253798f903c06c"
+              }
+            ],
+            "metadataSha256": "6e5f6474b2c81e9e3dc7015e239be4f427279e6d49c9772281a9b279b20ab295"
+          }
+        },
+        {
+          "cell": [
+            "messages",
+            "chat",
+            "truncated",
+            true
+          ],
+          "logicalId": "05f341af02b04c308c5d9958b29ac722_A_matrix_A_131",
+          "recordId": "01M40ETP1DD5RBCYEHB3QKMTNF",
+          "passed": false,
+          "errors": [
+            "false_success_on_fault"
+          ],
+          "classification": "false_success",
+          "evidence": {
+            "wireEvidence": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-03-owned-preparation/formal-01/A-matrix/A-matrix/05f341af02b04c308c5d9958b29ac722_A_matrix_A_131-wire.json",
+            "requestSha256": "97cb2b866ef6ac0769a1731ce92d990e52d744cb02d215cb0ddf668df2508ae1",
+            "responseSha256": "333c5f621f8205a9e4680cf127f6edc4aaa08c5cec39c2b38a0b8fa16de6cfbd",
+            "captureFidelity": {
+              "comparator": "response-frame-fidelity-v1",
+              "passed": true,
+              "classification": "exact_wire_frames",
+              "errors": [],
+              "storedSha256": "3c42b82066ee522154748423c4abeb0b1954582b23496629a3538fc896dcf12d",
+              "wireSha256": "333c5f621f8205a9e4680cf127f6edc4aaa08c5cec39c2b38a0b8fa16de6cfbd",
+              "evidence": {
+                "wireEvidence": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-03-owned-preparation/formal-01/A-matrix/A-matrix/05f341af02b04c308c5d9958b29ac722_A_matrix_A_131-wire.json",
+                "responseKey": "dumps/v1/architecture-key/2026100308/01M40ETP1DD5RBCYEHB3QKMTNF-f74dae75-9618-4c5f-b469-93e93a43e1e2.resp.gz",
+                "responseType": "events"
+              },
+              "details": {
+                "storedEventsSha256": "8259087cc78d65c1b355a64f25443e5d42161b4718cc5298399f15adc37c2027",
+                "wireEventsSha256": "8259087cc78d65c1b355a64f25443e5d42161b4718cc5298399f15adc37c2027",
+                "storedDone": false,
+                "wireDone": false,
+                "differences": []
+              }
+            },
+            "canonicalEvidence": {
+              "wireOraclePassed": false,
+              "canonicalOraclePassed": false,
+              "errors": [
+                "unexpected_captured_success_terminal"
+              ],
+              "classification": "false_success",
+              "protocol": "messages"
+            },
+            "objects": [
+              {
+                "side": "request",
+                "key": "dumps/v1/architecture-key/2026100308/01M40ETP1DD5RBCYEHB3QKMTNF-fab16340-df65-4705-98f7-76afe8ea8454.req.gz",
+                "type": "bytes",
+                "compressedBytes": 274,
+                "decodedBytes": 65724,
+                "sha256": "97cb2b866ef6ac0769a1731ce92d990e52d744cb02d215cb0ddf668df2508ae1"
+              },
+              {
+                "side": "response",
+                "key": "dumps/v1/architecture-key/2026100308/01M40ETP1DD5RBCYEHB3QKMTNF-f74dae75-9618-4c5f-b469-93e93a43e1e2.resp.gz",
+                "type": "events",
+                "compressedBytes": 325,
+                "decodedBytes": 841,
+                "sha256": "3c42b82066ee522154748423c4abeb0b1954582b23496629a3538fc896dcf12d"
+              }
+            ],
+            "metadataSha256": "1874aca780bf8ea96c0fb7d521a15b86b0dc447c374cd09e9512cdfd8794e243"
+          }
+        }
+      ],
+      "completePairedEvidence": "formal-01/aggregate.json; formal-01-independent-audit/candidate-preservation-gates.json; formal-01-independent-audit/formal-{A,B}-matrix-outcomes.json"
+    },
+    "captureFidelity": {
+      "comparisonCount": 126,
+      "baselineFailureCount": 4,
+      "candidateFailureCount": 0,
+      "regressionCount": 0,
+      "improvementCount": 4,
+      "sharedFailureCount": 0,
+      "noRegression": true,
+      "baselineFailures": [
+        {
+          "cell": [
+            "responses",
+            "messages",
+            "ok",
+            true
+          ],
+          "logicalId": "05f341af02b04c308c5d9958b29ac722_A_matrix_A_53",
+          "recordId": "01M40ETC37FQRPSDA1N5HXZRS3",
+          "passed": false,
+          "errors": [
+            "Canonical/wire frame fidelity mismatch 05f341af02b04c308c5d9958b29ac722_A_matrix_A_53"
+          ],
+          "classification": "frame_value_mismatch",
+          "evidence": {
+            "wireEvidence": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-03-owned-preparation/formal-01/A-matrix/A-matrix/05f341af02b04c308c5d9958b29ac722_A_matrix_A_53-wire.json",
+            "requestSha256": "e6d23a23f566ba6ff1fcd39f4a032ff696d47ada09605f15049a2487ee3d6d1a",
+            "responseSha256": "791c366146a92ebc4d1bd1685c179468364dda5d6a4ca8a8c550f152286f6baf",
+            "captureFidelity": {
+              "comparator": "response-frame-fidelity-v1",
+              "passed": false,
+              "classification": "frame_value_mismatch",
+              "errors": [
+                "Canonical/wire frame fidelity mismatch 05f341af02b04c308c5d9958b29ac722_A_matrix_A_53"
+              ],
+              "storedSha256": "a3974fc1004772b1ef8d814bd2f90300f186e1bb452113e2bba1b0a8a982be76",
+              "wireSha256": "791c366146a92ebc4d1bd1685c179468364dda5d6a4ca8a8c550f152286f6baf",
+              "evidence": {
+                "wireEvidence": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-03-owned-preparation/formal-01/A-matrix/A-matrix/05f341af02b04c308c5d9958b29ac722_A_matrix_A_53-wire.json",
+                "responseKey": "dumps/v1/architecture-key/2026100308/01M40ETC37FQRPSDA1N5HXZRS3-fb39bb54-693d-46d3-9ff1-83750715e831.resp.gz",
+                "responseType": "events"
+              },
+              "details": {
+                "storedEventsSha256": "b9006e004962ebb6b4e8830fb1fd71ee4ddbc5f4104416266d4b1666c5cfd8d2",
+                "wireEventsSha256": "f0a93e6ef52a58deb7358bb0aec1dcc954df55fa64cff240cb3edef76a995d6f",
+                "storedDone": false,
+                "wireDone": false,
+                "differences": [
+                  {
+                    "path": "/0/response/output/0",
+                    "storedPresent": true,
+                    "wirePresent": false,
+                    "stored": {
+                      "type": "message",
+                      "id": "msg_0",
+                      "status": "completed",
+                      "role": "assistant",
+                      "content": [
+                        {
+                          "type": "output_text",
+                          "text": "BENCH_OK:65536"
+                        }
+                      ]
+                    },
+                    "wire": null
+                  },
+                  {
+                    "path": "/1/response/output/0",
+                    "storedPresent": true,
+                    "wirePresent": false,
+                    "stored": {
+                      "type": "message",
+                      "id": "msg_0",
+                      "status": "completed",
+                      "role": "assistant",
+                      "content": [
+                        {
+                          "type": "output_text",
+                          "text": "BENCH_OK:65536"
+                        }
+                      ]
+                    },
+                    "wire": null
+                  }
+                ]
+              }
+            },
+            "canonicalEvidence": {
+              "wireOraclePassed": true,
+              "canonicalOraclePassed": true,
+              "errors": [],
+              "classification": "success",
+              "protocol": "responses"
+            },
+            "objects": [
+              {
+                "side": "request",
+                "key": "dumps/v1/architecture-key/2026100308/01M40ETC37FQRPSDA1N5HXZRS3-1d373550-38b7-4cd7-bec5-68b012e18017.req.gz",
+                "type": "bytes",
+                "compressedBytes": 268,
+                "decodedBytes": 65717,
+                "sha256": "e6d23a23f566ba6ff1fcd39f4a032ff696d47ada09605f15049a2487ee3d6d1a"
+              },
+              {
+                "side": "response",
+                "key": "dumps/v1/architecture-key/2026100308/01M40ETC37FQRPSDA1N5HXZRS3-fb39bb54-693d-46d3-9ff1-83750715e831.resp.gz",
+                "type": "events",
+                "compressedBytes": 450,
+                "decodedBytes": 2475,
+                "sha256": "a3974fc1004772b1ef8d814bd2f90300f186e1bb452113e2bba1b0a8a982be76"
+              }
+            ],
+            "metadataSha256": "6c3122c6ec74db76e315923e5700b6bb70daed102960b8957a8a32d6b4eea58f"
+          }
+        },
+        {
+          "cell": [
+            "responses",
+            "messages",
+            "tool",
+            true
+          ],
+          "logicalId": "05f341af02b04c308c5d9958b29ac722_A_matrix_A_55",
+          "recordId": "01M40ETC6C73M391P4N8PB68FQ",
+          "passed": false,
+          "errors": [
+            "Canonical/wire frame fidelity mismatch 05f341af02b04c308c5d9958b29ac722_A_matrix_A_55"
+          ],
+          "classification": "frame_value_mismatch",
+          "evidence": {
+            "wireEvidence": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-03-owned-preparation/formal-01/A-matrix/A-matrix/05f341af02b04c308c5d9958b29ac722_A_matrix_A_55-wire.json",
+            "requestSha256": "d1a7a97998f3a35b4ffd457740948ab63c4c0c99454b959e0ad03e7b86cd4bbf",
+            "responseSha256": "97d7203a43ee9c1af4ef7eab8f08304bcab4083479181a3aebe91ed58bd724de",
+            "captureFidelity": {
+              "comparator": "response-frame-fidelity-v1",
+              "passed": false,
+              "classification": "frame_value_mismatch",
+              "errors": [
+                "Canonical/wire frame fidelity mismatch 05f341af02b04c308c5d9958b29ac722_A_matrix_A_55"
+              ],
+              "storedSha256": "6fa5cdddb2bc63dd7cfdc3cdde74812fa0ec6a4580802756323cdc9ee413b366",
+              "wireSha256": "97d7203a43ee9c1af4ef7eab8f08304bcab4083479181a3aebe91ed58bd724de",
+              "evidence": {
+                "wireEvidence": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-03-owned-preparation/formal-01/A-matrix/A-matrix/05f341af02b04c308c5d9958b29ac722_A_matrix_A_55-wire.json",
+                "responseKey": "dumps/v1/architecture-key/2026100308/01M40ETC6C73M391P4N8PB68FQ-1acba1f4-a617-4699-86d6-871e122f7e7b.resp.gz",
+                "responseType": "events"
+              },
+              "details": {
+                "storedEventsSha256": "2d0e13fab0a9d80df782bed38eedd37d9ea5dce483e7822b340fceb1f101d434",
+                "wireEventsSha256": "fa4cdd8cb597a7f8077fe5ece449b165ada2c8ece79ec00f510cac6acfa06a2c",
+                "storedDone": false,
+                "wireDone": false,
+                "differences": [
+                  {
+                    "path": "/0/response/output/0",
+                    "storedPresent": true,
+                    "wirePresent": false,
+                    "stored": {
+                      "type": "function_call",
+                      "id": "fc_0",
+                      "call_id": "call_bench",
+                      "name": "weather",
+                      "arguments": "{\"city\":\"Paris\"}",
+                      "status": "completed"
+                    },
+                    "wire": null
+                  },
+                  {
+                    "path": "/1/response/output/0",
+                    "storedPresent": true,
+                    "wirePresent": false,
+                    "stored": {
+                      "type": "function_call",
+                      "id": "fc_0",
+                      "call_id": "call_bench",
+                      "name": "weather",
+                      "arguments": "{\"city\":\"Paris\"}",
+                      "status": "completed"
+                    },
+                    "wire": null
+                  }
+                ]
+              }
+            },
+            "canonicalEvidence": {
+              "wireOraclePassed": true,
+              "canonicalOraclePassed": true,
+              "errors": [],
+              "classification": "success",
+              "protocol": "responses"
+            },
+            "objects": [
+              {
+                "side": "request",
+                "key": "dumps/v1/architecture-key/2026100308/01M40ETC6C73M391P4N8PB68FQ-dc0651fa-d0ed-4426-8a6e-92e6abaa3098.req.gz",
+                "type": "bytes",
+                "compressedBytes": 270,
+                "decodedBytes": 65719,
+                "sha256": "d1a7a97998f3a35b4ffd457740948ab63c4c0c99454b959e0ad03e7b86cd4bbf"
+              },
+              {
+                "side": "response",
+                "key": "dumps/v1/architecture-key/2026100308/01M40ETC6C73M391P4N8PB68FQ-1acba1f4-a617-4699-86d6-871e122f7e7b.resp.gz",
+                "type": "events",
+                "compressedBytes": 412,
+                "decodedBytes": 2103,
+                "sha256": "6fa5cdddb2bc63dd7cfdc3cdde74812fa0ec6a4580802756323cdc9ee413b366"
+              }
+            ],
+            "metadataSha256": "47d60e3eab85bcfaf9d65558a1ad6b5d31e0e5370cf909640e3713c813efa9b4"
+          }
+        },
+        {
+          "cell": [
+            "responses",
+            "messages",
+            "refusal",
+            true
+          ],
+          "logicalId": "05f341af02b04c308c5d9958b29ac722_A_matrix_A_57",
+          "recordId": "01M40ETC9Q0993G78N1JE6HZ2Q",
+          "passed": false,
+          "errors": [
+            "Canonical/wire frame fidelity mismatch 05f341af02b04c308c5d9958b29ac722_A_matrix_A_57"
+          ],
+          "classification": "frame_value_mismatch",
+          "evidence": {
+            "wireEvidence": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-03-owned-preparation/formal-01/A-matrix/A-matrix/05f341af02b04c308c5d9958b29ac722_A_matrix_A_57-wire.json",
+            "requestSha256": "42924c1bb226875db0c84b1fd2e1d0427776ac919fa1ce1dfb784b1953533c92",
+            "responseSha256": "bdda9820b79eca32e4965b9d45cf21b9ab086b1c614cd9ebe2f192187c605c6f",
+            "captureFidelity": {
+              "comparator": "response-frame-fidelity-v1",
+              "passed": false,
+              "classification": "frame_value_mismatch",
+              "errors": [
+                "Canonical/wire frame fidelity mismatch 05f341af02b04c308c5d9958b29ac722_A_matrix_A_57"
+              ],
+              "storedSha256": "e5dc8f1af3fd0111fe388d6756523b17b33a5bdda488c2bea8f0467812fa63ef",
+              "wireSha256": "bdda9820b79eca32e4965b9d45cf21b9ab086b1c614cd9ebe2f192187c605c6f",
+              "evidence": {
+                "wireEvidence": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-03-owned-preparation/formal-01/A-matrix/A-matrix/05f341af02b04c308c5d9958b29ac722_A_matrix_A_57-wire.json",
+                "responseKey": "dumps/v1/architecture-key/2026100308/01M40ETC9Q0993G78N1JE6HZ2Q-e34815ff-3f3e-4441-b20b-674936b9294c.resp.gz",
+                "responseType": "events"
+              },
+              "details": {
+                "storedEventsSha256": "20f86bdb4cabb2d5d875c63ba24975f195eb855a3b53ec2ca90d1e5da59e76c7",
+                "wireEventsSha256": "d2db4da06814a95f3b0805e9daa9b4685283723856f3accf2e0c52bec1f9aa63",
+                "storedDone": false,
+                "wireDone": false,
+                "differences": [
+                  {
+                    "path": "/0/response/output/0",
+                    "storedPresent": true,
+                    "wirePresent": false,
+                    "stored": {
+                      "type": "message",
+                      "id": "msg_0",
+                      "status": "completed",
+                      "role": "assistant",
+                      "content": [
+                        {
+                          "type": "output_text",
+                          "text": "BENCH_REFUSAL"
+                        }
+                      ]
+                    },
+                    "wire": null
+                  },
+                  {
+                    "path": "/1/response/output/0",
+                    "storedPresent": true,
+                    "wirePresent": false,
+                    "stored": {
+                      "type": "message",
+                      "id": "msg_0",
+                      "status": "completed",
+                      "role": "assistant",
+                      "content": [
+                        {
+                          "type": "output_text",
+                          "text": "BENCH_REFUSAL"
+                        }
+                      ]
+                    },
+                    "wire": null
+                  }
+                ]
+              }
+            },
+            "canonicalEvidence": {
+              "wireOraclePassed": false,
+              "canonicalOraclePassed": false,
+              "errors": [
+                "refusal_semantics_missing"
+              ],
+              "classification": "semantic_mismatch",
+              "protocol": "responses"
+            },
+            "objects": [
+              {
+                "side": "request",
+                "key": "dumps/v1/architecture-key/2026100308/01M40ETC9Q0993G78N1JE6HZ2Q-a8c7400d-eb4e-4804-8d82-a7e7d17e1fae.req.gz",
+                "type": "bytes",
+                "compressedBytes": 271,
+                "decodedBytes": 65722,
+                "sha256": "42924c1bb226875db0c84b1fd2e1d0427776ac919fa1ce1dfb784b1953533c92"
+              },
+              {
+                "side": "response",
+                "key": "dumps/v1/architecture-key/2026100308/01M40ETC9Q0993G78N1JE6HZ2Q-e34815ff-3f3e-4441-b20b-674936b9294c.resp.gz",
+                "type": "events",
+                "compressedBytes": 462,
+                "decodedBytes": 2482,
+                "sha256": "e5dc8f1af3fd0111fe388d6756523b17b33a5bdda488c2bea8f0467812fa63ef"
+              }
+            ],
+            "metadataSha256": "b5cb87f5e7325ae75046b1111a4c26444ddc07840afa5076c26a42295ba40b55"
+          }
+        },
+        {
+          "cell": [
+            "responses",
+            "messages",
+            "slow",
+            true
+          ],
+          "logicalId": "05f341af02b04c308c5d9958b29ac722_A_matrix_A_65",
+          "recordId": "01M40ETCK1CV47CB0EJ5D1F2EN",
+          "passed": false,
+          "errors": [
+            "Canonical/wire frame fidelity mismatch 05f341af02b04c308c5d9958b29ac722_A_matrix_A_65"
+          ],
+          "classification": "frame_value_mismatch",
+          "evidence": {
+            "wireEvidence": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-03-owned-preparation/formal-01/A-matrix/A-matrix/05f341af02b04c308c5d9958b29ac722_A_matrix_A_65-wire.json",
+            "requestSha256": "a1f6f4b949b521cd05b054d1eb32c4b9595625c171d5e630e63427a334d825d5",
+            "responseSha256": "17ad97b14180a45b205b21d57bd568bb4d36c2d230bae1a232593a2ea90155bf",
+            "captureFidelity": {
+              "comparator": "response-frame-fidelity-v1",
+              "passed": false,
+              "classification": "frame_value_mismatch",
+              "errors": [
+                "Canonical/wire frame fidelity mismatch 05f341af02b04c308c5d9958b29ac722_A_matrix_A_65"
+              ],
+              "storedSha256": "e96d03ced025c8feabe3d218744b178740570dae815e2a333800db17bb24d609",
+              "wireSha256": "17ad97b14180a45b205b21d57bd568bb4d36c2d230bae1a232593a2ea90155bf",
+              "evidence": {
+                "wireEvidence": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-03-owned-preparation/formal-01/A-matrix/A-matrix/05f341af02b04c308c5d9958b29ac722_A_matrix_A_65-wire.json",
+                "responseKey": "dumps/v1/architecture-key/2026100308/01M40ETCK1CV47CB0EJ5D1F2EN-235096b8-ed14-4845-8466-24e2ed881c4f.resp.gz",
+                "responseType": "events"
+              },
+              "details": {
+                "storedEventsSha256": "e0496e820c9176d2e1089e1221289f6d900f0387de725b5faab8b778d8fa5aeb",
+                "wireEventsSha256": "e3158c2624bc0cb9620f0d81a0e17a7a1b654646ca4298ad8f55b766002033a4",
+                "storedDone": false,
+                "wireDone": false,
+                "differences": [
+                  {
+                    "path": "/0/response/output/0",
+                    "storedPresent": true,
+                    "wirePresent": false,
+                    "stored": {
+                      "type": "message",
+                      "id": "msg_0",
+                      "status": "completed",
+                      "role": "assistant",
+                      "content": [
+                        {
+                          "type": "output_text",
+                          "text": "BENCH_OK:65536"
+                        }
+                      ]
+                    },
+                    "wire": null
+                  },
+                  {
+                    "path": "/1/response/output/0",
+                    "storedPresent": true,
+                    "wirePresent": false,
+                    "stored": {
+                      "type": "message",
+                      "id": "msg_0",
+                      "status": "completed",
+                      "role": "assistant",
+                      "content": [
+                        {
+                          "type": "output_text",
+                          "text": "BENCH_OK:65536"
+                        }
+                      ]
+                    },
+                    "wire": null
+                  }
+                ]
+              }
+            },
+            "canonicalEvidence": {
+              "wireOraclePassed": true,
+              "canonicalOraclePassed": true,
+              "errors": [],
+              "classification": "success",
+              "protocol": "responses"
+            },
+            "objects": [
+              {
+                "side": "request",
+                "key": "dumps/v1/architecture-key/2026100308/01M40ETCK1CV47CB0EJ5D1F2EN-21395bf8-bd80-4dd3-9b4b-dfcabbd55a0f.req.gz",
+                "type": "bytes",
+                "compressedBytes": 271,
+                "decodedBytes": 65719,
+                "sha256": "a1f6f4b949b521cd05b054d1eb32c4b9595625c171d5e630e63427a334d825d5"
+              },
+              {
+                "side": "response",
+                "key": "dumps/v1/architecture-key/2026100308/01M40ETCK1CV47CB0EJ5D1F2EN-235096b8-ed14-4845-8466-24e2ed881c4f.resp.gz",
+                "type": "events",
+                "compressedBytes": 457,
+                "decodedBytes": 2494,
+                "sha256": "e96d03ced025c8feabe3d218744b178740570dae815e2a333800db17bb24d609"
+              }
+            ],
+            "metadataSha256": "527a68137dfb4ca7b60cd43509281c2aaab8d3164f207b424b65cf47d99655f3"
+          }
+        }
+      ],
+      "completePairedEvidence": "formal-01/aggregate.json; formal-01-independent-audit/candidate-preservation-gates.json; formal-01-independent-audit/formal-{A,B}-matrix-outcomes.json"
+    }
+  },
+  "storage": {
+    "A": {
+      "requests": 358,
+      "ownedObjects": 716,
+      "wireFailures": 19,
+      "captureFailures": 4,
+      "requestObjects": 358,
+      "requestCompressedBytes": 98038,
+      "requestDecodedBytes": 23529427,
+      "responseObjects": 358,
+      "responseCompressedBytes": 140283,
+      "responseDecodedBytes": 538759
+    },
+    "B": {
+      "requests": 358,
+      "ownedObjects": 1074,
+      "wireFailures": 0,
+      "captureFailures": 0,
+      "requestObjects": 358,
+      "requestCompressedBytes": 98090,
+      "requestDecodedBytes": 23529429,
+      "responseObjects": 358,
+      "responseCompressedBytes": 140366,
+      "responseDecodedBytes": 539318,
+      "upstreamObjects": 358,
+      "upstreamCompressedBytes": 512435,
+      "upstreamDecodedBytes": 32014430
+    }
+  },
+  "candidateSidecarTerminals": {
+    "eof": 337,
+    "cancelled": 21
+  },
+  "inputHashes": {
+    "freeze-01/manifest.json": "cab25076654be13791f6e0d166f7cd3468fe7627842964b089fec26c4abab442",
+    "ci-local-01.json": "c227453e1987e2e788c8c408ac29c9f658fdd8a43a209c245638bf7e0d6c629b",
+    "ci-local-01.log": "b28b68a4d4c87cb1b0d0497a850dc84c303866279bad71cffac2a423140f6de2",
+    "formal-01/aggregate.json": "e6322e07cb9a566dd6808cba377ad7e34d5ed0eb13857791425e28284109d7a5",
+    "formal-01-independent-analysis.json": "10c01c766b1bfb554a5dd6feefdb24234ac30fb31bbfe421aa3ac17589da6700",
+    "formal-01-independent-audit/result.json": "001b636c2980f9172648d9cc3ce6d3135b38c4d080c8162f8d5c4a32256e5ca5",
+    "canary-01-root-qualification.json": "932999d3172fd93579acacea71706ff6b2ae36491f97fb8c576b56bccecb455b",
+    "analyze-independent.py": "979644b64e6c19b9342c4185a9d7688ea82dfbe9278679a8b38464d5cac0fb7f",
+    "physical-audit.py": "01572c875b0261cb306739ccba60bf32bf930c188efd495df8fec4437f9f8e92",
+    "formal-01-independent-audit/candidate-preservation-gates.json": "bf3402c22a39651e23116acbae8da404f0071eac95a24bca8a7635776b1bf5d2",
+    "formal-01-independent-audit/process-liveness.json": "0a25697816d96d7c3c5ab674917860d829c840bff63e1ee15ce61e35e5402066",
+    "prior-evidence-baseline.json": "3ef922b9ee3d5fb0a5714e7d98fbd7b9a6017b8afb0e4ebb9cee2b80afa443ea",
+    "prior-evidence-verification-01.json": "fc7146b47c783d6e62929959dee7819debbdf734e240bf2c3559ddbbc5d38dc3",
+    "harness-identities.json": "6cc16c6c754201f62ea2239cf74fc34ac9d2ea55ef7732e11d97cd2db0a320b7",
+    "analysis-tool-identities.json": "1aa5f9da2a2228208cfa4e3a114a3e80279c890ff1173a6e89d49eb32e8c67a0",
+    "task-1-review.md": "1afcc5b55b88238ebc86355e823a24abdf158efddb141cbf1a32dbe76fd7bf41",
+    "task-2-review.md": "14c0d7e90f21f89a6ef9476a4657b4ddd424205e2faebe956766f9ebc4f8b7e7",
+    "whole-increment-code-review.md": "83de4b5796ab06daf3444950879881add02e48f007f87acd99f46985d4f64963",
+    "prior-evidence-final-01.json": "beb40445dc03ac0f6cad9f75e848ac6ef8eb0db01ff8477e717a13d60ba417ec",
+    "formal-01-profile-notes.md": "48114d392f87009794e47f212e5a04440cc00a73d9217b7a4b47609364b929ac",
+    "pre-integration-preservation-01.json": "c4334f6cd8308df0bd27c0cc676787a699a94738ce30ebfe5e9522b3b6e29c3e",
+    "tested-product-identities.json": "d53559b9b47b6977cc757a4e6d15f9f96163bb6f0b8cda8f15d468db44051f22"
+  },
+  "limitations": [
+    "Sequential synthetic direct_fetch only; ordinary fixed request is 64 KiB with a short response, and host scheduling is not isolated.",
+    "This pairs deployed A against current B. Prior B belongs to a separate run and cannot establish a causal optimization estimate.",
+    "Sparse weighted V8 samples include observation and background settlement; they are not billed or process CPU.",
+    "Settled V8 heap without forced GC is not peak, RSS, leak or cloud-limit evidence. Native compression streams may still retain input legitimately.",
+    "Ordinary large-string payloads do not stress large container counts; successful streaming does not exercise the null-body fast path.",
+    "B56 policy refusal HTTP 200 / dump 502 remains the explicit inherited narrow exception.",
+    "Large/concurrent/slow-consumer pressure, hosted-search/queue saturation, and catalog/affinity old-new rollback with backup/restore remain release gaps."
+  ]
+}

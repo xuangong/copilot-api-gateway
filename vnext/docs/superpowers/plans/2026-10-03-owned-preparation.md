@@ -62,14 +62,14 @@ return Promise.resolve(Bun.gzipSync(bytes))
 
 **Files:** New raw evidence in W; tracked `docs/superpowers/research/2026-10-03-owned-preparation/results.md` and `results.json`. Existing harness and old evidence are read-only.
 
-- [ ] Verify scope/protected hashes; run full `SETUP_TEST_CODEX=/Users/zhangxian/.local/bin/codex bun run ci:local` once after both reviewed changes. Preserve and fix any real failure before freezing.
-- [ ] Freeze exact deployed A and current B with the unchanged harness after generated assets settle. Run a separate four-request canary; inspect dispatch/settlement/Inspector/cleanup before formal collection.
-- [ ] Run one five-unit, 716-request comparison. Preserve every attempt and require zero candidate wire/capture failures plus physical collection and original no-regression gates.
-- [ ] Independently recompute results and inspect physical evidence without modifying original databases; verify prior evidence remains unchanged.
-- [ ] Record actual costs/benefits, reference applicability and remaining resource/rollback gaps. Keep sparse CPU, settled heap and cross-run boundaries explicit.
+- [x] Verify scope/protected hashes; run full `SETUP_TEST_CODEX=/Users/zhangxian/.local/bin/codex bun run ci:local` once after both reviewed changes. Preserve and fix any real failure before freezing.
+- [x] Freeze exact deployed A and current B with the unchanged harness after generated assets settle. Run a separate four-request canary; inspect dispatch/settlement/Inspector/cleanup before formal collection.
+- [x] Run one five-unit, 716-request comparison. Preserve every attempt and require zero candidate wire/capture failures plus physical collection and original no-regression gates.
+- [x] Independently recompute results and inspect physical evidence without modifying original databases; verify prior evidence remains unchanged.
+- [x] Record actual costs/benefits, reference applicability and remaining resource/rollback gaps. Keep sparse CPU, settled heap and cross-run boundaries explicit.
 
 ## Task 4: Local delivery
 
-- [ ] Independent whole-increment review of code, contracts and evidence; resolve substantive findings.
+- [x] Independent whole-increment review of code, contracts and evidence; resolve substantive findings.
 - [ ] Commit only owned documents, fast-forward local vNext under existing authorization, verify both heads/indexes, protected bytes, product inventory and fixture identity; save local-integration-receipt.json.
 - [ ] Mark each completed task and report the next priorities. No push, deployment or cleanup.
