@@ -71,5 +71,5 @@ return Promise.resolve(Bun.gzipSync(bytes))
 ## Task 4: Local delivery
 
 - [x] Independent whole-increment review of code, contracts and evidence; resolve substantive findings.
-- [ ] Commit only owned documents, fast-forward local vNext under existing authorization, verify both heads/indexes, protected bytes, product inventory and fixture identity; save local-integration-receipt.json.
-- [ ] Mark each completed task and report the next priorities. No push, deployment or cleanup.
+- [x] Commit only owned documents, fast-forward local vNext under existing authorization, verify both heads/indexes, protected bytes, product inventory and fixture identity; save local-integration-receipt.json.
+- [x] Mark each completed task and report the next priorities. No push, deployment or cleanup.

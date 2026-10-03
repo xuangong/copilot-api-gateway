@@ -33,6 +33,8 @@ There are no new dependencies, environment variables, configuration fields, wire
 
 [Machine-readable results](results.json) contain exact values, block medians, all heap fields, baseline failure details and input hashes. Raw evidence is retained in `.superpowers/sdd/2026-10-03-owned-preparation/` in the repair worktree, including task reviews, CI, freeze/canary/formal data, independent analysis, physical audit and process checks. Final branch/protected-file state is recorded separately in `local-integration-receipt.json`; documentation-only commits after the frozen product HEAD do not change the measured product. No push, deployment, dependency installation, existing-service restart or cleanup is part of this delivery.
 
+Post-merge checks match all 1,573 tracked/untracked product files in both worktrees to the tested source inventory. All 1,581 frozen candidate source inputs, including generated assets, still match in the repair worktree. MAIN has nine different ignored setup/dashboard generated assets; the Git fast-forward does not replace them, and this delivery leaves them untouched. Qualification belongs to the frozen repair artifact. Any later release must rebuild and identify its generated assets rather than treating MAIN's Git HEAD alone as that tested artifact.
+
 ## Ordinary workload results
 
 The fixture is a fixed 64 KiB request with a short synthetic response, three eligible providers, dump persistence enabled and Responses history retention disabled. Latency has 40 samples per mode/variant in four AB/BA/AB/BA blocks, without Inspector. Separate diagnostic windows have 40 requests per mode, B then A, and include background settlement. Existing host services remain running; scheduling is not isolated.
