@@ -68,6 +68,52 @@ test("owned candidate preparation gets independent carrier copies while inferenc
   expect(source.input).toEqual([signed])
 })
 
+test("candidate mutations and exact-degraded-exact attempts preserve the private carrier snapshot", async () => {
+  const auth = setup()
+  const initial = await createRequestAffinity("responses", {}, auth)
+  const codec = await initial?.execution.loadCodec?.()
+  if (!codec) throw new Error("missing codec")
+  const signed = await stampAffinityItem("responses", { type: "reasoning", encrypted_content: "native", summary: [] }, target, codec)
+  const source = { model: "alias", input: [signed, { type: "message", role: "user", content: "keep" }], extra: { text: "original" } }
+  const state = await createRequestAffinity("responses", source, auth)
+  if (!state) throw new Error("missing affinity state")
+  const candidate = state.analysis.cloneSource()
+  const candidateItems = candidate.input as Array<Record<string, unknown>>
+  const candidateReasoning = candidateItems[0]
+  if (!candidateReasoning) throw new Error("missing candidate reasoning")
+  candidateReasoning.encrypted_content = "candidate mutation"
+  candidateItems.splice(1, 1)
+  candidate.extra = { text: "candidate mutation" }
+  source.extra.text = "source mutation"
+  signed.encrypted_content = "source mutation"
+
+  state.execution.selected = target
+  const first = materializeAffinity(state, source, "model")
+  expect(first.input).toEqual([{ type: "reasoning", encrypted_content: "native", summary: [] }, { type: "message", role: "user", content: "keep" }])
+  expect(first.extra).toEqual({ text: "original" })
+  const firstItems = first.input as Array<Record<string, unknown>>
+  const firstReasoning = firstItems[0]
+  if (!firstReasoning) throw new Error("missing first reasoning")
+  firstReasoning.encrypted_content = "attempt mutation"
+  firstItems.length = 0
+
+  state.execution.selected = { ...target, upstreamId: "other" }
+  expect(state.analysis.classify(state.execution.selected)).toBe("degraded")
+  const degraded = materializeAffinity(state, source, "other-model")
+  expect(degraded.input).toEqual([{ type: "message", role: "user", content: "keep" }])
+  expect(degraded.model).toBe("other-model")
+  const degradedItems = degraded.input as unknown[]
+  degradedItems.length = 0
+
+  state.execution.selected = target
+  const retry = materializeAffinity(state, source, "model")
+  expect(retry.input).toEqual([{ type: "reasoning", encrypted_content: "native", summary: [] }, { type: "message", role: "user", content: "keep" }])
+  expect(retry.extra).toEqual({ text: "original" })
+  expect(retry.model).toBe("model")
+  const carrierCopy = state.analysis.cloneSource().input as Array<Record<string, unknown>>
+  expect(carrierCopy[0]?.encrypted_content).toStartWith("vnext-affinity:1:")
+})
+
 test("owned markers authenticate before any candidate preparation", async () => {
   const auth = setup()
   const foreign = new AffinityCodec({ ownerId: "other", apiKeyId: "other", version: 1, keyId: "other", secret: new Uint8Array(32).fill(3) })

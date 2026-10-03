@@ -20,9 +20,9 @@ The specification's Binding constraints apply to every task. Work only in the ex
 
 **Interfaces:** Keep `cloneAffinityInput(source: Readonly<Record<string, unknown>>): Record<string, unknown>`. Add internal-module `captureAffinityInput(source)` returning `{ snapshot: Readonly<Record<string, unknown>>; clone(): Record<string, unknown> }`. Only analysis consumes its snapshot. Trusted copy helper is unexported and never accepts arbitrary public provenance flags.
 
-- [ ] Add targeted contract tests before implementation: root spread self-cycle/getter behavior; inherited setter bypass; late accessor/runtime fallback and subsequent independent clones; cloneSource mutation followed by exact/degraded/exact materializations. Retain all existing deep/alias/sparse/runtime/large-string coverage. Run the focused file and preserve its output; new behavior-preservation cases may already pass before the refactor.
-- [ ] Refactor checked capture to return completed plain-route provenance. Preserve existing fallback expressions and exceptions. Build the bound clone closure; private normalized traversal retains identity Map, iterative work, own enumeration and safe property definition, without prototype/descriptor checks. Keep fallback copies checked.
-- [ ] Replace only analysis snapshot construction and its two clone call sites:
+- [x] Add targeted contract tests before implementation: root spread self-cycle/getter behavior; inherited setter bypass; late accessor/runtime fallback and subsequent independent clones; cloneSource mutation followed by exact/degraded/exact materializations. Retain all existing deep/alias/sparse/runtime/large-string coverage. Run the focused file and preserve its output; new behavior-preservation cases may already pass before the refactor.
+- [x] Refactor checked capture to return completed plain-route provenance. Preserve existing fallback expressions and exceptions. Build the bound clone closure; private normalized traversal retains identity Map, iterative work, own enumeration and safe property definition, without prototype/descriptor checks. Keep fallback copies checked.
+- [x] Replace only analysis snapshot construction and its two clone call sites:
 
 ```ts
 const input = captureAffinityInput({ ...body })
@@ -33,8 +33,8 @@ cloneSource: () => input.clone()
 const copy = input.clone()
 ```
 
-- [ ] Run grouped affinity tests and gateway typecheck. Use a narrow delegating primitive spy to verify repeated discovery was removed for the private plain graph; do not label it a time/heap measurement. Save exact commands, exit codes and logs in W/task-1-report.md.
-- [ ] Independent specification/code-quality review; fix substantive findings; root commits only reviewed Task 1 files and marks completion.
+- [x] Run grouped affinity tests and gateway typecheck. Use a narrow delegating primitive spy to verify repeated discovery was removed for the private plain graph; do not label it a time/heap measurement. Save exact commands, exit codes and logs in W/task-1-report.md.
+- [x] Independent specification/code-quality review; fix substantive findings; root commits only reviewed Task 1 files and marks completion.
 
 ## Task 2: Dump compression ownership and private headers
 
