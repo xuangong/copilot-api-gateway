@@ -1,0 +1,792 @@
+{
+  "version": 1,
+  "date": "2026-10-03",
+  "status": "Local qualification complete; integration receipt is maintained separately. No push or deployment.",
+  "conclusion": "Contracts preserved; no demonstrated overall latency or CPU reduction.",
+  "rawRoot": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-03-ordinary-hot-path",
+  "manifestSha256": "3eb87949abd347242c49f5dff9d3cc5434bd44a58090fc6a81717cc0afa50ff9",
+  "experimentId": "e6cc8858-0c25-4c33-8726-e715223b5744",
+  "variantHeads": {
+    "A": "e660fb4dfcf1734d10f89e52e2d739b2985c634b",
+    "B": "f96b0337613e5decbb7a084cd7763349925a2f4d"
+  },
+  "candidateProtectedOverlayFiles": 14,
+  "candidateProductInventoryFiles": 1573,
+  "runtime": {
+    "bun": "1.3.0",
+    "miniflare": "4.20260601.0",
+    "workerd": "1.20260601.1",
+    "wrangler": "4.97.0",
+    "compatibilityDate": "2025-06-01",
+    "compatibilityFlags": [
+      "nodejs_compat"
+    ]
+  },
+  "ci": {
+    "exitCode": 0,
+    "passed": 5955,
+    "skipped": 1,
+    "failed": 0,
+    "expectations": 237692,
+    "files": 560,
+    "lintErrors": 0,
+    "lintWarnings": 38
+  },
+  "qualification": {
+    "formalRequests": 716,
+    "formalObjects": 1790,
+    "canaryRequests": 4,
+    "canaryObjects": 10,
+    "checks": 39524,
+    "problems": [],
+    "frozenFiles": 9537,
+    "originalEvidenceFiles": 2825,
+    "changedOriginalEvidenceFiles": [],
+    "candidateAllWireAndCapturePass": true
+  },
+  "latency": [
+    {
+      "mode": "json",
+      "A": {
+        "n": 40,
+        "valid": 40,
+        "p50EofMs": 12.7780840000014,
+        "p95EofMs": 18.790750000000116,
+        "blockP50EofMs": {
+          "0": 13.562207999999373,
+          "1": 11.387416999999914,
+          "2": 13.803291000000172,
+          "3": 9.673584000000119
+        },
+        "p50FirstSemanticMs": 12.783709000001181,
+        "p95FirstSemanticMs": 18.79620900000009,
+        "blockP50FirstSemanticMs": {
+          "0": 13.571457999999438,
+          "1": 11.391832999999679,
+          "2": 13.806915999999546,
+          "3": 9.679709000000003
+        }
+      },
+      "B": {
+        "n": 40,
+        "valid": 40,
+        "p50EofMs": 14.609416999999667,
+        "p95EofMs": 21.986791999999696,
+        "blockP50EofMs": {
+          "0": 13.598624999999629,
+          "1": 15.460583000000042,
+          "2": 13.868791000000783,
+          "3": 15.205834000000323
+        },
+        "p50FirstSemanticMs": 14.616208999999799,
+        "p95FirstSemanticMs": 21.99304200000006,
+        "blockP50FirstSemanticMs": {
+          "0": 13.602666999999201,
+          "1": 15.466667000000598,
+          "2": 13.873000000001412,
+          "3": 15.210667000001195
+        }
+      },
+      "comparison": {
+        "p50EofMs": {
+          "delta": 1.831332999998267,
+          "percent": 14.33182783896292
+        },
+        "p95EofMs": {
+          "delta": 3.1960419999995793,
+          "percent": 17.00859199339866
+        },
+        "p50FirstSemanticMs": {
+          "delta": 1.8324999999986176,
+          "percent": 14.33465045237221
+        },
+        "p95FirstSemanticMs": {
+          "delta": 3.1968329999999696,
+          "percent": 17.007860468033485
+        }
+      },
+      "blockComparison": {
+        "0": {
+          "delta": 0.03641700000025594,
+          "percent": 0.2685182235832029
+        },
+        "1": {
+          "delta": 4.073166000000128,
+          "percent": 35.76900714183171
+        },
+        "2": {
+          "delta": 0.06550000000061118,
+          "percent": 0.47452451738219104
+        },
+        "3": {
+          "delta": 5.532250000000204,
+          "percent": 57.1892485763305
+        }
+      },
+      "blockFirstSemanticComparison": {
+        "0": {
+          "delta": 0.031208999999762455,
+          "percent": 0.22996055397852544
+        },
+        "1": {
+          "delta": 4.074834000000919,
+          "percent": 35.76978349314841
+        },
+        "2": {
+          "delta": 0.0660840000018652,
+          "percent": 0.4786296954502278
+        },
+        "3": {
+          "delta": 5.530958000001192,
+          "percent": 57.1397136009067
+        }
+      }
+    },
+    {
+      "mode": "sse",
+      "A": {
+        "n": 40,
+        "valid": 40,
+        "p50EofMs": 68.33391699999993,
+        "p95EofMs": 84.97433400000045,
+        "blockP50EofMs": {
+          "0": 64.76458399999956,
+          "1": 68.33391699999993,
+          "2": 65.63145900000018,
+          "3": 70.0556660000002
+        },
+        "p50FirstSemanticMs": 44.06770899999992,
+        "p95FirstSemanticMs": 63.39604200000031,
+        "blockP50FirstSemanticMs": {
+          "0": 42.97437499999978,
+          "1": 39.338166999999885,
+          "2": 44.54949999999917,
+          "3": 50.18554100000074
+        }
+      },
+      "B": {
+        "n": 40,
+        "valid": 40,
+        "p50EofMs": 71.78162499999962,
+        "p95EofMs": 91.86479199999849,
+        "blockP50EofMs": {
+          "0": 71.39816700000029,
+          "1": 61.341042000000016,
+          "2": 75.5302499999998,
+          "3": 71.78162499999962
+        },
+        "p50FirstSemanticMs": 50.43616699999984,
+        "p95FirstSemanticMs": 73.15745799999968,
+        "blockP50FirstSemanticMs": {
+          "0": 46.57770900000014,
+          "1": 42.75904199999968,
+          "2": 49.09745800000019,
+          "3": 50.43616699999984
+        }
+      },
+      "comparison": {
+        "p50EofMs": {
+          "delta": 3.447707999999693,
+          "percent": 5.045383246506563
+        },
+        "p95EofMs": {
+          "delta": 6.890457999998034,
+          "percent": 8.108869673515763
+        },
+        "p50FirstSemanticMs": {
+          "delta": 6.368457999999919,
+          "percent": 14.451529576906141
+        },
+        "p95FirstSemanticMs": {
+          "delta": 9.761415999999372,
+          "percent": 15.397516456941162
+        }
+      },
+      "blockComparison": {
+        "0": {
+          "delta": 6.633583000000726,
+          "percent": 10.24260883077821
+        },
+        "1": {
+          "delta": -6.992874999999913,
+          "percent": -10.233388201645043
+        },
+        "2": {
+          "delta": 9.898790999999619,
+          "percent": 15.082387548324338
+        },
+        "3": {
+          "delta": 1.7259589999994205,
+          "percent": 2.4636965124268606
+        }
+      },
+      "blockFirstSemanticComparison": {
+        "0": {
+          "delta": 3.603334000000359,
+          "percent": 8.384843293242493
+        },
+        "1": {
+          "delta": 3.4208749999997963,
+          "percent": 8.696071171795584
+        },
+        "2": {
+          "delta": 4.547958000001017,
+          "percent": 10.208774509256235
+        },
+        "3": {
+          "delta": 0.2506259999991016,
+          "percent": 0.4993988208657596
+        }
+      }
+    }
+  ],
+  "diagnostics": [
+    {
+      "mode": "json",
+      "A": {
+        "requests": 40,
+        "sampledNonIdleMsPerRequest": 12.48405,
+        "samples": 72,
+        "sampledWeightUs": 845568,
+        "wallWindowUs": 845596,
+        "heapStart": {
+          "usedSize": 22979752,
+          "totalSize": 29638656,
+          "embedderHeapUsedSize": 386896,
+          "backingStorageSize": 4058780
+        },
+        "heapSettled": {
+          "usedSize": 28769228,
+          "totalSize": 38813696,
+          "embedderHeapUsedSize": 644816,
+          "backingStorageSize": 6129420
+        }
+      },
+      "B": {
+        "requests": 40,
+        "sampledNonIdleMsPerRequest": 13.363375,
+        "samples": 83,
+        "sampledWeightUs": 681637,
+        "wallWindowUs": 1040305,
+        "heapStart": {
+          "usedSize": 27138864,
+          "totalSize": 36159488,
+          "embedderHeapUsedSize": 515856,
+          "backingStorageSize": 5689257
+        },
+        "heapSettled": {
+          "usedSize": 29203200,
+          "totalSize": 43237376,
+          "embedderHeapUsedSize": 644816,
+          "backingStorageSize": 5555117
+        }
+      },
+      "changePercent": {
+        "sampledNonIdleMsPerRequest": 7.0435876178003065,
+        "settledUsedHeap": 1.5084589687286654
+      }
+    },
+    {
+      "mode": "sse",
+      "A": {
+        "requests": 40,
+        "sampledNonIdleMsPerRequest": 69.78569999999999,
+        "samples": 295,
+        "sampledWeightUs": 3073262,
+        "wallWindowUs": 3428751,
+        "heapStart": {
+          "usedSize": 28769228,
+          "totalSize": 38813696,
+          "embedderHeapUsedSize": 644816,
+          "backingStorageSize": 6129420
+        },
+        "heapSettled": {
+          "usedSize": 33581252,
+          "totalSize": 43270144,
+          "embedderHeapUsedSize": 902736,
+          "backingStorageSize": 6124194
+        }
+      },
+      "B": {
+        "requests": 40,
+        "sampledNonIdleMsPerRequest": 75.63705,
+        "samples": 380,
+        "sampledWeightUs": 3216441,
+        "wallWindowUs": 3639940,
+        "heapStart": {
+          "usedSize": 29203200,
+          "totalSize": 43237376,
+          "embedderHeapUsedSize": 644816,
+          "backingStorageSize": 5555117
+        },
+        "heapSettled": {
+          "usedSize": 28264944,
+          "totalSize": 44810240,
+          "embedderHeapUsedSize": 326264,
+          "backingStorageSize": 6363988
+        }
+      },
+      "changePercent": {
+        "sampledNonIdleMsPerRequest": 8.384740713355331,
+        "settledUsedHeap": -15.83117865885405
+      }
+    }
+  ],
+  "matrix": {
+    "cells": {
+      "A": 126,
+      "B": 126
+    },
+    "wire": {
+      "comparisonCount": 126,
+      "baselineFailureCount": 19,
+      "candidateFailureCount": 0,
+      "regressionCount": 0,
+      "improvementCount": 19,
+      "sharedFailureCount": 0,
+      "noRegression": true,
+      "baselineFailures": [
+        {
+          "cell": [
+            "responses",
+            "chat",
+            "ok",
+            true
+          ],
+          "logicalId": "e6cc88580c254c338726e715223b5744_A_matrix_A_39",
+          "recordId": "01M407WCVJ8334PQP5YDYYKKS1",
+          "passed": false,
+          "errors": [
+            "output_or_history_length_mismatch",
+            "text_delta_mismatch"
+          ],
+          "classification": "semantic_mismatch",
+          "wireEvidence": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-03-ordinary-hot-path/formal-01/A-matrix/A-matrix/e6cc88580c254c338726e715223b5744_A_matrix_A_39-wire.json"
+        },
+        {
+          "cell": [
+            "responses",
+            "chat",
+            "tool",
+            true
+          ],
+          "logicalId": "e6cc88580c254c338726e715223b5744_A_matrix_A_41",
+          "recordId": "01M407WCXC9QW8S1TA5GH6BDH3",
+          "passed": false,
+          "errors": [
+            "tool_identity_mismatch",
+            "invalid_tool_arguments",
+            "tool_delta_mismatch"
+          ],
+          "classification": "semantic_mismatch",
+          "wireEvidence": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-03-ordinary-hot-path/formal-01/A-matrix/A-matrix/e6cc88580c254c338726e715223b5744_A_matrix_A_41-wire.json"
+        },
+        {
+          "cell": [
+            "responses",
+            "chat",
+            "refusal",
+            false
+          ],
+          "logicalId": "e6cc88580c254c338726e715223b5744_A_matrix_A_42",
+          "recordId": "01M407WCYR7V1PDAMB6VJB3J01",
+          "passed": false,
+          "errors": [
+            "refusal_semantics_missing"
+          ],
+          "classification": "semantic_mismatch",
+          "wireEvidence": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-03-ordinary-hot-path/formal-01/A-matrix/A-matrix/e6cc88580c254c338726e715223b5744_A_matrix_A_42-wire.json"
+        },
+        {
+          "cell": [
+            "responses",
+            "chat",
+            "refusal",
+            true
+          ],
+          "logicalId": "e6cc88580c254c338726e715223b5744_A_matrix_A_43",
+          "recordId": "01M407WCZDRFJYS2QHSBZ1250Y",
+          "passed": false,
+          "errors": [
+            "refusal_semantics_missing"
+          ],
+          "classification": "semantic_mismatch",
+          "wireEvidence": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-03-ordinary-hot-path/formal-01/A-matrix/A-matrix/e6cc88580c254c338726e715223b5744_A_matrix_A_43-wire.json"
+        },
+        {
+          "cell": [
+            "responses",
+            "chat",
+            "truncated",
+            true
+          ],
+          "logicalId": "e6cc88580c254c338726e715223b5744_A_matrix_A_47",
+          "recordId": "01M407WD45T2VZQN0KZRSKXBE3",
+          "passed": false,
+          "errors": [
+            "false_success_on_fault"
+          ],
+          "classification": "false_success",
+          "wireEvidence": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-03-ordinary-hot-path/formal-01/A-matrix/A-matrix/e6cc88580c254c338726e715223b5744_A_matrix_A_47-wire.json"
+        },
+        {
+          "cell": [
+            "responses",
+            "chat",
+            "slow",
+            true
+          ],
+          "logicalId": "e6cc88580c254c338726e715223b5744_A_matrix_A_51",
+          "recordId": "01M407WD7WQZ2JBT3VVF3QGWG5",
+          "passed": false,
+          "errors": [
+            "output_or_history_length_mismatch",
+            "text_delta_mismatch"
+          ],
+          "classification": "semantic_mismatch",
+          "wireEvidence": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-03-ordinary-hot-path/formal-01/A-matrix/A-matrix/e6cc88580c254c338726e715223b5744_A_matrix_A_51-wire.json"
+        },
+        {
+          "cell": [
+            "responses",
+            "messages",
+            "refusal",
+            false
+          ],
+          "logicalId": "e6cc88580c254c338726e715223b5744_A_matrix_A_56",
+          "recordId": "01M407WEEG4DMM3NWK67DE1MG4",
+          "passed": false,
+          "errors": [
+            "refusal_semantics_missing"
+          ],
+          "classification": "semantic_mismatch",
+          "wireEvidence": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-03-ordinary-hot-path/formal-01/A-matrix/A-matrix/e6cc88580c254c338726e715223b5744_A_matrix_A_56-wire.json"
+        },
+        {
+          "cell": [
+            "responses",
+            "messages",
+            "refusal",
+            true
+          ],
+          "logicalId": "e6cc88580c254c338726e715223b5744_A_matrix_A_57",
+          "recordId": "01M407WEFD1ZNCDVFEB7592ZYB",
+          "passed": false,
+          "errors": [
+            "refusal_semantics_missing"
+          ],
+          "classification": "semantic_mismatch",
+          "wireEvidence": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-03-ordinary-hot-path/formal-01/A-matrix/A-matrix/e6cc88580c254c338726e715223b5744_A_matrix_A_57-wire.json"
+        },
+        {
+          "cell": [
+            "chat",
+            "responses",
+            "refusal",
+            false
+          ],
+          "logicalId": "e6cc88580c254c338726e715223b5744_A_matrix_A_70",
+          "recordId": "01M407WGHV8DRX33QNGBFWR1YX",
+          "passed": false,
+          "errors": [
+            "refusal_semantics_missing"
+          ],
+          "classification": "semantic_mismatch",
+          "wireEvidence": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-03-ordinary-hot-path/formal-01/A-matrix/A-matrix/e6cc88580c254c338726e715223b5744_A_matrix_A_70-wire.json"
+        },
+        {
+          "cell": [
+            "chat",
+            "responses",
+            "refusal",
+            true
+          ],
+          "logicalId": "e6cc88580c254c338726e715223b5744_A_matrix_A_71",
+          "recordId": "01M407WGJT8QHHV5RWD73V4VBP",
+          "passed": false,
+          "errors": [
+            "refusal_semantics_missing"
+          ],
+          "classification": "semantic_mismatch",
+          "wireEvidence": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-03-ordinary-hot-path/formal-01/A-matrix/A-matrix/e6cc88580c254c338726e715223b5744_A_matrix_A_71-wire.json"
+        },
+        {
+          "cell": [
+            "chat",
+            "responses",
+            "failed",
+            true
+          ],
+          "logicalId": "e6cc88580c254c338726e715223b5744_A_matrix_A_73",
+          "recordId": "01M407WGNZP0PP8PFGSKZ9GQAD",
+          "passed": false,
+          "errors": [
+            "false_success_on_fault",
+            "missing_explicit_failure_event"
+          ],
+          "classification": "false_success",
+          "wireEvidence": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-03-ordinary-hot-path/formal-01/A-matrix/A-matrix/e6cc88580c254c338726e715223b5744_A_matrix_A_73-wire.json"
+        },
+        {
+          "cell": [
+            "chat",
+            "responses",
+            "truncated",
+            true
+          ],
+          "logicalId": "e6cc88580c254c338726e715223b5744_A_matrix_A_75",
+          "recordId": "01M407WGSSN4NFGSFCMWTFFJWD",
+          "passed": false,
+          "errors": [
+            "false_success_on_fault"
+          ],
+          "classification": "false_success",
+          "wireEvidence": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-03-ordinary-hot-path/formal-01/A-matrix/A-matrix/e6cc88580c254c338726e715223b5744_A_matrix_A_75-wire.json"
+        },
+        {
+          "cell": [
+            "chat",
+            "messages",
+            "refusal",
+            true
+          ],
+          "logicalId": "e6cc88580c254c338726e715223b5744_A_matrix_A_99",
+          "recordId": "01M407WMBCFRY56ZV9H6WAT5Y4",
+          "passed": false,
+          "errors": [
+            "refusal_semantics_missing"
+          ],
+          "classification": "semantic_mismatch",
+          "wireEvidence": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-03-ordinary-hot-path/formal-01/A-matrix/A-matrix/e6cc88580c254c338726e715223b5744_A_matrix_A_99-wire.json"
+        },
+        {
+          "cell": [
+            "chat",
+            "messages",
+            "failed",
+            true
+          ],
+          "logicalId": "e6cc88580c254c338726e715223b5744_A_matrix_A_101",
+          "recordId": "01M407WME9H9GV1JHK57ZGAW3J",
+          "passed": false,
+          "errors": [
+            "false_success_on_fault",
+            "missing_explicit_failure_event"
+          ],
+          "classification": "false_success",
+          "wireEvidence": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-03-ordinary-hot-path/formal-01/A-matrix/A-matrix/e6cc88580c254c338726e715223b5744_A_matrix_A_101-wire.json"
+        },
+        {
+          "cell": [
+            "messages",
+            "responses",
+            "refusal",
+            false
+          ],
+          "logicalId": "e6cc88580c254c338726e715223b5744_A_matrix_A_112",
+          "recordId": "01M407WPAAKJN62AYJRZ99EVE2",
+          "passed": false,
+          "errors": [
+            "refusal_semantics_missing"
+          ],
+          "classification": "semantic_mismatch",
+          "wireEvidence": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-03-ordinary-hot-path/formal-01/A-matrix/A-matrix/e6cc88580c254c338726e715223b5744_A_matrix_A_112-wire.json"
+        },
+        {
+          "cell": [
+            "messages",
+            "responses",
+            "refusal",
+            true
+          ],
+          "logicalId": "e6cc88580c254c338726e715223b5744_A_matrix_A_113",
+          "recordId": "01M407WPB7DAVQMFZHT12KD47D",
+          "passed": false,
+          "errors": [
+            "refusal_semantics_missing"
+          ],
+          "classification": "semantic_mismatch",
+          "wireEvidence": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-03-ordinary-hot-path/formal-01/A-matrix/A-matrix/e6cc88580c254c338726e715223b5744_A_matrix_A_113-wire.json"
+        },
+        {
+          "cell": [
+            "messages",
+            "chat",
+            "refusal",
+            false
+          ],
+          "logicalId": "e6cc88580c254c338726e715223b5744_A_matrix_A_126",
+          "recordId": "01M407WRJ674NSQGDKZ0XH2M3T",
+          "passed": false,
+          "errors": [
+            "refusal_semantics_missing"
+          ],
+          "classification": "semantic_mismatch",
+          "wireEvidence": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-03-ordinary-hot-path/formal-01/A-matrix/A-matrix/e6cc88580c254c338726e715223b5744_A_matrix_A_126-wire.json"
+        },
+        {
+          "cell": [
+            "messages",
+            "chat",
+            "refusal",
+            true
+          ],
+          "logicalId": "e6cc88580c254c338726e715223b5744_A_matrix_A_127",
+          "recordId": "01M407WRJQVM1PWVDWQ98AT36V",
+          "passed": false,
+          "errors": [
+            "refusal_semantics_missing"
+          ],
+          "classification": "semantic_mismatch",
+          "wireEvidence": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-03-ordinary-hot-path/formal-01/A-matrix/A-matrix/e6cc88580c254c338726e715223b5744_A_matrix_A_127-wire.json"
+        },
+        {
+          "cell": [
+            "messages",
+            "chat",
+            "truncated",
+            true
+          ],
+          "logicalId": "e6cc88580c254c338726e715223b5744_A_matrix_A_131",
+          "recordId": "01M407WRQ6QG1RSFX0PZ9ET43F",
+          "passed": false,
+          "errors": [
+            "false_success_on_fault"
+          ],
+          "classification": "false_success",
+          "wireEvidence": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-03-ordinary-hot-path/formal-01/A-matrix/A-matrix/e6cc88580c254c338726e715223b5744_A_matrix_A_131-wire.json"
+        }
+      ],
+      "completePairedEvidence": "formal-01/aggregate.json; formal-01-independent-audit/candidate-preservation-gates.json; formal-01-independent-audit/formal-{A,B}-matrix-outcomes.json"
+    },
+    "captureFidelity": {
+      "comparisonCount": 126,
+      "baselineFailureCount": 4,
+      "candidateFailureCount": 0,
+      "regressionCount": 0,
+      "improvementCount": 4,
+      "sharedFailureCount": 0,
+      "noRegression": true,
+      "baselineFailures": [
+        {
+          "cell": [
+            "responses",
+            "messages",
+            "ok",
+            true
+          ],
+          "logicalId": "e6cc88580c254c338726e715223b5744_A_matrix_A_53",
+          "recordId": "01M407WE9TFYXG7AQ9EH5J54H7",
+          "passed": false,
+          "errors": [
+            "Canonical/wire frame fidelity mismatch e6cc88580c254c338726e715223b5744_A_matrix_A_53"
+          ],
+          "classification": "frame_value_mismatch",
+          "wireEvidence": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-03-ordinary-hot-path/formal-01/A-matrix/A-matrix/e6cc88580c254c338726e715223b5744_A_matrix_A_53-wire.json"
+        },
+        {
+          "cell": [
+            "responses",
+            "messages",
+            "tool",
+            true
+          ],
+          "logicalId": "e6cc88580c254c338726e715223b5744_A_matrix_A_55",
+          "recordId": "01M407WEC5CDRFW0CJ4DQV4NS0",
+          "passed": false,
+          "errors": [
+            "Canonical/wire frame fidelity mismatch e6cc88580c254c338726e715223b5744_A_matrix_A_55"
+          ],
+          "classification": "frame_value_mismatch",
+          "wireEvidence": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-03-ordinary-hot-path/formal-01/A-matrix/A-matrix/e6cc88580c254c338726e715223b5744_A_matrix_A_55-wire.json"
+        },
+        {
+          "cell": [
+            "responses",
+            "messages",
+            "refusal",
+            true
+          ],
+          "logicalId": "e6cc88580c254c338726e715223b5744_A_matrix_A_57",
+          "recordId": "01M407WEFD1ZNCDVFEB7592ZYB",
+          "passed": false,
+          "errors": [
+            "Canonical/wire frame fidelity mismatch e6cc88580c254c338726e715223b5744_A_matrix_A_57"
+          ],
+          "classification": "frame_value_mismatch",
+          "wireEvidence": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-03-ordinary-hot-path/formal-01/A-matrix/A-matrix/e6cc88580c254c338726e715223b5744_A_matrix_A_57-wire.json"
+        },
+        {
+          "cell": [
+            "responses",
+            "messages",
+            "slow",
+            true
+          ],
+          "logicalId": "e6cc88580c254c338726e715223b5744_A_matrix_A_65",
+          "recordId": "01M407WES7W1MGNKHF67YY6X0F",
+          "passed": false,
+          "errors": [
+            "Canonical/wire frame fidelity mismatch e6cc88580c254c338726e715223b5744_A_matrix_A_65"
+          ],
+          "classification": "frame_value_mismatch",
+          "wireEvidence": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-03-ordinary-hot-path/formal-01/A-matrix/A-matrix/e6cc88580c254c338726e715223b5744_A_matrix_A_65-wire.json"
+        }
+      ],
+      "completePairedEvidence": "formal-01/aggregate.json; formal-01-independent-audit/candidate-preservation-gates.json; formal-01-independent-audit/formal-{A,B}-matrix-outcomes.json"
+    }
+  },
+  "storage": {
+    "A": {
+      "requests": 358,
+      "ownedObjects": 716,
+      "wireFailures": 19,
+      "captureFailures": 4,
+      "requestObjects": 358,
+      "requestCompressedBytes": 97657,
+      "requestDecodedBytes": 23529427,
+      "responseObjects": 358,
+      "responseCompressedBytes": 139848,
+      "responseDecodedBytes": 538780
+    },
+    "B": {
+      "requests": 358,
+      "ownedObjects": 1074,
+      "wireFailures": 0,
+      "captureFailures": 0,
+      "requestObjects": 358,
+      "requestCompressedBytes": 97759,
+      "requestDecodedBytes": 23529429,
+      "responseObjects": 358,
+      "responseCompressedBytes": 139966,
+      "responseDecodedBytes": 539323,
+      "upstreamObjects": 358,
+      "upstreamCompressedBytes": 511962,
+      "upstreamDecodedBytes": 32014430
+    }
+  },
+  "inputHashes": {
+    "freeze-01/manifest.json": "3eb87949abd347242c49f5dff9d3cc5434bd44a58090fc6a81717cc0afa50ff9",
+    "ci-local-01.json": "d0bdba5475007fd4ae82e878cc7bd6143c236c92e578aa52da7b7c691ab1cffe",
+    "ci-local-01.log": "6285ad159185880d5ad097dfcabbe1733fb314f533dad67d6d7db755316d88a7",
+    "formal-01/aggregate.json": "11a97d6095a44dc3ae507fd68695f234b3058e9256af4e1b9f62f5c3aab93c8c",
+    "formal-01-independent-analysis.json": "17e46458ccfe31c9e8a37a868d4a414b2097f4f3dc5522c677c72e07ae32563e",
+    "formal-01-independent-audit/result.json": "4f32f97f890a67de8b9175d432b99e0df7cb982378e086ebeca26bb8d88dcc68",
+    "canary-01-root-qualification.json": "1f743a57f3efd775de300c962ae4558136957ca359dd7c3fd904a81c433e527b",
+    "analyze-independent.py": "979644b64e6c19b9342c4185a9d7688ea82dfbe9278679a8b38464d5cac0fb7f",
+    "physical-audit.py": "01572c875b0261cb306739ccba60bf32bf930c188efd495df8fec4437f9f8e92",
+    "formal-01-evidence-review.md": "bad6ca3f2fdc1a661f81de8f453a686276296fe66d3ec4babf93971eaabfad40",
+    "formal-01-profile-notes.md": "aba4d61ce5c40d9febe5cc149880909e68625e9faaed3752a3843005400251d1",
+    "formal-01-independent-audit/candidate-preservation-gates.json": "b040ab05be9faf9b672dadae76bdefc56cf7f5529b02e75a15c684f0c05b2675",
+    "formal-01-independent-audit/process-liveness.json": "bdbc1a92b670364ef329c5ba9a4350a938b2f39f72eef6ba3a731a321adebebe"
+  },
+  "limitations": [
+    "Sequential synthetic direct_fetch only; ordinary fixed request is 64 KiB with a short response.",
+    "This run pairs deployed A against optimized B. Comparing with prior B is cross-run descriptive, not a causal optimization estimate.",
+    "Sparse weighted V8 samples are not billed or process CPU.",
+    "Settled V8 heap without forced GC is not peak, RSS, leak or cloud-limit evidence.",
+    "Real-proxy unused-candidate parsing and large-response saturation are not stressed by this ordinary fixture.",
+    "B56 policy refusal HTTP 200 / dump 502 remains the explicit inherited narrow exception.",
+    "Large/concurrent/slow-consumer pressure, hosted-search and queue saturation, and catalog/affinity old-new rollback remain release gaps."
+  ]
+}

@@ -40,14 +40,14 @@ The specification's Binding constraints apply to every task: existing worktree, 
 
 **Files:** New W evidence under `.superpowers/sdd/2026-10-03-ordinary-hot-path`; tracked report under `docs/superpowers/research/2026-10-03-ordinary-hot-path/`. Existing harness and old evidence remain unchanged.
 
-- [ ] Verify protected bytes, changed-path inventory and exact commits; run full ci:local once after both reviewed deliverables. Fix actual failures before freezing.
-- [ ] Freeze fresh A/B bundles using unchanged harness after generated assets settle; save exactB HEAD/overlay/inventory. Run separate four-request canary and inspect physical/Inspector/cleanup success before formal run.
-- [ ] Run one five-unit716-request formal comparison. Preserve failures as partial if any; retry only after a demonstrated correction, never to obtain favorable numbers.
-- [ ] Independently recompute outcome/resource data and review physical evidence. Require zero B wire/capture failures in addition to complete physical collection and both no-regression gates.
-- [ ] Record measured benefits/costs and remaining release gaps without causal across-run or cloud/peak claims.
+- [x] Verify protected bytes, changed-path inventory and exact commits; run full ci:local once after both reviewed deliverables. Fix actual failures before freezing.
+- [x] Freeze fresh A/B bundles using unchanged harness after generated assets settle; save exactB HEAD/overlay/inventory. Run separate four-request canary and inspect physical/Inspector/cleanup success before formal run.
+- [x] Run one five-unit716-request formal comparison. Preserve failures as partial if any; retry only after a demonstrated correction, never to obtain favorable numbers.
+- [x] Independently recompute outcome/resource data and review physical evidence. Require zero B wire/capture failures in addition to complete physical collection and both no-regression gates.
+- [x] Record measured benefits/costs and remaining release gaps without causal across-run or cloud/peak claims.
 
 ## Task 4: Local delivery
 
-- [ ] Whole-increment independent code/evidence review; resolve substantive findings.
-- [ ] Verify only authorized paths are staged, commit documents and fast-forward local vNext under prior authorization.
-- [ ] Verify both heads/indexes, protected38/14, expected product changes and fixture identity; save integration receipt. No push/deployment/cleanup.
+- [x] Whole-increment independent code/evidence review; resolve substantive findings.
+- [x] Verify only authorized paths are staged, commit documents and fast-forward local vNext under prior authorization.
+- [x] Verify both heads/indexes, protected38/14, expected product changes and fixture identity; save integration receipt. No push/deployment/cleanup.
