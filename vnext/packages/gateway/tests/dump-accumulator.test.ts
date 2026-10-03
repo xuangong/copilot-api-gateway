@@ -393,6 +393,73 @@ test("finalize(response) stamps X-Dump-Record-Id + X-Dump-Key-Id headers", async
   expect(meta!.id).toBe(acc.recordId)
 })
 
+for (const mode of ["null", "tee", "canonical-json", "canonical-sse"] as const) {
+  for (const staleIds of [false, true]) {
+    test(`${mode} finalization owns client headers and preserves capture-time headers with staleIds=${staleIds}`, async () => {
+      const ctx = await setupCtx()
+      const dump = openDumpAccumulator(await makeContext("/v1/responses"), "POST", apiKey(3600), {
+        bytes: new Uint8Array(), streamError: null,
+      })
+      if (!dump) throw new Error("dump expected")
+      const headers = new Headers({ "content-type": mode === "canonical-sse" ? "text/event-stream" : "application/json", "x-origin": "source" })
+      if (staleIds) {
+        headers.set("x-dump-record-id", "old-record")
+        headers.set("x-dump-key-id", "old-key")
+      }
+      const source = new Response(mode === "null" ? null : "wire", {
+        status: mode === "null" ? 204 : 202, statusText: "Accepted", headers,
+      })
+      const capturedHeaders = Array.from(source.headers.entries())
+      if (mode === "canonical-sse") dump.frame(eventFrame({ text: "captured" }))
+      const returned = mode.startsWith("canonical")
+        ? dump.finalize(source, { settled: Promise.resolve(), fallbackBody: "wire" })
+        : dump.finalize(source)
+      expect(returned.status).toBe(mode === "null" ? 204 : 202)
+      expect(returned.statusText).toBe("Accepted")
+      expect(returned.headers.get("x-dump-record-id")).toBe(dump.recordId)
+      expect(returned.headers.get("x-dump-key-id")).toBe("k1")
+      expect(Array.from(source.headers.entries())).toEqual(capturedHeaders)
+      returned.headers.set("x-origin", "client-edit")
+      expect(source.headers.get("x-origin")).toBe("source")
+      source.headers.set("x-origin", "source-edit")
+      expect(returned.headers.get("x-origin")).toBe("client-edit")
+      expect(await returned.text()).toBe(mode === "null" ? "" : "wire")
+      await ctx.drain()
+      const stored = await ctx.store.get("k1", dump.recordId)
+      // A body=none record intentionally stores no response-header payload.
+      expect(stored?.response.headers).toEqual(mode === "null" ? [] : capturedHeaders)
+      if (mode === "null") expect(stored?.response.body.type).toBe("none")
+      expect(stored?.meta.status).toBe(mode === "null" ? 204 : 202)
+      ctx.raw.close()
+    })
+  }
+}
+
+test("repeated HTTP finalization stamps private headers without replacing the first captured record", async () => {
+  const ctx = await setupCtx()
+  const dump = openDumpAccumulator(await makeContext("/v1/responses"), "POST", apiKey(3600), {
+    bytes: new Uint8Array(), streamError: null,
+  })
+  if (!dump) throw new Error("dump expected")
+  const first = new Response("first", { status: 201, headers: { "content-type": "application/json", "x-origin": "first" } })
+  const second = new Response("second", { status: 202, headers: { "x-origin": "second", "x-dump-record-id": "stale" } })
+  const firstReturned = dump.finalize(first)
+  const secondReturned = dump.finalize(second)
+  expect(firstReturned.headers.get("x-dump-record-id")).toBe(dump.recordId)
+  expect(secondReturned.headers.get("x-dump-record-id")).toBe(dump.recordId)
+  expect(secondReturned.headers.get("x-dump-key-id")).toBe("k1")
+  expect(second.headers.get("x-dump-record-id")).toBe("stale")
+  expect(secondReturned.status).toBe(202)
+  expect(await firstReturned.text()).toBe("first")
+  expect(await secondReturned.text()).toBe("second")
+  await ctx.drain()
+  expect(await ctx.store.list("k1", { limit: 10 })).toHaveLength(1)
+  const stored = await ctx.store.get("k1", dump.recordId)
+  expect(stored?.meta.status).toBe(201)
+  expect(stored?.response.headers).toEqual([["content-type", "application/json"], ["x-origin", "first"]])
+  ctx.raw.close()
+})
+
 test('cancelled dump survives later abort failure and preserves observed tokens', async () => {
   const ctx = await setupCtx(3600)
   const c = await makeContext('/v1/responses')

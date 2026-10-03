@@ -233,6 +233,49 @@ test("collector consumes a lazy header iterable within metadata limits", () => {
   expect(item?.omittedRequestHeaders).toBe(10_000)
 })
 
+test("adapter observes native header fields despite subclass traversal overrides", async () => {
+  class NativeHeaders extends Headers {}
+  const requestHeaders = new NativeHeaders({ "Content-Type": "application/json", Authorization: "private" })
+  const responseHeaders = new NativeHeaders({ "Content-Type": "text/event-stream", "Set-Cookie": "private" })
+  for (const headers of [requestHeaders, responseHeaders]) {
+    Object.defineProperties(headers, {
+      entries: { value: function* () { yield ["content-type", "text/plain"] } },
+      forEach: { value: () => { throw new Error("spoofed visitation") } },
+    })
+  }
+  const collector = new UpstreamExchangeCollector()
+  const call = createUpstreamDialObservationContext(collector).forOperation({ upstreamId: "upstream_1", operation: "responses.create" })
+    .beginCall({ upstreamId: "ignored", url: "https://example.test", startedAt: 1 })
+  const attempt = call?.beginAttempt?.({
+    transport: "direct_fetch", transportId: "direct_fetch", method: "POST", url: "https://example.test",
+    requestHeaders, body: { kind: "empty" }, startedAt: 2,
+  })
+  if (!attempt) throw new Error("attempt expected")
+  const source = new Response("original bytes", { status: 202 })
+  Object.defineProperty(source, "headers", { value: responseHeaders })
+  const observed = attempt.onResponse?.(source)
+  expect(observed?.status).toBe(202)
+  expect(await observed?.text()).toBe("original bytes")
+  expect(collector.finish().attempts[0]).toMatchObject({
+    requestHeaders: [["content-type", "application/json"]], omittedRequestHeaders: 1,
+    responseHeaders: [["content-type", "text/event-stream"]], omittedResponseHeaders: 1,
+    response: { terminal: "eof", observedBytes: 14, totalBytes: 14 },
+  })
+})
+
+test("diagnostic record iteration failure remains best effort", () => {
+  const collector = new UpstreamExchangeCollector()
+  const call = createUpstreamDialObservationContext(collector).forOperation({ upstreamId: "upstream_1", operation: "responses.create" })
+    .beginCall({ upstreamId: "ignored", url: "https://example.test", startedAt: 1 })
+  const requestHeaders = new Proxy({ "content-type": "application/json" }, { ownKeys() { throw new Error("diagnostic iterator failure") } })
+  const attempt = call?.beginAttempt?.({
+    transport: "proxy", transportId: "proxy_1", method: "POST", url: "https://example.test",
+    requestHeaders, body: { kind: "empty" }, startedAt: 2,
+  })
+  expect(attempt).toBeUndefined()
+  expect(collector.finish().attempts[0]?.response.terminal).toBe("not_consumed")
+})
+
 test("finishing before cancellation preserves incomplete snapshot without blocking later source cancel", async () => {
   const collector = new UpstreamExchangeCollector()
   const { attempt } = begin(collector)

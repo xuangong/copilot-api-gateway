@@ -89,7 +89,7 @@ export function createUpstreamDialObservationContext(collector: UpstreamExchange
 
 const headerPairs = (headers: DialAttemptInput["requestHeaders"] | Headers): Iterable<readonly [string, string]> => {
   if (!headers) return []
-  if (headers instanceof Headers) return headers.entries()
+  if (headers instanceof Headers) return headers
   // The dial layer supplies its already normalized transport record here;
   // this adapter never walks the caller's original RequestInit for diagnostics.
   return (function* (): Generator<readonly [string, string]> {

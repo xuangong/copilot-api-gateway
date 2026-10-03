@@ -31,10 +31,10 @@ The specification's Binding constraints apply to every task: existing worktree, 
 
 **Interfaces:** Existing collector/finalization APIs retain their outputs; header input may accept Headers as well as its existing iterable contract. No new persistence fields or transport observer ownership.
 
-- [ ] Pin source header immutability and final X-Dump headers across finalization branches; native/iterable safe-header equivalence; saturated-prefix EOF/cancel/error/count behavior including shared-budget exhaustion.
-- [ ] Remove the intermediate header clone, use native synchronous header traversal with the shared sanitizer and retain generic iterable fallback, and latch copying off when the response or shared budget is exhausted.
-- [ ] Run the focused affected suites and gateway typecheck; record results and mechanism evidence in W/task-2-report.md. Avoid tests that merely mirror private implementation.
-- [ ] Independent task review; fix load-bearing findings and commit only the reviewed task files.
+- [x] Pin source header immutability and final X-Dump headers across finalization branches; native/iterable safe-header equivalence; saturated-prefix EOF/cancel/error/count behavior including shared-budget exhaustion.
+- [x] Remove the intermediate header clone, use native synchronous header traversal with the shared sanitizer and retain generic iterable fallback, and latch copying off when the response or shared budget is exhausted.
+- [x] Run the focused affected suites and gateway typecheck; record results and mechanism evidence in W/task-2-report.md. Avoid tests that merely mirror private implementation.
+- [x] Independent task review; fix load-bearing findings and commit only the reviewed task files.
 
 ## Task 3: Combined qualification and measurement
 

@@ -382,9 +382,9 @@ export class DumpAccumulator {
 
     const [response, completion] = args as [Response, KitCanonicalCompletion?]
     if (this.terminalWrite !== null) {
-      return new Response(response.body, {
-        status: response.status, statusText: response.statusText, headers: this.withDumpHeaders(response.headers),
-      })
+      return this.withDumpHeaders(new Response(response.body, {
+        status: response.status, statusText: response.statusText, headers: response.headers,
+      }))
     }
     if (completion) return this.finalizeCanonical(response, completion)
     const responseStatus = response.status
@@ -392,11 +392,11 @@ export class DumpAccumulator {
 
     if (response.body === null) {
       this.finalize(responseStatus, responseHeaders)
-      return new Response(null, {
+      return this.withDumpHeaders(new Response(null, {
         status: response.status,
         statusText: response.statusText,
-        headers: this.withDumpHeaders(response.headers),
-      })
+        headers: response.headers,
+      }))
     }
 
     const isStream = (response.headers.get("content-type") ?? "").startsWith("text/event-stream")
@@ -408,11 +408,11 @@ export class DumpAccumulator {
       .then(persistTerminalRecord))
     this.background.waitUntil(this.terminalWrite)
 
-    return new Response(forClient, {
+    return this.withDumpHeaders(new Response(forClient, {
       status: response.status,
       statusText: response.statusText,
-      headers: this.withDumpHeaders(response.headers),
-    })
+      headers: response.headers,
+    }))
   }
 
   // Cancellation seals scalar metadata at the transport boundary. Ordinary
@@ -477,20 +477,19 @@ export class DumpAccumulator {
         complete(null, true)
       },
     }, { highWaterMark: 0 }) : null
-    return new Response(body, {
-      status, statusText: response.statusText, headers: this.withDumpHeaders(response.headers),
-    })
+    return this.withDumpHeaders(new Response(body, {
+      status, statusText: response.statusText, headers: response.headers,
+    }))
   }
 
-  // Copy the response headers and stamp X-Dump-* so the client can look up
+  // Stamp the new response's private headers so the client can look up
   // its own dump record via the control plane. Only emitted when a dump
   // will actually be written (i.e. the accumulator was opened, which only
   // happens for keys with retention configured).
-  private withDumpHeaders(source: Headers): Headers {
-    const out = new Headers(source)
-    out.set('x-dump-record-id', this.recordId)
-    out.set('x-dump-key-id', this.apiKey.id)
-    return out
+  private withDumpHeaders(response: Response): Response {
+    response.headers.set("x-dump-record-id", this.recordId)
+    response.headers.set("x-dump-key-id", this.apiKey.id)
+    return response
   }
 
   // --- private: persist ---

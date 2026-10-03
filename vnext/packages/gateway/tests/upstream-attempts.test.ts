@@ -155,6 +155,158 @@ test("16 KiB combined header and independent 64 KiB metadata budgets stop at exa
   expect(snapshot.attempts[3]?.requestHeaders.length).toBe(333)
 })
 
+test("native and iterable headers publish the same ordered sanitized metadata and owned pairs", () => {
+  const requestHeaders = new Headers({
+    Authorization: "private", "Content-Type": "APPLICATION/JSON; token=private",
+    "Content-Length": "00012", "x-long": "x".repeat(129),
+  })
+  const responseHeaders = new Headers({ "Set-Cookie": "private", "Content-Type": "text/event-stream; token=private", "Content-Length": "000004" })
+  const snapshots = [true, false].map(native => {
+    const collector = new UpstreamExchangeCollector(Number.MAX_SAFE_INTEGER)
+    const attempt = collector.begin({
+      parentCallId: "call-1", upstreamId: "upstream-1", method: "POST", operation: "responses.create",
+      requestHeaders: native ? requestHeaders : requestHeaders.entries(),
+    })
+    if (!attempt) throw new Error("attempt omitted")
+    attempt.observeResponse(200, native ? responseHeaders : responseHeaders.entries(), null)
+    return collector.finish(Number.MAX_SAFE_INTEGER)
+  })
+  expect(snapshots[0]).toEqual(snapshots[1])
+  for (const snapshot of snapshots) {
+    expect(snapshot.attempts[0]).toMatchObject({
+      requestHeaders: [["content-length", "12"], ["content-type", "application/json"]],
+      responseHeaders: [["content-length", "4"], ["content-type", "text/event-stream"]],
+      omittedRequestHeaders: 2, omittedResponseHeaders: 1,
+    })
+    expect(snapshot.metadataBytes).toBe(1144)
+    expect(snapshot.metadataTruncated).toBe(false)
+    expect(JSON.stringify(snapshot)).not.toContain("private")
+    expect(safeUpstreamExchangesForPersistence(snapshot)).toEqual(snapshot)
+  }
+  requestHeaders.set("content-type", "text/plain")
+  responseHeaders.delete("content-length")
+  expect(snapshots[0]?.attempts[0]?.requestHeaders).toEqual([["content-length", "12"], ["content-type", "application/json"]])
+  expect(snapshots[0]?.attempts[0]?.responseHeaders).toEqual([["content-length", "4"], ["content-type", "text/event-stream"]])
+})
+
+test("native header subclasses cannot replace owned fields with spoofed iteration", () => {
+  class NativeHeaders extends Headers {}
+  const headers = new NativeHeaders({ "Content-Type": "application/json", Authorization: "private" })
+  Object.defineProperties(headers, {
+    [Symbol.iterator]: { value: function* () { yield ["content-type", "text/plain"] } },
+    forEach: { value: () => { throw new Error("spoofed visitation") } },
+  })
+  const collector = new UpstreamExchangeCollector()
+  const attempt = collector.begin({ parentCallId: "call-1", upstreamId: "upstream-1", method: "POST", requestHeaders: headers })
+  if (!attempt) throw new Error("attempt omitted")
+  attempt.observeResponse(200, headers, null)
+  expect(collector.finish().attempts[0]).toMatchObject({
+    requestHeaders: [["content-type", "application/json"]], responseHeaders: [["content-type", "application/json"]],
+    omittedRequestHeaders: 1, omittedResponseHeaders: 1,
+  })
+})
+
+for (const overflow of [0, 1, 1024]) {
+  test(`saturated prefix forwards the suffix and counts true EOF with overflow=${overflow}`, async () => {
+    const collector = new UpstreamExchangeCollector()
+    const attempt = begin(collector)
+    if (!attempt) throw new Error("attempt omitted")
+    let index = -1
+    const source = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (index++ === -1) controller.enqueue(bytes(UPSTREAM_ATTEMPT_LIMITS.responsePrefix))
+        else if (index <= overflow) controller.enqueue(Uint8Array.of(index % 256))
+        else controller.close()
+      },
+    }, { highWaterMark: 0 })
+    const forwarded = new Uint8Array(await new Response(attempt.observeResponse(200, [], source)).arrayBuffer())
+    expect(forwarded.byteLength).toBe(UPSTREAM_ATTEMPT_LIMITS.responsePrefix + overflow)
+    expect(forwarded.subarray(0, UPSTREAM_ATTEMPT_LIMITS.responsePrefix)).toEqual(bytes(UPSTREAM_ATTEMPT_LIMITS.responsePrefix))
+    expect(Array.from(forwarded.subarray(UPSTREAM_ATTEMPT_LIMITS.responsePrefix))).toEqual(Array.from({ length: overflow }, (_, n) => (n + 1) % 256))
+    const snapshot = collector.finish()
+    expect(snapshot.attempts[0]?.response).toMatchObject({
+      terminal: "eof", capturedBytes: UPSTREAM_ATTEMPT_LIMITS.responsePrefix,
+      observedBytes: UPSTREAM_ATTEMPT_LIMITS.responsePrefix + overflow,
+      totalBytes: UPSTREAM_ATTEMPT_LIMITS.responsePrefix + overflow, truncated: overflow > 0,
+    })
+    expect(atob(snapshot.attempts[0]?.response.prefixBase64 ?? "")).toBe("A".repeat(UPSTREAM_ATTEMPT_LIMITS.responsePrefix))
+    expect(safeUpstreamExchangesForPersistence(snapshot)).toEqual(snapshot)
+  })
+}
+
+test("another attempt can exhaust the shared budget between this response's demanded pulls", async () => {
+  const collector = new UpstreamExchangeCollector()
+  const subject = begin(collector)
+  if (!subject) throw new Error("attempt omitted")
+  let pulls = 0
+  const source = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      if (pulls++ === 0) controller.enqueue(Uint8Array.of(9))
+      else if (pulls === 2) controller.enqueue(Uint8Array.of(8, 7))
+      else controller.close()
+    },
+  }, { highWaterMark: 0 })
+  const reader = subject.observeResponse(200, [], source)?.getReader()
+  if (!reader) throw new Error("reader expected")
+  expect((await reader.read()).value).toEqual(Uint8Array.of(9))
+  for (let index = 0; index < 4; index++) {
+    const other = begin(collector)
+    if (!other) throw new Error("attempt omitted")
+    await new Response(other.observeResponse(200, [], new ReadableStream<Uint8Array>({
+      start(controller) { controller.enqueue(bytes(UPSTREAM_ATTEMPT_LIMITS.responsePrefix)); controller.close() },
+    }))).arrayBuffer()
+  }
+  expect((await reader.read()).value).toEqual(Uint8Array.of(8, 7))
+  expect((await reader.read()).done).toBe(true)
+  reader.releaseLock()
+  const snapshot = collector.finish()
+  expect(snapshot.capturedBodyBytes).toBe(UPSTREAM_ATTEMPT_LIMITS.totalBodyBytes)
+  expect(snapshot.attempts[0]?.response).toMatchObject({ capturedBytes: 1, prefixBase64: "CQ==", observedBytes: 3, totalBytes: 3, terminal: "eof", truncated: true })
+  expect(snapshot.attempts[4]?.response.capturedBytes).toBe(UPSTREAM_ATTEMPT_LIMITS.responsePrefix - 1)
+  expect(safeUpstreamExchangesForPersistence(snapshot)).toEqual(snapshot)
+})
+
+for (const terminal of ["cancelled", "read_error", "not_consumed"] as const) {
+  test(`saturated prefix preserves ${terminal} after a pending source read`, async () => {
+    const collector = new UpstreamExchangeCollector()
+    const attempt = begin(collector)
+    if (!attempt) throw new Error("attempt omitted")
+    let pulls = 0
+    let cancelled: unknown
+    const pendingSource = Promise.withResolvers<ReadableStreamDefaultController<Uint8Array>>()
+    const source = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (pulls++ === 0) controller.enqueue(bytes(UPSTREAM_ATTEMPT_LIMITS.responsePrefix))
+        else pendingSource.resolve(controller)
+      },
+      cancel(reason) { cancelled = reason },
+    }, { highWaterMark: 0 })
+    const reader = attempt.observeResponse(200, [], source)?.getReader()
+    if (!reader) throw new Error("reader expected")
+    expect((await reader.read()).value?.byteLength).toBe(UPSTREAM_ATTEMPT_LIMITS.responsePrefix)
+    const pendingRead = reader.read()
+    const controller = await pendingSource.promise
+    if (terminal === "read_error") {
+      controller.error(new Error("late source failure"))
+      await expect(pendingRead).rejects.toThrow("late source failure")
+    } else {
+      if (terminal === "not_consumed") collector.finish()
+      await reader.cancel("stop after prefix")
+      expect((await pendingRead).done).toBe(true)
+      expect(cancelled).toBe("stop after prefix")
+    }
+    reader.releaseLock()
+    expect(source.locked).toBe(false)
+    const snapshot = collector.finish()
+    expect(snapshot.attempts[0]?.response).toMatchObject({
+      terminal, capturedBytes: UPSTREAM_ATTEMPT_LIMITS.responsePrefix,
+      observedBytes: UPSTREAM_ATTEMPT_LIMITS.responsePrefix, totalBytes: null, truncated: false,
+    })
+    expect(snapshot.attempts[0]?.errorCategory).toBe(terminal === "read_error" ? "read" : null)
+    expect(safeUpstreamExchangesForPersistence(snapshot)).toEqual(snapshot)
+  })
+}
+
 test("read failure after a prefix leaves observed bytes and an unknown total", async () => {
   const collector = new UpstreamExchangeCollector()
   const attempt = begin(collector)

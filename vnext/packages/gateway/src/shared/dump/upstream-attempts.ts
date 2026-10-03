@@ -231,36 +231,46 @@ export class UpstreamExchangeCollector {
 
   private addHeaders(item: MutableAttempt, headers: Iterable<readonly [string, string]>, side: "request" | "response"): void {
     if (this.finished !== null) return
-    for (const [rawName, rawValue] of headers) {
-      // Skip oversized untrusted strings before lowercasing, splitting or
-      // encoding them. Diagnostic capture never allocates a giant header.
-      if (rawName.length > 14 || rawValue.length > 128) {
-        if (side === "request") item.omittedRequestHeaders = safeCount(item.omittedRequestHeaders + 1)
-        else item.omittedResponseHeaders = safeCount(item.omittedResponseHeaders + 1)
-        continue
-      }
-      const name = rawName.toLowerCase()
-      let value: string | null = null
-      if (name === "content-type") {
-        const mediaType = rawValue.split(";", 1)[0]?.trim().toLowerCase()
-        if (mediaType && SAFE_MEDIA_TYPES.has(mediaType)) value = mediaType
-      } else if (name === "content-length" && /^\d{1,15}$/.test(rawValue)) {
-        value = String(Number(rawValue))
-      }
-      const size = value === null ? 0 : headerBudgetBytes(name, value)
-      if (value === null || item.headerBytes + size > UPSTREAM_ATTEMPT_LIMITS.headersPerAttempt
-        || this.metadataBytes + size > UPSTREAM_ATTEMPT_LIMITS.metadataBytes) {
-        if (side === "request") item.omittedRequestHeaders = safeCount(item.omittedRequestHeaders + 1)
-        else item.omittedResponseHeaders = safeCount(item.omittedResponseHeaders + 1)
-        if (value !== null) this.metadataTruncated = true
-        continue
-      }
-      const pair: SafeAttemptHeader = [name, value] as SafeAttemptHeader
-      if (side === "request") item.requestHeaders.push(pair)
-      else item.responseHeaders.push(pair)
-      item.headerBytes += size
-      this.metadataBytes += size
+    if (headers instanceof Headers) {
+      // Native fields, including on subclasses, are authoritative. Userland
+      // traversal overrides cannot replace safe metadata with invented pairs.
+      Headers.prototype.forEach.call(headers, (value, name) => this.addHeader(item, name, value, side))
+      return
     }
+    for (const [rawName, rawValue] of headers) {
+      this.addHeader(item, rawName, rawValue, side)
+    }
+  }
+
+  private addHeader(item: MutableAttempt, rawName: string, rawValue: string, side: "request" | "response"): void {
+    // Skip oversized untrusted strings before lowercasing, splitting or
+    // encoding them. Diagnostic capture never allocates a giant header.
+    if (rawName.length > 14 || rawValue.length > 128) {
+      if (side === "request") item.omittedRequestHeaders = safeCount(item.omittedRequestHeaders + 1)
+      else item.omittedResponseHeaders = safeCount(item.omittedResponseHeaders + 1)
+      return
+    }
+    const name = rawName.toLowerCase()
+    let value: string | null = null
+    if (name === "content-type") {
+      const mediaType = rawValue.split(";", 1)[0]?.trim().toLowerCase()
+      if (mediaType && SAFE_MEDIA_TYPES.has(mediaType)) value = mediaType
+    } else if (name === "content-length" && /^\d{1,15}$/.test(rawValue)) {
+      value = String(Number(rawValue))
+    }
+    const size = value === null ? 0 : headerBudgetBytes(name, value)
+    if (value === null || item.headerBytes + size > UPSTREAM_ATTEMPT_LIMITS.headersPerAttempt
+      || this.metadataBytes + size > UPSTREAM_ATTEMPT_LIMITS.metadataBytes) {
+      if (side === "request") item.omittedRequestHeaders = safeCount(item.omittedRequestHeaders + 1)
+      else item.omittedResponseHeaders = safeCount(item.omittedResponseHeaders + 1)
+      if (value !== null) this.metadataTruncated = true
+      return
+    }
+    const pair: SafeAttemptHeader = [name, value] as SafeAttemptHeader
+    if (side === "request") item.requestHeaders.push(pair)
+    else item.responseHeaders.push(pair)
+    item.headerBytes += size
+    this.metadataBytes += size
   }
 
   private captureLimit(prefix: BytePrefix, perSideLimit: number): number {
@@ -344,7 +354,13 @@ export class UpstreamExchangeCollector {
         }
         if (this.finished === null) {
           item.responseObserved = safeCount(item.responseObserved + result.value.byteLength)
-          if (captureActive) captureActive = this.capture(item.responsePrefix, result.value, UPSTREAM_ATTEMPT_LIMITS.responsePrefix)
+          if (captureActive) {
+            // Both limits are monotonic until finish. Keep counting and
+            // forwarding after saturation without revisiting prefix copies.
+            captureActive = item.responsePrefix.byteLength < UPSTREAM_ATTEMPT_LIMITS.responsePrefix
+              && this.capturedBodyBytes < UPSTREAM_ATTEMPT_LIMITS.totalBodyBytes
+              && this.capture(item.responsePrefix, result.value, UPSTREAM_ATTEMPT_LIMITS.responsePrefix)
+          }
         }
         controller.enqueue(result.value)
       },
