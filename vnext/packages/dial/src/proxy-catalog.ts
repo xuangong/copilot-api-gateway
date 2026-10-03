@@ -6,7 +6,7 @@
  * Ported from copilot-gateway/packages/gateway/src/dial/proxy-catalog.ts.
  */
 import { parseProxyUri, type ProxyConfig, type ProxyUriError } from '@vibe-core/proxy'
-import type { ProxyRepo } from '@vibe-core/proxy-repo'
+import type { ProxyRecord, ProxyRepo } from '@vibe-core/proxy-repo'
 
 /** Parsed wire config plus an optional per-proxy dial deadline. */
 export interface ProxyEntry {
@@ -20,16 +20,15 @@ export interface ProxyCatalog {
   readonly parseErrors: Map<string, ProxyUriError>
 }
 
-export const loadProxyCatalog = async (
-  proxies: Pick<ProxyRepo, 'list'>,
-  referencedIds: ReadonlySet<string>,
-): Promise<ProxyCatalog> => {
+/** Compile a captured configuration without another repository read. */
+export const parseProxyCatalog = (
+  proxies: readonly ProxyRecord[],
+  isReferenced: (id: string) => boolean,
+): ProxyCatalog => {
   const proxyById = new Map<string, ProxyEntry>()
   const parseErrors = new Map<string, ProxyUriError>()
-  if (referencedIds.size === 0) return { proxyById, parseErrors }
-
-  for (const proxy of await proxies.list()) {
-    if (!referencedIds.has(proxy.id)) continue
+  for (const proxy of proxies) {
+    if (!isReferenced(proxy.id)) continue
     try {
       proxyById.set(proxy.id, {
         config: parseProxyUri(proxy.url),
@@ -42,3 +41,11 @@ export const loadProxyCatalog = async (
   }
   return { proxyById, parseErrors }
 }
+
+export const loadProxyCatalog = async (
+  proxies: Pick<ProxyRepo, 'list'>,
+  referencedIds: ReadonlySet<string>,
+): Promise<ProxyCatalog> => parseProxyCatalog(
+  referencedIds.size === 0 ? [] : await proxies.list(),
+  id => referencedIds.has(id),
+)

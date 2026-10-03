@@ -8,7 +8,7 @@ export type {
   PreparedDialBody,
 } from './fetcher.ts'
 
-export { loadProxyCatalog } from './proxy-catalog.ts'
+export { loadProxyCatalog, parseProxyCatalog } from './proxy-catalog.ts'
 export type { ProxyCatalog, ProxyEntry } from './proxy-catalog.ts'
 
 export { createReplayableRequest } from './replayable-request.ts'

@@ -20,10 +20,10 @@ The specification's Binding constraints apply to every task: existing worktree, 
 
 **Interfaces:** Consume pinned configuration rows for eager read preflight and accepted CatalogResult rows for selected execution. Produce request-local fetcher resolvers with unchanged `(upstreamId, observer?) => Fetcher` semantics; parsing helper remains framework-pure. Existing createPerRequestFetcher callers retain eager construction.
 
-- [ ] Add meaningful boundary tests for eager repository failure before contribution catches, direct-only no read, delayed parsing against captured rows, request-only materialization, and authoritative selection after proxy change. Pin unknown-ID and malformed-ID privacy.
-- [ ] Verify new boundary tests fail for the missing split, then implement shared parser/preparation helpers and direct single-upstream construction. Keep accepted and pinned sources separate and remove unused all-provider execution setup.
-- [ ] Run the focused affected suites and gateway/dial typechecks, recording commands and results in W/task-1-report.md. No runtime measurement yet.
-- [ ] Independent task review; fix load-bearing findings and commit only the reviewed task files.
+- [x] Add meaningful boundary tests for eager repository failure before contribution catches, direct-only no read, delayed parsing against captured rows, request-only materialization, and authoritative selection after proxy change. Pin unknown-ID and malformed-ID privacy.
+- [x] Verify new boundary tests fail for the missing split, then implement shared parser/preparation helpers and direct single-upstream construction. Keep accepted and pinned sources separate and remove unused all-provider execution setup.
+- [x] Run the focused affected suites and gateway/dial typechecks, recording commands and results in W/task-1-report.md. No runtime measurement yet.
+- [x] Independent task review; fix load-bearing findings and commit only the reviewed task files.
 
 ## Task 2: Capture preparation
 

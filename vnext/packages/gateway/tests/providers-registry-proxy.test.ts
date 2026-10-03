@@ -15,7 +15,7 @@ import { BunSqliteRepo as SqliteRepo } from '@vibe-llm/platform-bun/src/bun-sqli
 import { __resetPlatformForTests, initRuntimeLocation } from '@vibe-core/platform'
 import { initRepo, type UpstreamRecord } from '../src/repo/index.ts'
 import type { UserId } from '../src/repo/branded-ids.ts'
-import { listProviderBindings } from '../src/data-plane/providers/registry.ts'
+import { listProviderBindings, listRoutingBindings } from '../src/data-plane/providers/registry.ts'
 
 const OWNER = 'u1' as UserId
 const NOW = '2026-01-01T00:00:00.000Z'
@@ -69,6 +69,33 @@ test('a proxy catalog read failure rejects instead of yielding direct-dialing bi
   })
 
   await expect(listProviderBindings({ ownerId: OWNER })).rejects.toThrow("configuration temporarily unavailable")
+})
+
+test('pinning a direct winner cannot bypass another visible row proxy read failure', async () => {
+  await repo.upstreams.save(brokenChainUpstream())
+  await repo.upstreams.save({ ...brokenChainUpstream(), id: 'direct', proxyFallbackList: [{ id: 'direct_fetch' }] })
+  initRepo({ ...repo, configurationRevision: undefined, proxies: {
+    ...repo.proxies, list: async () => { throw new Error(STORAGE_FAILURE) },
+  } })
+  await expect(listRoutingBindings({ kind: 'owner', ownerId: OWNER }, { pin: 'direct' })).rejects.toThrow(STORAGE_FAILURE)
+})
+
+test('an unknown-model lookup cannot defer all-visible proxy repository availability', async () => {
+  await repo.upstreams.save(brokenChainUpstream())
+  initRepo({ ...repo, configurationRevision: undefined, proxies: {
+    ...repo.proxies, list: async () => { throw new Error(STORAGE_FAILURE) },
+  } })
+  await expect(listRoutingBindings({ kind: 'owner', ownerId: OWNER }).then(bindings => bindings.find(['absent']))).rejects.toThrow(STORAGE_FAILURE)
+})
+
+test('direct-only routing never reads a proxy repository', async () => {
+  await repo.upstreams.save({ ...brokenChainUpstream(), id: 'direct', proxyFallbackList: [{ id: 'direct_fetch' }],
+    config: { baseUrl: 'https://example.invalid', authStyle: 'none', models: ['configured'] },
+  })
+  initRepo({ ...repo, configurationRevision: undefined, proxies: {
+    ...repo.proxies, list: async () => { throw new Error('direct-only proxy read') },
+  } })
+  expect((await listRoutingBindings({ kind: 'owner', ownerId: OWNER })).find(['configured']).map(binding => binding.upstream)).toEqual(['direct'])
 })
 
 /**

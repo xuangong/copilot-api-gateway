@@ -1,4 +1,3 @@
-import * as dial from "../src/data-plane/dial/per-request.ts"
 import { AffinityCodec } from "../src/shared/affinity/carrier.ts"
 import { analyzeAffinityRequest, stampAffinityItem, AffinityRoutingUnavailableError } from "../src/shared/affinity/analysis.ts"
 import { resolveBinding } from "../src/data-plane/routing/binding-resolver.ts"
@@ -10,7 +9,7 @@ import { Database } from "bun:sqlite"
 import { BunSqliteRepo } from "../../../apps/platform-bun/src/bun-sqlite-repo.ts"
 import { __resetPlatformForTests, initBackground, initRuntimeLocation } from "@vibe-core/platform"
 import { customProviderPlugin, CustomProvider } from "@vibe-llm/provider-custom"
-import { initRepo, withConfigurationSnapshot } from "../src/repo/index.ts"
+import { initRepo, getDataPlaneConfiguration, withConfigurationSnapshot } from "../src/repo/index.ts"
 import type { UpstreamRecord } from "../src/repo/types.ts"
 import { listUpstreamModels, listRoutingBindings, readCachedModels, _clearModelsMemoForTest } from "../src/data-plane/providers/registry.ts"
 import { selectBindingForChatCompletions, selectBindingForProtocol } from "../src/data-plane/chat-flow/shared/select-binding.ts"
@@ -45,8 +44,6 @@ test("warm same-model ordinary routing constructs only its winner and keeps exec
   await fixture()
   const construction = spyOn(customProviderPlugin, "createFromUpstream")
   const prepare = spyOn(CustomProvider.prototype, "prepareAffinityExecution")
-  const factories = spyOn(dial, "createPerRequestFetcher")
-  restores.push(() => factories.mockRestore())
   restores.push(() => construction.mockRestore(), () => prepare.mockRestore())
   const first = await select()
   expect(first.kind).toBe("ok")
@@ -54,11 +51,41 @@ test("warm same-model ordinary routing constructs only its winner and keeps exec
   expect(first.binding.upstream).toBe("first")
   expect(construction).toHaveBeenCalledTimes(1)
   expect(prepare).not.toHaveBeenCalled()
-  expect(factories).toHaveBeenCalledTimes(2)
   const next = await select()
   if (next.kind !== "ok") throw new Error("missing next winner")
   expect(next.binding.provider).not.toBe(first.binding.provider)
   expect(construction).toHaveBeenCalledTimes(2)
+  const urls: string[] = []
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = (async (url: RequestInfo | URL) => {
+    urls.push(String(url))
+    return Response.json({ id: "chatcmpl-fixture" })
+  }) as typeof fetch
+  restores.push(() => { globalThis.fetch = originalFetch })
+  const request: ProviderRequest = { endpoint: "chat_completions", sourceApi: "openai", headers: new Headers(), payload: { model: "shared", messages: [] } }
+  expect((await first.binding.provider.fetch(request)).status).toBe(200)
+  expect((await next.binding.provider.fetch(request)).status).toBe(200)
+  expect(urls).toEqual(["https://first.invalid/chat/completions", "https://first.invalid/chat/completions"])
+})
+
+test("selected execution uses accepted edited proxy rows rather than the pinned preflight snapshot", async () => {
+  const { repo } = await fixture()
+  const first = await repo.upstreams.getById("first")
+  if (!first) throw new Error("missing row")
+  await repo.proxies.save({ id: "px", name: "valid", url: "http://pinned.invalid:8080", dialTimeoutSeconds: null })
+  await repo.upstreams.patchMetadata(first, row => ({ ...row, proxyFallbackList: [{ id: "px" }] }))
+  await listUpstreamModels()
+  await withConfigurationSnapshot(async () => {
+    expect((await getDataPlaneConfiguration().proxies.list())[0]?.url).toBe("http://pinned.invalid:8080")
+    await repo.proxies.patch("px", { url: "trojan://fake-password@edited.invalid:99999" })
+    // A retained result may intentionally serve its previous coherent epoch.
+    // Force a new authoritative observation while this request stays pinned.
+    _clearModelsMemoForTest()
+    const selected = await select()
+    if (selected.kind !== "ok") throw new Error("missing selected provider")
+    expect(selected.binding.upstream).toBe("first")
+    await expect(selected.binding.provider.fetch({ endpoint: "chat_completions", sourceApi: "openai", headers: new Headers(), payload: { model: "shared", messages: [] } })).rejects.toThrow("malformed proxy px")
+  })
 })
 
 test("warm constructor failures fall through in order and all failures remain catalog-unavailable", async () => {

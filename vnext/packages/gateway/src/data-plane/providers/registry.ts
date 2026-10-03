@@ -25,7 +25,7 @@ import { claudeCodeProviderPlugin } from '@vibe-llm/provider-claude-code'
 import { customProviderPlugin } from '@vibe-llm/provider-custom'
 import { sdfProviderPlugin } from '@vibe-llm/provider-sdf'
 import { getCachedCopilotToken } from '../../shared/copilot-token-cache.ts'
-import { createPerRequestFetcher, createObservedDirectFetcher } from '../dial/per-request.ts'
+import { preparePerRequestFetcher, createSingleUpstreamFetcher, createObservedDirectFetcher } from '../dial/per-request.ts'
 import { directFetcher, type Fetcher } from '@vibe-core/upstream'
 import type { ProviderPluginContext, ExecutionFetcherForRequest } from '@vibe-llm/provider-llm'
 import type { DumpAccumulator } from '../../shared/dump/accumulator.ts'
@@ -209,10 +209,8 @@ function withCatalogSignal(fetcher: Fetcher, signal: AbortSignal): Fetcher {
     return fetcher(url, { ...init, signal: init?.signal ? AbortSignal.any([signal, init.signal]) : signal })
   }, { signal })
 }
-async function authoritativeFetchers(result: Pick<CatalogResult, "upstream" | "proxies">) {
-  return createPerRequestFetcher(getRuntimeLocation(), [result.upstream], {
-    proxies: { list: async () => [...result.proxies] }, proxyBackoffs: getAuthoritativeRepo().proxyBackoffs,
-  })
+function authoritativeFetchers(result: Pick<CatalogResult, "upstream" | "proxies">) {
+  return createSingleUpstreamFetcher(getRuntimeLocation(), result.upstream, result.proxies, getAuthoritativeRepo().proxyBackoffs)
 }
 function coordinator(): CatalogCoordinator {
   const repo = getAuthoritativeRepo()
@@ -221,7 +219,7 @@ function coordinator(): CatalogCoordinator {
     current = new CatalogCoordinator({
       catalogs: repo.catalogs, catalogRevision: MODEL_CATALOG_REVISION,
       discover: async (observation, signal) => {
-        const factory = await authoritativeFetchers(observation)
+        const factory = authoritativeFetchers(observation)
         // Request-token fallback cannot be published as a stored account's catalog.
         const provider = await createProviderFromUpstream(observation.upstream, undefined,
           id => withCatalogSignal(factory(id), signal))
@@ -307,7 +305,7 @@ export async function listRoutingBindings(
 
   // Keep the all-visible-upstream preflight outside the contribution catch:
   // a proxy repository failure must never turn into implicit direct egress.
-  const fetcherForUpstream = await createPerRequestFetcher(getRuntimeLocation(), upstreams)
+  const fetcherForUpstream = await preparePerRequestFetcher(getRuntimeLocation(), upstreams)
   const observation = (() => {
     try { return opts.dump?.upstreamDialObservation() } catch { return undefined }
   })()
@@ -357,7 +355,7 @@ export async function listRoutingBindings(
       // this request. A cold projection provider is reused if it wins routing.
       let pending: Promise<LlmModelProvider | null> | undefined
       const provider = () => pending ??= (async () => {
-        const currentFetcher = accepted ? await authoritativeFetchers(accepted) : fetcherForUpstream
+        const currentFetcher = accepted ? authoritativeFetchers(accepted) : fetcherForUpstream
         const execution: ProviderPluginContext["executionFetcherForUpstream"] = observation ? (id, request) => {
           const operation = operationForProviderRequest(request)
           return currentFetcher(id, operation ? observation.forOperation({ upstreamId: id, operation }) : undefined)
