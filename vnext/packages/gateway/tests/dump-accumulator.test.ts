@@ -352,7 +352,7 @@ test("finalize publishes to broker channel keyed by apiKey id", async () => {
   ac.abort()
 })
 
-test("finalize(response) with null body falls back to (status, headers) path", async () => {
+test("finalize(response) with null body persists its terminal status", async () => {
   const ctx = await setupCtx(3600)
   const c = await makeContext("/v1/chat/completions")
   const acc = openDumpAccumulator(c, "POST", apiKey(3600), {
@@ -369,6 +369,29 @@ test("finalize(response) with null body falls back to (status, headers) path", a
 
   const [meta] = await ctx.store.list("k1", { limit: 10 })
   expect(meta!.status).toBe(204)
+})
+
+test("null response retains frame-time headers and the first terminal record", async () => {
+  const ctx = await setupCtx()
+  try {
+    const dump = openDumpAccumulator(await makeContext("/v1/responses"), "POST", apiKey(3600), {
+      bytes: new Uint8Array(), streamError: null,
+    })
+    if (!dump) throw new Error("dump expected")
+    dump.frame(eventFrame({ text: "captured" }))
+    const source = new Response(null, { status: 204, headers: { "x-origin": "original" } })
+    const expectedHeaders = Array.from(source.headers.entries())
+    const returned = dump.finalize(source)
+    source.headers.set("x-origin", "source-mutation")
+    returned.headers.set("x-origin", "client-mutation")
+    dump.finalize(500, [["x-origin", "later-finalization"]])
+    await ctx.drain()
+    const stored = await ctx.store.get("k1", dump.recordId)
+    expect(stored?.meta.status).toBe(204)
+    expect(stored?.response.headers).toEqual(expectedHeaders)
+    expect(stored?.response.body.type).toBe("stream")
+    expect(stored?.response.body.type === "stream" ? stored.response.body.events.map(item => item.frame) : []).toEqual([eventFrame({ text: "captured" })])
+  } finally { ctx.raw.close() }
 })
 
 test("finalize(response) stamps X-Dump-Record-Id + X-Dump-Key-Id headers", async () => {

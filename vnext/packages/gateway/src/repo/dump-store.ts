@@ -85,25 +85,27 @@ const hourBucket = (ms: number): string => {
 const bodyPath = (keyId: string, bucket: string, recordId: string, side: "req" | "resp" | "up"): string =>
   `${DUMP_FILE_PREFIX}${keyId}/${bucket}/${recordId}-${crypto.randomUUID()}.${side}.gz`
 
-// gzip/gunzip via Bun's native helpers (Bun 1.3 does not expose
-// CompressionStream globally). Cloudflare Workers do expose CompressionStream;
-// when this runs there we'd wrap that instead — for the Bun runtime we take
-// the direct route.
-const gzip = async (input: Uint8Array | string, ownership: "borrowed" | "transferred" = "borrowed"): Promise<Uint8Array> => {
-  // Both sinks below reject a SharedArrayBuffer-backed view; nothing in the
-  // gateway ever produces one, so narrow once here instead of at each call.
-  const part = input as Uint8Array<ArrayBuffer> | string
-  if (typeof CompressionStream !== "undefined") {
-    // Transferred byte inputs are private immutable snapshots or fresh owned
-    // buffers. Borrowed bytes retain Blob's synchronous input snapshot.
-    const source = typeof part === "string" || ownership === "borrowed"
-      ? new Blob([part]).stream()
-      : new ReadableStream<Uint8Array<ArrayBuffer>>({ start(controller) { controller.enqueue(part); controller.close() } })
-    const stream = new Response(source.pipeThrough(new CompressionStream("gzip")))
-    return new Uint8Array(await stream.arrayBuffer())
-  }
-  const bytes = typeof part === "string" ? new TextEncoder().encode(part) : part
-  return Bun.gzipSync(bytes)
+const ownedCompressedBytes = (buffer: ArrayBuffer): Uint8Array => new Uint8Array(buffer)
+
+// Keep input preparation synchronous. The output reaction owns only the
+// compressed buffer; the stream still owns its pending input.
+const gzip = (input: Uint8Array | string, ownership: "borrowed" | "transferred" = "borrowed"): Promise<Uint8Array> => {
+  try {
+    // Both sinks below reject a SharedArrayBuffer-backed view; nothing in the
+    // gateway ever produces one, so narrow once here instead of at each call.
+    const part = input as Uint8Array<ArrayBuffer> | string
+    if (typeof CompressionStream !== "undefined") {
+      // Transferred byte inputs are private immutable snapshots or fresh owned
+      // buffers. Borrowed bytes retain Blob's synchronous input snapshot.
+      const source = typeof part === "string" || ownership === "borrowed"
+        ? new Blob([part]).stream()
+        : new ReadableStream<Uint8Array<ArrayBuffer>>({ start(controller) { controller.enqueue(part); controller.close() } })
+      return new Response(source.pipeThrough(new CompressionStream("gzip")))
+        .arrayBuffer().then(ownedCompressedBytes)
+    }
+    const bytes = typeof part === "string" ? new TextEncoder().encode(part) : part
+    return Promise.resolve(Bun.gzipSync(bytes))
+  } catch (error) { return Promise.reject(error) }
 }
 
 const gunzip = async (input: Uint8Array): Promise<Uint8Array> => {

@@ -273,3 +273,54 @@ test.each(["stream", "bun"] as const)("%s branch keeps malformed optional sideca
     expect(JSON.parse(new TextDecoder().decode(response))).toEqual(input.response.body.type === "stream" ? input.response.body.events : null)
   })
 })
+
+test("synchronous compression construction failures reject mandatory preparation before staging", async () => {
+  const failure = new Error("compression construction failed")
+  await withBranch("stream", async () => {
+    const preparation = store.prepareRequestBody(Uint8Array.of(1))
+    expect(preparation).toBeInstanceOf(Promise)
+    await expect(preparation).rejects.toBe(failure)
+    const input = record([{ ts: 0, frame: eventFrame({ text: "mandatory" }) }])
+    const writing = store.put(keyId, input)
+    expect(writing).toBeInstanceOf(Promise)
+    await expect(writing).rejects.toBe(failure)
+    expect(files.size).toBe(0)
+    expect(raw.query("SELECT id FROM dump_records").all()).toEqual([])
+    expect(raw.query("SELECT file_key FROM spilled_files").all()).toEqual([])
+  }, () => { throw failure })
+})
+
+test("synchronous optional compression failure still persists the canonical response", async () => {
+  const input = record([{ ts: 0, frame: eventFrame({ text: "canonical" }) }])
+  input.upstreamExchanges = snapshot()
+  let compressions = 0
+  await withBranch("stream", async () => {
+    await store.put(keyId, input)
+    const row = raw.query<{ upstream_exchanges_descriptor: string | null; response_body_descriptor: string }, [string]>(
+      "SELECT upstream_exchanges_descriptor, response_body_descriptor FROM dump_records WHERE id = ?",
+    ).get(input.meta.id)
+    expect(row?.upstream_exchanges_descriptor).toBeNull()
+    expect(row?.response_body_descriptor).toContain('"type":"events"')
+    expect(files.size).toBe(1)
+    expect(JSON.parse(new TextDecoder().decode(uploaded(input, "resp")))).toEqual(input.response.body.type === "stream" ? input.response.body.events : null)
+  }, () => { if (++compressions === 1) throw new Error("optional compression failed") })
+  expect(compressions).toBe(2)
+})
+
+test("synchronous Bun compression failures preserve rejection identity and prevent staging", async () => {
+  const failure = new Error("native compression failed")
+  await withBranch("bun", async () => {
+    const native = spyOn(Bun, "gzipSync").mockImplementation(() => { throw failure })
+    try {
+      const preparation = store.prepareRequestBody(Uint8Array.of(1))
+      expect(preparation).toBeInstanceOf(Promise)
+      await expect(preparation).rejects.toBe(failure)
+      const writing = store.put(keyId, record([{ ts: 0, frame: eventFrame({ text: "mandatory" }) }]))
+      expect(writing).toBeInstanceOf(Promise)
+      await expect(writing).rejects.toBe(failure)
+      expect(files.size).toBe(0)
+      expect(raw.query("SELECT id FROM dump_records").all()).toEqual([])
+      expect(raw.query("SELECT file_key FROM spilled_files").all()).toEqual([])
+    } finally { native.mockRestore() }
+  })
+})

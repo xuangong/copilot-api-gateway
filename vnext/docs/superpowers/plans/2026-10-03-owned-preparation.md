@@ -42,8 +42,8 @@ const copy = input.clone()
 
 **Interfaces:** Preserve all public DumpStore/accumulator signatures. Private gzip still returns `Promise<Uint8Array>` for string or borrowed/transferred byte inputs. No new header ownership registry or public trusted snapshot type.
 
-- [ ] Retain existing byte/JSON/sidecar/terminal tests. Add a constructor-throw compression case covering failed request preparation and failed mandatory response preparation before file staging, while optional sidecar failure remains degradable. Keep original rejected error identity and restore patched globals in finally.
-- [ ] Make gzip a synchronous promise-returning input boundary, with all preparation errors returned as rejected promises. Keep string/borrowed Blob and transferred stream branches. Return a compressed-output promise through a top-level byte-view reaction rather than an async frame containing raw input:
+- [x] Retain existing byte/JSON/sidecar/terminal tests. Add a constructor-throw compression case covering failed request preparation and failed mandatory response preparation before file staging, while optional sidecar failure remains degradable. Keep original rejected error identity and restore patched globals in finally.
+- [x] Make gzip a synchronous promise-returning input boundary, with all preparation errors returned as rejected promises. Keep string/borrowed Blob and transferred stream branches. Return a compressed-output promise through a top-level byte-view reaction rather than an async frame containing raw input:
 
 ```ts
 const ownedCompressedBytes = (buffer: ArrayBuffer): Uint8Array => new Uint8Array(buffer)
@@ -54,9 +54,9 @@ return new Response(source.pipeThrough(new CompressionStream("gzip")))
 return Promise.resolve(Bun.gzipSync(bytes))
 ```
 
-- [ ] In `finalize(Response)` with null body, register `this.write` directly using the freshly owned response header snapshot and the same scalar/event fields as the numeric overload. Leave defensive copying at public numeric/fallback entrypoints and final private Response headers unchanged.
-- [ ] Run grouped dump compression/accumulator/store/sidecar/terminal/capture suites and gateway typecheck. Record functional and structural evidence in W/task-2-report.md, explicitly leaving GC/peak improvement unproven.
-- [ ] Independent specification/code-quality review; fix substantive findings; root commits only reviewed Task 2 files and marks completion.
+- [x] In `finalize(Response)` with null body, register `this.write` directly using the freshly owned response header snapshot and the same scalar/event fields as the numeric overload. Leave defensive copying at public numeric/fallback entrypoints and final private Response headers unchanged.
+- [x] Run grouped dump compression/accumulator/store/sidecar/terminal/capture suites and gateway typecheck. Record functional and structural evidence in W/task-2-report.md, explicitly leaving GC/peak improvement unproven.
+- [x] Independent specification/code-quality review; fix substantive findings; root commits only reviewed Task 2 files and marks completion.
 
 ## Task 3: Combined qualification and results
 

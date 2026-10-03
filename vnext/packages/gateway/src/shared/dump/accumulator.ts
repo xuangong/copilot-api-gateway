@@ -391,7 +391,16 @@ export class DumpAccumulator {
     const responseHeaders = headerPairs(response.headers)
 
     if (response.body === null) {
-      this.finalize(responseStatus, responseHeaders)
+      // These pairs already belong to this finalization; the public numeric
+      // overload instead snapshots borrowed caller arrays.
+      this.background.waitUntil(this.write({
+        status: responseStatus,
+        headers: responseHeaders,
+        isStream: (this.events?.length ?? 0) > 0,
+        bytes: new Uint8Array(),
+        payloadBytes: this.sentPayloadBytes,
+        streamError: null,
+      }))
       return this.withDumpHeaders(new Response(null, {
         status: response.status,
         statusText: response.statusText,
