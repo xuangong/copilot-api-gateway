@@ -66,8 +66,8 @@ Files: `harness/build.ts`, `manifest.ts`, `entry.mjs.template`, `runtime.ts`, `f
 ## Task 5: Local delivery
 
 - [x] Recheck protected files and reference cleanliness, source identity, owned process cleanup and evidence preservation.
-- [ ] Commit only the new tooling/design/results and merge completed work to local vNext under existing authorization.
-- [ ] Report what was measured, what remains unqualified and the next optimization priority. No CFW deployment is part of this plan.
+- [x] Commit only the new tooling/design/results and merge completed work to local vNext under existing authorization.
+- [x] Report what was measured, what remains unqualified and the next optimization priority. No CFW deployment is part of this plan.
 
 ## 2026-10-07 execution checkpoint
 
@@ -83,3 +83,5 @@ Files: `harness/build.ts`, `manifest.ts`, `entry.mjs.template`, `runtime.ts`, `f
 **Protocol correction:** canary 02 proved forced SSE is invalid for A's native JSON request (502 parsing `data:` as JSON). Canary 03 honors upstream `stream`; A/B are JSON-to-JSON while R's intended path is SSE-to-JSON. The JSON cells therefore compare complete behavior with differing upstream format. SSE-to-SSE remains the first common-format comparison.
 
 **External blocker:** exact R dependencies are missing; offline frozen-lock installation could add zero packages, and official/mirror HTTPS failed during TLS. Keep R and the formal 5,400-request proposal unrun. No warm/capacity claims can be derived from the eight cold canary requests. See the [results and gaps](../research/2026-10-07-reference-stage-measurement/qualification-results.md).
+
+**Local delivery:** commit `dbbef72e` was fast-forwarded into local `vNext`. An independent review verified 41 evidence artifacts, 42 executable inputs, 1,953 A/B consumed compiler inputs and 12 runtime artifacts. The 39 MAIN and 14 repair protected files matched before integration; only the task-owned initial design was replaced by its documented update, with the original retained as `main-design-before-merge.md` in the new raw directory. No push or deployment occurred.
