@@ -1,0 +1,210 @@
+{
+  "rawRetained": true,
+  "files": [
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-07-reference-stage-measurement/reference-source-identity.json",
+      "bytes": 391,
+      "sha256": "24f9cf1aadb9c091fdbd270638416460d5366ce581690ed278785c590c2b8e07"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-07-reference-stage-measurement/raw/reference-build-preflight-01/reference-build-receipt.json",
+      "bytes": 53098,
+      "sha256": "c732e89b78fb0b16d2a5e5b8d8b3a1864efa026ba39d60d150487ff3b99e388a"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-07-reference-stage-measurement/raw/reference-dependency-recovery-01.json",
+      "bytes": 4105,
+      "sha256": "05291d6daa245565c4331c67d0aeb822835abc9a69a01b43352bc6f1288d7568"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-07-reference-stage-measurement/qualification-ab-01/inputs.json",
+      "bytes": 13445,
+      "sha256": "2d42e90ccc9f5e8286e8b9afb21ca7681ae8b3fe2ea69e0d81a1447b87f8a478"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-07-reference-stage-measurement/qualification-ab-01/disposition.json",
+      "bytes": 161,
+      "sha256": "19379754c74f90767c57c6e076eee8fd9a2ef5d0bdf9b92b59a7012fba9e016a"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-07-reference-stage-measurement/qualification-ab-01/supervision.json",
+      "bytes": 143,
+      "sha256": "399be2f77a4efbf62194bf005adaf20a52d20a4a53b5e15eef543a8433eba050"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-07-reference-stage-measurement/qualification-ab-01/result.json",
+      "bytes": 141,
+      "sha256": "29f3dff193385c61d26e80ce58baf5e3cd3a2b5c9a179c9dbafc25f2161edb10"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-07-reference-stage-measurement/qualification-ab-01/stderr.log",
+      "bytes": 755,
+      "sha256": "943db32ae32bca9391a966d881f72991a8fd206a1b57c311649ac562898671e2"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-07-reference-stage-measurement/qualification-ab-01/stdout.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-07-reference-stage-measurement/qualification-ab-02/inputs.json",
+      "bytes": 13445,
+      "sha256": "2519bfb2a55f102a239a7e1955d8be142afdbd8fb26444eea1fcf5ac2f8f0bda"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-07-reference-stage-measurement/qualification-ab-02/disposition.json",
+      "bytes": 659,
+      "sha256": "7c5da7bf16865a2c7c745550c1434b41255aa77d7f162673b77769a9eaaad321"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-07-reference-stage-measurement/qualification-ab-02/supervision.json",
+      "bytes": 143,
+      "sha256": "d57d93dda38f59cee7896d8e2b7f0a94a1a986f927daf4c708d70c2855a5e802"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-07-reference-stage-measurement/qualification-ab-02/result.json",
+      "bytes": 141,
+      "sha256": "29f3dff193385c61d26e80ce58baf5e3cd3a2b5c9a179c9dbafc25f2161edb10"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-07-reference-stage-measurement/qualification-ab-02/stderr.log",
+      "bytes": 2182,
+      "sha256": "44c7180bc88e47275400a30e9f1b58c5e1a76130bd87e7c2f84be5242efd0428"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-07-reference-stage-measurement/qualification-ab-02/stdout.log",
+      "bytes": 78,
+      "sha256": "204db10a490b93a45b997eec8ea6cd3efe7799361a04cd7ebc3caa70dd1ca3f3"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-07-reference-stage-measurement/qualification-ab-03/inputs.json",
+      "bytes": 13445,
+      "sha256": "5e2c0b00b8f1b9cc24fbfd9e66c50ea1fe7474591946cc702100697ef5a545c5"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-07-reference-stage-measurement/qualification-ab-03/disposition.json",
+      "bytes": 102,
+      "sha256": "8f5c120e6ce4ba822f6b5ad9997368eb6d7dcb13573c32dc49cd17f3c897afe8"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-07-reference-stage-measurement/qualification-ab-03/supervision.json",
+      "bytes": 143,
+      "sha256": "ed926f321b0647fba3e8d3bd1e2d205d6c7e613ecee7e733bf7b34ef74d39e40"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-07-reference-stage-measurement/qualification-ab-03/result.json",
+      "bytes": 272,
+      "sha256": "d2bdab1bc27d4558f1eb47d8d7317cf60d531d389186d385327d460c98c46fb5"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-07-reference-stage-measurement/qualification-ab-03/stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-07-reference-stage-measurement/qualification-ab-03/stdout.log",
+      "bytes": 312,
+      "sha256": "ca76bd0fcb2fff676260c580a37ae2d812714798f7483589e3d8f86f86475a08"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-07-reference-stage-measurement/qualification-ab-03/A-control/identity.json",
+      "bytes": 4802,
+      "sha256": "b280d88b414867105970afad76010e8af05754a3f561c65fa5db31285f91209c"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-07-reference-stage-measurement/qualification-ab-03/A-control/observations.json",
+      "bytes": 7912,
+      "sha256": "c5273950c735be8d0053d677804d1db3275eabddf3d71fa675c707c09423fcc6"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-07-reference-stage-measurement/qualification-ab-03/A-control/receipt.json",
+      "bytes": 5295,
+      "sha256": "11c9a91ef559efd1b76626a464f6acf6057952ca0cb93e8ece9d79d043f4c7b1"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-07-reference-stage-measurement/qualification-ab-03/A-probe/identity.json",
+      "bytes": 4817,
+      "sha256": "66880e5c3dc12daf3f8cd6ae27ee41c4cb1651d63a3f991fc4b9a831b76ca14d"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-07-reference-stage-measurement/qualification-ab-03/A-probe/observations.json",
+      "bytes": 12808,
+      "sha256": "dfc109ea05eda84701f2a41725bceee768f7d7d8aa442a174a91607ec7a48a65"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-07-reference-stage-measurement/qualification-ab-03/A-probe/receipt.json",
+      "bytes": 5289,
+      "sha256": "b341e0d101d00c50d0c811edf8606adcef63d495edd535dfae18be0c5116f3f8"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-07-reference-stage-measurement/qualification-ab-03/B-control/identity.json",
+      "bytes": 5004,
+      "sha256": "b27bf0f0c762192b3dcb3a17f8ef81fbac18a7437e4deb0d7d72b36fd2b41c8d"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-07-reference-stage-measurement/qualification-ab-03/B-control/observations.json",
+      "bytes": 7911,
+      "sha256": "dc4486f249c58de40da94aa5fb61f0690574bf3a611a10c61d929d8c9259466b"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-07-reference-stage-measurement/qualification-ab-03/B-control/receipt.json",
+      "bytes": 6069,
+      "sha256": "b9c064e8a2c0a0db8b058e25d7ccc29cb041813af03bca910739259380865ebe"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-07-reference-stage-measurement/qualification-ab-03/B-probe/identity.json",
+      "bytes": 5018,
+      "sha256": "cca30971f24b1ad6599103309c74341310d772040337569aaaee6b315a2209ff"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-07-reference-stage-measurement/qualification-ab-03/B-probe/observations.json",
+      "bytes": 13110,
+      "sha256": "26cbe636162b91fb1651f16ef33e0839b68607812e8b2e00a7d280509c49a172"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-07-reference-stage-measurement/qualification-ab-03/B-probe/receipt.json",
+      "bytes": 6066,
+      "sha256": "06f4bf7c49229546d6893ecf4132cc0b802027a0eacba0dd51c42e38717d167c"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-07-reference-stage-measurement/qualification-ab-03/A-observer-equivalence.json",
+      "bytes": 5075,
+      "sha256": "382098274e25d2d66f51c91919c8ca66e813d92a85001d0268898fd26c32c6c0"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-07-reference-stage-measurement/qualification-ab-03/A-build/transform-receipt.json",
+      "bytes": 5310,
+      "sha256": "d06aecb917987ff6919cbc3402a4dbb1f9e0865df30e6be7dd7ebf57c6c34c9b"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-07-reference-stage-measurement/qualification-ab-03/A-build/resolved-modules.json",
+      "bytes": 1564926,
+      "sha256": "1e41f725d46895010c8df40d2980276e216476c4aa025efc98a8a8e24f984a2a"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-07-reference-stage-measurement/qualification-ab-03/B-observer-equivalence.json",
+      "bytes": 5075,
+      "sha256": "652757429e6e9f307528665b8bfff451443a2a8147a6bf39beb57733e00c4621"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-07-reference-stage-measurement/qualification-ab-03/B-build/transform-receipt.json",
+      "bytes": 5356,
+      "sha256": "87f9602a94d8cdc4e10d8be05471db6d77c28d1384e6e721c16fd9a471b06273"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-07-reference-stage-measurement/qualification-ab-03/B-build/resolved-modules.json",
+      "bytes": 1752581,
+      "sha256": "e17f6c74e3b567e213199c85c89cfb7ff5baacd67062d9e80f0a619120e62509"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-07-reference-stage-measurement/validation-tests.json",
+      "bytes": 9341,
+      "sha256": "d93845e32fdc0ffb894da047b2161044018e8b6187a1a5755b5f9b39d9d48d6a"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-07-reference-stage-measurement/validation-typecheck.json",
+      "bytes": 126,
+      "sha256": "7086c2d31da6219243abab10a2cc554ffb92e6a86f9c32d7d54ed152fa4ec0b9"
+    }
+  ]
+}

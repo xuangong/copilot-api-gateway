@@ -1,0 +1,269 @@
+{
+  "date": "2026-10-07",
+  "status": "ab_observer_canary_passed_reference_blocked",
+  "comparisonCompleted": false,
+  "performanceConclusion": null,
+  "rawDirectory": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-07-reference-stage-measurement/qualification-ab-03",
+  "supervision": {
+    "pid": 36081,
+    "exitCode": 0,
+    "signal": null,
+    "timedOut": false,
+    "interrupted": false,
+    "cleanupComplete": true,
+    "actions": []
+  },
+  "instances": [
+    {
+      "instance": "A-control",
+      "qualifiedRequests": 2,
+      "dispatches": 2,
+      "physicalReadback": {
+        "checkedRecords": 2,
+        "sqlRows": 2,
+        "ownedObjects": 4,
+        "r2Objects": 4
+      },
+      "clock": {
+        "start": 1791310784983,
+        "end": 1791310784989,
+        "value": 205227745
+      },
+      "processWindow": {
+        "pid": 36143,
+        "startIdentity": "darwin-abstime:658346394900",
+        "scope": "darwin-process-libproc-rusage-v2",
+        "elapsedMs": 213.76370900124311,
+        "userUs": 30993,
+        "systemUs": 10963,
+        "cpuUs": 41956
+      },
+      "processRSS": {
+        "start": 138035200,
+        "settled": 145211392
+      },
+      "heapStart": {
+        "usedSize": 17896308,
+        "totalSize": 24477696,
+        "embedderHeapUsedSize": 257936,
+        "backingStorageSize": 2703351
+      },
+      "heapSettled": {
+        "usedSize": 20187300,
+        "totalSize": 25788416,
+        "embedderHeapUsedSize": 257936,
+        "backingStorageSize": 3026915
+      },
+      "counts": []
+    },
+    {
+      "instance": "A-probe",
+      "qualifiedRequests": 2,
+      "dispatches": 2,
+      "physicalReadback": {
+        "checkedRecords": 2,
+        "sqlRows": 2,
+        "ownedObjects": 4,
+        "r2Objects": 4
+      },
+      "clock": {
+        "start": 1791310786062,
+        "end": 1791310786070,
+        "value": 205227745
+      },
+      "processWindow": {
+        "pid": 36165,
+        "startIdentity": "darwin-abstime:658373664871",
+        "scope": "darwin-process-libproc-rusage-v2",
+        "elapsedMs": 146.49425000324845,
+        "userUs": 27326,
+        "systemUs": 8180,
+        "cpuUs": 35506
+      },
+      "processRSS": {
+        "start": 137297920,
+        "settled": 144572416
+      },
+      "heapStart": {
+        "usedSize": 17947704,
+        "totalSize": 24494080,
+        "embedderHeapUsedSize": 257936,
+        "backingStorageSize": 2703351
+      },
+      "heapSettled": {
+        "usedSize": 20248108,
+        "totalSize": 25804800,
+        "embedderHeapUsedSize": 257936,
+        "backingStorageSize": 3026921
+      },
+      "counts": [
+        {
+          "id": "A-probe00-sse-string-full",
+          "counts": {
+            "configuration.copy.calls": 5,
+            "request.body.bytes": 65536,
+            "compression.calls": 2,
+            "compression.input.bytes": 66348,
+            "routing.candidates": 1,
+            "provider.calls": 1,
+            "http.dispatches": 1,
+            "sse.input.chunks": 6,
+            "sse.input.bytes": 683,
+            "sse.parsed.frames": 4,
+            "upstream.observed.frames": 4,
+            "upstream.observed.events": 3,
+            "sink.files.puts": 2,
+            "sink.files.bytes": 565
+          }
+        },
+        {
+          "id": "A-probe00-json-string-full",
+          "counts": {
+            "configuration.copy.calls": 5,
+            "request.body.bytes": 65536,
+            "compression.calls": 2,
+            "compression.input.bytes": 65946,
+            "routing.candidates": 1,
+            "provider.calls": 1,
+            "http.dispatches": 1,
+            "upstream.observed.frames": 2,
+            "upstream.observed.events": 1,
+            "sink.files.puts": 2,
+            "sink.files.bytes": 525
+          }
+        }
+      ]
+    },
+    {
+      "instance": "B-control",
+      "qualifiedRequests": 2,
+      "dispatches": 2,
+      "physicalReadback": {
+        "checkedRecords": 2,
+        "sqlRows": 2,
+        "ownedObjects": 6,
+        "r2Objects": 6
+      },
+      "clock": {
+        "start": 1791310789518,
+        "end": 1791310789526,
+        "value": 205227745
+      },
+      "processWindow": {
+        "pid": 36206,
+        "startIdentity": "darwin-abstime:658453997562",
+        "scope": "darwin-process-libproc-rusage-v2",
+        "elapsedMs": 138.5683329999447,
+        "userUs": 37176,
+        "systemUs": 8911,
+        "cpuUs": 46087
+      },
+      "processRSS": {
+        "start": 145129472,
+        "settled": 155172864
+      },
+      "heapStart": {
+        "usedSize": 20315968,
+        "totalSize": 26034176,
+        "embedderHeapUsedSize": 257936,
+        "backingStorageSize": 2776962
+      },
+      "heapSettled": {
+        "usedSize": 21565492,
+        "totalSize": 28917760,
+        "embedderHeapUsedSize": 257936,
+        "backingStorageSize": 3242532
+      },
+      "counts": []
+    },
+    {
+      "instance": "B-probe",
+      "qualifiedRequests": 2,
+      "dispatches": 2,
+      "physicalReadback": {
+        "checkedRecords": 2,
+        "sqlRows": 2,
+        "ownedObjects": 6,
+        "r2Objects": 6
+      },
+      "clock": {
+        "start": 1791310790586,
+        "end": 1791310790593,
+        "value": 205227745
+      },
+      "processWindow": {
+        "pid": 36228,
+        "startIdentity": "darwin-abstime:658480365670",
+        "scope": "darwin-process-libproc-rusage-v2",
+        "elapsedMs": 164.67729099839926,
+        "userUs": 40341,
+        "systemUs": 11300,
+        "cpuUs": 51641
+      },
+      "processRSS": {
+        "start": 145473536,
+        "settled": 155779072
+      },
+      "heapStart": {
+        "usedSize": 20309684,
+        "totalSize": 26050560,
+        "embedderHeapUsedSize": 257936,
+        "backingStorageSize": 2776962
+      },
+      "heapSettled": {
+        "usedSize": 21597400,
+        "totalSize": 28934144,
+        "embedderHeapUsedSize": 257936,
+        "backingStorageSize": 3242543
+      },
+      "counts": [
+        {
+          "id": "B-probe00-sse-string-full",
+          "counts": {
+            "configuration.copy.calls": 5,
+            "request.body.bytes": 65536,
+            "compression.calls": 3,
+            "compression.input.bytes": 65536,
+            "routing.candidates": 1,
+            "provider.calls": 1,
+            "http.dispatches": 1,
+            "sse.input.chunks": 6,
+            "sse.input.bytes": 683,
+            "sse.parsed.frames": 4,
+            "upstream.observed.frames": 4,
+            "upstream.observed.events": 3,
+            "compression.input.codeUnits": 89964,
+            "sink.files.puts": 3,
+            "sink.files.bytes": 1935
+          }
+        },
+        {
+          "id": "B-probe00-json-string-full",
+          "counts": {
+            "configuration.copy.calls": 5,
+            "request.body.bytes": 65536,
+            "compression.calls": 3,
+            "compression.input.bytes": 65536,
+            "routing.candidates": 1,
+            "provider.calls": 1,
+            "http.dispatches": 1,
+            "upstream.observed.frames": 2,
+            "upstream.observed.events": 1,
+            "compression.input.codeUnits": 89055,
+            "sink.files.puts": 3,
+            "sink.files.bytes": 1634
+          }
+        }
+      ]
+    }
+  ],
+  "limitations": [
+    "Two cold requests per instance, no warmup or balanced repetitions; no overhead envelope or comparative resource conclusion",
+    "OS CPU and RSS describe the entire workerd process including Miniflare storage services; not isolate or CFW billed CPU",
+    "Inspector attached for this canary; heap start/settled are not peaks; no forced GC",
+    "Control and probe share entry/context/settlement/outbound bridge plumbing; native wrapper overhead is unqualified",
+    "R entrypoint, physical semantic oracle, and three-arm runner are not runtime-qualified",
+    "JSON delivery uses actual provider requested source format; R forces SSE whereas A/B request JSON",
+    "No capacity, retained byte-seconds, slow reader, cancellation, or source-mapped CPU profile collected"
+  ]
+}

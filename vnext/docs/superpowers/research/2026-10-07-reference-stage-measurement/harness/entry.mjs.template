@@ -1,0 +1,62 @@
+import worker from __WORKER__
+__REFERENCE_EXPORTS__
+import { createProbe } from __PROBE__
+
+const probe = createProbe(() => performance.now())
+const hooks = __HOOKS__
+let observerFailures = 0
+if (hooks) globalThis[Symbol.for("gateway.measurement.probe")] = (kind,name,value) => {
+  try {probe.emit(kind,name,value)} catch {observerFailures++}
+}
+const pending = new Set()
+const failures = []
+let active = 0
+let registered = 0
+let settled = 0
+function context(ctx) {
+  return {
+    waitUntil(value) {
+      registered++
+      const task = Promise.resolve(value).then(() => {settled++}, error => {settled++;if(failures.length<64)failures.push(String(error).slice(0,256));throw error}).finally(() => pending.delete(task))
+      pending.add(task)
+      ctx.waitUntil(task)
+    },
+    passThroughOnException() {ctx.passThroughOnException()},
+    props:ctx.props,
+    exports:ctx.exports,
+  }
+}
+async function barrier() {
+  for (;;) {
+    const generation=registered
+    await Promise.allSettled([...pending])
+    await new Promise(resolve=>setTimeout(resolve,0))
+    if (active===0 && pending.size===0 && generation===registered) return {registered,settled,pending:pending.size,active,failures,observerFailures,unowned:probe.unowned()}
+  }
+}
+export default {
+  async fetch(req,env,ctx) {
+    const path = new URL(req.url).pathname
+    if (path === "/__harness/settled" || path === "/__harness/traces" || path === "/__harness/clock") {
+      if (req.headers.get("x-harness-key") !== "architecture-local-only") return new Response("Unauthorized",{status:401})
+      if (path === "/__harness/clock") {
+        const start=performance.now()
+        let value=1
+        for(let i=0;i<1000000;i++) value=(value*33+i)|0
+        return Response.json({start,end:performance.now(),value})
+      }
+      return Response.json(path === "/__harness/settled" ? await barrier() : {traces:probe.snapshot(),unowned:probe.unowned(),observerFailures})
+    }
+    const id=req.headers.get("x-benchmark-id")
+    if (!id || !/^[a-zA-Z0-9_-]{1,160}$/.test(id)) return new Response("Benchmark ID required",{status:400})
+    active++
+    try {
+      const action = async()=>{
+        probe.emit("mark","worker.entry")
+        try { return await worker.fetch(req,env,context(ctx)) }
+        finally {probe.emit("mark","worker.response-return")}
+      }
+      return hooks ? await probe.run(id,action) : await worker.fetch(req,env,context(ctx))
+    } finally {active--}
+  },
+}
