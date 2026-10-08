@@ -17,7 +17,8 @@
 
 import {
   ensureClaudeCodeAccessToken,
-  invalidateClaudeCodeAccessToken,
+  refreshClaudeCodeAccessTokenForRetry,
+  ClaudeCodeCredentialUnavailableError,
   type EnsuredAccessToken,
 } from './access-token'
 import { ClaudeCodeOAuthSessionTerminatedError } from './auth/oauth'
@@ -25,19 +26,22 @@ import type { Fetcher } from './fetcher'
 import { pickClaudeCodeHeaders } from './headers'
 import type { ClaudeCodeProviderModel } from './models'
 import { parseClaudeCodeQuotaHeaders, putClaudeCodeQuota, type ClaudeCodeQuotaSnapshot } from './quota'
-import { readClaudeCodeUpstreamState } from './state'
-import { getUpstreamRepo } from '@vibe-core/upstream-repo'
+import { readClaudeCodeCredential, type ClaudeCodeCredentialSnapshot, type ClaudeCodeCredentialTarget } from './credential-effects'
+import { assertClaudeCodeExecutionAuthority, claudeCodeAffinityTarget, ClaudeCodeAffinityChangedError, type ClaudeCodeExecutionAuthority } from './affinity-execution'
 import { waitUntil } from '@vibe-core/platform'
 import type { MessagesPayload } from '@vibe-llm/protocols/messages'
+import type { ProviderRequest, ProviderResponse } from '@vibe-llm/provider-llm'
 const ANTHROPIC_MESSAGES_ENDPOINT = 'https://api.anthropic.com/v1/messages?beta=true'
 
 export interface CallClaudeCodeMessagesOptions {
   upstreamId: string
+  expected: ClaudeCodeExecutionAuthority
   model: ClaudeCodeProviderModel
   body: Omit<MessagesPayload, 'model'>
   signal?: AbortSignal
   fetcher: Fetcher
   executionFetcher?: Fetcher
+  beforeInference?: ProviderRequest['beforeInference']
   /**
    * True when `isClaudeCodeShapedRequest` recognised the caller as a real
    * Claude Code client. The caller's own already-filtered fingerprint then
@@ -49,36 +53,47 @@ export interface CallClaudeCodeMessagesOptions {
   inboundHeaders?: Headers
 }
 
+export interface ClaudeCodePreparedCallResult {
+  response: Response
+  affinityExecution?: ProviderResponse['affinityExecution']
+  execution?: ProviderResponse['execution']
+}
+
 export const callClaudeCodeMessages = async (
   opts: CallClaudeCodeMessagesOptions,
-): Promise<Response> => {
+): Promise<Response> => (await callClaudeCodeMessagesPrepared(opts)).response
+
+export const callClaudeCodeMessagesPrepared = async (
+  opts: CallClaudeCodeMessagesOptions,
+): Promise<ClaudeCodePreparedCallResult> => {
   // `opts.model.id` is the public alias on the catalog; the dated upstream id
   // Anthropic expects on the wire — and that the pricing table keys by — rides
   // on `opts.model.providerData.upstreamModelId`.
   const upstreamModelId = opts.model.providerData.upstreamModelId
 
-  const fresh = await getUpstreamRepo().getById(opts.upstreamId)
-  if (!fresh) throw new Error(`Claude Code upstream ${opts.upstreamId} disappeared mid-request`)
-  const state = readClaudeCodeUpstreamState(fresh.state)
-  const account = state.accounts[0]!
+  opts.signal?.throwIfAborted()
+  const snapshot = await readClaudeCodeCredential(opts.upstreamId, opts.expected, opts.beforeInference !== undefined)
+  await validateExecution(opts, snapshot.credential)
+  const account = snapshot.account
   if (account.state !== 'active') {
-    return synthetic503(`Claude Code account is ${account.state}: ${account.stateMessage}`)
+    return { response: synthetic503(`Claude Code account is ${account.state}: ${account.stateMessage}`) }
   }
 
   const now = new Date()
   const quotaData = account.quotaSnapshot === null ? null : account.quotaSnapshot.data
   if (isRateLimitedNow(quotaData, now)) {
-    return synthetic429(
+    return { response: synthetic429(
       `Claude Code upstream rate-limited until ${quotaData.reset}`,
       quotaData.reset,
       now,
-    )
+    ) }
   }
 
-  const ensured = await ensureOrSession503(opts)
-  if (ensured instanceof Response) return ensured
+  const ensured = await ensureOrSession503(opts, snapshot)
+  if (ensured instanceof Response) return { response: ensured }
 
-  return await performStreamingMessagesCall(opts, upstreamModelId, ensured, false)
+  const bodyText = JSON.stringify({ ...opts.body, model: upstreamModelId, stream: true })
+  return await performStreamingMessagesCall(opts, upstreamModelId, bodyText, ensured, false)
 }
 
 // ─── Pre-flight quota gate ─────────────────────────────────────────────────
@@ -121,18 +136,49 @@ const isRateLimitedNow = (
 // state; we just wrap the exception into a 503 for the client.
 const ensureOrSession503 = async (
   opts: CallClaudeCodeMessagesOptions,
+  snapshot?: ClaudeCodeCredentialSnapshot,
+  failed?: EnsuredAccessToken,
 ): Promise<EnsuredAccessToken | Response> => {
   try {
-    return await ensureClaudeCodeAccessToken({
+    const args = {
       upstreamId: opts.upstreamId,
       fetcher: opts.fetcher,
-    })
+      expected: opts.expected,
+      signal: opts.signal,
+      snapshot,
+      beforeMint: async (credential: Readonly<ClaudeCodeCredentialTarget>) => { await validateExecution(opts, credential, true) },
+    }
+    return failed ? await refreshClaudeCodeAccessTokenForRetry(failed, args) : await ensureClaudeCodeAccessToken(args)
   } catch (err) {
     if (err instanceof ClaudeCodeOAuthSessionTerminatedError) {
       return synthetic503(`Claude Code refresh failed: ${err.upstreamMessage}`)
     }
+    if (err instanceof ClaudeCodeCredentialUnavailableError) return synthetic503(err.message)
     throw err
   }
+}
+
+async function validateExecution(opts: CallClaudeCodeMessagesOptions, credential: Readonly<ClaudeCodeCredentialTarget>, authoritative = false) {
+  opts.signal?.throwIfAborted()
+  assertClaudeCodeExecutionAuthority(opts.expected, credential)
+  const target = claudeCodeAffinityTarget(credential, opts.model.providerData.upstreamModelId)
+  if (opts.beforeInference) {
+    if (!target) throw new ClaudeCodeAffinityChangedError()
+    await opts.beforeInference(target)
+    opts.signal?.throwIfAborted()
+  }
+  if (authoritative) {
+    const current = await readClaudeCodeCredential(opts.upstreamId, opts.expected, true)
+    assertClaudeCodeExecutionAuthority(opts.expected, current.credential)
+    if (current.account.state !== 'active') throw new ClaudeCodeOAuthSessionTerminatedError({ code: current.account.state, message: current.account.stateMessage })
+    if (opts.beforeInference) {
+      const actual = claudeCodeAffinityTarget(current.credential, opts.model.providerData.upstreamModelId)
+      if (!actual) throw new ClaudeCodeAffinityChangedError()
+      await opts.beforeInference(actual)
+    }
+  }
+  opts.signal?.throwIfAborted()
+  return target
 }
 
 // Shaped path: the gateway already reduced the client's headers to the
@@ -149,9 +195,10 @@ const passthroughHeaders = (inbound: Headers): Record<string, string> => {
 const performStreamingMessagesCall = async (
   opts: CallClaudeCodeMessagesOptions,
   upstreamModelId: string,
+  bodyText: string,
   accessToken: EnsuredAccessToken,
   alreadyRetried: boolean,
-): Promise<Response> => {
+): Promise<ClaudeCodePreparedCallResult> => {
   const headers: Record<string, string> = {
     ...(opts.shaped && opts.inboundHeaders
       ? passthroughHeaders(opts.inboundHeaders)
@@ -161,26 +208,25 @@ const performStreamingMessagesCall = async (
     authorization: `Bearer ${accessToken.entry.token}`,
   }
 
-  // Force stream:true regardless of caller intent — the gateway boundary
-  // consumes an SSE envelope; non-streaming Messages is routed elsewhere.
-  // Safe on the shaped path too: shaped detection requires CC client headers,
-  // a CC system block and a valid metadata.user_id, and the real Claude Code
-  // client always sets `stream: true`.
-  const wireBody = { ...opts.body, model: upstreamModelId, stream: true }
-
+  const affinityExecution = await validateExecution(opts, accessToken.credential, opts.beforeInference !== undefined)
+  opts.signal?.throwIfAborted()
   const response = await (opts.executionFetcher ?? opts.fetcher)(ANTHROPIC_MESSAGES_ENDPOINT, {
     method: 'POST',
     headers,
-    body: JSON.stringify(wireBody),
+    body: bodyText,
     signal: opts.signal,
   })
+  if (opts.signal?.aborted) {
+    await response.body?.cancel()
+    opts.signal.throwIfAborted()
+  }
 
   // Every Anthropic response ships an `anthropic-ratelimit-unified-*` snapshot
   // on 2xx and 429. Other statuses (4xx/5xx outside 429) carry no quota signal.
   if (response.ok || response.status === 429) {
     const snapshot = parseClaudeCodeQuotaHeaders(response.headers)
     if (Object.keys(snapshot.raw).length > 0) {
-      waitUntil(putClaudeCodeQuota(opts.upstreamId, snapshot))
+      waitUntil(putClaudeCodeQuota(accessToken, snapshot))
     }
   }
 
@@ -189,17 +235,17 @@ const performStreamingMessagesCall = async (
     !accessToken.freshlyMinted &&
     !alreadyRetried
   ) {
-    // Cached token rejected; invalidate so the next mint reads stale=null,
-    // then re-enter with a fresh-minted token. A second 401 means the
-    // refresh_token itself is dead — surface the 401 verbatim so the
-    // operator sees the real upstream message.
-    await invalidateClaudeCodeAccessToken(opts.upstreamId)
-    const ensured = await ensureOrSession503(opts)
-    if (ensured instanceof Response) return ensured
-    return await performStreamingMessagesCall(opts, upstreamModelId, ensured, true)
+    await response.body?.cancel()
+    opts.signal?.throwIfAborted()
+    const ensured = await ensureOrSession503(opts, undefined, accessToken)
+    if (ensured instanceof Response) return { response: ensured }
+    return await performStreamingMessagesCall(opts, upstreamModelId, bodyText, ensured, true)
   }
 
-  return response
+  return { response, affinityExecution, execution: {
+    modelKey: upstreamModelId,
+    ...(affinityExecution ? { credentialSubject: affinityExecution.credentialSubject, credentialRevision: affinityExecution.credentialRevision } : {}),
+  } }
 }
 
 const synthetic503 = (message: string): Response =>

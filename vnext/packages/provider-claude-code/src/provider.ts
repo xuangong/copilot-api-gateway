@@ -7,11 +7,18 @@
  *   - Single endpoint 'messages'.
  *   - Access-token / catalog / pricing routing lives on the class methods.
  */
-import { ensureClaudeCodeAccessToken } from './access-token'
+import { ClaudeCodeCredentialUnavailableError, ensureClaudeCodeAccessToken } from './access-token'
 import { ClaudeCodeOAuthSessionTerminatedError } from './auth/oauth'
-import { assertClaudeCodeUpstreamRecord, type ClaudeCodeUpstreamConfig } from './config'
+import { assertClaudeCodeUpstreamRecord } from './config'
 import { isClaudeCodeShapedRequest } from './detection'
-import { callClaudeCodeMessages } from './fetch'
+import { callClaudeCodeMessagesPrepared, type ClaudeCodePreparedCallResult } from './fetch'
+import { readClaudeCodeCredential } from './credential-effects'
+import {
+  assertClaudeCodeExecutionAuthority,
+  claudeCodeAffinityTarget,
+  ClaudeCodeAffinityChangedError,
+  type ClaudeCodeExecutionAuthority,
+} from './affinity-execution'
 import { directFetcher, type Fetcher } from './fetcher'
 import {
   CLAUDE_CODE_MESSAGES_BOUNDARY,
@@ -25,6 +32,7 @@ import {
 import { pricingForClaudeCodeModelKey } from './pricing'
 import { assertClaudeCodeUpstreamState } from './state'
 import { runInterceptors } from '@vibe-core/service'
+import { UpstreamGoneError, UpstreamReplacedError } from '@vibe-core/upstream-repo'
 import type { EndpointKey, ModelPricing, UpstreamRecord } from '@vibe-llm/protocols/common'
 import type { MessagesPayload } from '@vibe-llm/protocols/messages'
 import {
@@ -72,7 +80,7 @@ export class ClaudeCodeProvider implements LlmModelProvider {
   readonly supportedEndpoints = CLAUDE_CODE_SUPPORTED
   readonly inboundHeaderAllowlist = INBOUND_HEADER_ALLOWLIST
   private readonly upstreamId: string
-  private readonly config: ClaudeCodeUpstreamConfig
+  private readonly authority: ClaudeCodeExecutionAuthority
   private readonly fetcher: Fetcher
   private readonly executionFetcher?: ExecutionFetcherForRequest
   private catalogCache: ClaudeCodeProviderModel[] | null = null
@@ -80,32 +88,54 @@ export class ClaudeCodeProvider implements LlmModelProvider {
   constructor(record: UpstreamRecord<unknown>, fetcher: Fetcher = directFetcher, executionFetcher?: ExecutionFetcherForRequest) {
     assertClaudeCodeUpstreamRecord(record)
     assertClaudeCodeUpstreamState(record.state)
+    if (!("rowIncarnation" in record) || typeof record.rowIncarnation !== "string" || record.rowIncarnation.trim() === "") {
+      throw new TypeError("Claude Code provider requires a stored upstream row incarnation")
+    }
+    const account = record.state.accounts[0]
+    if (!account) throw new TypeError("Claude Code provider requires an account")
+    this.authority = Object.freeze({
+      upstreamId: record.id, provider: "claude-code", rowIncarnation: record.rowIncarnation, ownerId: record.ownerId,
+      accountUuid: account.accountUuid, tokenKind: account.tokenKind,
+      credentialGeneration: "credentialGeneration" in record && typeof record.credentialGeneration === "number"
+        && Number.isSafeInteger(record.credentialGeneration) && record.credentialGeneration >= 0 ? record.credentialGeneration : undefined,
+      configurationGeneration: "catalogGeneration" in record && typeof record.catalogGeneration === "number"
+        && Number.isSafeInteger(record.catalogGeneration) && record.catalogGeneration >= 0 ? record.catalogGeneration : undefined,
+    })
     this.upstreamId = record.id
-    this.config = record.config
     this.name = record.name
     this.fetcher = fetcher
     this.executionFetcher = executionFetcher
   }
 
   setModelCatalog(models: ProviderModelsResponse): void {
-    this.catalogCache = models.data as ClaudeCodeProviderModel[]
+    this.catalogCache = structuredClone(models.data) as ClaudeCodeProviderModel[]
   }
 
-  async getModels(): Promise<ProviderModelsResponse> {
+  getModels(): Promise<ProviderModelsResponse> {
+    return this.loadCatalog()
+  }
+
+  private async loadCatalog(signal = (this.fetcher as Fetcher & { readonly signal?: AbortSignal }).signal): Promise<ProviderModelsResponse> {
     if (!this.catalogCache) {
-      let access: { entry: { token: string } }
-      try {
-        access = await ensureClaudeCodeAccessToken({
-          upstreamId: this.upstreamId,
-          fetcher: this.fetcher,
-        })
-      } catch (err) {
-        if (err instanceof ClaudeCodeOAuthSessionTerminatedError) {
-          // ensureClaudeCodeAccessToken already flipped terminal state.
-        }
-        throw err
-      }
-      const raw = await fetchClaudeCodeModelsList(access.entry.token, this.fetcher)
+      signal?.throwIfAborted()
+      const access = await ensureClaudeCodeAccessToken({
+        upstreamId: this.upstreamId,
+        fetcher: this.fetcher,
+        expected: this.authority,
+        signal,
+        beforeMint: async credential => {
+          assertClaudeCodeExecutionAuthority(this.authority, credential)
+          const current = await readClaudeCodeCredential(this.upstreamId, this.authority, true)
+          assertClaudeCodeExecutionAuthority(this.authority, current.credential)
+        },
+      })
+      // A refresh may complete after a configuration edit. Keep its rotated
+      // credentials, but do not use the old provider's egress for discovery.
+      assertClaudeCodeExecutionAuthority(this.authority, access.credential)
+      signal?.throwIfAborted()
+      const raw = await fetchClaudeCodeModelsList(access.entry.token, signal
+        ? (url, init) => this.fetcher(url, { ...init, signal }) : this.fetcher)
+      signal?.throwIfAborted()
       this.catalogCache = buildClaudeCodeCatalog(raw)
     }
     return { object: 'list', data: this.catalogCache }
@@ -119,12 +149,41 @@ export class ClaudeCodeProvider implements LlmModelProvider {
     return pricingForClaudeCodeModelKey(modelKey)
   }
 
+  async prepareAffinityExecution(req: Readonly<ProviderRequest>) {
+    req.signal?.throwIfAborted()
+    if (req.endpoint !== "messages" || !req.payload || typeof req.payload !== "object") return undefined
+    const modelId = "model" in req.payload ? req.payload.model : undefined
+    const model = this.catalogCache?.find(candidate => candidate.id === modelId)
+    if (!model) return undefined
+    try {
+      const snapshot = await readClaudeCodeCredential(this.upstreamId, this.authority, true)
+      req.signal?.throwIfAborted()
+      if (snapshot.account.state !== "active") return undefined
+      assertClaudeCodeExecutionAuthority(this.authority, snapshot.credential)
+      return claudeCodeAffinityTarget(snapshot.credential, model.providerData.upstreamModelId)
+    } catch (error) {
+      req.signal?.throwIfAborted()
+      if (error instanceof UpstreamGoneError || error instanceof UpstreamReplacedError
+        || error instanceof ClaudeCodeAffinityChangedError) return undefined
+      throw error
+    }
+  }
+
   async fetch(req: ProviderRequest): Promise<ProviderResponse> {
+    req.signal?.throwIfAborted()
     if (req.endpoint !== 'messages') {
       throw new Error(`ClaudeCodeProvider does not support endpoint: ${req.endpoint}`)
     }
     try {
-      const model = await this.resolveModel(req.payload)
+      // Owned replay cannot discover a catalog or refresh before its first fence.
+      if (req.beforeInference) {
+        const target = await this.prepareAffinityExecution(req)
+        if (!target) throw new ClaudeCodeAffinityChangedError()
+        await req.beforeInference(target)
+        req.signal?.throwIfAborted()
+      }
+      const model = await this.resolveModel(req.payload, req.signal)
+      req.signal?.throwIfAborted()
       const { model: _ignored, ...wireBody } = req.payload as MessagesPayload
 
       // Detection runs on the *unmodified* payload — it needs `model` for the
@@ -134,9 +193,11 @@ export class ClaudeCodeProvider implements LlmModelProvider {
         body: req.payload as MessagesPayload,
       })
 
-      const terminal = (): Promise<Response> =>
-        callClaudeCodeMessages({
+      let prepared: ClaudeCodePreparedCallResult | undefined
+      const terminal = async (): Promise<Response> => {
+        prepared = await callClaudeCodeMessagesPrepared({
           upstreamId: this.upstreamId,
+          expected: this.authority,
           model,
           // On the shaped path the chain never runs, so this is still the
           // caller's own body verbatim.
@@ -146,7 +207,10 @@ export class ClaudeCodeProvider implements LlmModelProvider {
           executionFetcher: resolveExecutionFetcher(this.fetcher, this.executionFetcher, req),
           shaped,
           inboundHeaders: req.headers,
+          beforeInference: req.beforeInference,
         })
+        return prepared.response
+      }
 
       // Boundary ctx carries mutable `payload` (interceptors overwrite it
       // in place) plus read-only model + upstreamId (needed by
@@ -176,10 +240,11 @@ export class ClaudeCodeProvider implements LlmModelProvider {
         status: upstreamResp.status,
         headers: upstreamResp.headers,
         body: upstreamResp.body,
+        affinityExecution: prepared?.affinityExecution,
+        execution: prepared?.execution,
       }
     } catch (err) {
-      if (err instanceof ClaudeCodeOAuthSessionTerminatedError) {
-        // Terminal state has already been persisted by access-token layer.
+      if (err instanceof ClaudeCodeOAuthSessionTerminatedError || err instanceof ClaudeCodeCredentialUnavailableError) {
         return {
           status: 503,
           headers: new Headers({ 'content-type': 'application/json' }),
@@ -187,7 +252,8 @@ export class ClaudeCodeProvider implements LlmModelProvider {
             JSON.stringify({
               error: {
                 type: 'claude_code_upstream_unavailable',
-                message: `Claude Code refresh failed: ${err.upstreamMessage}`,
+                message: err instanceof ClaudeCodeOAuthSessionTerminatedError
+                  ? `Claude Code refresh failed: ${err.upstreamMessage}` : err.message,
               },
             }),
           ).body,
@@ -201,12 +267,12 @@ export class ClaudeCodeProvider implements LlmModelProvider {
   // fetch flow needs the resolved ClaudeCodeProviderModel for the dated
   // upstream id + limits. Cache hit expected — router materializes bindings
   // via getModels before dispatching.
-  private async resolveModel(payload: unknown): Promise<ClaudeCodeProviderModel> {
+  private async resolveModel(payload: unknown, signal?: AbortSignal): Promise<ClaudeCodeProviderModel> {
     const modelId = (payload as { model?: unknown }).model
     if (typeof modelId !== 'string' || modelId === '') {
       throw new Error('ClaudeCodeProvider.fetch requires payload.model')
     }
-    if (!this.catalogCache) await this.getModels()
+    if (!this.catalogCache) await this.loadCatalog(signal)
     const hit = this.catalogCache?.find((m) => m.id === modelId)
     if (!hit) throw new Error(`ClaudeCodeProvider: unknown model '${modelId}'`)
     return hit

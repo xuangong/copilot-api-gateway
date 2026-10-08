@@ -62,6 +62,7 @@ const claudeCodeTokenRequest = async (
   body: Record<string, string | number>,
   terminalCodes: ReadonlySet<string>,
   fetcher: Fetcher,
+  signal?: AbortSignal,
 ): Promise<ClaudeCodeOAuthTokenResponse> => {
   const response = await fetcher(CLAUDE_CODE_OAUTH_TOKEN_URL, {
     method: 'POST',
@@ -71,6 +72,7 @@ const claudeCodeTokenRequest = async (
       accept: 'application/json',
     },
     body: JSON.stringify(body),
+    ...(signal ? { signal } : {}),
   })
 
   const rawText = await response.text()
@@ -166,13 +168,14 @@ export const exchangeClaudeCodeAuthorizationCode = async (opts: {
 export const refreshClaudeCodeAccessToken = async (
   refreshToken: string,
   fetcher: Fetcher,
+  signal?: AbortSignal,
 ): Promise<ClaudeCodeOAuthTokenResponse> => {
   const body = {
     grant_type: 'refresh_token',
     refresh_token: refreshToken,
     client_id: CLAUDE_CODE_CLIENT_ID,
   }
-  return await claudeCodeTokenRequest(body, REFRESH_TERMINAL_OAUTH_CODES, fetcher)
+  return await claudeCodeTokenRequest(body, REFRESH_TERMINAL_OAUTH_CODES, fetcher, signal)
 }
 
 // The literal `code=true` query param matches what the real Claude Code CLI

@@ -4,9 +4,9 @@
 import { getUpstreamRepo } from '@vibe-core/upstream-repo'
 import {
   readClaudeCodeUpstreamState,
-  replaceSoleAccount,
-  type ClaudeCodeUpstreamState,
 } from './state'
+import { claudeCodeBearerEffect, ignoreGoneClaudeCodeEffect, updateClaudeCodeCredential } from './credential-effects'
+import type { EnsuredAccessToken } from './access-token'
 
 const HEADER_PREFIX = 'anthropic-ratelimit-'
 
@@ -214,17 +214,13 @@ export const getClaudeCodeQuota = async (
 }
 
 export const putClaudeCodeQuota = async (
-  upstreamId: string,
+  lease: EnsuredAccessToken,
   snapshot: ClaudeCodeQuotaSnapshot,
 ): Promise<void> => {
   // Stamped before the write so a replay against a winning sibling produces
   // the same document rather than a later `fetchedAt`.
   const fetchedAt = Date.now()
-  await getUpstreamRepo().saveState<ClaudeCodeUpstreamState>(upstreamId, (current) => {
-    const state = readClaudeCodeUpstreamState(current)
-    return replaceSoleAccount(state, (account) => ({
-      ...account,
-      quotaSnapshot: { fetchedAt, data: snapshot },
-    }))
-  })
+  await ignoreGoneClaudeCodeEffect(updateClaudeCodeCredential(claudeCodeBearerEffect(lease), account => ({
+    ...account, quotaSnapshot: { fetchedAt, data: snapshot },
+  })))
 }

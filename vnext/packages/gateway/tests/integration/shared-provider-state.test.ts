@@ -12,7 +12,8 @@ const codexObservation = async () => {
   if (!account.accessToken) throw new Error('fixture observation requires a bearer')
   return { ...account.accessToken, credential }
 }
-const claudeState = () => readClaudeCodeUpstreamState({ accounts: [{ accountUuid: accountId, tokenKind: 'oauth', refreshToken: 'old-refresh', state: 'active', stateUpdatedAt: '2026-01-01', accessToken: null, quotaSnapshot: null, usageProbeSnapshot: null }] })
+const claudeState = (access: string | null = null) => readClaudeCodeUpstreamState({ accounts: [{ accountUuid: accountId, tokenKind: 'oauth', refreshToken: 'old-refresh', state: 'active', stateUpdatedAt: '2026-01-01', accessToken: access ? { token: access, expiresAt: Date.now() + 3_600_000, refreshedAt: '2026-01-01' } : null, quotaSnapshot: null, usageProbeSnapshot: null }] })
+const claudeObservation = () => ensureClaudeCodeAccessToken({ upstreamId: 'claude-code', fetcher: async () => { throw new Error('fixture observation must use its cached bearer') } })
 const row = (provider: string, state: unknown) => ({
   id: provider, provider, name: provider, enabled: true, sortOrder: 0,
   config: { accounts: [provider === 'codex' ? { chatgptAccountId: accountId, email: 'fixture@example.test', chatgptUserId: 'fixture', planType: 'plus' } : { accountUuid: accountId, email: null, subscriptionType: 'max', organizationUuid: null, rateLimitTier: null }] },
@@ -74,7 +75,7 @@ for (const provider of ['codex', 'claude-code']) test(`${provider} quota writes 
   const { repo, db } = setupTestPlatform()
   const originalFetch = globalThis.fetch
   try {
-    await repo.upstreams.save(row(provider, provider === 'codex' ? codexState() : claudeState()) as never)
+    await repo.upstreams.save(row(provider, provider === 'codex' ? codexState() : claudeState('old-access')) as never)
     const view = getDataPlaneConfiguration()
     const upstream = await view.upstreams.getById(provider)
     if (!upstream) throw new Error('missing fixture upstream')
@@ -86,7 +87,7 @@ for (const provider of ['codex', 'claude-code']) test(`${provider} quota writes 
     await readCachedModels(upstream)
     const revision = await repo.configurationRevision!()
     if (provider === 'codex') await putCodexQuota(await codexObservation(), { observed_at: new Date().toISOString(), primary_used_percent: 20 })
-    else await putClaudeCodeQuota(provider, parseClaudeCodeQuotaHeaders(new Headers({ 'anthropic-ratelimit-unified-status': 'allowed' })))
+    else await putClaudeCodeQuota(await claudeObservation(), parseClaudeCodeQuotaHeaders(new Headers({ 'anthropic-ratelimit-unified-status': 'allowed' })))
     expect(await repo.configurationRevision!()).toBe(revision)
     const executor = (repo.apiKeys as unknown as { x: Record<string, (...args: unknown[]) => unknown> }).x
     let reads = 0
@@ -110,10 +111,11 @@ for (const provider of ['codex', 'claude-code']) test(`${provider} quota writes 
 for (const sameUpstream of [false, true]) test(`concurrent state writes retain hot configuration (same upstream: ${sameUpstream})`, async () => {
   const { repo, db } = setupTestPlatform()
   await repo.upstreams.save(row('codex', codexState()) as never)
-  await repo.upstreams.save(row('claude-code', claudeState()) as never)
+  await repo.upstreams.save(row('claude-code', claudeState('old-access')) as never)
   const view = getDataPlaneConfiguration()
   await view.upstreams.list()
   const observation = await codexObservation()
+  const claudeLease = await claudeObservation()
   const getById = repo.upstreams.getById.bind(repo.upstreams)
   let reads = 0
   let release: () => void = () => {}
@@ -129,7 +131,7 @@ for (const sameUpstream of [false, true]) test(`concurrent state writes retain h
       putCodexQuota(observation, { observed_at: new Date().toISOString(), primary_used_percent: 10 }),
       sameUpstream
         ? putCodexQuota(observation, { observed_at: new Date().toISOString(), secondary_used_percent: 20 })
-        : putClaudeCodeQuota('claude-code', parseClaudeCodeQuotaHeaders(new Headers({ 'anthropic-ratelimit-unified-status': 'allowed' }))),
+        : putClaudeCodeQuota(claudeLease, parseClaudeCodeQuotaHeaders(new Headers({ 'anthropic-ratelimit-unified-status': 'allowed' }))),
     ])
     repo.upstreams.getById = getById
     const list = repo.apiKeys.list.bind(repo.apiKeys)

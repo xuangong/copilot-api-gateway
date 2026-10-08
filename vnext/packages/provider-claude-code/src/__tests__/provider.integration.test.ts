@@ -8,8 +8,7 @@
 //   1. Happy-path 200 messages call → response + quota headers persisted.
 //   2. 401 (non-terminal) → invalidate + refresh + retry once → 200.
 //   3. 401 twice → propagated to caller (no infinite loop).
-//   4. Terminal OAuth refresh (invalid_grant retry-race exhausted) → 503 +
-//      account flipped to refresh_failed.
+//   4. Ambiguous OAuth invalid_grant → 503 while preserving the credential.
 //   5. setup-token expired at fetch time → 503, not a wire round-trip.
 //   6. Pre-flight quota gate: exhausted primary window → synthetic 429 without
 //      touching the wire; plus the three shapes that must NOT gate.
@@ -213,6 +212,12 @@ const makeRequest = (): ProviderRequest => ({
 
 const settleBackground = (): Promise<void> => new Promise((r) => setTimeout(r, 5))
 
+const storedRecord = async () => {
+  const row = await repo.getById(UPSTREAM_ID)
+  if (!row) throw new Error('Expected stored Claude Code fixture')
+  return row
+}
+
 // Minimal snapshot shaped like `parseClaudeCodeQuotaHeaders` output. Only the
 // fields the pre-flight gate reads are meaningful; the rest sit at their
 // header-absent defaults.
@@ -246,7 +251,7 @@ test('catalog and OAuth refresh stay ordinary while both 401 attempts use endpoi
   const ordinary: string[] = []
   const terminal: string[] = []
   const selected: string[] = []
-  const provider = new ClaudeCodeProvider(baseRecord(), async (url, init) => {
+  const provider = new ClaudeCodeProvider(await storedRecord(), async (url, init) => {
     ordinary.push(url)
     return harness.fetcher(url, init)
   }, request => {
@@ -275,7 +280,7 @@ test('200 messages call → ok + quota snapshot persisted in background', async 
       'anthropic-ratelimit-unified-5h-status': 'allowed',
     }),
   )
-  const provider = new ClaudeCodeProvider(baseRecord(), harness.fetcher)
+  const provider = new ClaudeCodeProvider(await storedRecord(), harness.fetcher)
   const resp = await provider.fetch(makeRequest())
 
   expect(resp.status).toBe(200)
@@ -301,7 +306,7 @@ test('401 → invalidate + refresh + retry once → 200', async () => {
     }
     return okSSE()
   })
-  const provider = new ClaudeCodeProvider(baseRecord(), harness.fetcher)
+  const provider = new ClaudeCodeProvider(await storedRecord(), harness.fetcher)
   const resp = await provider.fetch(makeRequest())
 
   expect(resp.status).toBe(200)
@@ -333,7 +338,7 @@ test('401 twice → propagated to caller', async () => {
       { status: 401 },
     ),
   )
-  const provider = new ClaudeCodeProvider(baseRecord(), harness.fetcher)
+  const provider = new ClaudeCodeProvider(await storedRecord(), harness.fetcher)
   const resp = await provider.fetch(makeRequest())
 
   expect(resp.status).toBe(401)
@@ -342,11 +347,10 @@ test('401 twice → propagated to caller', async () => {
   expect(messagesCalls).toHaveLength(2)
 })
 
-test('terminal OAuth refresh (invalid_grant) → 503 + refresh_failed', async () => {
+test('ambiguous OAuth invalid_grant → 503 without poisoning the credential', async () => {
   // Pre-expire the cached access token so we force a mint round-trip on the
-  // first call. OAuth responds `invalid_grant` → access-token layer flips
-  // account to refresh_failed and throws ClaudeCodeOAuthSessionTerminatedError;
-  // fetch layer catches → synthetic 503.
+  // first call. An unseen sibling may still publish a successful rotation;
+  // preserve the credential when no winner is visible yet.
   repo.put(
     baseRecord({
       accessToken: {
@@ -364,13 +368,7 @@ test('terminal OAuth refresh (invalid_grant) → 503 + refresh_failed', async ()
         { status: 400, headers: { 'content-type': 'application/json' } },
       ),
   )
-  const provider = new ClaudeCodeProvider(baseRecord({
-    accessToken: {
-      token: 'at_stale',
-      expiresAt: Date.now() - 60_000,
-      refreshedAt: '2025-12-31T00:00:00.000Z',
-    },
-  }), harness.fetcher)
+  const provider = new ClaudeCodeProvider(await storedRecord(), harness.fetcher)
   const resp = await provider.fetch(makeRequest())
 
   expect(resp.status).toBe(503)
@@ -380,8 +378,8 @@ test('terminal OAuth refresh (invalid_grant) → 503 + refresh_failed', async ()
 
   const fresh = await repo.getById<ClaudeCodeUpstreamState>(UPSTREAM_ID)
   const acct = fresh!.state.accounts[0]!
-  expect(acct.state).toBe('refresh_failed')
-  expect(acct.accessToken).toBeNull()
+  expect(acct.state).toBe('active')
+  expect(acct.accessToken?.token).toBe('at_stale')
 })
 
 test('setup-token expired → 503, no wire round-trip', async () => {
@@ -398,15 +396,7 @@ test('setup-token expired → 503, no wire round-trip', async () => {
   )
   const harness = makeHarness(() => okSSE())
   const provider = new ClaudeCodeProvider(
-    baseRecord({
-      tokenKind: 'setup-token',
-      refreshToken: null,
-      accessToken: {
-        token: 'at_setup_expired',
-        expiresAt: Date.now() - 60_000,
-        refreshedAt: '2025-12-31T00:00:00.000Z',
-      },
-    } as Partial<ClaudeCodeUpstreamState['accounts'][number]>),
+    await storedRecord(),
     harness.fetcher,
   )
   const resp = await provider.fetch(makeRequest())
@@ -430,7 +420,7 @@ test('exhausted primary window → synthetic 429 with retry-after, no wire call'
   const resetIso = isoIn(15 * 60 * 1000)
   repo.put(baseRecord({ quotaSnapshot: quotaSnapshot({ status: 'rejected', reset: resetIso }) }))
   const harness = makeHarness(() => okSSE())
-  const provider = new ClaudeCodeProvider(baseRecord(), harness.fetcher)
+  const provider = new ClaudeCodeProvider(await storedRecord(), harness.fetcher)
   const resp = await provider.fetch(makeRequest())
 
   expect(resp.status).toBe(429)
@@ -451,7 +441,7 @@ test('rejected with an already-past reset does not gate', async () => {
     }),
   )
   const harness = makeHarness(() => okSSE())
-  const provider = new ClaudeCodeProvider(baseRecord(), harness.fetcher)
+  const provider = new ClaudeCodeProvider(await storedRecord(), harness.fetcher)
   const resp = await provider.fetch(makeRequest())
 
   expect(resp.status).toBe(200)
@@ -476,7 +466,7 @@ test('overage rejected while primary allowed does not gate', async () => {
     }),
   )
   const harness = makeHarness(() => okSSE())
-  const provider = new ClaudeCodeProvider(baseRecord(), harness.fetcher)
+  const provider = new ClaudeCodeProvider(await storedRecord(), harness.fetcher)
   const resp = await provider.fetch(makeRequest())
 
   expect(resp.status).toBe(200)
@@ -488,7 +478,7 @@ test('rejected without a reset does not gate', async () => {
   // locked out forever because no later request refreshes the snapshot.
   repo.put(baseRecord({ quotaSnapshot: quotaSnapshot({ status: 'rejected', reset: null }) }))
   const harness = makeHarness(() => okSSE())
-  const provider = new ClaudeCodeProvider(baseRecord(), harness.fetcher)
+  const provider = new ClaudeCodeProvider(await storedRecord(), harness.fetcher)
   const resp = await provider.fetch(makeRequest())
 
   expect(resp.status).toBe(200)
@@ -527,7 +517,7 @@ const shapedRequest = (): ProviderRequest => ({
 test('shaped request passes body and client fingerprint through untouched', async () => {
   repo.put(baseRecord())
   const h = makeHarness(() => okSSE())
-  const provider = new ClaudeCodeProvider(baseRecord(), h.fetcher)
+  const provider = new ClaudeCodeProvider(await storedRecord(), h.fetcher)
   const res = await provider.fetch(shapedRequest())
   expect(res.status).toBe(200)
 
@@ -548,7 +538,7 @@ test('shaped request passes body and client fingerprint through untouched', asyn
 test('unshaped request is re-mimicked by the interceptor chain', async () => {
   repo.put(baseRecord())
   const h = makeHarness(() => okSSE())
-  const provider = new ClaudeCodeProvider(baseRecord(), h.fetcher)
+  const provider = new ClaudeCodeProvider(await storedRecord(), h.fetcher)
   await provider.fetch(makeRequest())
 
   const call = h.calls.find((c) => c.url === ANTHROPIC_MESSAGES)!

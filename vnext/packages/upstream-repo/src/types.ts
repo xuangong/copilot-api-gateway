@@ -7,12 +7,17 @@ export type StoredUpstreamRecord<TState = unknown, TProvider extends string = st
      * adapter. Credential replacement/configuration changes advance it;
      * routine token/quota state updates do not. Absence grants no affinity. */
     catalogGeneration?: number
+    /** Credential replacement advances this independent generation; routine
+     * state updates and metadata/configuration changes do not. */
+    credentialGeneration?: number
   }
 
 export interface UpstreamWriteTarget {
   rowIncarnation: string
   ownerId?: string
   provider: string
+  /** When supplied, state writes cannot cross a credential replacement. */
+  credentialGeneration?: number
 }
 
 /**

@@ -62,7 +62,7 @@ import type { BackoffRow, ProxyBackoffRepo, ProxyFallbackEntry, ProxyRecord, Pro
 
 const API_KEY_COLS = "id, name, key, created_at, last_used_at, owner_id, quota_requests_per_month, quota_tokens_per_month, quota_cost_per_month, web_search_enabled, web_search_langsearch_key, web_search_tavily_key, web_search_ms_grounding_key, web_search_priority, web_search_langsearch_ref, web_search_tavily_ref, web_search_ms_grounding_ref, web_search_jina_key, web_search_jina_ref, web_search_passthrough_upstream, web_search_passthrough_model, dump_retention_seconds, model_mappings_enabled, model_mappings, responses_retention_seconds"
 const GITHUB_COLS = "user_id, token, account_type, login, name, avatar_url, owner_id, enabled, sort_order, flag_overrides, updated_at, github_host, source"
-const UPSTREAM_COLS = "catalog_generation, row_incarnation, id, owner_id, provider, name, enabled, sort_order, config_json, flag_overrides, disabled_public_model_ids, state_json, proxy_fallback_list_json, created_at, updated_at"
+const UPSTREAM_COLS = "catalog_generation, credential_generation, row_incarnation, id, owner_id, provider, name, enabled, sort_order, config_json, flag_overrides, disabled_public_model_ids, state_json, proxy_fallback_list_json, created_at, updated_at"
 const USAGE_DIM_COLS = "key_id, incoming_model, model, upstream, model_key, client, hour, dimension, tokens, unit_price"
 const USAGE_REQ_COLS = "key_id, incoming_model, model, upstream, model_key, client, hour, requests"
 const LATENCY_COLS = "key_id, model, hour, colo, stream, requests, total_ms, upstream_ms, ttfb_ms, token_miss"
@@ -209,6 +209,7 @@ function parseState(raw: unknown): unknown {
 function toUpstreamRecord(row: UpstreamSqlRow): StoredUpstreamRecord {
   return {
     catalogGeneration: row.catalog_generation,
+    credentialGeneration: row.credential_generation,
     rowIncarnation: row.row_incarnation,
     id: row.id,
     ownerId: row.owner_id || undefined,
@@ -534,6 +535,7 @@ interface UpstreamSqlRow {
   id: string
   row_incarnation: string
   catalog_generation: number
+  credential_generation: number
   owner_id: string | null
   provider: UpstreamRecord<unknown>["provider"]
   name: string
@@ -591,15 +593,15 @@ class SharedUpstreamRepo implements UpstreamRepo {
 
   async save(upstream: UpstreamRecord<unknown>): Promise<void> {
     await this.x.run(
-      `INSERT INTO upstreams (${UPSTREAM_COLS}) VALUES (0, lower(hex(randomblob(16))), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT (id) DO UPDATE SET owner_id = excluded.owner_id, provider = excluded.provider, name = excluded.name, enabled = excluded.enabled, sort_order = excluded.sort_order, config_json = excluded.config_json, flag_overrides = excluded.flag_overrides, disabled_public_model_ids = excluded.disabled_public_model_ids, state_json = excluded.state_json, proxy_fallback_list_json = excluded.proxy_fallback_list_json, updated_at = excluded.updated_at`,
+      `INSERT INTO upstreams (${UPSTREAM_COLS}) VALUES (0, 0, lower(hex(randomblob(16))), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT (id) DO UPDATE SET catalog_generation = upstreams.catalog_generation + 1, credential_generation = upstreams.credential_generation + 1, owner_id = excluded.owner_id, provider = excluded.provider, name = excluded.name, enabled = excluded.enabled, sort_order = excluded.sort_order, config_json = excluded.config_json, flag_overrides = excluded.flag_overrides, disabled_public_model_ids = excluded.disabled_public_model_ids, state_json = excluded.state_json, proxy_fallback_list_json = excluded.proxy_fallback_list_json, updated_at = excluded.updated_at`,
       this.insertBinds(upstream),
     )
   }
 
   async createIfAbsent(upstream: UpstreamRecord<unknown>): Promise<StoredUpstreamRecord | null> {
     const row = await this.x.first<UpstreamSqlRow>(
-      `INSERT INTO upstreams (${UPSTREAM_COLS}) VALUES (0, lower(hex(randomblob(16))), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO upstreams (${UPSTREAM_COLS}) VALUES (0, 0, lower(hex(randomblob(16))), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (id) DO NOTHING RETURNING ${UPSTREAM_COLS}`,
       this.insertBinds(upstream),
     )
@@ -643,7 +645,7 @@ class SharedUpstreamRepo implements UpstreamRepo {
       throw new UpstreamContentionError(target.id)
     }
     const matched = await this.x.first<{ id: string }>(`UPDATE upstreams
-      SET config_json = ?, state_json = ?, catalog_generation = catalog_generation + 1, updated_at = ?
+      SET config_json = ?, state_json = ?, catalog_generation = catalog_generation + 1, credential_generation = credential_generation + 1, updated_at = ?
       WHERE id = ? AND row_incarnation = ? AND owner_id IS ? AND provider = ?
         AND catalog_generation = ? AND config_json IS ? AND state_json IS ? RETURNING id`,
     [JSON.stringify(replacement.config), serializeState(replacement.state), new Date().toISOString(),
@@ -652,13 +654,23 @@ class SharedUpstreamRepo implements UpstreamRepo {
       await this.readWriteTarget(target.id, target)
       throw new UpstreamContentionError(target.id)
     }
-    return toUpstreamRecord(await this.readWriteTarget(target.id, target))
+    return toUpstreamRecord(await this.readWriteTarget(target.id, {
+      rowIncarnation: target.rowIncarnation, ownerId: target.ownerId, provider: target.provider,
+    }))
   }
 
   private async readWriteTarget(id: string, target?: UpstreamWriteTarget): Promise<UpstreamSqlRow> {
     const row = await this.x.first<UpstreamSqlRow>(`SELECT ${UPSTREAM_COLS} FROM upstreams WHERE id = ?`, [id])
     if (!row) throw new UpstreamGoneError(id)
     if (target && (row.row_incarnation !== target.rowIncarnation || (row.owner_id || undefined) !== (target.ownerId || undefined) || row.provider !== target.provider)) {
+      throw new UpstreamReplacedError(id)
+    }
+    return row
+  }
+
+  private async readStateTarget(id: string, target?: UpstreamWriteTarget): Promise<UpstreamSqlRow> {
+    const row = await this.readWriteTarget(id, target)
+    if (target?.credentialGeneration !== undefined && row.credential_generation !== target.credentialGeneration) {
       throw new UpstreamReplacedError(id)
     }
     return row
@@ -674,25 +686,27 @@ class SharedUpstreamRepo implements UpstreamRepo {
   }
 
   async saveState<TState>(id: UpstreamId, updater: (current: TState) => TState, expected?: UpstreamWriteTarget): Promise<void> {
-    let row = await this.readWriteTarget(id, expected)
+    let row = await this.readStateTarget(id, expected)
     const target = expected ?? { rowIncarnation: row.row_incarnation, ownerId: row.owner_id || undefined, provider: row.provider }
     for (let attempt = 0; attempt < UPSTREAM_WRITE_ATTEMPTS; attempt++) {
       const next = updater(parseState(row.state_json) as TState)
       assertSynchronous(next)
       const nextJson = serializeState(next)
-      const binds = [id, target.rowIncarnation, row.owner_id, row.provider, row.state_json]
+      const binds: unknown[] = [id, target.rowIncarnation, row.owner_id, row.provider, row.state_json]
+      const credentialFence = target.credentialGeneration === undefined ? "" : " AND credential_generation = ?"
+      if (target.credentialGeneration !== undefined) binds.push(target.credentialGeneration)
       // Even a no-op must validate its target after the updater: deletion or
       // a winning credential write may have invalidated the initial read.
       const matched = nextJson === row.state_json
-        ? await this.x.first<{ id: string }>("SELECT id FROM upstreams WHERE id = ? AND row_incarnation = ? AND owner_id IS ? AND provider = ? AND state_json IS ?", binds)
+        ? await this.x.first<{ id: string }>(`SELECT id FROM upstreams WHERE id = ? AND row_incarnation = ? AND owner_id IS ? AND provider = ? AND state_json IS ?${credentialFence}`, binds)
         : await this.x.first<{ id: string }>(
-          "UPDATE upstreams SET state_json = ?, updated_at = ? WHERE id = ? AND row_incarnation = ? AND owner_id IS ? AND provider = ? AND state_json IS ? RETURNING id",
+          `UPDATE upstreams SET state_json = ?, updated_at = ? WHERE id = ? AND row_incarnation = ? AND owner_id IS ? AND provider = ? AND state_json IS ?${credentialFence} RETURNING id`,
           [nextJson, new Date().toISOString(), ...binds],
         )
       // RETURNING proves this row matched even when configuration triggers
       // make the driver's affected-row count exceed one.
       if (matched) return
-      row = await this.readWriteTarget(id, target)
+      row = await this.readStateTarget(id, target)
     }
     throw new UpstreamContentionError(id)
   }
