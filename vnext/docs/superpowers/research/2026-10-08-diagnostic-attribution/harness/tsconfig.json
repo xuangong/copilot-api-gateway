@@ -1,0 +1,5 @@
+{
+  "extends": "../../2026-10-07-reference-stage-measurement/harness/tsconfig.json",
+  "include": ["./*.ts"],
+  "compilerOptions": { "typeRoots": ["../../../../../node_modules/@types"] }
+}

@@ -10,6 +10,7 @@ import { oracle } from "../../2026-10-02-workerd-deployed-comparison/harness/ora
 import { cells, makeRequest, verifyChat, type Cell, type Arm } from "./contracts"
 import { discoverWorkerd, readProcessResource, diffProcessResource } from "./process-resources"
 import { coverage } from "./instrumentation"
+import { createObserver, type ObserverConfig, type ObserverSession } from "../../2026-10-08-diagnostic-attribution/harness/observer"
 import type { Trace } from "./probe-runtime"
 
 export const API_KEY = "reference-comparison-local-key"
@@ -53,6 +54,7 @@ export interface QualifiedInstanceOptions {
   bundle: string
   directory: string
   hooks: boolean
+  observer?: ObserverConfig
   window?: { id: string; cell: Cell; warmup: number; timed: number }
   initialize(db: TestDatabase, base: string): Promise<void>
   readback(db: TestDatabase, bucket: TestBucket, rows: QualifiedRow[], dispatches: Dispatch[]): Promise<{ evidence: unknown; objectCount: number; compressedBytes: number }>
@@ -125,33 +127,50 @@ async function request(base:string, directory:string, arm:Arm, cell:Cell, id:str
   return row
 }
 
-export async function runQualifiedInstance(options: QualifiedInstanceOptions) {
-  const { arm, bundle, directory, hooks, window } = options
+export interface QualifiedSetupDependencies {
+  fixture?: typeof fixture
+  readTemplate?: () => string
+  writeEntry?: (path: string, source: string) => void
+  buildEntry?: (entry: string, directory: string) => Promise<{ success: boolean; logs: unknown[] }>
+  createMiniflare?: (options: ConstructorParameters<typeof Miniflare>[0]) => Miniflare
+}
+
+export async function runQualifiedInstance(options: QualifiedInstanceOptions, setup: QualifiedSetupDependencies = {}) {
+  const { arm, bundle, directory, hooks, window, observer: observerConfig } = options
+  if (observerConfig && (!window || hooks || !["none", "attached", "cpu"].includes(observerConfig.mode))) throw new Error("Explicit observers require an unhooked warm window")
   if (window && (hooks || !/^[a-zA-Z0-9_-]{1,130}$/.test(window.id) || !Number.isSafeInteger(window.warmup) || window.warmup < 1 || !Number.isSafeInteger(window.timed) || window.timed < 1 || window.warmup + window.timed > 100)) throw new Error("Invalid uninstrumented warm window")
   mkdirSync(directory,{recursive:true})
-  const upstream=fixture(arm)
-  const source=readFileSync(join(import.meta.dir,"entry.mjs.template"),"utf8")
-    .replace("__WORKER__",JSON.stringify(bundle)).replace("__REFERENCE_EXPORTS__",arm==="R"?`export { ExecutionDO, ExecutionOperationEntrypoint } from ${JSON.stringify(bundle)}`:"").replace("__PROBE__",JSON.stringify(join(import.meta.dir,"probe-runtime.ts")))
-    .replace("__HOOKS__",String(hooks))
-  const entry=join(directory,"entry.ts")
-  writeFileSync(entry,source)
-  const build=await Bun.build({entrypoints:[entry],outdir:join(directory,"entry"),naming:"entry.mjs",target:"node",external:["cloudflare:*"],sourcemap:"external"})
-  if (!build.success) {upstream.stop();throw new Error(build.logs.join("\n"))}
-  const name=`reference-stage-${arm}-${hooks?"probe":"control"}`
-  let rejected=0
-  const mf=new Miniflare({name,modules:[{type:"ESModule",path:join(directory,"entry/entry.mjs")}],modulesRoot:directory,host:"127.0.0.1",port:0,cf:false,compatibilityDate:"2025-06-01",compatibilityFlags:["nodejs_compat","enable_ctx_exports"],...(window?{}:{inspectorPort:0,inspectorHost:"127.0.0.1"}),d1Databases:{DB:`${arm}-${hooks}`},d1Persist:join(directory,"d1"),kvNamespaces:["KV","IMAGE_CACHE"],kvPersist:join(directory,"kv"),r2Buckets:["FILES"],r2Persist:join(directory,"r2"),images:{binding:"IMAGES"},...(arm==="R"?{durableObjects:{EXECUTION_DO:{className:"ExecutionDO",useSQLite:true}}}:{}),outboundService:async (request:InstanceType<typeof import("../../../../../node_modules/miniflare").Request>)=>{
-    if (request.url!==`${upstream.base}/v1/chat/completions` || request.method!=="POST") {
-      rejected++
-      durableJson(join(directory,`rejected-egress-${rejected}.json`),{url:request.url,method:request.method,expectedUrl:`${upstream.base}/v1/chat/completions`},true)
-      return new LocalResponse(JSON.stringify({error:{message:"Blocked egress; see rejected-egress receipt"}}),{status:502,headers:{"content-type":"application/json"}})
-    }
-    const result=await fetch(request.url,{method:"POST",headers:Object.fromEntries(request.headers),body:await request.arrayBuffer(),redirect:"manual",signal:AbortSignal.timeout(10000)})
-    return new LocalResponse(result.body as unknown as ConstructorParameters<typeof LocalResponse>[0],{status:result.status,headers:Object.fromEntries(result.headers)})
-  }})
+  const upstream=(setup.fixture ?? fixture)(arm)
+  let mf: Miniflare | undefined
   let inspector:Awaited<ReturnType<typeof attach>>|undefined
+  let observer: ObserverSession | undefined
+  let observerClosed = false
+  let completedReceipt: Obj | undefined
+  let runError: unknown
+  let returnedDispatches: Dispatch[] | undefined
   try {
-    const base=(await deadline("workerd ready",60000,()=>mf.ready)).origin
-    const db=await mf.getD1Database("DB")
+    const source=(setup.readTemplate ?? (() => readFileSync(join(import.meta.dir,"entry.mjs.template"),"utf8")))()
+      .replace("__WORKER__",JSON.stringify(bundle)).replace("__REFERENCE_EXPORTS__",arm==="R"?`export { ExecutionDO, ExecutionOperationEntrypoint } from ${JSON.stringify(bundle)}`:"").replace("__PROBE__",JSON.stringify(join(import.meta.dir,"probe-runtime.ts")))
+      .replace("__HOOKS__",String(hooks))
+    const entry=join(directory,"entry.ts")
+    const writeEntry = setup.writeEntry ?? writeFileSync
+    writeEntry(entry,source)
+    const build=await (setup.buildEntry ?? ((entry: string, directory: string) => Bun.build({entrypoints:[entry],outdir:join(directory,"entry"),naming:"entry.mjs",target:"node",external:["cloudflare:*"],sourcemap:"external"})))(entry,directory)
+    if (!build.success) throw new Error(build.logs.join("\n"))
+    const name=`reference-stage-${arm}-${hooks?"probe":"control"}`
+    let rejected=0
+    const activeMf=(setup.createMiniflare ?? ((options: ConstructorParameters<typeof Miniflare>[0]) => new Miniflare(options)))({name,modules:[{type:"ESModule",path:join(directory,"entry/entry.mjs")}],modulesRoot:directory,host:"127.0.0.1",port:0,cf:false,compatibilityDate:"2025-06-01",compatibilityFlags:["nodejs_compat","enable_ctx_exports"],...(window && (!observerConfig || observerConfig.mode === "none") ? {} : {inspectorPort:0,inspectorHost:"127.0.0.1"}),d1Databases:{DB:`${arm}-${hooks}`},d1Persist:join(directory,"d1"),kvNamespaces:["KV","IMAGE_CACHE"],kvPersist:join(directory,"kv"),r2Buckets:["FILES"],r2Persist:join(directory,"r2"),images:{binding:"IMAGES"},...(arm==="R"?{durableObjects:{EXECUTION_DO:{className:"ExecutionDO",useSQLite:true}}}:{}),outboundService:async (request:InstanceType<typeof import("../../../../../node_modules/miniflare").Request>)=>{
+      if (request.url!==`${upstream.base}/v1/chat/completions` || request.method!=="POST") {
+        rejected++
+        durableJson(join(directory,`rejected-egress-${rejected}.json`),{url:request.url,method:request.method,expectedUrl:`${upstream.base}/v1/chat/completions`},true)
+        return new LocalResponse(JSON.stringify({error:{message:"Blocked egress; see rejected-egress receipt"}}),{status:502,headers:{"content-type":"application/json"}})
+      }
+      const result=await fetch(request.url,{method:"POST",headers:Object.fromEntries(request.headers),body:await request.arrayBuffer(),redirect:"manual",signal:AbortSignal.timeout(10000)})
+      return new LocalResponse(result.body as unknown as ConstructorParameters<typeof LocalResponse>[0],{status:result.status,headers:Object.fromEntries(result.headers)})
+    }})
+    mf = activeMf
+    const base=(await deadline("workerd ready",60000,()=>activeMf.ready)).origin
+    const db=await activeMf.getD1Database("DB")
     await options.initialize(db,upstream.base)
     let clock:unknown=null
     let heapStart:Obj|null=null
@@ -161,11 +180,15 @@ export async function runQualifiedInstance(options: QualifiedInstanceOptions) {
       clock=await clockResponse.json()
       const timer=object(clock)
       if(typeof timer.start!=="number" || typeof timer.end!=="number" || !Number.isFinite(timer.start) || !Number.isFinite(timer.end) || timer.end<=timer.start) throw new Error("Local synchronous clock did not advance; stage timing is unqualified")
-      inspector=await attach(()=>mf.getInspectorURL(),name)
+      inspector=await attach(()=>activeMf.getInspectorURL(),name)
       heapStart=requireHeap(await inspector.send("Runtime.getHeapUsage"))
     }
+    if (observerConfig) {
+      observer = createObserver({ mode: observerConfig.mode, directory, attach: () => attach(() => activeMf.getInspectorURL(), name) })
+      await observer.prepare()
+    }
     const processIdentity=await discoverWorkerd(process.pid)
-    durableJson(join(directory,"identity.json"),{arm,hooks,window:window??null,workerBundle:fileIdentity(bundle),entrySource:fileIdentity(entry),entry:fileIdentity(join(directory,"entry/entry.mjs")),inspector:inspector?.identity??null,processIdentity,clock,coverage:coverage(arm)},true)
+    durableJson(join(directory,"identity.json"),{arm,hooks,window:window??null,workerBundle:fileIdentity(bundle),entrySource:fileIdentity(entry),entry:fileIdentity(join(directory,"entry/entry.mjs")),inspector:observer?.receipt.inspector??inspector?.identity??null,...(observerConfig ? { observer: observerConfig, entryMap: fileIdentity(join(directory,"entry/entry.mjs.map")) } : {}),processIdentity,clock,coverage:coverage(arm)},true)
     const rows:QualifiedRow[]=[]
     const offer=async(cell:Cell,id:string,phase:QualifiedRow["phase"])=>{
       try {
@@ -191,12 +214,14 @@ export async function runQualifiedInstance(options: QualifiedInstanceOptions) {
     }
     const processStart=window?await readProcessResource(processIdentity.pid):processIdentity
     diffProcessResource(processIdentity,processStart)
+    await observer?.start()
     if (window) {
       for(let i=0;i<window.timed;i++) await offer(window.cell,`${window.id}-timed-${String(i).padStart(3,"0")}`,"timed")
     } else for (const cell of cells.filter(cell=>cell.shape==="string" && cell.dump)) {
       await offer(cell,`${arm}-${hooks?"probe00":"control"}-${cell.id}`,"canary")
     }
     const settlement=await settle()
+    await observer?.stop()
     const processEnd=await readProcessResource(processStart.pid)
     const resources=diffProcessResource(processStart,processEnd)
     const heapSettled=inspector?requireHeap(await inspector.send("Runtime.getHeapUsage")):null
@@ -206,7 +231,7 @@ export async function runQualifiedInstance(options: QualifiedInstanceOptions) {
       if (!traceResponse.ok) throw new Error("Trace HTTP failure")
       traceResult=object(await traceResponse.json())
     }
-    durableJson(join(directory,"observations.json"),{rows,dispatches:upstream.dispatches,rejected,window:window??null,warmupSettlement,settlement,traceResult,processStart,processEnd,resources,heapStart,heapSettled,scope:window?"warmed bounded pilot; no Inspector or source hooks; whole-workerd CPU through settlement and RSS endpoints only; excludes export/readback":"cold two-request observer canary; includes harness settlement but excludes trace export/readback; no performance conclusion or peak measurement"},true)
+    durableJson(join(directory,"observations.json"),{rows,dispatches:upstream.dispatches,rejected,window:window??null,warmupSettlement,settlement,traceResult,processStart,processEnd,resources,heapStart,heapSettled,...(observerConfig ? { observer: observerConfig, observerCpuScope: "whole-workerd CPU includes observer start/stop and settlement; raw profile saved before processEnd; no heap queries" } : {}),scope:observerConfig ? "warmed bounded observer qualification; whole-workerd CPU through settlement includes observer start/stop; raw profile saved before processEnd; excludes physical readback; no heap queries or source hooks" : window?"warmed bounded pilot; no Inspector or source hooks; whole-workerd CPU through settlement and RSS endpoints only; excludes export/readback":"cold two-request observer canary; includes harness settlement but excludes trace export/readback; no performance conclusion or peak measurement"},true)
     const state=object(settlement)
     if (state.active!==0 || state.pending!==0 || state.registered!==state.settled || !Array.isArray(state.failures) || state.failures.length || state.observerFailures!==0 || !Array.isArray(traceResult.traces) || state.unowned!==0 || traceResult.unowned!==0 || traceResult.observerFailures!==0) throw new Error("Invalid settlement or probe ownership")
     const traces=traceResult.traces as Trace[]
@@ -223,17 +248,38 @@ export async function runQualifiedInstance(options: QualifiedInstanceOptions) {
       const dispatch=upstream.dispatches.find(dispatch=>dispatch.id===trace.id)
       if(!dispatch || (trace.counts["sse.parsed.frames"]??0)!==(dispatch.requestedStream?4:0) || (trace.counts["sse.input.bytes"]??0)!==(dispatch.requestedStream?dispatch.responseBytes:0)) throw new Error(`SSE observer coverage mismatch ${trace.id}`)
     }
-    const bucket=await mf.getR2Bucket("FILES")
+    const bucket=await activeMf.getR2Bucket("FILES")
     const checked=await deadline("physical dump readback",30000,()=>options.readback(db,bucket,rows,upstream.dispatches))
     if(hooks) {
       const total=(name:string)=>traces.reduce((sum,trace)=>sum+(trace.counts[name]??0),0)
       if(total("sink.files.puts")!==checked.objectCount || total("sink.files.bytes")!==checked.compressedBytes) throw new Error("Sink observer counts disagree with physical readback")
     }
     const readback=checked.evidence
-    durableJson(join(directory,"receipt.json"),{completed:true,arm,hooks,readback,resources,qualifiedRequests:rows.length,comparisonCompleted:false},true)
-    return upstream.dispatches
+    const receipt = {completed:true,arm,hooks,readback,resources,qualifiedRequests:rows.length,comparisonCompleted:false}
+    if (observerConfig) completedReceipt = receipt
+    else durableJson(join(directory,"receipt.json"),receipt,true)
+    returnedDispatches = upstream.dispatches
+  } catch (error) {
+    runError = error
+    throw error
   } finally {
-    await inspector?.close().catch(()=>{})
-    try {await deadline("workerd dispose",15000,()=>mf.dispose())} finally {upstream.stop()}
+    if (!observerConfig) {
+      await inspector?.close().catch(()=>{})
+      const ownedMf = mf
+      try {if (ownedMf) await deadline("workerd dispose",15000,()=>ownedMf.dispose())} finally {await upstream.stop()}
+    } else {
+      const errors: string[] = []
+      try { if (observer) { await observer.close(); observerClosed = observer.receipt.closed } } catch (error) { errors.push(`Inspector close: ${String(error)}`) }
+      const ownedMf = mf
+      let disposed = !ownedMf, fixtureStopped = false
+      try { if (ownedMf) await deadline("workerd dispose",15000,()=>ownedMf.dispose()); disposed = true } catch (error) { errors.push(`workerd dispose: ${String(error)}`) }
+      finally { try { await upstream.stop(); fixtureStopped = true } catch (error) { errors.push(`fixture stop: ${String(error)}`) } }
+      const completed = !runError && Boolean(completedReceipt) && observerClosed && observer?.receipt.completed === true && disposed && fixtureStopped && !errors.length
+      durableJson(join(directory,"cleanup-receipt.json"), { completed, observerClosed, workerdCreated: Boolean(mf), disposed, fixtureStopped, errors, runError: runError ? String(runError) : null }, true)
+      if (!completed && !runError) throw new Error(`Observer runtime cleanup incomplete: ${errors.join("; ")}`)
+    }
   }
+  if (observerConfig && completedReceipt) durableJson(join(directory,"receipt.json"),completedReceipt,true)
+  if (!returnedDispatches) throw new Error("Instance dispatch result missing")
+  return returnedDispatches
 }

@@ -1,0 +1,1389 @@
+{
+  "schema": "diagnostic-observer-summary-v1",
+  "runtimeEvidenceQualified": true,
+  "sourceMapConvention": "bun-1.3.0-crlf-double; explicit generated-coordinate correction at both levels, original coordinates unchanged",
+  "sourceMappingQualified": true,
+  "formalStatisticsCompleted": false,
+  "warmup": 60,
+  "timed": 360,
+  "total": 420,
+  "errors": [],
+  "mappingFailures": [],
+  "windows": [
+    {
+      "id": "diagnostic-observer-v1-b0-json-string-full__-none____",
+      "cell": "json-string-full",
+      "mode": "none",
+      "block": 0,
+      "timed": 30,
+      "cpuMs": 228.661,
+      "cpuPerRequestMs": 7.622033333333333,
+      "eofP50Ms": 34.939750000000004,
+      "eofP95Ms": 54.86149999999998,
+      "rssEndBytes": 183910400,
+      "profile": null,
+      "mappingQualified": null
+    },
+    {
+      "id": "diagnostic-observer-v1-b0-json-string-full__-attached",
+      "cell": "json-string-full",
+      "mode": "attached",
+      "block": 0,
+      "timed": 30,
+      "cpuMs": 241.557,
+      "cpuPerRequestMs": 8.0519,
+      "eofP50Ms": 34.96408300000007,
+      "eofP95Ms": 51.173040999999785,
+      "rssEndBytes": 185352192,
+      "profile": null,
+      "mappingQualified": null
+    },
+    {
+      "id": "diagnostic-observer-v1-b0-json-string-full__-cpu_____",
+      "cell": "json-string-full",
+      "mode": "cpu",
+      "block": 0,
+      "timed": 30,
+      "cpuMs": 327.686,
+      "cpuPerRequestMs": 10.922866666666666,
+      "eofP50Ms": 37.87283300000013,
+      "eofP95Ms": 47.84199999999987,
+      "rssEndBytes": 192987136,
+      "profile": {
+        "sampleCount": 16,
+        "hasSamples": true,
+        "firstDeltaUs": 62110,
+        "coveredUs": 1259414,
+        "wallWindowUs": 1361383,
+        "lastSampleTime": 162763839974,
+        "tailUs": 101969,
+        "buckets": [
+          {
+            "kind": "idle",
+            "source": null,
+            "line": null,
+            "column": null,
+            "functionName": "(idle)",
+            "generatedUrl": "",
+            "generatedLine": -1,
+            "generatedColumn": -1,
+            "sampleCount": 3,
+            "sampleWeightUs": 279268
+          },
+          {
+            "kind": "product",
+            "source": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/vnext/packages/gateway/src/app.ts",
+            "line": 26,
+            "column": 13,
+            "functionName": "",
+            "generatedUrl": "entry/entry.mjs",
+            "generatedLine": 94357,
+            "generatedColumn": 13,
+            "sampleCount": 1,
+            "sampleWeightUs": 239642
+          },
+          {
+            "kind": "runtime",
+            "source": null,
+            "line": null,
+            "column": null,
+            "functionName": "pipeThrough",
+            "generatedUrl": "",
+            "generatedLine": -1,
+            "generatedColumn": -1,
+            "sampleCount": 1,
+            "sampleWeightUs": 127662
+          },
+          {
+            "kind": "unmapped",
+            "source": null,
+            "line": null,
+            "column": null,
+            "functionName": "",
+            "generatedUrl": "cloudflare-internal:d1-api",
+            "generatedLine": 428,
+            "generatedColumn": 30,
+            "sampleCount": 1,
+            "sampleWeightUs": 92634
+          },
+          {
+            "kind": "product",
+            "source": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/vnext/packages/gateway/src/data-plane/providers/registry.ts",
+            "line": 290,
+            "column": 41,
+            "functionName": "listRoutingBindings",
+            "generatedUrl": "entry/entry.mjs",
+            "generatedLine": 56733,
+            "generatedColumn": 34,
+            "sampleCount": 1,
+            "sampleWeightUs": 91361
+          },
+          {
+            "kind": "dependency",
+            "source": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/vnext/node_modules/.bun/hono@4.12.23/node_modules/hono/dist/compose.js",
+            "line": 6,
+            "column": 27,
+            "functionName": "dispatch",
+            "generatedUrl": "entry/entry.mjs",
+            "generatedLine": 57441,
+            "generatedColumn": 27,
+            "sampleCount": 1,
+            "sampleWeightUs": 90775
+          },
+          {
+            "kind": "product",
+            "source": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/vnext/packages/gateway/src/shared/dump/accumulator.ts",
+            "line": 84,
+            "column": 27,
+            "functionName": "resolveUpstreamRef",
+            "generatedUrl": "entry/entry.mjs",
+            "generatedLine": 63551,
+            "generatedColumn": 25,
+            "sampleCount": 1,
+            "sampleWeightUs": 69871
+          },
+          {
+            "kind": "product",
+            "source": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/vnext/packages/gateway/src/data-plane/providers/registry.ts",
+            "line": 399,
+            "column": 18,
+            "functionName": "collect",
+            "generatedUrl": "entry/entry.mjs",
+            "generatedLine": 56850,
+            "generatedColumn": 18,
+            "sampleCount": 1,
+            "sampleWeightUs": 51670
+          },
+          {
+            "kind": "runtime",
+            "source": null,
+            "line": null,
+            "column": null,
+            "functionName": "stream",
+            "generatedUrl": "",
+            "generatedLine": -1,
+            "generatedColumn": -1,
+            "sampleCount": 1,
+            "sampleWeightUs": 47652
+          },
+          {
+            "kind": "runtime",
+            "source": null,
+            "line": null,
+            "column": null,
+            "functionName": "URL",
+            "generatedUrl": "",
+            "generatedLine": -1,
+            "generatedColumn": -1,
+            "sampleCount": 1,
+            "sampleWeightUs": 41030
+          },
+          {
+            "kind": "runtime",
+            "source": null,
+            "line": null,
+            "column": null,
+            "functionName": "fetch",
+            "generatedUrl": "",
+            "generatedLine": -1,
+            "generatedColumn": -1,
+            "sampleCount": 1,
+            "sampleWeightUs": 39932
+          },
+          {
+            "kind": "product",
+            "source": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/vnext/packages/gateway/src/shared/dump/bounded-utf8.ts",
+            "line": 35,
+            "column": 27,
+            "functionName": "boundedUtf8",
+            "generatedUrl": "entry/entry.mjs",
+            "generatedLine": 55842,
+            "generatedColumn": 20,
+            "sampleCount": 1,
+            "sampleWeightUs": 37786
+          },
+          {
+            "kind": "runtime",
+            "source": null,
+            "line": null,
+            "column": null,
+            "functionName": "CompressionStream",
+            "generatedUrl": "",
+            "generatedLine": -1,
+            "generatedColumn": -1,
+            "sampleCount": 1,
+            "sampleWeightUs": 26998
+          },
+          {
+            "kind": "product",
+            "source": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/vnext/packages/gateway/src/data-plane/chat-flow/shared/respond-telemetry.ts",
+            "line": 125,
+            "column": 15,
+            "functionName": "rememberUsage",
+            "generatedUrl": "entry/entry.mjs",
+            "generatedLine": 75742,
+            "generatedColumn": 15,
+            "sampleCount": 1,
+            "sampleWeightUs": 23133
+          }
+        ],
+        "boundary": "Exclusive leaf sample counts and preceding sample-interval weights, including the first start-to-sample delta. Not CPU time; no tail redistribution, ancestor reassignment or process-CPU scaling. Empty/sparse profiles cannot establish zero cost or precise attribution."
+      },
+      "mappingQualified": true
+    },
+    {
+      "id": "diagnostic-observer-v1-b0-json-string-common-none____",
+      "cell": "json-string-common",
+      "mode": "none",
+      "block": 0,
+      "timed": 30,
+      "cpuMs": 121.277,
+      "cpuPerRequestMs": 4.042566666666667,
+      "eofP50Ms": 24.679417000000058,
+      "eofP95Ms": 27.163250000000062,
+      "rssEndBytes": 161775616,
+      "profile": null,
+      "mappingQualified": null
+    },
+    {
+      "id": "diagnostic-observer-v1-b0-json-string-common-attached",
+      "cell": "json-string-common",
+      "mode": "attached",
+      "block": 0,
+      "timed": 30,
+      "cpuMs": 112,
+      "cpuPerRequestMs": 3.7333333333333334,
+      "eofP50Ms": 24.658833999999842,
+      "eofP95Ms": 26.341542000000118,
+      "rssEndBytes": 161562624,
+      "profile": null,
+      "mappingQualified": null
+    },
+    {
+      "id": "diagnostic-observer-v1-b0-json-string-common-cpu_____",
+      "cell": "json-string-common",
+      "mode": "cpu",
+      "block": 0,
+      "timed": 30,
+      "cpuMs": 172.601,
+      "cpuPerRequestMs": 5.7533666666666665,
+      "eofP50Ms": 24.362750000000005,
+      "eofP95Ms": 26.113667000000078,
+      "rssEndBytes": 170606592,
+      "profile": {
+        "sampleCount": 10,
+        "hasSamples": true,
+        "firstDeltaUs": 59867,
+        "coveredUs": 819070,
+        "wallWindowUs": 872493,
+        "lastSampleTime": 162771494887,
+        "tailUs": 53423,
+        "buckets": [
+          {
+            "kind": "runtime",
+            "source": null,
+            "line": null,
+            "column": null,
+            "functionName": "removeEventListener",
+            "generatedUrl": "",
+            "generatedLine": -1,
+            "generatedColumn": -1,
+            "sampleCount": 1,
+            "sampleWeightUs": 213850
+          },
+          {
+            "kind": "runtime",
+            "source": null,
+            "line": null,
+            "column": null,
+            "functionName": "enterSpan",
+            "generatedUrl": "",
+            "generatedLine": -1,
+            "generatedColumn": -1,
+            "sampleCount": 1,
+            "sampleWeightUs": 106998
+          },
+          {
+            "kind": "runtime",
+            "source": null,
+            "line": null,
+            "column": null,
+            "functionName": "fetch",
+            "generatedUrl": "",
+            "generatedLine": -1,
+            "generatedColumn": -1,
+            "sampleCount": 1,
+            "sampleWeightUs": 85140
+          },
+          {
+            "kind": "product",
+            "source": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/vnext/packages/gateway/src/data-plane/providers/registry.ts",
+            "line": 415,
+            "column": 21,
+            "functionName": "materialize",
+            "generatedUrl": "entry/entry.mjs",
+            "generatedLine": 56870,
+            "generatedColumn": 21,
+            "sampleCount": 1,
+            "sampleWeightUs": 81978
+          },
+          {
+            "kind": "product",
+            "source": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/vnext/packages/gateway/src/data-plane/shared/affinity-request.ts",
+            "line": 150,
+            "column": 16,
+            "functionName": "pull",
+            "generatedUrl": "entry/entry.mjs",
+            "generatedLine": 70726,
+            "generatedColumn": 16,
+            "sampleCount": 1,
+            "sampleWeightUs": 77913
+          },
+          {
+            "kind": "idle",
+            "source": null,
+            "line": null,
+            "column": null,
+            "functionName": "(idle)",
+            "generatedUrl": "",
+            "generatedLine": -1,
+            "generatedColumn": -1,
+            "sampleCount": 1,
+            "sampleWeightUs": 59867
+          },
+          {
+            "kind": "product",
+            "source": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/vnext/packages/gateway/src/repo/configuration-cache.ts",
+            "line": 54,
+            "column": 13,
+            "functionName": "copy",
+            "generatedUrl": "entry/entry.mjs",
+            "generatedLine": 14383,
+            "generatedColumn": 11,
+            "sampleCount": 1,
+            "sampleWeightUs": 59448
+          },
+          {
+            "kind": "product",
+            "source": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/vnext/packages/provider-custom/src/provider.ts",
+            "line": 198,
+            "column": 13,
+            "functionName": "fetch",
+            "generatedUrl": "entry/entry.mjs",
+            "generatedLine": 51807,
+            "generatedColumn": 13,
+            "sampleCount": 1,
+            "sampleWeightUs": 53308
+          },
+          {
+            "kind": "product",
+            "source": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/vnext/packages/gateway/src/data-plane/observability/client-detect.ts",
+            "line": 48,
+            "column": 28,
+            "functionName": "detectClient",
+            "generatedUrl": "entry/entry.mjs",
+            "generatedLine": 62925,
+            "generatedColumn": 21,
+            "sampleCount": 1,
+            "sampleWeightUs": 49056
+          },
+          {
+            "kind": "product",
+            "source": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/vnext/packages/gateway/src/app.ts",
+            "line": 26,
+            "column": 13,
+            "functionName": "",
+            "generatedUrl": "entry/entry.mjs",
+            "generatedLine": 94357,
+            "generatedColumn": 13,
+            "sampleCount": 1,
+            "sampleWeightUs": 31512
+          }
+        ],
+        "boundary": "Exclusive leaf sample counts and preceding sample-interval weights, including the first start-to-sample delta. Not CPU time; no tail redistribution, ancestor reassignment or process-CPU scaling. Empty/sparse profiles cannot establish zero cost or precise attribution."
+      },
+      "mappingQualified": true
+    },
+    {
+      "id": "diagnostic-observer-v1-b1-json-string-full__-cpu_____",
+      "cell": "json-string-full",
+      "mode": "cpu",
+      "block": 1,
+      "timed": 30,
+      "cpuMs": 331.96,
+      "cpuPerRequestMs": 11.065333333333333,
+      "eofP50Ms": 37.109750000000076,
+      "eofP95Ms": 54.06754200000023,
+      "rssEndBytes": 194199552,
+      "profile": {
+        "sampleCount": 19,
+        "hasSamples": true,
+        "firstDeltaUs": 65611,
+        "coveredUs": 1268643,
+        "wallWindowUs": 1368736,
+        "lastSampleTime": 162774618322,
+        "tailUs": 100093,
+        "buckets": [
+          {
+            "kind": "product",
+            "source": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/vnext/packages/gateway/src/data-plane/chat-flow/shared/upstream-telemetry.ts",
+            "line": 102,
+            "column": 27,
+            "functionName": "takeChatUsage",
+            "generatedUrl": "entry/entry.mjs",
+            "generatedLine": 71390,
+            "generatedColumn": 27,
+            "sampleCount": 1,
+            "sampleWeightUs": 289825
+          },
+          {
+            "kind": "runtime",
+            "source": null,
+            "line": null,
+            "column": null,
+            "functionName": "(program)",
+            "generatedUrl": "",
+            "generatedLine": -1,
+            "generatedColumn": -1,
+            "sampleCount": 2,
+            "sampleWeightUs": 169153
+          },
+          {
+            "kind": "product",
+            "source": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/vnext/apps/platform-cloudflare/src/d1-repo.ts",
+            "line": 168,
+            "column": 14,
+            "functionName": "prep",
+            "generatedUrl": "entry/entry.mjs",
+            "generatedLine": 96678,
+            "generatedColumn": 6,
+            "sampleCount": 1,
+            "sampleWeightUs": 156506
+          },
+          {
+            "kind": "idle",
+            "source": null,
+            "line": null,
+            "column": null,
+            "functionName": "(idle)",
+            "generatedUrl": "",
+            "generatedLine": -1,
+            "generatedColumn": -1,
+            "sampleCount": 2,
+            "sampleWeightUs": 123169
+          },
+          {
+            "kind": "runtime",
+            "source": null,
+            "line": null,
+            "column": null,
+            "functionName": "pipeThrough",
+            "generatedUrl": "",
+            "generatedLine": -1,
+            "generatedColumn": -1,
+            "sampleCount": 3,
+            "sampleWeightUs": 106096
+          },
+          {
+            "kind": "product",
+            "source": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/vnext/packages/gateway/src/shared/runtime/event-target-channel-broker.ts",
+            "line": 34,
+            "column": 15,
+            "functionName": "publish",
+            "generatedUrl": "entry/entry.mjs",
+            "generatedLine": 96547,
+            "generatedColumn": 15,
+            "sampleCount": 1,
+            "sampleWeightUs": 97983
+          },
+          {
+            "kind": "product",
+            "source": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/vnext/packages/gateway/src/data-plane/shared/affinity-request.ts",
+            "line": 14,
+            "column": 43,
+            "functionName": "createRequestAffinity",
+            "generatedUrl": "entry/entry.mjs",
+            "generatedLine": 70592,
+            "generatedColumn": 36,
+            "sampleCount": 1,
+            "sampleWeightUs": 93264
+          },
+          {
+            "kind": "unmapped",
+            "source": null,
+            "line": null,
+            "column": null,
+            "functionName": "prepare",
+            "generatedUrl": "cloudflare-internal:d1-api",
+            "generatedLine": 26,
+            "generatedColumn": 11,
+            "sampleCount": 1,
+            "sampleWeightUs": 43440
+          },
+          {
+            "kind": "runtime",
+            "source": null,
+            "line": null,
+            "column": null,
+            "functionName": "CompressionStream",
+            "generatedUrl": "",
+            "generatedLine": -1,
+            "generatedColumn": -1,
+            "sampleCount": 1,
+            "sampleWeightUs": 42701
+          },
+          {
+            "kind": "product",
+            "source": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/vnext/apps/platform-cloudflare/src/responses-websocket.ts",
+            "line": 34,
+            "column": 9,
+            "functionName": "",
+            "generatedUrl": "entry/entry.mjs",
+            "generatedLine": 97495,
+            "generatedColumn": 9,
+            "sampleCount": 1,
+            "sampleWeightUs": 41212
+          },
+          {
+            "kind": "product",
+            "source": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/vnext/packages/gateway/src/data-plane/observability/performance-recorder.ts",
+            "line": 138,
+            "column": 8,
+            "functionName": "finish",
+            "generatedUrl": "entry/entry.mjs",
+            "generatedLine": 70926,
+            "generatedColumn": 8,
+            "sampleCount": 1,
+            "sampleWeightUs": 34951
+          },
+          {
+            "kind": "product",
+            "source": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/vnext/packages/gateway/src/shared/dump/request-body.ts",
+            "line": 30,
+            "column": 31,
+            "functionName": "readRequestBody",
+            "generatedUrl": "entry/entry.mjs",
+            "generatedLine": 64011,
+            "generatedColumn": 22,
+            "sampleCount": 1,
+            "sampleWeightUs": 29840
+          },
+          {
+            "kind": "product",
+            "source": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/vnext/packages/gateway/src/data-plane/chat-flow/shared/upstream-telemetry.ts",
+            "line": 90,
+            "column": 21,
+            "functionName": "run",
+            "generatedUrl": "entry/entry.mjs",
+            "generatedLine": 71381,
+            "generatedColumn": 21,
+            "sampleCount": 1,
+            "sampleWeightUs": 24774
+          },
+          {
+            "kind": "product",
+            "source": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/vnext/packages/provider-custom/src/provider.ts",
+            "line": 198,
+            "column": 13,
+            "functionName": "fetch",
+            "generatedUrl": "entry/entry.mjs",
+            "generatedLine": 51807,
+            "generatedColumn": 13,
+            "sampleCount": 1,
+            "sampleWeightUs": 14286
+          },
+          {
+            "kind": "product",
+            "source": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/vnext/packages/gateway/src/repo/dump-store.ts",
+            "line": 149,
+            "column": 30,
+            "functionName": "createDumpPreparation",
+            "generatedUrl": "entry/entry.mjs",
+            "generatedLine": 57019,
+            "generatedColumn": 28,
+            "sampleCount": 1,
+            "sampleWeightUs": 1443
+          }
+        ],
+        "boundary": "Exclusive leaf sample counts and preceding sample-interval weights, including the first start-to-sample delta. Not CPU time; no tail redistribution, ancestor reassignment or process-CPU scaling. Empty/sparse profiles cannot establish zero cost or precise attribution."
+      },
+      "mappingQualified": true
+    },
+    {
+      "id": "diagnostic-observer-v1-b1-json-string-full__-attached",
+      "cell": "json-string-full",
+      "mode": "attached",
+      "block": 1,
+      "timed": 30,
+      "cpuMs": 268.084,
+      "cpuPerRequestMs": 8.936133333333334,
+      "eofP50Ms": 38.24425000000019,
+      "eofP95Ms": 49.35200000000032,
+      "rssEndBytes": 186515456,
+      "profile": null,
+      "mappingQualified": null
+    },
+    {
+      "id": "diagnostic-observer-v1-b1-json-string-full__-none____",
+      "cell": "json-string-full",
+      "mode": "none",
+      "block": 1,
+      "timed": 30,
+      "cpuMs": 245.021,
+      "cpuPerRequestMs": 8.167366666666666,
+      "eofP50Ms": 36.023499999999785,
+      "eofP95Ms": 43.81233400000019,
+      "rssEndBytes": 184041472,
+      "profile": null,
+      "mappingQualified": null
+    },
+    {
+      "id": "diagnostic-observer-v1-b1-json-string-common-cpu_____",
+      "cell": "json-string-common",
+      "mode": "cpu",
+      "block": 1,
+      "timed": 30,
+      "cpuMs": 195.269,
+      "cpuPerRequestMs": 6.508966666666667,
+      "eofP50Ms": 24.860957999999982,
+      "eofP95Ms": 27.11349999999993,
+      "rssEndBytes": 170000384,
+      "profile": {
+        "sampleCount": 13,
+        "hasSamples": true,
+        "firstDeltaUs": 64521,
+        "coveredUs": 910712,
+        "wallWindowUs": 911710,
+        "lastSampleTime": 162784815712,
+        "tailUs": 998,
+        "buckets": [
+          {
+            "kind": "product",
+            "source": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/vnext/packages/gateway/src/shared/affinity/input-copy.ts",
+            "line": 55,
+            "column": 27,
+            "functionName": "clonePlainSnapshot",
+            "generatedUrl": "entry/entry.mjs",
+            "generatedLine": 70263,
+            "generatedColumn": 27,
+            "sampleCount": 1,
+            "sampleWeightUs": 194499
+          },
+          {
+            "kind": "product",
+            "source": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/vnext/packages/gateway/src/shared/affinity/egress.ts",
+            "line": 49,
+            "column": 45,
+            "functionName": "guardAffinityFrames",
+            "generatedUrl": "entry/entry.mjs",
+            "generatedLine": 81824,
+            "generatedColumn": 35,
+            "sampleCount": 1,
+            "sampleWeightUs": 157475
+          },
+          {
+            "kind": "product",
+            "source": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/vnext/packages/gateway/src/shared/affinity/analysis.ts",
+            "line": 268,
+            "column": 112,
+            "functionName": "",
+            "generatedUrl": "entry/entry.mjs",
+            "generatedLine": 70583,
+            "generatedColumn": 47,
+            "sampleCount": 1,
+            "sampleWeightUs": 120022
+          },
+          {
+            "kind": "gc",
+            "source": null,
+            "line": null,
+            "column": null,
+            "functionName": "(garbage collector)",
+            "generatedUrl": "",
+            "generatedLine": -1,
+            "generatedColumn": -1,
+            "sampleCount": 1,
+            "sampleWeightUs": 81829
+          },
+          {
+            "kind": "runtime",
+            "source": null,
+            "line": null,
+            "column": null,
+            "functionName": "",
+            "generatedUrl": "",
+            "generatedLine": -1,
+            "generatedColumn": -1,
+            "sampleCount": 2,
+            "sampleWeightUs": 78929
+          },
+          {
+            "kind": "product",
+            "source": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/vnext/packages/gateway/src/shared/dump/request-body.ts",
+            "line": 30,
+            "column": 31,
+            "functionName": "readRequestBody",
+            "generatedUrl": "entry/entry.mjs",
+            "generatedLine": 64011,
+            "generatedColumn": 22,
+            "sampleCount": 1,
+            "sampleWeightUs": 64731
+          },
+          {
+            "kind": "idle",
+            "source": null,
+            "line": null,
+            "column": null,
+            "functionName": "(idle)",
+            "generatedUrl": "",
+            "generatedLine": -1,
+            "generatedColumn": -1,
+            "sampleCount": 1,
+            "sampleWeightUs": 64521
+          },
+          {
+            "kind": "runtime",
+            "source": null,
+            "line": null,
+            "column": null,
+            "functionName": "read",
+            "generatedUrl": "",
+            "generatedLine": -1,
+            "generatedColumn": -1,
+            "sampleCount": 1,
+            "sampleWeightUs": 52648
+          },
+          {
+            "kind": "product",
+            "source": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/vnext/packages/gateway/src/data-plane/chat-flow/chat-completions/events/reassemble.ts",
+            "line": 61,
+            "column": 47,
+            "functionName": "reassembleChatCompletions",
+            "generatedUrl": "entry/entry.mjs",
+            "generatedLine": 77304,
+            "generatedColumn": 40,
+            "sampleCount": 1,
+            "sampleWeightUs": 34901
+          },
+          {
+            "kind": "dependency",
+            "source": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/vnext/node_modules/.bun/hono@4.12.23/node_modules/hono/dist/utils/url.js",
+            "line": 2,
+            "column": 16,
+            "functionName": "splitPath",
+            "generatedUrl": "entry/entry.mjs",
+            "generatedLine": 57570,
+            "generatedColumn": 16,
+            "sampleCount": 1,
+            "sampleWeightUs": 31234
+          },
+          {
+            "kind": "runtime",
+            "source": null,
+            "line": null,
+            "column": null,
+            "functionName": "fetch",
+            "generatedUrl": "",
+            "generatedLine": -1,
+            "generatedColumn": -1,
+            "sampleCount": 1,
+            "sampleWeightUs": 25526
+          },
+          {
+            "kind": "harness",
+            "source": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-diagnostic-attribution/observer-02/windows/diagnostic-observer-v1-b1-json-string-common-cpu_____/entry.ts",
+            "line": 29,
+            "column": 22,
+            "functionName": "barrier",
+            "generatedUrl": "entry/entry.mjs",
+            "generatedLine": 97672,
+            "generatedColumn": 22,
+            "sampleCount": 1,
+            "sampleWeightUs": 4397
+          }
+        ],
+        "boundary": "Exclusive leaf sample counts and preceding sample-interval weights, including the first start-to-sample delta. Not CPU time; no tail redistribution, ancestor reassignment or process-CPU scaling. Empty/sparse profiles cannot establish zero cost or precise attribution."
+      },
+      "mappingQualified": true
+    },
+    {
+      "id": "diagnostic-observer-v1-b1-json-string-common-attached",
+      "cell": "json-string-common",
+      "mode": "attached",
+      "block": 1,
+      "timed": 30,
+      "cpuMs": 140.034,
+      "cpuPerRequestMs": 4.6678,
+      "eofP50Ms": 25.349707999999737,
+      "eofP95Ms": 28.001124999999774,
+      "rssEndBytes": 160661504,
+      "profile": null,
+      "mappingQualified": null
+    },
+    {
+      "id": "diagnostic-observer-v1-b1-json-string-common-none____",
+      "cell": "json-string-common",
+      "mode": "none",
+      "block": 1,
+      "timed": 30,
+      "cpuMs": 154.247,
+      "cpuPerRequestMs": 5.141566666666667,
+      "eofP50Ms": 26.5138750000001,
+      "eofP95Ms": 30.204791000000114,
+      "rssEndBytes": 139083776,
+      "profile": null,
+      "mappingQualified": null
+    }
+  ],
+  "scope": "B-only observer exploration; 2 reversed blocks do not establish noise/overhead bounds. Native storage was physically read during runtime; this analysis replays the same oracle from saved SQL/inventory/gzip bytes. Process CPU includes Profiler commands. Profile weights are not CPU. RSS endpoints are not peak or isolate memory.",
+  "provenance": {
+    "originalAnalysis": {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-diagnostic-attribution/analysis-02.json",
+      "bytes": 25976,
+      "sha256": "d99b5ce09f5c6c6aa42ed101c11b009b62206ea23802755c197ee664fe14dddd"
+    },
+    "collectionInputsReceipt": {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-diagnostic-attribution/observer-02/inputs.json",
+      "bytes": 2492574,
+      "sha256": "d092fd0c2aa2fbc006950deb1aed1d54d3512fe93fe9737d80e843ce19f4ac43"
+    },
+    "analysisTools": [
+      {
+        "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/vnext/docs/superpowers/research/2026-10-08-diagnostic-attribution/harness/remap.ts",
+        "bytes": 6027,
+        "sha256": "1686b057e2ca4f5af14dc2ad4f881dcac213b2c8dcb3571d1422f7c1c5c7a838"
+      },
+      {
+        "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/vnext/docs/superpowers/research/2026-10-08-diagnostic-attribution/harness/remap.test.ts",
+        "bytes": 3143,
+        "sha256": "662899f58fb7ff230406303306a2865824291bea7191df5790199cce0905a8ee"
+      }
+    ],
+    "mappingRuntimeInputs": [
+      {
+        "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/vnext/node_modules/.bun/@jridgewell+trace-mapping@0.3.31/node_modules/@jridgewell/trace-mapping/dist/trace-mapping.umd.js",
+        "bytes": 18670,
+        "sha256": "5ad4ec0709f78aa806c70965d4c162270e1df605f5572aa3a1ced31fe73dd07a"
+      },
+      {
+        "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/vnext/node_modules/.bun/@jridgewell+trace-mapping@0.3.31/node_modules/@jridgewell/trace-mapping/package.json",
+        "bytes": 2252,
+        "sha256": "7f5eacc669d36013f9b792ab15721a97d48b26b093100122aa6c8691ebe656be"
+      },
+      {
+        "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/vnext/node_modules/.bun/@jridgewell+resolve-uri@3.1.2/node_modules/@jridgewell/resolve-uri/dist/resolve-uri.umd.js",
+        "bytes": 9866,
+        "sha256": "2d46a62531a9ffa1e6e04995a94ae35d7a10869e2116132068a8755a15d46663"
+      },
+      {
+        "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/vnext/node_modules/.bun/@jridgewell+resolve-uri@3.1.2/node_modules/@jridgewell/resolve-uri/package.json",
+        "bytes": 2063,
+        "sha256": "0793e722ffe08f3b4f1862c4dc96d920a62d6811a3648b4feb02f06c63227e8b"
+      },
+      {
+        "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/vnext/node_modules/.bun/@jridgewell+sourcemap-codec@1.5.5/node_modules/@jridgewell/sourcemap-codec/dist/sourcemap-codec.umd.js",
+        "bytes": 14590,
+        "sha256": "25f02490d5179a4c28d6799e2c290be162be1010e6a101d77f5511683ccd0ca3"
+      },
+      {
+        "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/vnext/node_modules/.bun/@jridgewell+sourcemap-codec@1.5.5/node_modules/@jridgewell/sourcemap-codec/package.json",
+        "bytes": 2150,
+        "sha256": "398fc774628ec1592c794e8c14ecdc0096206a2521545e527e5a06429dac6006"
+      }
+    ],
+    "rawProfiles": [
+      {
+        "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-diagnostic-attribution/observer-02/windows/diagnostic-observer-v1-b0-json-string-full__-cpu_____/profile.cpuprofile",
+        "bytes": 23389,
+        "sha256": "2fd4d49c393f0ed74cf992765aeaa20258fc7dd5613c47684b56c5ccce704868"
+      },
+      {
+        "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-diagnostic-attribution/observer-02/windows/diagnostic-observer-v1-b0-json-string-common-cpu_____/profile.cpuprofile",
+        "bytes": 16428,
+        "sha256": "520f1179b71bcc709ba26e04498a0bc0902481611af60a43b1d731b936f4b4d5"
+      },
+      {
+        "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-diagnostic-attribution/observer-02/windows/diagnostic-observer-v1-b1-json-string-full__-cpu_____/profile.cpuprofile",
+        "bytes": 19836,
+        "sha256": "1151e4be9324d3164f11d138af76c20689c2c5c54e2c6f8966fab06bf6d250ae"
+      },
+      {
+        "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-diagnostic-attribution/observer-02/windows/diagnostic-observer-v1-b1-json-string-common-cpu_____/profile.cpuprofile",
+        "bytes": 20516,
+        "sha256": "316d1060acec882b85acd1e11b7a66bc0c517daf8f1674e8260d58f0218aa9d9"
+      }
+    ],
+    "moduleIdentityProofs": [
+      {
+        "modulesRoot": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-diagnostic-attribution/observer-02/windows/diagnostic-observer-v1-b0-json-string-full__-cpu_____",
+        "module": {
+          "type": "ESModule",
+          "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-diagnostic-attribution/observer-02/windows/diagnostic-observer-v1-b0-json-string-full__-cpu_____/entry/entry.mjs",
+          "relativeUrl": "entry/entry.mjs"
+        },
+        "entry": {
+          "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-diagnostic-attribution/observer-02/windows/diagnostic-observer-v1-b0-json-string-full__-cpu_____/entry/entry.mjs",
+          "bytes": 4854324,
+          "sha256": "314922dc5b9caf7ba9f87a708fa40cfe7943c361ec00e5aadb3b331a9e7be077"
+        },
+        "frozenRuntime": {
+          "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/vnext/docs/superpowers/research/2026-10-07-reference-stage-measurement/harness/runtime.ts",
+          "bytes": 22098,
+          "sha256": "e2b268de80c81a18092427469e6067490e42069de831909fde06957a4192c0e3"
+        },
+        "matchedDeclaration": "modules:[{type:\"ESModule\",path:join(directory,\"entry/entry.mjs\")}],modulesRoot:directory"
+      },
+      {
+        "modulesRoot": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-diagnostic-attribution/observer-02/windows/diagnostic-observer-v1-b0-json-string-common-cpu_____",
+        "module": {
+          "type": "ESModule",
+          "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-diagnostic-attribution/observer-02/windows/diagnostic-observer-v1-b0-json-string-common-cpu_____/entry/entry.mjs",
+          "relativeUrl": "entry/entry.mjs"
+        },
+        "entry": {
+          "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-diagnostic-attribution/observer-02/windows/diagnostic-observer-v1-b0-json-string-common-cpu_____/entry/entry.mjs",
+          "bytes": 4854324,
+          "sha256": "c75b828a9e694e3fb9758c52700cd1f31217c2ec7d505cf03391808a81a4820a"
+        },
+        "frozenRuntime": {
+          "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/vnext/docs/superpowers/research/2026-10-07-reference-stage-measurement/harness/runtime.ts",
+          "bytes": 22098,
+          "sha256": "e2b268de80c81a18092427469e6067490e42069de831909fde06957a4192c0e3"
+        },
+        "matchedDeclaration": "modules:[{type:\"ESModule\",path:join(directory,\"entry/entry.mjs\")}],modulesRoot:directory"
+      },
+      {
+        "modulesRoot": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-diagnostic-attribution/observer-02/windows/diagnostic-observer-v1-b1-json-string-full__-cpu_____",
+        "module": {
+          "type": "ESModule",
+          "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-diagnostic-attribution/observer-02/windows/diagnostic-observer-v1-b1-json-string-full__-cpu_____/entry/entry.mjs",
+          "relativeUrl": "entry/entry.mjs"
+        },
+        "entry": {
+          "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-diagnostic-attribution/observer-02/windows/diagnostic-observer-v1-b1-json-string-full__-cpu_____/entry/entry.mjs",
+          "bytes": 4854324,
+          "sha256": "c1574c0ff90585e25a0b96f5535e82dc59e7cf01fcb5b96dd3832d6b257cb361"
+        },
+        "frozenRuntime": {
+          "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/vnext/docs/superpowers/research/2026-10-07-reference-stage-measurement/harness/runtime.ts",
+          "bytes": 22098,
+          "sha256": "e2b268de80c81a18092427469e6067490e42069de831909fde06957a4192c0e3"
+        },
+        "matchedDeclaration": "modules:[{type:\"ESModule\",path:join(directory,\"entry/entry.mjs\")}],modulesRoot:directory"
+      },
+      {
+        "modulesRoot": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-diagnostic-attribution/observer-02/windows/diagnostic-observer-v1-b1-json-string-common-cpu_____",
+        "module": {
+          "type": "ESModule",
+          "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-diagnostic-attribution/observer-02/windows/diagnostic-observer-v1-b1-json-string-common-cpu_____/entry/entry.mjs",
+          "relativeUrl": "entry/entry.mjs"
+        },
+        "entry": {
+          "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-diagnostic-attribution/observer-02/windows/diagnostic-observer-v1-b1-json-string-common-cpu_____/entry/entry.mjs",
+          "bytes": 4854324,
+          "sha256": "76d6ec104a44dcdc13ee5ac3b6633c692700e39b38fb8b71e4a1efa7d76ef942"
+        },
+        "frozenRuntime": {
+          "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/vnext/docs/superpowers/research/2026-10-07-reference-stage-measurement/harness/runtime.ts",
+          "bytes": 22098,
+          "sha256": "e2b268de80c81a18092427469e6067490e42069de831909fde06957a4192c0e3"
+        },
+        "matchedDeclaration": "modules:[{type:\"ESModule\",path:join(directory,\"entry/entry.mjs\")}],modulesRoot:directory"
+      }
+    ],
+    "rule": "Only exact relative entry/entry.mjs adapts to the proved declared module. Absolute/file URLs retain canonical exact-entry checks. Original profiles and collection tools are unchanged.",
+    "qualificationBoundary": "sourceMappingQualified means a verified mapping proof, not complete frame coverage. Exclusive sparse V8 sample counts and interval weights are not exact CPU or callback duration; no renormalization or process-CPU scaling."
+  },
+  "aggregates": [
+    {
+      "cell": "json-string-common",
+      "mode": "none",
+      "cpuPerRequestMs": {
+        "n": 2,
+        "mean": 4.592066666666667,
+        "median": 4.592066666666667,
+        "min": 4.042566666666667,
+        "max": 5.141566666666667
+      },
+      "eofP50Ms": {
+        "n": 2,
+        "mean": 25.596646000000078,
+        "median": 25.596646000000078,
+        "min": 24.679417000000058,
+        "max": 26.5138750000001
+      },
+      "eofP95Ms": {
+        "n": 2,
+        "mean": 28.684020500000088,
+        "median": 28.684020500000088,
+        "min": 27.163250000000062,
+        "max": 30.204791000000114
+      },
+      "rssEndBytes": {
+        "n": 2,
+        "mean": 150429696,
+        "median": 150429696.0,
+        "min": 139083776,
+        "max": 161775616
+      }
+    },
+    {
+      "cell": "json-string-common",
+      "mode": "attached",
+      "cpuPerRequestMs": {
+        "n": 2,
+        "mean": 4.200566666666667,
+        "median": 4.200566666666667,
+        "min": 3.7333333333333334,
+        "max": 4.6678
+      },
+      "eofP50Ms": {
+        "n": 2,
+        "mean": 25.00427099999979,
+        "median": 25.00427099999979,
+        "min": 24.658833999999842,
+        "max": 25.349707999999737
+      },
+      "eofP95Ms": {
+        "n": 2,
+        "mean": 27.171333499999946,
+        "median": 27.171333499999946,
+        "min": 26.341542000000118,
+        "max": 28.001124999999774
+      },
+      "rssEndBytes": {
+        "n": 2,
+        "mean": 161112064,
+        "median": 161112064.0,
+        "min": 160661504,
+        "max": 161562624
+      }
+    },
+    {
+      "cell": "json-string-common",
+      "mode": "cpu",
+      "cpuPerRequestMs": {
+        "n": 2,
+        "mean": 6.131166666666667,
+        "median": 6.131166666666667,
+        "min": 5.7533666666666665,
+        "max": 6.508966666666667
+      },
+      "eofP50Ms": {
+        "n": 2,
+        "mean": 24.611853999999994,
+        "median": 24.611853999999994,
+        "min": 24.362750000000005,
+        "max": 24.860957999999982
+      },
+      "eofP95Ms": {
+        "n": 2,
+        "mean": 26.613583500000004,
+        "median": 26.613583500000004,
+        "min": 26.113667000000078,
+        "max": 27.11349999999993
+      },
+      "rssEndBytes": {
+        "n": 2,
+        "mean": 170303488,
+        "median": 170303488.0,
+        "min": 170000384,
+        "max": 170606592
+      }
+    },
+    {
+      "cell": "json-string-full",
+      "mode": "none",
+      "cpuPerRequestMs": {
+        "n": 2,
+        "mean": 7.8947,
+        "median": 7.8947,
+        "min": 7.622033333333333,
+        "max": 8.167366666666666
+      },
+      "eofP50Ms": {
+        "n": 2,
+        "mean": 35.481624999999894,
+        "median": 35.481624999999894,
+        "min": 34.939750000000004,
+        "max": 36.023499999999785
+      },
+      "eofP95Ms": {
+        "n": 2,
+        "mean": 49.336917000000085,
+        "median": 49.336917000000085,
+        "min": 43.81233400000019,
+        "max": 54.86149999999998
+      },
+      "rssEndBytes": {
+        "n": 2,
+        "mean": 183975936,
+        "median": 183975936.0,
+        "min": 183910400,
+        "max": 184041472
+      }
+    },
+    {
+      "cell": "json-string-full",
+      "mode": "attached",
+      "cpuPerRequestMs": {
+        "n": 2,
+        "mean": 8.494016666666667,
+        "median": 8.494016666666667,
+        "min": 8.0519,
+        "max": 8.936133333333334
+      },
+      "eofP50Ms": {
+        "n": 2,
+        "mean": 36.60416650000013,
+        "median": 36.60416650000013,
+        "min": 34.96408300000007,
+        "max": 38.24425000000019
+      },
+      "eofP95Ms": {
+        "n": 2,
+        "mean": 50.26252050000005,
+        "median": 50.26252050000005,
+        "min": 49.35200000000032,
+        "max": 51.173040999999785
+      },
+      "rssEndBytes": {
+        "n": 2,
+        "mean": 185933824,
+        "median": 185933824.0,
+        "min": 185352192,
+        "max": 186515456
+      }
+    },
+    {
+      "cell": "json-string-full",
+      "mode": "cpu",
+      "cpuPerRequestMs": {
+        "n": 2,
+        "mean": 10.9941,
+        "median": 10.9941,
+        "min": 10.922866666666666,
+        "max": 11.065333333333333
+      },
+      "eofP50Ms": {
+        "n": 2,
+        "mean": 37.4912915000001,
+        "median": 37.4912915000001,
+        "min": 37.109750000000076,
+        "max": 37.87283300000013
+      },
+      "eofP95Ms": {
+        "n": 2,
+        "mean": 50.95477100000005,
+        "median": 50.95477100000005,
+        "min": 47.84199999999987,
+        "max": 54.06754200000023
+      },
+      "rssEndBytes": {
+        "n": 2,
+        "mean": 193593344,
+        "median": 193593344.0,
+        "min": 192987136,
+        "max": 194199552
+      }
+    }
+  ],
+  "pairedAggregates": [
+    {
+      "cell": "json-string-common",
+      "contrast": "attached-none",
+      "cpuPerRequestMs": {
+        "n": 2,
+        "mean": -0.3915000000000002,
+        "median": -0.3915000000000002,
+        "min": -0.4737666666666671,
+        "max": -0.30923333333333325
+      },
+      "eofP50Ms": {
+        "n": 2,
+        "mean": -0.5923750000002883,
+        "median": -0.5923750000002883,
+        "min": -1.1641670000003614,
+        "max": -0.02058300000021518
+      },
+      "eofP95Ms": {
+        "n": 2,
+        "mean": -1.5126870000001418,
+        "median": -1.5126870000001418,
+        "min": -2.2036660000003394,
+        "max": -0.8217079999999441
+      },
+      "rssEndBytes": {
+        "n": 2,
+        "mean": 10682368,
+        "median": 10682368.0,
+        "min": -212992,
+        "max": 21577728
+      }
+    },
+    {
+      "cell": "json-string-common",
+      "contrast": "cpu-none",
+      "cpuPerRequestMs": {
+        "n": 2,
+        "mean": 1.5391,
+        "median": 1.5391,
+        "min": 1.3674,
+        "max": 1.7107999999999999
+      },
+      "eofP50Ms": {
+        "n": 2,
+        "mean": -0.984792000000084,
+        "median": -0.984792000000084,
+        "min": -1.6529170000001159,
+        "max": -0.3166670000000522
+      },
+      "eofP95Ms": {
+        "n": 2,
+        "mean": -2.0704370000000836,
+        "median": -2.0704370000000836,
+        "min": -3.091291000000183,
+        "max": -1.0495829999999842
+      },
+      "rssEndBytes": {
+        "n": 2,
+        "mean": 19873792,
+        "median": 19873792.0,
+        "min": 8830976,
+        "max": 30916608
+      }
+    },
+    {
+      "cell": "json-string-common",
+      "contrast": "cpu-attached",
+      "cpuPerRequestMs": {
+        "n": 2,
+        "mean": 1.9306,
+        "median": 1.9306,
+        "min": 1.841166666666667,
+        "max": 2.020033333333333
+      },
+      "eofP50Ms": {
+        "n": 2,
+        "mean": -0.39241699999979573,
+        "median": -0.39241699999979573,
+        "min": -0.48874999999975444,
+        "max": -0.29608399999983703
+      },
+      "eofP95Ms": {
+        "n": 2,
+        "mean": -0.5577499999999418,
+        "median": -0.5577499999999418,
+        "min": -0.8876249999998436,
+        "max": -0.22787500000004002
+      },
+      "rssEndBytes": {
+        "n": 2,
+        "mean": 9191424,
+        "median": 9191424.0,
+        "min": 9043968,
+        "max": 9338880
+      }
+    },
+    {
+      "cell": "json-string-full",
+      "contrast": "attached-none",
+      "cpuPerRequestMs": {
+        "n": 2,
+        "mean": 0.5993166666666672,
+        "median": 0.5993166666666672,
+        "min": 0.4298666666666664,
+        "max": 0.7687666666666679
+      },
+      "eofP50Ms": {
+        "n": 2,
+        "mean": 1.1225415000002386,
+        "median": 1.1225415000002386,
+        "min": 0.02433300000006966,
+        "max": 2.2207500000004075
+      },
+      "eofP95Ms": {
+        "n": 2,
+        "mean": 0.9256034999999656,
+        "median": 0.9256034999999656,
+        "min": -3.6884590000001936,
+        "max": 5.539666000000125
+      },
+      "rssEndBytes": {
+        "n": 2,
+        "mean": 1957888,
+        "median": 1957888.0,
+        "min": 1441792,
+        "max": 2473984
+      }
+    },
+    {
+      "cell": "json-string-full",
+      "contrast": "cpu-none",
+      "cpuPerRequestMs": {
+        "n": 2,
+        "mean": 3.0993999999999997,
+        "median": 3.0993999999999997,
+        "min": 2.897966666666667,
+        "max": 3.3008333333333324
+      },
+      "eofP50Ms": {
+        "n": 2,
+        "mean": 2.0096665000002076,
+        "median": 2.0096665000002076,
+        "min": 1.086250000000291,
+        "max": 2.9330830000001242
+      },
+      "eofP95Ms": {
+        "n": 2,
+        "mean": 1.6178539999999657,
+        "median": 1.6178539999999657,
+        "min": -7.019500000000107,
+        "max": 10.255208000000039
+      },
+      "rssEndBytes": {
+        "n": 2,
+        "mean": 9617408,
+        "median": 9617408.0,
+        "min": 9076736,
+        "max": 10158080
+      }
+    },
+    {
+      "cell": "json-string-full",
+      "contrast": "cpu-attached",
+      "cpuPerRequestMs": {
+        "n": 2,
+        "mean": 2.5000833333333325,
+        "median": 2.5000833333333325,
+        "min": 2.129199999999999,
+        "max": 2.870966666666666
+      },
+      "eofP50Ms": {
+        "n": 2,
+        "mean": 0.8871249999999691,
+        "median": 0.8871249999999691,
+        "min": -1.1345000000001164,
+        "max": 2.9087500000000546
+      },
+      "eofP95Ms": {
+        "n": 2,
+        "mean": 0.6922505000000001,
+        "median": 0.6922505000000001,
+        "min": -3.3310409999999138,
+        "max": 4.715541999999914
+      },
+      "rssEndBytes": {
+        "n": 2,
+        "mean": 7659520,
+        "median": 7659520.0,
+        "min": 7634944,
+        "max": 7684096
+      }
+    }
+  ],
+  "sourceHintsAreNotRanked": true,
+  "productBehaviorChanged": false,
+  "deploymentQualified": false,
+  "peakMemoryMeasured": false
+}

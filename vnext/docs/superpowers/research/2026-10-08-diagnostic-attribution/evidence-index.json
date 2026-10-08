@@ -1,0 +1,105 @@
+{
+  "schema": "diagnostic-observer-evidence-index-v1",
+  "rawRoot": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-diagnostic-attribution",
+  "failedAttempt": "observer-01",
+  "passedAttempt": "observer-02",
+  "rawArtifactCount": 2519,
+  "runtimeEvidenceQualified": true,
+  "sourceMapProofQualified": true,
+  "fineGrainedAttributionQualified": false,
+  "peakMemoryMeasured": false,
+  "productBehaviorChanged": false,
+  "deploymentQualified": false,
+  "files": [
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-diagnostic-attribution/raw-artifacts-manifest.json",
+      "bytes": 1031188,
+      "sha256": "8065c8e1232fc2ad08198ff8e76f7e5a83671e0d42073eceb651efd728bffb17"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-diagnostic-attribution/analysis-02.json",
+      "bytes": 25976,
+      "sha256": "d99b5ce09f5c6c6aa42ed101c11b009b62206ea23802755c197ee664fe14dddd"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-diagnostic-attribution/analysis-remapped-02.json",
+      "bytes": 2593630,
+      "sha256": "85092901ad354d358680f8b46049eae7384460f949d726e9fd2b57c2abeffd02"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-diagnostic-attribution/independent-numeric-02.json",
+      "bytes": 23233,
+      "sha256": "4cd67c1dfd751d043f3f5e142af3a75b0bd58d5812d329506ad1e9f6e885df44"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-diagnostic-attribution/independent_numeric_recheck.py",
+      "bytes": 11955,
+      "sha256": "dd16590a13552ca01080183a1c20c6193919fc936bf23b3220ecc1f40520e190"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-diagnostic-attribution/delivery-integrity.json",
+      "bytes": 828,
+      "sha256": "18b4b0695d3b6b3676ce29651bebc3d5dac1b4b88324e92139e8765b38d81149"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-diagnostic-attribution/delivery-tests.log",
+      "bytes": 18780,
+      "sha256": "6d7f8dc94a810e898fa5a6b896b2a6b79ba26d6eeb08d1085d666f7aa0a8fadc"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-diagnostic-attribution/delivery-tsc.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-diagnostic-attribution/main-protected.json",
+      "bytes": 7986,
+      "sha256": "87b9a61b53688079c89a829ad3bde5fc914574205de6347b81299ca0c6ae6f13"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-diagnostic-attribution/repair-protected.json",
+      "bytes": 2797,
+      "sha256": "0e6d9321af96143f73c3f328fa9e7e7f7ea03cef7826460af58b2f4a7b7ae67e"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-diagnostic-attribution/map-preflight.ts",
+      "bytes": 1408,
+      "sha256": "26500ac8034fed5d88ade14b97f2fe4e0d26cc2c694c1a5239d28ef1da113639"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-diagnostic-attribution/map-crlf-review.ts",
+      "bytes": 1555,
+      "sha256": "71d8ff392b53571f0b77cc180022b0abd799fb8e845a738001640c778cf556c6"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-diagnostic-attribution/map-crlf-anchors.ts",
+      "bytes": 1339,
+      "sha256": "1b9d83b7aef3079135801c6e1c9e94fb4a653c247b30b1735f8bbecec6908cc6"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-diagnostic-attribution/profile-crlf-tests-red.log",
+      "bytes": 4116,
+      "sha256": "556945d208f7135bb14b5d4f728bfd220a68ccd047a7014505028f194b85b522"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-diagnostic-attribution/profile-range-tests-red.log",
+      "bytes": 3718,
+      "sha256": "65198e7047a54332b59e73ce31636a55cac694ae5b2bbefa8210f30352d1cc8c"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-diagnostic-attribution/saved-dumps-inventory-red.log",
+      "bytes": 2819,
+      "sha256": "f4281f45b6c3ed239c362d0e26a5e6e88255a8c2efe9bdbce8d4799964910d91"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-diagnostic-attribution/saved-dumps-inventory-green.log",
+      "bytes": 869,
+      "sha256": "89c733faddf28a9ea5900cd8a47424f810b8ef15e040c746b674fc78705809f5"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-diagnostic-attribution/remap-root-tests.log",
+      "bytes": 382,
+      "sha256": "5205241eba657afeda507df9aca1ea3d3a9fa61ee637269658c200fca980529a"
+    }
+  ]
+}

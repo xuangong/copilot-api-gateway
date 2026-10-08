@@ -11,6 +11,8 @@ import { verifyReferenceReadback } from "./reference-oracle"
 import { referenceMigrationInputs, referenceSinkCounts } from "./reference-qualify"
 import { aggregateWarmRun, freezeWarmPlan, verifyWarmWireRows, type WarmPlan, type WarmWindowEvidence, type WarmWindowPlan } from "./warm-contracts"
 import { runInstanceJob, writeInstanceContext } from "./instance-job.ts"
+import type { ObserverConfig } from "../../2026-10-08-diagnostic-attribution/harness/observer"
+import { readAndSaveNativeDumps } from "../../2026-10-08-diagnostic-attribution/harness/saved-dumps"
 import type { Arm, Cell } from "./contracts"
 
 type Obj = Record<string, unknown>
@@ -157,12 +159,26 @@ export function reaggregateWarmOutput(output: string) {
 
 /** Execute one frozen window; the coordinator owns building and input qualification. */
 export async function runWarmWindow(manifest: Manifest, referenceRoot: string, reference: Awaited<ReturnType<typeof buildReference>>, window: WarmWindowPlan, directory: string): Promise<Dispatch[]> {
-  const migrations = referenceMigrationInputs(reference)
+  return runWindow(manifest, referenceRoot, reference, window, directory)
+}
+
+export type AbWarmWindowPlan = Omit<WarmWindowPlan, "warmup" | "timed" | "arm"> & { arm: "A" | "B"; warmup: number; timed: number }
+export async function runAbWarmWindow(manifest: Manifest, arm: "A" | "B", window: AbWarmWindowPlan, directory: string, observer?: ObserverConfig): Promise<Dispatch[]> {
+  if (window.arm !== arm) throw new Error("A/B warm window arm mismatch")
+  return runWindow(manifest, "", undefined, window, directory, observer)
+}
+
+async function runWindow(manifest: Manifest, referenceRoot: string, reference: Awaited<ReturnType<typeof buildReference>> | undefined, window: Omit<WarmWindowPlan, "warmup" | "timed"> & { warmup: number; timed: number }, directory: string, observer?: ObserverConfig): Promise<Dispatch[]> {
+  if (window.arm === "R" && !reference) throw new Error("Reference warm window requires its frozen build")
+  const migrations = reference ? referenceMigrationInputs(reference) : []
   const { arm, cell } = window
-  const bundle = arm === "R" ? reference.bundle : manifest.variants[arm].bundle
-  return runQualifiedInstance({ arm, bundle, directory, hooks: false, window: { id: window.id, cell, warmup: window.warmup, timed: window.timed },
+  let bundle: string
+  if (arm === "R") { if (!reference) throw new Error("Missing reference build"); bundle = reference.bundle }
+  else bundle = manifest.variants[arm].bundle
+  return runQualifiedInstance({ arm, bundle, directory, hooks: false, ...(observer ? { observer } : {}), window: { id: window.id, cell, warmup: window.warmup, timed: window.timed },
     async initialize(db, base) {
       if (arm !== "R") return initializeAb(db, base, manifest, arm, cell)
+      if (!reference) throw new Error("Missing reference build during initialization")
       await migrate(db, migrations)
       const seed = await seedReference(db, { referenceRoot, baseUrl: base, apiKey: API_KEY, fixtureSecret: SECRET, dump: cell.dump, model: "bench-chat-ok" })
       for (const input of seed.hostInputs) if (!reference.inputs.some(frozen => frozen.path === input.path && frozen.sha256 === input.sha256)) throw new Error(`Reference seed host helper differs from build inputs: ${input.path}`)
@@ -181,18 +197,19 @@ export async function runWarmWindow(manifest: Manifest, referenceRoot: string, r
       const tables = await abTables(db)
       const semantic = verifyAbSideEffects(tables, rows.length, cell.dump)
       durableJson(join(directory, "ab-side-effects.json"), { tables, semantic }, true)
+      const nativeDump = observer ? await readAndSaveNativeDumps({ directory, db, bucket, rows, dispatches, arm, dump: cell.dump }) : null
       if (!cell.dump) {
         if (rows.some(row => row.dumpRecordId !== null)) throw new Error("Dump-disabled window returned dump identity")
-        await emptyBucket(bucket)
-        return { evidence: { tables, semantic }, objectCount: 0, compressedBytes: 0 }
+        if (!nativeDump) await emptyBucket(bucket)
+        return { evidence: { tables, semantic, ...(nativeDump ? { storage: nativeDump.storage, nativeDumpEvidence: nativeDump.evidence } : {}) }, objectCount: 0, compressedBytes: 0 }
       }
-      const storage = await readDumps(db, bucket, rows.map(row => ({ ...row, variant: arm })), dispatches, { checked: new Set() }, arm)
+      const storage = nativeDump?.storage ?? await readDumps(db, bucket, rows.map(row => ({ ...row, variant: arm })), dispatches, { checked: new Set() }, arm)
       const objects = storage.newRecords.flatMap(value => {
         const record = value as { objects?: { compressedBytes: number }[] }
         if (!Array.isArray(record.objects) || record.objects.some(object => !Number.isSafeInteger(object.compressedBytes) || object.compressedBytes < 0)) throw new Error("Invalid A/B physical receipt")
         return record.objects
       })
-      return { evidence: { storage, tables, semantic }, objectCount: objects.length, compressedBytes: objects.reduce((sum, object) => sum + object.compressedBytes, 0) }
+      return { evidence: { storage, tables, semantic, ...(nativeDump ? { nativeDumpEvidence: nativeDump.evidence } : {}) }, objectCount: objects.length, compressedBytes: objects.reduce((sum, object) => sum + object.compressedBytes, 0) }
     },
   })
 }
