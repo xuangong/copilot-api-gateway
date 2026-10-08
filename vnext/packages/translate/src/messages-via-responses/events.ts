@@ -11,6 +11,7 @@
  * Cancellation: implemented as an async generator with try/finally so
  * per-stream state is cleared when the consumer breaks out of the loop.
  */
+import { assertClientRepresentableResponseEvent } from "../shared/client-opaque-state.ts"
 import { isContextExceededError, PROMPT_TOO_LONG_MESSAGE, type MessagesEvent } from '@vibe-llm/protocols/messages'
 
 // ─── Inbound (Responses) event shape ───
@@ -555,6 +556,7 @@ export async function* translateResponsesEventsToMessagesEvents(
   const state = createState()
   try {
     for await (const raw of events) {
+      assertClientRepresentableResponseEvent(raw)
       if (!raw || typeof raw !== 'object') continue
       const ev = raw as RespEvent
       if (typeof ev.type !== 'string') continue

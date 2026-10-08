@@ -8,6 +8,8 @@
  * Direction: response = hub → client.
  */
 
+import { assertClientRepresentableResponseItem } from "../shared/client-opaque-state.ts"
+
 interface ResponsesResultLike {
   id: string
   model: string
@@ -68,6 +70,7 @@ function parseToolArgs(args: string | undefined): Record<string, unknown> {
 function mapOutputToContent(output: ResponsesResultLike['output']): MessagesContentBlock[] {
   const blocks: MessagesContentBlock[] = []
   for (const item of output) {
+    assertClientRepresentableResponseItem(item)
     switch (item.type) {
       case 'reasoning': {
         const thinking = (item.summary ?? [])
