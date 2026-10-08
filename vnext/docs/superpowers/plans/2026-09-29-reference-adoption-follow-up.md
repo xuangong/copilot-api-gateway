@@ -5,7 +5,7 @@
 - [x] Confirm existing affinity provenance/compatibility behavior; add four-protocol zero-codec/secret and single-layer SSE-to-JSON replay contracts.
 - [x] Prefer SSE for Custom/Copilot generation while preserving downstream JSON, usage, source ownership, compact/non-generation semantics and native JSON fallback.
 - [x] Add per-call upstream first-output timing without changing downstream TTFT; prove early degenerate-output cancellation for JSON clients.
-- [ ] Complete independent review, full local CI and local `vNext` integration. [Scope, evidence and remaining measurement boundaries](../research/2026-10-08-affinity-streaming-adoption.md).
+- [x] Complete independent review, full local CI and local `vNext` integration (`870c387b`; 6,187 pass, one existing skip, zero failures). [Scope, evidence and remaining measurement boundaries](../research/2026-10-08-affinity-streaming-adoption.md).
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement an individually scoped work package task-by-task. This document is the tracking index. The user authorized the implementation pass on September 29; apply its global constraints and preserve the explicitly conditional decisions.
 

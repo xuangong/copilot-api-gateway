@@ -25,7 +25,7 @@ Collection keeps one extra timestamp per call and stops output classification af
 - [x] Verify early failure/cancellation and native JSON fallback with real gateway/SQLite/loopback fixtures.
 - [x] Independent review, including MIME fallback and Ollama compatibility.
 - [x] Full local CI on the delivery artifact.
-- [ ] Merge into local `vNext`, preserving unrelated dirty files.
+- [x] Merge into local `vNext`, preserving unrelated dirty files.
 
 ## Targeted validation
 
@@ -42,6 +42,8 @@ Collection keeps one extra timestamp per call and stops output classification af
 Validated Git tree: `11f142a204af60037f4cda6b7939ed2ab0f669d7`. The isolated export contained the delivery files and copied installed workspace dependencies, excluding both worktrees' unrelated uncommitted work. Subsequent tracking-document edits do not change the validated implementation or tests.
 
 After generating UI assets, `SETUP_TEST_CODEX=/Users/zhangxian/.local/bin/codex bun run ci:local` exited with code 0: framework purity, workspace typechecks, 6,187 passing tests across 578 files, one existing runtime-dependent skip, zero failures, lint with zero errors and 39 inherited warnings, setup/UI builds, and the Workers deployment dry-run. The dry-run did not deploy a Worker. Validation logs and the artifact manifest are retained in the worktree's ignored `.superpowers/sdd/2026-10-08-affinity-streaming-adoption/` directory.
+
+Implementation commit `870c387b20d6bec5694a989ab9495f374e9ae7d5` was fast-forwarded into local `vNext`. Post-merge hashes confirmed all 38 protected files in the main checkout and all 14 in the worktree were unchanged. Only the committed artifact was qualified; unrelated working-tree changes were neither included nor certified. No push or deployment was performed.
 
 ## Remaining measurement and release boundaries
 
