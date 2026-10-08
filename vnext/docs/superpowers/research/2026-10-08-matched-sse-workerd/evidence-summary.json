@@ -1,0 +1,800 @@
+{
+  "schema": "matched-sse-committed-evidence-summary-v1",
+  "createdAt": "2026-10-08T15:53:27.441788+00:00",
+  "scope": "Selected saved results and independent arithmetic, not a substitute for raw observations; source file hashes are in evidence-index.json.",
+  "candidateCommit": "963305f85654ff9b4fac28132739ec7ec9902e9a",
+  "referenceCommit": "1d7dcd923e260e425120cca0c7a240e93720af27",
+  "canary": {
+    "source": "canary-02/disposition.json",
+    "result": {
+      "completed": true,
+      "qualified": false,
+      "commonWorkloadQualified": true,
+      "performanceComparison": false,
+      "expected": 61,
+      "expectedCommon": 36,
+      "populationComplete": true,
+      "missing": [],
+      "unexpected": [],
+      "duplicate": [],
+      "total": 61,
+      "passed": 58,
+      "failed": [
+        {
+          "id": "B-chat-fallback-untyped-sse",
+          "errors": [
+            "success terminal count differs",
+            "success contains failure",
+            "DONE must occur once and last",
+            "invalid Chat choice envelope",
+            "missing assistant role",
+            "usage count differs",
+            "finish reason differs",
+            "text differs",
+            "usage differs",
+            "tool identity differs",
+            "tool arguments differ"
+          ]
+        },
+        {
+          "id": "B-chat-fallback-plain-sse",
+          "errors": [
+            "success terminal count differs",
+            "success contains failure",
+            "DONE must occur once and last",
+            "invalid Chat choice envelope",
+            "missing assistant role",
+            "usage count differs",
+            "finish reason differs",
+            "text differs",
+            "usage differs",
+            "tool identity differs",
+            "tool arguments differ"
+          ]
+        },
+        {
+          "id": "B-responses-cancel-sse",
+          "errors": [
+            "upstream did not close before cleanup"
+          ]
+        }
+      ],
+      "knownGaps": [
+        {
+          "id": "B-chat-fallback-untyped-sse",
+          "errors": [
+            "success terminal count differs",
+            "success contains failure",
+            "DONE must occur once and last",
+            "invalid Chat choice envelope",
+            "missing assistant role",
+            "usage count differs",
+            "finish reason differs",
+            "text differs",
+            "usage differs",
+            "tool identity differs",
+            "tool arguments differ"
+          ],
+          "gap": "Chat SSE JSON fallback without standard JSON MIME fails; this boundary predates stream adoption"
+        },
+        {
+          "id": "B-chat-fallback-plain-sse",
+          "errors": [
+            "success terminal count differs",
+            "success contains failure",
+            "DONE must occur once and last",
+            "invalid Chat choice envelope",
+            "missing assistant role",
+            "usage count differs",
+            "finish reason differs",
+            "text differs",
+            "usage differs",
+            "tool identity differs",
+            "tool arguments differ"
+          ],
+          "gap": "Chat SSE JSON fallback without standard JSON MIME fails; this boundary predates stream adoption"
+        },
+        {
+          "id": "B-responses-cancel-sse",
+          "errors": [
+            "upstream did not close before cleanup"
+          ],
+          "gap": "No upstream TCP closure observed in the pre-cleanup window; final gateway cancellation metrics are recorded separately"
+        }
+      ],
+      "otherFailures": [],
+      "capabilities": [
+        {
+          "id": "B-responses-blobless-program-source-json",
+          "ok": true,
+          "behavior": "B has no synthetic turn carrier; blob-less program_output is not source-bound by the opaque affinity contract"
+        },
+        {
+          "id": "B-responses-blobless-program-source-sse",
+          "ok": true,
+          "behavior": "B has no synthetic turn carrier; blob-less program_output is not source-bound by the opaque affinity contract"
+        },
+        {
+          "id": "R-responses-blobless-program-source-json",
+          "ok": true,
+          "behavior": "Native synthetic turn carrier forces the source for a following blob-less program_output"
+        },
+        {
+          "id": "R-responses-blobless-program-source-sse",
+          "ok": true,
+          "behavior": "Native synthetic turn carrier forces the source for a following blob-less program_output"
+        }
+      ]
+    }
+  },
+  "cpu": {
+    "source": "cpu-02/matched-summary.json",
+    "independentReview": "cpu-02-independent-review.json",
+    "comparisonQualified": true,
+    "totals": {
+      "expectedWindows": 48,
+      "observedWindows": 48,
+      "warmupOffered": 240,
+      "timedOffered": 960,
+      "timedSuccesses": 960,
+      "cpuMs": 15974.115999999996,
+      "cpuPerOfferedMs": 16.639704166666665,
+      "cpuPerSuccessMs": 16.639704166666665
+    },
+    "interpretation": "whole workerd process through settlement; all offered work retained; excludes host fixture/client and physical readback; not isolate or billed CPU",
+    "latencyInterpretation": "client EOF only; warmup excluded; exploratory pooled p50/p95 without robust tail claim",
+    "rawWire": {
+      "comparator": "warm-raw-wire-v1",
+      "passed": true,
+      "checkedRows": 1200
+    },
+    "nativeReadback": {
+      "passed": true,
+      "checkedWindows": 48,
+      "upstreamTtftSamples": 600,
+      "scope": "native physical dump readback during each instance; saved B SQL, inventory and original compressed R2 bytes replayed through the versioned reader; R native decoded storage/semantic receipts reverified; no fresh offline R2 read"
+    },
+    "independentArithmetic": {
+      "method": "Python integer userUs/systemUs endpoint differences; timed-only nearest-rank EOF p50/p95; same cell/block B-minus-R differences",
+      "population": {
+        "windows": 48,
+        "distinctWorkerdIdentities": 48,
+        "warmup": 240,
+        "timed": 960,
+        "timedSuccesses": 960
+      },
+      "cpuUs": 15974116,
+      "groups": [
+        {
+          "cell": "json-string-common",
+          "B": {
+            "cpuMs": 1282.616,
+            "cpuPerOfferedMs": 10.688466666666667,
+            "eof": {
+              "n": 120,
+              "p50Ms": 33.084292000000005,
+              "p95Ms": 43.900540999999976
+            }
+          },
+          "R": {
+            "cpuMs": 1395.461,
+            "cpuPerOfferedMs": 11.628841666666666,
+            "eof": {
+              "n": 120,
+              "p50Ms": 36.468624999999975,
+              "p95Ms": 46.095000000000255
+            }
+          },
+          "cpuReductionPercent": 8.08657497414832,
+          "pooledEofP50ReductionPercent": 9.280122296905823
+        },
+        {
+          "cell": "sse-string-common",
+          "B": {
+            "cpuMs": 1169.863,
+            "cpuPerOfferedMs": 9.748858333333333,
+            "eof": {
+              "n": 120,
+              "p50Ms": 31.760500000000093,
+              "p95Ms": 40.898457999999664
+            }
+          },
+          "R": {
+            "cpuMs": 1468.577,
+            "cpuPerOfferedMs": 12.238141666666667,
+            "eof": {
+              "n": 120,
+              "p50Ms": 35.036125000000084,
+              "p95Ms": 45.56529200000023
+            }
+          },
+          "cpuReductionPercent": 20.340370304042633,
+          "pooledEofP50ReductionPercent": 9.349278780116189
+        },
+        {
+          "cell": "json-containers-full",
+          "B": {
+            "cpuMs": 2345.649,
+            "cpuPerOfferedMs": 19.547075,
+            "eof": {
+              "n": 120,
+              "p50Ms": 53.46716599999991,
+              "p95Ms": 80.26779100000022
+            }
+          },
+          "R": {
+            "cpuMs": 2782.013,
+            "cpuPerOfferedMs": 23.183441666666667,
+            "eof": {
+              "n": 120,
+              "p50Ms": 56.970582999999806,
+              "p95Ms": 87.97320799999989
+            }
+          },
+          "cpuReductionPercent": 15.685189105874064,
+          "pooledEofP50ReductionPercent": 6.149519305428052
+        },
+        {
+          "cell": "sse-string-full",
+          "B": {
+            "cpuMs": 2490.654,
+            "cpuPerOfferedMs": 20.75545,
+            "eof": {
+              "n": 120,
+              "p50Ms": 55.28512499999988,
+              "p95Ms": 87.34049999999979
+            }
+          },
+          "R": {
+            "cpuMs": 3039.283,
+            "cpuPerOfferedMs": 25.327358333333333,
+            "eof": {
+              "n": 120,
+              "p50Ms": 59.97120799999993,
+              "p95Ms": 90.07966600000009
+            }
+          },
+          "cpuReductionPercent": 18.05126406458365,
+          "pooledEofP50ReductionPercent": 7.813887957701404
+        }
+      ],
+      "paired": [
+        {
+          "cell": "json-string-common",
+          "differenceDirection": "B minus R; negative means B lower",
+          "cpuBLower": 5,
+          "eofP50BLower": 5,
+          "pairs": [
+            {
+              "block": 0,
+              "cpuBMinusRMsPerOffered": 4.32065,
+              "cpuRatioBOverR": 1.6100157422506476,
+              "eofP50BMinusRMs": 2.256834000000026,
+              "eofP50RatioBOverR": 1.0722113721214686
+            },
+            {
+              "block": 1,
+              "cpuBMinusRMsPerOffered": -2.11885,
+              "cpuRatioBOverR": 0.8210120840179254,
+              "eofP50BMinusRMs": -4.469916999999896,
+              "eofP50RatioBOverR": 0.8743147602059672
+            },
+            {
+              "block": 2,
+              "cpuBMinusRMsPerOffered": -1.3625499999999988,
+              "cpuRatioBOverR": 0.8919070077387776,
+              "eofP50BMinusRMs": -3.150874999999587,
+              "eofP50RatioBOverR": 0.9156272690631396
+            },
+            {
+              "block": 3,
+              "cpuBMinusRMsPerOffered": -0.8215000000000003,
+              "cpuRatioBOverR": 0.9330213369642318,
+              "eofP50BMinusRMs": -2.7673329999997804,
+              "eofP50RatioBOverR": 0.9250980679061487
+            },
+            {
+              "block": 4,
+              "cpuBMinusRMsPerOffered": -2.7924499999999988,
+              "cpuRatioBOverR": 0.8072271274429266,
+              "eofP50BMinusRMs": -4.280624999999873,
+              "eofP50RatioBOverR": 0.887959105600298
+            },
+            {
+              "block": 5,
+              "cpuBMinusRMsPerOffered": -2.8675499999999996,
+              "cpuRatioBOverR": 0.7505632344882178,
+              "eofP50BMinusRMs": -4.738959000000023,
+              "eofP50RatioBOverR": 0.8678831760467861
+            }
+          ]
+        },
+        {
+          "cell": "sse-string-common",
+          "differenceDirection": "B minus R; negative means B lower",
+          "cpuBLower": 6,
+          "eofP50BLower": 6,
+          "pairs": [
+            {
+              "block": 0,
+              "cpuBMinusRMsPerOffered": -0.47695000000000043,
+              "cpuRatioBOverR": 0.9521694002497079,
+              "eofP50BMinusRMs": -1.2743329999998423,
+              "eofP50RatioBOverR": 0.9614318634773612
+            },
+            {
+              "block": 1,
+              "cpuBMinusRMsPerOffered": -1.0552499999999991,
+              "cpuRatioBOverR": 0.9179333434434167,
+              "eofP50BMinusRMs": -2.463999999999942,
+              "eofP50RatioBOverR": 0.9299538989197822
+            },
+            {
+              "block": 2,
+              "cpuBMinusRMsPerOffered": -1.9195499999999992,
+              "cpuRatioBOverR": 0.8514820460049364,
+              "eofP50BMinusRMs": -2.1048749999999927,
+              "eofP50RatioBOverR": 0.941487975481867
+            },
+            {
+              "block": 3,
+              "cpuBMinusRMsPerOffered": -1.6361999999999988,
+              "cpuRatioBOverR": 0.8687317231669014,
+              "eofP50BMinusRMs": -3.1790829999999914,
+              "eofP50RatioBOverR": 0.9122947059305023
+            },
+            {
+              "block": 4,
+              "cpuBMinusRMsPerOffered": -7.2292000000000005,
+              "cpuRatioBOverR": 0.40830833575465403,
+              "eofP50BMinusRMs": -6.41170800000009,
+              "eofP50RatioBOverR": 0.8161886359727057
+            },
+            {
+              "block": 5,
+              "cpuBMinusRMsPerOffered": -2.618549999999999,
+              "cpuRatioBOverR": 0.7984436157070118,
+              "eofP50BMinusRMs": -4.298250000000053,
+              "eofP50RatioBOverR": 0.8773194809642892
+            }
+          ]
+        },
+        {
+          "cell": "json-containers-full",
+          "differenceDirection": "B minus R; negative means B lower",
+          "cpuBLower": 4,
+          "eofP50BLower": 4,
+          "pairs": [
+            {
+              "block": 0,
+              "cpuBMinusRMsPerOffered": -5.9496,
+              "cpuRatioBOverR": 0.764507044483454,
+              "eofP50BMinusRMs": -7.474501000000146,
+              "eofP50RatioBOverR": 0.876845705641057
+            },
+            {
+              "block": 1,
+              "cpuBMinusRMsPerOffered": 1.418800000000001,
+              "cpuRatioBOverR": 1.067064034146503,
+              "eofP50BMinusRMs": 3.1137079999994057,
+              "eofP50RatioBOverR": 1.0616941828580089
+            },
+            {
+              "block": 2,
+              "cpuBMinusRMsPerOffered": -5.523150000000001,
+              "cpuRatioBOverR": 0.785777036527068,
+              "eofP50BMinusRMs": -4.5364989999998215,
+              "eofP50RatioBOverR": 0.9232826911609258
+            },
+            {
+              "block": 3,
+              "cpuBMinusRMsPerOffered": -7.9573,
+              "cpuRatioBOverR": 0.6777755730940397,
+              "eofP50BMinusRMs": -8.322251000000051,
+              "eofP50RatioBOverR": 0.855603800298964
+            },
+            {
+              "block": 4,
+              "cpuBMinusRMsPerOffered": 2.8790499999999994,
+              "cpuRatioBOverR": 1.1557430257655834,
+              "eofP50BMinusRMs": 6.760833000000275,
+              "eofP50RatioBOverR": 1.1378546212177976
+            },
+            {
+              "block": 5,
+              "cpuBMinusRMsPerOffered": -6.686,
+              "cpuRatioBOverR": 0.7180954790289767,
+              "eofP50BMinusRMs": -4.732167000000118,
+              "eofP50RatioBOverR": 0.9129206621321846
+            }
+          ]
+        },
+        {
+          "cell": "sse-string-full",
+          "differenceDirection": "B minus R; negative means B lower",
+          "cpuBLower": 5,
+          "eofP50BLower": 4,
+          "pairs": [
+            {
+              "block": 0,
+              "cpuBMinusRMsPerOffered": -9.780299999999997,
+              "cpuRatioBOverR": 0.6378665886634985,
+              "eofP50BMinusRMs": -11.695207999999639,
+              "eofP50RatioBOverR": 0.8130657238676183
+            },
+            {
+              "block": 1,
+              "cpuBMinusRMsPerOffered": -4.970549999999999,
+              "cpuRatioBOverR": 0.8097590100908425,
+              "eofP50BMinusRMs": -1.845540999999912,
+              "eofP50RatioBOverR": 0.9686965198155887
+            },
+            {
+              "block": 2,
+              "cpuBMinusRMsPerOffered": -5.349399999999999,
+              "cpuRatioBOverR": 0.8004844854626388,
+              "eofP50BMinusRMs": -6.094792000000325,
+              "eofP50RatioBOverR": 0.9007951261220151
+            },
+            {
+              "block": 3,
+              "cpuBMinusRMsPerOffered": -6.565900000000003,
+              "cpuRatioBOverR": 0.7301930714530799,
+              "eofP50BMinusRMs": -6.233042000000751,
+              "eofP50RatioBOverR": 0.8893056499041949
+            },
+            {
+              "block": 4,
+              "cpuBMinusRMsPerOffered": 1.8709999999999987,
+              "cpuRatioBOverR": 1.0861620362055546,
+              "eofP50BMinusRMs": 6.4395000000004075,
+              "eofP50RatioBOverR": 1.130430819711986
+            },
+            {
+              "block": 5,
+              "cpuBMinusRMsPerOffered": -2.636300000000002,
+              "cpuRatioBOverR": 0.8984736190459685,
+              "eofP50BMinusRMs": 0.6101670000002741,
+              "eofP50RatioBOverR": 1.010286682520236
+            }
+          ]
+        }
+      ]
+    },
+    "reviewPassed": true,
+    "blockingFindings": []
+  },
+  "memory": {
+    "source": "memory-03/memory-result.json",
+    "independentReview": "memory-03-independent-review.json",
+    "comparisonQualified": true,
+    "measurement": "whole-workerd sampled RSS maximum; lower bound on the true peak; not isolate memory or the CFW 128 MiB limit",
+    "aggregationIncludes": "Independent periodic samples within the interval plus boundary probes; pre/post bracketing samples outside the interval are excluded. In these twelve windows each sampled maximum equals its end boundary probe.",
+    "passed": true,
+    "blockingFindings": [],
+    "methods": {
+      "offlineReaggregation": {
+        "implementation": "reaggregateMemoryStudy",
+        "invocations": 1,
+        "deepExactSavedSummary": true,
+        "comparisonQualified": true,
+        "expectedWindows": 12,
+        "observedQualifiedWindows": 12,
+        "errors": []
+      },
+      "independentCalculation": "Python standard library independently parsed original JSONL, endpoint probes, barrier raw lines, window/job/process receipts, raw offer/terminal/wire files, upstream response bytes and saved native storage. No harness aggregation code was used for these calculations.",
+      "writes": "Only this independent review JSON; no workload, tests, builds or CPU remeasurement."
+    },
+    "population": {
+      "windows": 12,
+      "uniqueWorkerdIdentities": 12,
+      "uniqueWorkerdPids": 12,
+      "uniqueSamplerIdentities": 12,
+      "uniqueSamplerPids": 12,
+      "uniqueInheritedChildPids": 12,
+      "owner": {
+        "pid": 53589,
+        "startIdentity": "darwin-abstime:4576952280228"
+      },
+      "warmupOffers": 60,
+      "timedOffers": 240,
+      "successfulOffers": 300,
+      "rawWireRows": 300,
+      "completeMatchedUpstreamSseDispatches": 300,
+      "nativeReadbackWindows": {
+        "B": 6,
+        "R": 6
+      }
+    },
+    "cadence": {
+      "requestedIntervalMs": 20,
+      "maxQualifiedSampleGapMs": 250,
+      "timedSamplesPerWindow": {
+        "n": 12,
+        "min": 7,
+        "median": 8.0,
+        "max": 11,
+        "mean": 8.333333333333334
+      },
+      "timedSamplesTotal": 100,
+      "totalProcessSamples": 272,
+      "coveringGapsMs": {
+        "n": 112,
+        "min": 21.37262499332428,
+        "median": 115.1721874922514,
+        "max": 177.2517499923706,
+        "mean": 106.98048697358796
+      },
+      "allProcessGapsMs": {
+        "n": 260,
+        "min": 20.2800410091877,
+        "median": 75.03764599561691,
+        "max": 177.2517499923706,
+        "mean": 91.01433413063104
+      },
+      "perWindowMaxCoveringGapMs": {
+        "n": 12,
+        "min": 166.85820800065994,
+        "median": 169.61235450208187,
+        "max": 177.2517499923706,
+        "mean": 170.28012150526047
+      },
+      "definition": "Covering gaps are adjacent independent samples from the last sample at/before processStart through the first sample at/after processEnd, pooled without synthetic endpoints. All-process gaps additionally include warmup and post-interval samples. Requested 20 ms is not achieved cadence."
+    },
+    "groups": [
+      {
+        "cell": "json-string-common",
+        "arm": "B",
+        "blocks": 3,
+        "sampledMaxRssMiB": {
+          "n": 3,
+          "min": 151.875,
+          "median": 154.46875,
+          "max": 155.921875,
+          "mean": 154.08854166666666
+        },
+        "sampledMaxRssMiBByBlock": [
+          151.875,
+          155.921875,
+          154.46875
+        ],
+        "startRssMiB": {
+          "n": 3,
+          "min": 142.984375,
+          "median": 145.09375,
+          "max": 146.84375,
+          "mean": 144.97395833333334
+        },
+        "sampledMaxDeltaFromStartMiB": {
+          "n": 3,
+          "min": 8.890625,
+          "median": 9.078125,
+          "max": 9.375,
+          "mean": 9.114583333333334
+        }
+      },
+      {
+        "cell": "json-string-common",
+        "arm": "R",
+        "blocks": 3,
+        "sampledMaxRssMiB": {
+          "n": 3,
+          "min": 187.296875,
+          "median": 188.265625,
+          "max": 189.875,
+          "mean": 188.47916666666666
+        },
+        "sampledMaxRssMiBByBlock": [
+          187.296875,
+          189.875,
+          188.265625
+        ],
+        "startRssMiB": {
+          "n": 3,
+          "min": 173.453125,
+          "median": 173.671875,
+          "max": 175.34375,
+          "mean": 174.15625
+        },
+        "sampledMaxDeltaFromStartMiB": {
+          "n": 3,
+          "min": 13.84375,
+          "median": 14.53125,
+          "max": 14.59375,
+          "mean": 14.322916666666666
+        }
+      },
+      {
+        "cell": "sse-string-common",
+        "arm": "B",
+        "blocks": 3,
+        "sampledMaxRssMiB": {
+          "n": 3,
+          "min": 153.828125,
+          "median": 154.140625,
+          "max": 155.359375,
+          "mean": 154.44270833333334
+        },
+        "sampledMaxRssMiBByBlock": [
+          155.359375,
+          153.828125,
+          154.140625
+        ],
+        "startRssMiB": {
+          "n": 3,
+          "min": 144.546875,
+          "median": 144.609375,
+          "max": 146.0625,
+          "mean": 145.07291666666666
+        },
+        "sampledMaxDeltaFromStartMiB": {
+          "n": 3,
+          "min": 9.21875,
+          "median": 9.296875,
+          "max": 9.59375,
+          "mean": 9.369791666666666
+        }
+      },
+      {
+        "cell": "sse-string-common",
+        "arm": "R",
+        "blocks": 3,
+        "sampledMaxRssMiB": {
+          "n": 3,
+          "min": 188.078125,
+          "median": 188.6875,
+          "max": 189.328125,
+          "mean": 188.69791666666666
+        },
+        "sampledMaxRssMiBByBlock": [
+          188.6875,
+          188.078125,
+          189.328125
+        ],
+        "startRssMiB": {
+          "n": 3,
+          "min": 173.34375,
+          "median": 173.75,
+          "max": 173.875,
+          "mean": 173.65625
+        },
+        "sampledMaxDeltaFromStartMiB": {
+          "n": 3,
+          "min": 14.734375,
+          "median": 14.8125,
+          "max": 15.578125,
+          "mean": 15.041666666666666
+        }
+      }
+    ],
+    "pairedComparisons": [
+      {
+        "cell": "json-string-common",
+        "pairs": [
+          {
+            "block": 0,
+            "BMiB": 151.875,
+            "RMiB": 187.296875,
+            "BMinusRMiB": -35.421875,
+            "BReductionPercentOfR": 18.91215483440394
+          },
+          {
+            "block": 1,
+            "BMiB": 155.921875,
+            "RMiB": 189.875,
+            "BMinusRMiB": -33.953125,
+            "BReductionPercentOfR": 17.8818301514154
+          },
+          {
+            "block": 2,
+            "BMiB": 154.46875,
+            "RMiB": 188.265625,
+            "BMinusRMiB": -33.796875,
+            "BReductionPercentOfR": 17.95169723628517
+          }
+        ],
+        "BLowerPairs": 3,
+        "pairedBMinusRMiB": {
+          "n": 3,
+          "min": -35.421875,
+          "median": -33.953125,
+          "max": -33.796875,
+          "mean": -34.390625
+        },
+        "pairedReductionPercentOfR": {
+          "n": 3,
+          "min": 17.8818301514154,
+          "median": 17.95169723628517,
+          "max": 18.91215483440394,
+          "mean": 18.248560740701503
+        }
+      },
+      {
+        "cell": "sse-string-common",
+        "pairs": [
+          {
+            "block": 0,
+            "BMiB": 155.359375,
+            "RMiB": 188.6875,
+            "BMinusRMiB": -33.328125,
+            "BReductionPercentOfR": 17.6631334879099
+          },
+          {
+            "block": 1,
+            "BMiB": 153.828125,
+            "RMiB": 188.078125,
+            "BMinusRMiB": -34.25,
+            "BReductionPercentOfR": 18.210517570823292
+          },
+          {
+            "block": 2,
+            "BMiB": 154.140625,
+            "RMiB": 189.328125,
+            "BMinusRMiB": -35.1875,
+            "BReductionPercentOfR": 18.585458446810264
+          }
+        ],
+        "BLowerPairs": 3,
+        "pairedBMinusRMiB": {
+          "n": 3,
+          "min": -35.1875,
+          "median": -34.25,
+          "max": -33.328125,
+          "mean": -34.255208333333336
+        },
+        "pairedReductionPercentOfR": {
+          "n": 3,
+          "min": 17.6631334879099,
+          "median": 18.210517570823292,
+          "max": 18.585458446810264,
+          "mean": 18.15303650184782
+        }
+      }
+    ],
+    "limitations": [
+      "Whole workerd process sampled RSS maximum, including independent start/end probes; a lower bound on the true peak.",
+      "Post-warmup timed requests through settlement only. Pre/post brackets authorize coverage but out-of-interval RSS is excluded from the maximum.",
+      "Not isolate memory, not Cloudflare Workers billed metrics, and not a qualification against the CFW 128 MiB isolate limit.",
+      "Only three paired blocks per downstream cell; exploratory local comparison without inferential statistics or a universal memory advantage claim.",
+      "Native B/R behavior is preserved, so complete work and downstream serialization are not claimed equal.",
+      "Sampled run is excluded from CPU/latency comparison. memory-01 and memory-02 remain disqualified and are not pooled.",
+      "Native checks independently verify saved B SQL/semantic and R decoded storage/semantic records plus the successful runtime empty-R2 guard; no fresh offline R2 read."
+    ]
+  },
+  "validation": {
+    "bun": {
+      "log": "tests-final-05.log",
+      "passed": 92,
+      "failed": 0,
+      "assertions": 325
+    },
+    "python": {
+      "log": "python-tests-final-02.log",
+      "passed": 8
+    },
+    "typecheck": {
+      "log": "typecheck-final-04.log",
+      "recordedExitCode": 0
+    },
+    "lint": {
+      "log": "lint-final-03.log",
+      "errors": 0,
+      "warnings": 2
+    },
+    "preservation": "final-input-preservation.json",
+    "finalFormatting": {
+      "beforeSnapshot": "harness-inputs-05.json",
+      "afterSnapshot": "harness-inputs-06.json",
+      "originalFile": "final-formatting/readback.before.ts",
+      "change": "Exactly one final LF removed; the original bytes match snapshot05. All other 95 harness inputs are unchanged.",
+      "productBytesChanged": false,
+      "testsRerun": false
+    }
+  },
+  "remainingPriorities": [
+    "Trace and repair timely upstream release after downstream Responses cancellation.",
+    "Design versioned Responses provenance inheritance for blob-less state, preserving authorization, foreign values, synthetic-item boundaries and old/new readers.",
+    "Repair JSON fallback for absent or nonstandard upstream MIME on SSE client paths."
+  ],
+  "deploymentQualified": false
+}

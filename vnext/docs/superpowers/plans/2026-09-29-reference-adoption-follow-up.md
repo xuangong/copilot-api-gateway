@@ -7,6 +7,20 @@
 - [x] Add per-call upstream first-output timing without changing downstream TTFT; prove early degenerate-output cancellation for JSON clients.
 - [x] Complete independent review, full local CI and local `vNext` integration (`870c387b`; 6,187 pass, one existing skip, zero failures). [Scope, evidence and remaining measurement boundaries](../research/2026-10-08-affinity-streaming-adoption.md).
 
+## October 8: matched workerd validation and newly identified gaps
+
+- [x] Freeze committed B/R source and build inputs; add independent matched-SSE measurement tooling. [Execution plan](2026-10-08-matched-sse-workerd.md).
+- [x] Run the complete selected correctness population: 61 cases, 58 pass, 3 retained failures; all 36 common-workload cases pass. [Evidence and boundaries](../research/2026-10-08-matched-sse-workerd/results.md).
+- [x] Trace ordinary affinity through reference source and history, and verify the Responses provenance difference with JSON/SSE workerd probes. Ordinary Chat empty carriers do not make routing sticky; Responses carriers additionally supply ordered provenance for later blob-less state, a contract currently absent from B. [Analysis](../research/2026-10-08-matched-sse-workerd/ordinary-affinity-analysis.md).
+- [x] Complete and independently audit `cpu-02`: all 48 windows, 240 warmup and 960 timed offers qualify; saved wire, native storage, process cleanup and B upstream-TTFT coverage pass. Keep failed `cpu-01` offers outside this fresh complete comparison while retaining their original population.
+- [x] Complete the fresh `memory-03` sampled-RSS population: twelve qualified windows, 60 warmup and 240 timed requests, supervisor exit 0 and complete cleanup. Three-window whole-workerd sampled-maximum medians are JSON B/R 154.47/188.27 MiB and SSE 154.14/188.69 MiB; B is lower in all three pairs per cell. These are lower bounds on true process peaks, not isolate heap or CFW 128 MiB acceptance.
+- [x] Independently audit all memory windows and raw evidence with no blocking findings. Actual covering-sample gaps have median 115.17 ms and maximum 177.25 ms, with 7–11 in-window samples per window; requested 20 ms is not achieved cadence. Retain failed `memory-01` (auxiliary-PID discovery error, zero workerd samples) and `memory-02` (last sample 33.837125 ms before the end probe) separately. `memory-03` uses corrected discovery and an explicit after-boundary sample barrier without relaxing qualification or combining attempts.
+- [x] Complete final harness verification: 92 Bun tests / 325 assertions, eight Python tests, TypeScript exit 0, lint zero errors / two warnings.
+- [ ] Commit the measurement/tooling/docs and integrate into local vNext.
+- [ ] **Priority 1:** locate delayed downstream-close-to-turn-abort propagation on local workerd and require timely upstream release before fixture cleanup.
+- [ ] **Priority 2:** design versioned Responses source inheritance for blob-less state, including synthetic whole-item identity and old/new reader compatibility. C01's existing opaque contract remains complete; this is an additional contract, not equivalence already achieved.
+- [ ] **Priority 3:** add bounded nonstandard-MIME JSON fallback for Chat SSE clients; retain the source evidence that this predates the streaming adoption.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement an individually scoped work package task-by-task. This document is the tracking index. The user authorized the implementation pass on September 29; apply its global constraints and preserve the explicitly conditional decisions.
 
 **Goal:** Preserve the useful June–September reference-project changes as an actionable vNext backlog, resolve the uncertain adoption decisions, and deliver each accepted change with evidence of its user-visible behavior.

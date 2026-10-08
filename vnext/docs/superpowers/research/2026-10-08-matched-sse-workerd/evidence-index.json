@@ -1,0 +1,263 @@
+{
+  "schema": "matched-sse-evidence-index-v1",
+  "createdAt": "2026-10-08T15:53:27.477771+00:00",
+  "localEvidenceRoot": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-matched-sse-workerd",
+  "portability": "Raw files remain in the retained worktree and are not committed. This index and evidence-summary.json identify the observations; reproducing the study also requires the recorded installed dependencies and generated assets. Hashes identify local evidence but do not provide off-machine durability.",
+  "rawManifest": {
+    "identity": {
+      "path": "raw-evidence-manifest.json",
+      "bytes": 4080097,
+      "sha256": "baaec9779d967941d2a61dc779c3917b44c1ada7b77eaca5c952143e065c4a8e"
+    },
+    "fileCount": 15658,
+    "symlinkCount": 2,
+    "fileBytes": 1591078887,
+    "includedRoots": [
+      "freeze-01",
+      "freeze-02",
+      "canary-01",
+      "canary-02",
+      "canary-supervisor-01",
+      "canary-02-supervisor",
+      "cpu-01",
+      "cpu-02",
+      "cpu-01-supervisor",
+      "cpu-02-supervisor",
+      "memory-01",
+      "memory-02",
+      "memory-03"
+    ]
+  },
+  "snapshotBindings": {
+    "cpu-02": "harness-inputs-03.json",
+    "memory-03": "harness-inputs-05.json",
+    "finalOfflineCpuReview": "Snapshot05 adds explicit workerd identity validation; offline cpu-02 summary remains deep-exact. Snapshot06 changes only one EOF blank line. No CPU rerun or mixed population.",
+    "deliveredHarness": "harness-inputs-06.json"
+  },
+  "committedSummary": {
+    "path": "evidence-summary.json",
+    "bytes": 26943,
+    "sha256": "9bb6b9c8862ab041b196e13bf585b500392683732d9ed6f156f579c8403927d6"
+  },
+  "artifacts": [
+    {
+      "path": "raw-evidence-manifest.json",
+      "bytes": 4080097,
+      "sha256": "baaec9779d967941d2a61dc779c3917b44c1ada7b77eaca5c952143e065c4a8e"
+    },
+    {
+      "path": "freeze-01.log",
+      "bytes": 1407,
+      "sha256": "c83d2907a212acab0d040d652b582b3fab240ea49838af0132a8b7432c6b035f"
+    },
+    {
+      "path": "freeze-02.log",
+      "bytes": 146,
+      "sha256": "6b16e27826fcaa7de8f62c9573fe1e5de09172e0db4fb3b87d928b1b1e875b98"
+    },
+    {
+      "path": "freeze-02/context.json",
+      "bytes": 3927912,
+      "sha256": "d4a77c8b98832dc2831b0bbe4ada746dfe47511e5979e966edc50f0c6d8015b8"
+    },
+    {
+      "path": "freeze-02/source-receipt.json",
+      "bytes": 1755105,
+      "sha256": "d4dda501aca2b8a9438cb9637c569ebbddc7052adbde8f342e24c434de97f554"
+    },
+    {
+      "path": "canary-01/disposition.json",
+      "bytes": 2676,
+      "sha256": "0fc461a261bdf5611785322d8c210623659fdfc3f4eb7ebeb24d59a288dc7a62"
+    },
+    {
+      "path": "canary-02/disposition.json",
+      "bytes": 3601,
+      "sha256": "4a8446673bc639d1ea69d48bc3a5e693657bf25dc23cd9f59c909ae2e15c5661"
+    },
+    {
+      "path": "canary-02-supervisor/receipt.json",
+      "bytes": 143,
+      "sha256": "1926487213f8f9529f5582ae472026a2c9aa473c04b2615f1613a5bc644afc3a"
+    },
+    {
+      "path": "cancel-metric-readback.json",
+      "bytes": 3425,
+      "sha256": "4a070a7806f693d63b910881846bc8d4dba999bd7452c6b02e504c49496beb73"
+    },
+    {
+      "path": "cpu-01/disposition.json",
+      "bytes": 482,
+      "sha256": "f83e36626770bbec94d82b64c45a7cf3a54a2688442a8605b7d50c86591106e9"
+    },
+    {
+      "path": "cpu-01/matched-summary.json",
+      "bytes": 49885,
+      "sha256": "3724ce7ebb7b7b093ce922814b5119bb4d5f1cdd8f7fc2fe8c57ec6912e022fe"
+    },
+    {
+      "path": "cpu-01-supervisor/receipt.json",
+      "bytes": 143,
+      "sha256": "de5e53405f46e0f411e58084d09b7776d5a2c230d30f87b5c37fa8346de497a6"
+    },
+    {
+      "path": "cpu-02/disposition.json",
+      "bytes": 221,
+      "sha256": "2fba821acbab1b7c8c5a56f15b11b80cd557921b77f6ef859ac6a642f3b79ebe"
+    },
+    {
+      "path": "cpu-02/matched-summary.json",
+      "bytes": 33968,
+      "sha256": "9cb56a8cb455db9b4447dbfd695a5a9013d3f2a0ec7376a4d2eb37641a4cef20"
+    },
+    {
+      "path": "cpu-02-supervisor/receipt.json",
+      "bytes": 143,
+      "sha256": "89a5352e8be3b8f0a82f03a5c5bd122b3af8c80b774d822701c0b6822064a11c"
+    },
+    {
+      "path": "cpu-02-independent-review.json",
+      "bytes": 258288,
+      "sha256": "ec6e82bb309a95eb6c552bd8440a2bdb4524a76efe7a85408bc68f6496217673"
+    },
+    {
+      "path": "cpu-02-paired-description.json",
+      "bytes": 10948,
+      "sha256": "09d03529f70835cc803b05cb4841c486b1eeb472f7954307720ee48fc7f3e54e"
+    },
+    {
+      "path": "memory-01/memory-result.json",
+      "bytes": 4815,
+      "sha256": "e412f51b9812b62746508c746184596c0ca24498d49e87894d61bfbc9c364dd8"
+    },
+    {
+      "path": "memory-01/memory-supervision.json",
+      "bytes": 143,
+      "sha256": "8af7e71474bd90c7eacf4a73c4d7660f902db9631efff8002fca27575d3bde2a"
+    },
+    {
+      "path": "memory-02/memory-result.json",
+      "bytes": 4818,
+      "sha256": "e236c04ba3def37d76f20bf9be4da406447ab886096873b7170ae29c426b1f0e"
+    },
+    {
+      "path": "memory-02/memory-supervision.json",
+      "bytes": 143,
+      "sha256": "ae3236d3c4289bd400e4ee898709557e27d1ee9d441c2c4f89d07f8c5d2dc52b"
+    },
+    {
+      "path": "memory-03/memory-result.json",
+      "bytes": 46332,
+      "sha256": "41dd89d0a076ad73599c8aa7f94238e8c4555ed0dfa0df36bc7488c8b7f1c0c9"
+    },
+    {
+      "path": "memory-03/memory-supervision.json",
+      "bytes": 143,
+      "sha256": "51bdc724ce78cd84e856efb3e7e82d587b18bc7164f7419392c7efb96379d35d"
+    },
+    {
+      "path": "memory-03-independent-review.json",
+      "bytes": 47961,
+      "sha256": "88bd3bd68e4d00e56b7f8cd1610507e50dfc72aea8b41d0fca618d4ae6766013"
+    },
+    {
+      "path": "harness-inputs-01.json",
+      "bytes": 4894,
+      "sha256": "459848a40403e4fbcf7f1ab2c929c8339981f178becd308d6015acba1ee20c13"
+    },
+    {
+      "path": "harness-inputs-02.json",
+      "bytes": 21363,
+      "sha256": "05aa7b2a1ba625b94a0631d7679d2ef29fd3a94841985a63391c290c20a10e91"
+    },
+    {
+      "path": "harness-inputs-03.json",
+      "bytes": 27578,
+      "sha256": "8cde92dafff045acbe130de633babf6733d62abbe0ab5ef71ef9de3ac016172f"
+    },
+    {
+      "path": "harness-inputs-04.json",
+      "bytes": 30261,
+      "sha256": "06ef246b63fe56221bbd34393de8b05cff0904d17f648b0a6b25759fe63015aa"
+    },
+    {
+      "path": "harness-inputs-05.json",
+      "bytes": 36860,
+      "sha256": "6a5d99cf31c519d247b7e557a78efaf58e99c089683d24b5e205323f9d6490b7"
+    },
+    {
+      "path": "tests-final-05.log",
+      "bytes": 9796,
+      "sha256": "bb37baa14288c6e1916bd5dc3a6b56683eece156bc14962d8e86b2d482ce5718"
+    },
+    {
+      "path": "python-tests-final-02.log",
+      "bytes": 106,
+      "sha256": "698d16d7b93c4bd9707d3cfacda6fb1e0fea99ed0cda6e69bedc42772940540a"
+    },
+    {
+      "path": "typecheck-final-04.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "lint-final-03.log",
+      "bytes": 558,
+      "sha256": "6e03e167bff7c9559828a59a1d72d8063981ca25479cac0b23973069436657b8"
+    },
+    {
+      "path": "final-review-cpu-identity-red.log",
+      "bytes": 982,
+      "sha256": "b433a40e23ab8251744d0ca7503fd071b183b1b95165345f45e3427fb3b69be0"
+    },
+    {
+      "path": "final-review-cpu-identity-green.log",
+      "bytes": 291,
+      "sha256": "534ab8405f09323585b65499155d970ae9fcee5aee0f05b42c706c61a57c657d"
+    },
+    {
+      "path": "final-review-cpu-02-exact-summary.log",
+      "bytes": 790,
+      "sha256": "9ec13b62eaf9893ae091dfe4cd7a80c7f10febb16db3960ed83166ba2978cf00"
+    },
+    {
+      "path": "final-input-preservation.json",
+      "bytes": 1330,
+      "sha256": "fa781c09a20e17b6a5a6d95cb2a0cf5794801ff9e3656f96ede9f75a0c547cc4"
+    },
+    {
+      "path": "harness-inputs-06.json",
+      "bytes": 30098,
+      "sha256": "086ba38e845b4a2a6bc8f15799b8500193d76a05fbeef22a6cc97fb62fab0da0"
+    },
+    {
+      "path": "final-formatting/readback.before.ts",
+      "bytes": 14138,
+      "sha256": "f9c8776a9bf90f6648324267cfc4161a7d42898fb256462bd788431066a1acd9"
+    },
+    {
+      "path": "final-input-preservation-before-formatting.json",
+      "bytes": 963,
+      "sha256": "e05948ea88534e3b85dc9f504d8e3829d2565832b6c8d2e8df2e7a1b14d5142a"
+    }
+  ],
+  "rejectedAttempts": {
+    "freeze-01": "Symlink identity verification failed; source freeze retried in freeze-02.",
+    "canary-01": "Native-contract oracle assumptions corrected in a new complete canary-02; remaining product failures retained.",
+    "cpu-01": "Native sidecar assertion inferred upstream format from downstream format; incomplete population excluded.",
+    "memory-01": "Auxiliary PID rusage queried before executable filtering; zero workerd samples, excluded.",
+    "memory-02": "No independent after-end sample; all observed values retained but zero qualified windows, excluded."
+  },
+  "offlineReviewCommands": {
+    "cpu": "bun <harness>/coordinator.ts --aggregate <evidence-root>/cpu-02",
+    "memory": "Import reaggregateMemoryStudy from <harness>/memory.ts and call it with <evidence-root>/memory-03; compare the returned object with the saved memory-result.json."
+  },
+  "finalFormatting": {
+    "beforeSnapshot": "harness-inputs-05.json",
+    "afterSnapshot": "harness-inputs-06.json",
+    "originalFile": "final-formatting/readback.before.ts",
+    "change": "Exactly one final LF removed; the original bytes match snapshot05. All other 95 harness inputs are unchanged.",
+    "productBytesChanged": false,
+    "testsRerun": false
+  }
+}
