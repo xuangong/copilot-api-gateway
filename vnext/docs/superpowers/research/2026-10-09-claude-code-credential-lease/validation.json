@@ -1,0 +1,208 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-09",
+  "status": "local-validation-passed",
+  "baselineCommit": "a613afcfe2248708d93c1b139c2667990232d1cd",
+  "referenceCommit": "1d7dcd923e260e425120cca0c7a240e93720af27",
+  "sourceState": "Verification ran on a dirty checkout; the subsequent product commit contains the 17 product files matched to the tested source manifest. No clean-checkout release CI was run.",
+  "runtimeVersions": {
+    "bun": "1.3.0",
+    "node": "v26.0.0"
+  },
+  "deployment": {
+    "performed": false,
+    "productionDataAccessed": false,
+    "newEnvironmentVariables": []
+  },
+  "migration": {
+    "file": "vnext/packages/gateway/migrations/0022_upstream_credential_generation.sql",
+    "kind": "additive",
+    "claudeStateJsonChanged": false,
+    "dropOnRollback": false
+  },
+  "checks": {
+    "credentialLifecycle": {
+      "status": "passed",
+      "tests": 29,
+      "evidence": ".superpowers/sdd/2026-10-09-claude-credential-lifecycle/reader/focused-final.log"
+    },
+    "lifecycleProviderAndSharedState": {
+      "status": "passed",
+      "tests": 126,
+      "assertions": 312,
+      "evidence": ".superpowers/sdd/2026-10-09-claude-credential-lifecycle/reader/focused-final.log"
+    },
+    "jointSqliteBeforeFinalColdCancellationCases": {
+      "status": "passed",
+      "tests": 72,
+      "assertions": 222,
+      "evidence": ".superpowers/sdd/2026-10-09-claude-credential-lifecycle/reader/joint-sqlite.log"
+    },
+    "providerIncludingColdCancellation": {
+      "status": "passed",
+      "tests": 39,
+      "assertions": 150,
+      "evidence": ".superpowers/sdd/2026-10-09-claude-code-credential-lease/claude-cold-cancel-green.log"
+    },
+    "independentReview": {
+      "status": "passed",
+      "tests": 6,
+      "evidence": ".superpowers/sdd/2026-10-09-claude-code-credential-lease/evidence-docs/independent-probe-final.log",
+      "assertions": 33,
+      "portableAbsolutePathEvidence": ".superpowers/sdd/2026-10-09-claude-code-credential-lease/evidence-docs/independent-portable-path.log"
+    },
+    "d1CredentialGeneration": {
+      "status": "passed",
+      "runtime": "actual local workerd with D1Repo",
+      "evidence": "d1-results.json",
+      "reproductionEvidence": ".superpowers/sdd/2026-10-09-claude-code-credential-lease/evidence-docs/d1-reproduction.log"
+    },
+    "workerd05": {
+      "status": "passed",
+      "exitCode": 0,
+      "caseCount": 13,
+      "cases": [
+        {
+          "name": "responses/JSON",
+          "passed": true
+        },
+        {
+          "name": "responses/SSE",
+          "passed": true
+        },
+        {
+          "name": "messages/JSON",
+          "passed": true
+        },
+        {
+          "name": "messages/SSE",
+          "passed": true
+        },
+        {
+          "name": "chat_completions/JSON",
+          "passed": true
+        },
+        {
+          "name": "chat_completions/SSE",
+          "passed": true
+        },
+        {
+          "name": "gemini/JSON",
+          "passed": true
+        },
+        {
+          "name": "gemini/SSE",
+          "passed": true
+        },
+        {
+          "name": "native/JSON",
+          "passed": true
+        },
+        {
+          "name": "native/SSE+401",
+          "passed": true
+        },
+        {
+          "name": "native-tool-dependent-history-same-credential",
+          "passed": true
+        },
+        {
+          "name": "same-byte-reimport-rejects-tool-dependent-native-state",
+          "passed": true
+        },
+        {
+          "name": "same-byte-reimport-drops-optional-incompatible-thinking",
+          "passed": true
+        }
+      ],
+      "bundleSha256": "0f6db7a361f46f98e0c5b61d7642494dc7f83bfe3be46f5b7375897f791383ee",
+      "evidence": ".superpowers/sdd/2026-10-09-claude-code-credential-lease/workerd-05/result.json",
+      "log": ".superpowers/sdd/2026-10-09-claude-code-credential-lease/claude-lease-workerd-05.log"
+    },
+    "ci01": {
+      "status": "failed",
+      "exitCode": 1,
+      "passed": 6577,
+      "skipped": 1,
+      "failed": 1,
+      "failure": "schema corpus differs from checked-in schema-baseline.txt after migration 0022",
+      "followup": "schema baseline corrected; focused migration check and full ci-local-02 passed",
+      "evidence": ".superpowers/sdd/2026-10-09-claude-code-credential-lease/ci-local-01.log"
+    },
+    "ciFinal": {
+      "status": "passed",
+      "evidence": ".superpowers/sdd/2026-10-09-claude-code-credential-lease/ci-local-02.log",
+      "exitCode": 0,
+      "passed": 6582,
+      "skipped": 1,
+      "failed": 0,
+      "assertions": 241327,
+      "files": 601,
+      "lintErrors": 0,
+      "lintWarnings": 41,
+      "gates": [
+        "framework purity",
+        "typechecks",
+        "unit and integration tests",
+        "ESLint",
+        "UI build",
+        "Workers deploy dry run"
+      ],
+      "skip": "existing runtime X25519 derive-failure case"
+    },
+    "workerdFinal": {
+      "status": "passed",
+      "evidence": "workerd-results.json",
+      "log": ".superpowers/sdd/2026-10-09-claude-code-credential-lease/workerd-06.log",
+      "exitCode": 0,
+      "caseCount": 13,
+      "bundleSha256": "3f95e4057506d0424153b871f2bef36793b43e617e5b275dad6c5f36ccbd9b72"
+    },
+    "typecheckAndLint": {
+      "status": "passed",
+      "scope": [
+        "provider-claude-code",
+        "gateway typecheck",
+        "owned lifecycle and provider files lint"
+      ],
+      "fullCiStatus": "passed"
+    },
+    "protectedFiles": {
+      "status": "matched-after-product-fast-forward",
+      "count": 52,
+      "finalCheck": "matched-after-product-fast-forward",
+      "evidence": ".superpowers/sdd/2026-10-09-claude-code-credential-lease/protection-after-product-merge.json"
+    }
+  },
+  "resourceEvidence": {
+    "freshSuppliedSnapshotAdditionalRepoReads": 0,
+    "freshSuppliedSnapshotStateWrites": 0,
+    "d1SaveStateStatements": 2,
+    "productionLatencyMeasured": false,
+    "cpuMeasured": false,
+    "rssMeasured": false,
+    "performanceSuperiorityClaimed": false,
+    "ordinaryFreshProviderCacheReads": 1,
+    "ordinaryFreshProviderSqlQueries": 0
+  },
+  "rollback": {
+    "requiresClaudeLeaseAwareBinary": true,
+    "preserveCurrentDatabaseAndAffinitySecrets": true,
+    "restoreOldRefreshTokenSnapshot": false,
+    "mixedVersionCredentialMutationSupported": false
+  },
+  "limits": [
+    "synthetic upstreams only",
+    "no distributed OAuth refresh mutex",
+    "abort cannot undo upstream token rotation",
+    "legacy adapters without credential epochs cannot authenticate same-byte replacement",
+    "dirty-checkout CI is not clean artifact release evidence"
+  ],
+  "productCommit": "d55a7aec8df53d102dc246f3fe0df231ce4b4bae",
+  "integration": {
+    "targetBranch": "vNext",
+    "localFastForwardCompleted": true,
+    "remotePushPerformed": false,
+    "productFilesMatchedTestedManifest": 17
+  }
+}

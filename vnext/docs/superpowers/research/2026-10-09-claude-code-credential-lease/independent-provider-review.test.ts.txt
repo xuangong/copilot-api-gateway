@@ -1,0 +1,146 @@
+import { afterEach, expect, test } from "bun:test"
+import { Database } from "bun:sqlite"
+import { mkdtempSync, rmSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+import { BunSqliteRepo } from "__ROOT__/vnext/apps/platform-bun/src/bun-sqlite-repo.ts"
+import { initUpstreamRepo } from "__ROOT__/vnext/packages/upstream-repo/src/index.ts"
+import { __resetPlatformForTests, initBackground } from "__ROOT__/vnext/packages/platform/src/index.ts"
+import { ensureClaudeCodeAccessToken } from "__ROOT__/vnext/packages/provider-claude-code/src/access-token.ts"
+import { ClaudeCodeProvider } from "__ROOT__/vnext/packages/provider-claude-code/src/provider.ts"
+import { readClaudeCodeUpstreamState } from "__ROOT__/vnext/packages/provider-claude-code/src/state.ts"
+import { CLAUDE_CODE_OAUTH_TOKEN_URL } from "__ROOT__/vnext/packages/provider-claude-code/src/constants.ts"
+import { affinityTargetMatch } from "__ROOT__/vnext/packages/provider-llm/src/index.ts"
+import type { AffinityExecutionTarget } from "__ROOT__/vnext/packages/provider-llm/src/index.ts"
+import type { Fetcher } from "__ROOT__/vnext/packages/provider-claude-code/src/fetcher.ts"
+import type { UpstreamRecord } from "__ROOT__/vnext/packages/gateway/src/repo/types.ts"
+
+const cleanup: Array<() => void> = []
+afterEach(() => { __resetPlatformForTests(); for (const close of cleanup.splice(0)) close() })
+const modelId = "claude-sonnet-4-5-20250929"
+const input = (): UpstreamRecord<unknown> => ({
+  id: "review-claude", ownerId: "owner", provider: "claude-code", name: "Claude", enabled: true, sortOrder: 0,
+  config: { accounts: [{ accountUuid: "account", email: null, organizationUuid: null, subscriptionType: "max", rateLimitTier: null }] },
+  state: { accounts: [{ accountUuid: "account", tokenKind: "oauth", refreshToken: "synthetic-old-refresh", state: "active", stateUpdatedAt: "same",
+    accessToken: null, quotaSnapshot: null, usageProbeSnapshot: null }] },
+  flagOverrides: {}, disabledPublicModelIds: [], proxyFallbackList: [], createdAt: "same", updatedAt: "same",
+})
+const oauth = (token = "synthetic-minted") => Response.json({ access_token: `${token}-access`, refresh_token: `${token}-refresh`, expires_in: 3600, scope: "user:inference" })
+const request = () => ({ endpoint: "messages" as const, sourceApi: "anthropic" as const, headers: new Headers(), payload: {
+  model: "claude-sonnet-4-5", messages: [{ role: "user" as const, content: "fixture" }], max_tokens: 32,
+} })
+async function fixture() {
+  const dir = mkdtempSync(join(tmpdir(), "claude-review-"))
+  const a = new Database(join(dir, "db.sqlite"))
+  const first = new BunSqliteRepo(a)
+  const b = new Database(join(dir, "db.sqlite"))
+  const second = new BunSqliteRepo(b)
+  cleanup.push(() => { a.close(); b.close(); rmSync(dir, { recursive: true, force: true }) })
+  await first.upstreams.save(input())
+  initUpstreamRepo(() => first.upstreams, () => second.upstreams)
+  initBackground({ waitUntil: promise => { void promise.catch(() => {}) } })
+  const row = await first.upstreams.getById("review-claude")
+  if (!row) throw new Error("fixture missing")
+  return { first, second, row, async account() {
+    const current = await second.upstreams.getById(row.id)
+    const account = readClaudeCodeUpstreamState(current?.state).accounts[0]
+    if (!account) throw new Error("fixture missing")
+    return account
+  }, provider(fetcher: Fetcher) {
+    const provider = new ClaudeCodeProvider(row, fetcher)
+    provider.setModelCatalog({ object: "list", data: [{ id: "claude-sonnet-4-5", display_name: "Claude", owned_by: "anthropic", kind: "chat",
+      providerData: { upstreamModelId: modelId }, limits: { max_context_window_tokens: 1000 }, endpoints: { messages: {} } }] })
+    return provider
+  } }
+}
+
+for (const owned of [false, true]) test(`config changes during ${owned ? "owned" : "ordinary"} mint retain RT but prevent old-config dispatch`, async () => {
+  const f = await fixture()
+  let oauthCalls = 0
+  let inferenceCalls = 0
+  const provider = f.provider(async url => {
+    if (url !== CLAUDE_CODE_OAUTH_TOKEN_URL) { inferenceCalls++; return new Response(null) }
+    oauthCalls++
+    await f.second.upstreams.patchMetadata(f.row, current => ({ ...current, proxyFallbackList: [{ id: "direct_fetch" }] }))
+    return oauth()
+  })
+  const target = await provider.prepareAffinityExecution(request())
+  if (!target) throw new Error("fixture missing target")
+  const beforeInference = owned ? async (actual: AffinityExecutionTarget) => { expect(affinityTargetMatch(target, actual)).toBe("exact") } : undefined
+  await expect(provider.fetch({ ...request(), beforeInference })).rejects.toMatchObject({ name: "ClaudeCodeAffinityChangedError" })
+  expect([oauthCalls, inferenceCalls]).toEqual([1, 0])
+  expect(await f.account()).toMatchObject({ state: "active", refreshToken: "synthetic-minted-refresh", accessToken: { token: "synthetic-minted-access" } })
+  expect(await f.second.upstreams.getById(f.row.id)).toMatchObject({ credentialGeneration: 0, catalogGeneration: 1 })
+})
+
+test("an identical-byte full import does not join an old in-flight ensure with the same fetcher and guard", async () => {
+  const f = await fixture()
+  const entered = Promise.withResolvers<void>()
+  const pending = Promise.withResolvers<Response>()
+  let calls = 0
+  let guards = 0
+  const args = { upstreamId: f.row.id, beforeMint: async () => { guards++ }, fetcher: async () => {
+    calls++
+    if (calls === 1) { entered.resolve(); return pending.promise }
+    return oauth("synthetic-new")
+  } }
+  const oldResult = ensureClaudeCodeAccessToken(args).then(value => ({ value }), error => ({ error }))
+  await entered.promise
+  await f.second.upstreams.save(f.row)
+  const newResult = await ensureClaudeCodeAccessToken(args)
+  pending.resolve(oauth("synthetic-old"))
+  expect(await oldResult).toHaveProperty("error")
+  expect([calls, guards]).toEqual([2, 2])
+  expect(newResult.credential.credentialGeneration).toBe(1)
+  expect(newResult.entry.token).toBe("synthetic-new-access")
+  expect((await f.account()).accessToken?.token).toBe("synthetic-new-access")
+})
+
+test("an invalid_grant loser cannot stop a genuinely pending winner from publishing", async () => {
+  const f = await fixture()
+  const entered = Promise.withResolvers<void>()
+  const pending = Promise.withResolvers<Response>()
+  const winner = ensureClaudeCodeAccessToken({ upstreamId: f.row.id, fetcher: async () => { entered.resolve(); return pending.promise } })
+  await entered.promise
+  await expect(ensureClaudeCodeAccessToken({ upstreamId: f.row.id, fetcher: async () => Response.json({ error: "invalid_grant" }, { status: 400 }) }))
+    .rejects.toMatchObject({ code: "invalid_grant" })
+  expect(await f.account()).toMatchObject({ state: "active", accessToken: null })
+  pending.resolve(oauth("synthetic-winner"))
+  expect((await winner).entry.token).toBe("synthetic-winner-access")
+  expect(await f.account()).toMatchObject({ state: "active", refreshToken: "synthetic-winner-refresh" })
+})
+
+test("prepared and actually dispatched targets stay equal across a normal refresh", async () => {
+  const f = await fixture()
+  let token: string | null = null
+  const provider = f.provider(async (url, init) => {
+    if (url === CLAUDE_CODE_OAUTH_TOKEN_URL) return oauth()
+    token = new Headers(init?.headers).get("authorization")
+    return new Response(null)
+  })
+  const target = await provider.prepareAffinityExecution(request())
+  if (!target) throw new Error("fixture missing target")
+  const result = await provider.fetch({ ...request(), beforeInference: async actual => {
+    expect(affinityTargetMatch(target, actual)).toBe("exact")
+  } })
+  expect(result.affinityExecution).toEqual(target)
+  expect(token).toBe("Bearer synthetic-minted-access")
+  expect((await f.account()).accessToken?.token).toBe("synthetic-minted-access")
+})
+
+test("cold direct fetch propagates its request cancellation into catalog credential work", async () => {
+  const f = await fixture()
+  const controller = new AbortController()
+  let modelCalls = 0
+  const provider = new ClaudeCodeProvider(f.row, async url => {
+    if (url === CLAUDE_CODE_OAUTH_TOKEN_URL) {
+      controller.abort()
+      return oauth("synthetic-canceled")
+    }
+    modelCalls++
+    return Response.json({ data: [{ id: modelId, display_name: "Claude", max_input_tokens: 200000, created_at: "2026-10-09T00:00:00Z", type: "model" }] })
+  })
+  await expect(provider.fetch({ ...request(), signal: controller.signal })).rejects.toMatchObject({ name: "AbortError" })
+  expect(modelCalls).toBe(0)
+  expect((await f.account()).accessToken).toBeNull()
+})
