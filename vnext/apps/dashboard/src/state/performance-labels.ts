@@ -6,6 +6,7 @@ export function performanceLabels(t: (key: string) => string) {
     overallTps: t("dash.perf.overallTps"),
     totalMs: t("dash.perf.totalMs"),
     upstreamMs: t("dash.perf.upstreamMs"),
+    upstreamTtftMs: t("dash.perf.upstreamTtftMs"),
     generationMs: t("dash.perf.generationMs"),
     gapMs: t("dash.perf.gapMs"),
     maxGapMs: t("dash.perf.maxGapMs"),

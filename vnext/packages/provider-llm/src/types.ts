@@ -89,10 +89,10 @@ export interface ProviderRequest {
   timeout?: number
   /**
    * Semantic verb forwarded from `Invocation.action`. Providers that expose a
-   * distinct compaction wire (codex `/responses/compact`) dispatch on this;
-   * providers that don't (copilot / openai-style) ignore it — the compact-shim
-   * has already rewritten the payload into a plain generate turn before
-   * reaching the provider. `undefined` ≡ `'generate'`.
+   * distinct compaction wire (codex `/responses/compact`) dispatch on this.
+   * Copilot / Custom keep their ordinary endpoint after the compact shim
+   * rewrites the payload, but exclude compact from their SSE preference.
+   * `undefined` ≡ `'generate'`.
    */
   action?: 'generate' | 'compact'
 }

@@ -23,6 +23,8 @@ const EMBEDDING_SOURCE_MODEL = 'embedding-source'
 const SOURCE_MODEL = 'source-model'
 let modelMappingsEnabled = false
 let capturedUpstreamModel: string | null = null
+let capturedUpstreamStream: boolean | null = null
+let capturedUpstreamIncludeUsage: boolean | null = null
 const recordedUsage: Array<{ incomingModel: string; model: string }> = []
 
 const stubModel = (id: string): Model => ({
@@ -87,9 +89,12 @@ const completion = {
   usage: { prompt_tokens: 4, completion_tokens: 2, total_tokens: 6 },
 }
 
+// Both upstream transports describe the same reply; changing the downstream
+// stream preference must not change the fixture's generated content.
 const sseFrames = [
   'data: {"id":"1","object":"chat.completion.chunk","created":0,"model":"' + MODEL + '","choices":[{"index":0,"delta":{"role":"assistant","content":"hel"}}]}',
   'data: {"id":"1","object":"chat.completion.chunk","created":0,"model":"' + MODEL + '","choices":[{"index":0,"delta":{"content":"lo"}}]}',
+  'data: {"id":"1","object":"chat.completion.chunk","created":0,"model":"' + MODEL + '","choices":[{"index":0,"delta":{"content":" there"}}]}',
   'data: {"id":"1","object":"chat.completion.chunk","created":0,"model":"' + MODEL + '","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}',
   'data: {"id":"1","object":"chat.completion.chunk","created":0,"model":"' + MODEL + '","choices":[],"usage":{"prompt_tokens":4,"completion_tokens":2,"total_tokens":6}}',
   'data: [DONE]',
@@ -100,6 +105,8 @@ const originalFetch = globalThis.fetch
 beforeEach(() => {
   modelMappingsEnabled = false
   capturedUpstreamModel = null
+  capturedUpstreamStream = null
+  capturedUpstreamIncludeUsage = null
   recordedUsage.length = 0
   initRuntimeLocation('bun')
   initBackground({ waitUntil: (p) => { void p.catch(() => {}) } })
@@ -122,8 +129,10 @@ beforeEach(() => {
         { status: 200, headers: { 'content-type': 'application/json' } },
       )
     }
-    const body = typeof init?.body === 'string' ? JSON.parse(init.body) as { stream?: unknown; model?: unknown } : null
+    const body = typeof init?.body === 'string' ? JSON.parse(init.body) as { stream?: unknown; model?: unknown; stream_options?: { include_usage?: unknown } } : null
     capturedUpstreamModel = typeof body?.model === 'string' ? body.model : null
+    capturedUpstreamStream = typeof body?.stream === 'boolean' ? body.stream : null
+    capturedUpstreamIncludeUsage = typeof body?.stream_options?.include_usage === 'boolean' ? body.stream_options.include_usage : null
     const streaming = body?.stream === true
     return streaming
       ? new Response(sseFrames, { status: 200, headers: { 'content-type': 'text/event-stream' } })
@@ -151,9 +160,12 @@ const embed = (body: unknown) => app.request('/api/embed', {
   headers: { authorization: `Bearer ${KEY}`, 'content-type': 'application/json' },
 }, env)
 
-test('stream:false returns a single Ollama envelope', async () => {
+test('stream:false aggregates upstream SSE into a single Ollama envelope', async () => {
   const res = await chat({ model: MODEL, stream: false, messages: [{ role: 'user', content: 'hi' }] })
   expect(res.status).toBe(200)
+  expect(res.headers.get('content-type')).toContain('application/json')
+  expect(capturedUpstreamStream).toBe(true)
+  expect(capturedUpstreamIncludeUsage).toBe(true)
   const body = await res.json() as Record<string, unknown>
   expect(body.done).toBe(true)
   expect(body.done_reason).toBe('stop')
@@ -218,12 +230,14 @@ test('mapped stream uses the destination model in every Ollama frame', async () 
 test('streaming is NDJSON — every line parses on its own, terminated by done:true', async () => {
   const res = await chat({ model: MODEL, messages: [{ role: 'user', content: 'hi' }] })
   expect(res.status).toBe(200)
+  expect(capturedUpstreamStream).toBe(true)
+  expect(capturedUpstreamIncludeUsage).toBe(true)
   expect(res.headers.get('content-type')).toBe('application/x-ndjson')
   const lines = (await res.text()).split('\n').filter(Boolean)
   // No SSE residue: ollama-js JSON.parses each line as-is.
   expect(lines.some((l) => l.startsWith('data:') || l === '[DONE]')).toBe(false)
   const frames = lines.map((l) => JSON.parse(l) as Record<string, unknown>)
-  expect(frames.map((f) => (f.message as { content: string }).content).join('')).toBe('hello')
+  expect(frames.map((f) => (f.message as { content: string }).content).join('')).toBe('hello there')
   const last = frames.at(-1)!
   expect(last.done).toBe(true)
   expect(last.prompt_eval_count).toBe(4)

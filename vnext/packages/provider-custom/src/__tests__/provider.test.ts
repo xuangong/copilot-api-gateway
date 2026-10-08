@@ -248,7 +248,7 @@ describe('CustomProvider.fetch', () => {
       expect(h.get('x-default')).toBe('d')
       expect(h.get('x-init')).toBe('i')
       expect(h.get('content-type')).toBe('application/json')
-      expect(calls[0]!.init?.body).toBe('{"model":"m"}')
+      expect(calls[0]!.init?.body).toBe('{"model":"m","stream":true}')
     } finally { restore() }
   })
 

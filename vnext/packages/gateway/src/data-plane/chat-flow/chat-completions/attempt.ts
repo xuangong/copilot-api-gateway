@@ -30,7 +30,7 @@ import type { ChatCompletionsStreamInterceptor, Invocation, RequestContext } fro
 import { llmEventResult, llmInternalErrorResult, readUpstreamError, type LlmExecuteResult } from '@vibe-llm/protocols/common'
 import { type ProtocolFrame } from '@vibe-core/result'
 import { parseChatCompletionsStream, type ChatCompletionsStreamEvent } from '@vibe-llm/protocols/chat'
-import { HTTPError, type ProviderRequest, type ProviderResponse } from '@vibe-llm/provider-llm'
+import { HTTPError, prefersStreamingGeneration, type ProviderRequest, type ProviderResponse } from '@vibe-llm/provider-llm'
 import {
   initialProviderModelKey,
   telemetryModelIdentity,
@@ -170,7 +170,9 @@ export const chatCompletionsAttempt = {
       endpoint: 'chat_completions',
       enabledFlags: new Set(sel.binding.enabledFlags ?? []),
       sourceApi: invocationSourceApi(args.telemetryCtx.sourceApi, 'chat_completions'),
-      payload,
+      // Resolve wire streaming before include_usage and vendor normalization;
+      // source rendering still uses the caller's original stream preference.
+      payload: prefersStreamingGeneration(sel.binding.kind, 'chat_completions') ? { ...payload, stream: true } : payload,
       headers: { ...(args.inheritedHeaders ?? {}) },
     }
     const chain = args.interceptors ?? chatCompletionsInterceptors
@@ -234,9 +236,11 @@ export const chatCompletionsAttempt = {
       // Why not always sniff: when content-type is text/event-stream we MUST
       // hand the body to `parseChatCompletionsStream` lazily — buffering would
       // serialize the upstream and defeat first-byte-latency telemetry.
+      // Keep the original JSON fallback when the provider ignores our wire
+      // streaming preference and omits a standard JSON content-type.
       const upstreamContentType = upstreamResp.headers.get('content-type') ?? ''
       const upstreamIsJson = !upstreamContentType.includes('text/event-stream') && (
-        invocation.payload.stream !== true || upstreamContentType.includes('application/json')
+        payload.stream !== true || upstreamContentType.includes('application/json')
       )
       const stream = upstreamIsJson
         ? await readUpstreamJsonAsFrames(upstreamResp.body, upstreamResp)

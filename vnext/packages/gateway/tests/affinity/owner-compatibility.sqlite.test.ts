@@ -182,7 +182,8 @@ test("configured execution targets rank exact then stable declared groups then d
   const payload = materializeAffinity(state, source, "raw")
   expect(payload.input).toEqual([{ type: "compaction", encrypted_content: "required-native-state" }])
   await (await chosen.binding.provider.fetch({ ...request(), payload, beforeInference: affinityFence(state.execution) })).body?.cancel()
-  expect(sent).toEqual([payload])
+  expect(sent).toEqual([{ ...payload, stream: true }])
+  expect(payload).toEqual({ model: "raw", input: [{ type: "compaction", encrypted_content: "required-native-state" }] })
   expect(source.input).toEqual([required])
   const compatible = targets[1]
   if (!compatible) throw new Error("missing compatible")

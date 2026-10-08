@@ -4,7 +4,7 @@ import { performanceLabels } from "../../state/performance-labels"
 import { useT } from "../../state/i18n"
 
 const METRICS: PerformanceMetricName[] = [
-  "overallTps", "firstTextMs", "ttftMs", "maxGapMs", "totalMs", "upstreamMs", "upstreamTps", "generationMs",
+  "overallTps", "firstTextMs", "ttftMs", "maxGapMs", "totalMs", "upstreamMs", "upstreamTtftMs", "upstreamTps", "generationMs",
   "gapMs", "outputTokens", "reasoningTokens", "inputTokens", "cachedInputTokens",
 ]
 
@@ -17,6 +17,7 @@ export function PerformanceDiagnostics({ metrics, legacyRequests }: { metrics: P
       <div className="text-xs text-themed-dim space-y-2 max-w-[75ch] leading-relaxed">
         <p>{t("dash.perf.experience.samplesNote")}</p>
         <p>{t("dash.perf.histogram")}</p><p>{t("dash.perf.rateNote")}</p>
+        <p>{t("dash.perf.upstreamTtftNote")}</p>
         {legacyRequests > 0 && <p>{t("dash.perf.legacy", { count: legacyRequests.toLocaleString() })}</p>}
       </div>
       <div className="overflow-x-auto rounded-lg border border-themed" tabIndex={0} role="region" aria-label={t("dash.perf.experience.diagnostics")}>

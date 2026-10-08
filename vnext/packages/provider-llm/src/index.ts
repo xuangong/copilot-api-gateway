@@ -16,3 +16,4 @@ export { createJsonBody, createJsonBodyFromText } from './json-body'
 export type { ReplayableJsonBody } from './json-body'
 
 export * from "./opaque-affinity"
+export { prefersStreamingGeneration, prepareStreamingGenerationPayload } from "./streaming-generation"

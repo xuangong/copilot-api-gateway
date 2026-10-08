@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test"
-import { mkdtempSync, readFileSync, rmSync } from "node:fs"
+import { createHash } from "node:crypto"
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 import { createObserver } from "./observer"
@@ -52,7 +53,6 @@ test("fixed B JSON observer plan has exactly twelve ordered windows and 420 offe
 test("child rejects altered job, context, window, directory and parent ownership", () => {
   const window = freezeObserverPlan().windows[0], contextBytes = Buffer.from('{"frozen":true}')
   if (!window) throw new Error("Missing fixed test window")
-  const { createHash } = require("node:crypto")
   const digest = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex")
   const job = { version: 1, kind: "observer-window", directory: "/owned/window", parentPid: 123, context: { path: "/owned/context.json", sha256: digest(contextBytes) }, window }
   const bytes = Buffer.from(JSON.stringify(job))
@@ -89,24 +89,27 @@ test("setup read/write/build/Miniflare failures always stop the owned fixture an
   const { runQualifiedInstance } = await import("../../2026-10-07-reference-stage-measurement/harness/runtime")
   const cell = freezeObserverPlan().windows[0]?.cell
   if (!cell) throw new Error("Missing fixed test cell")
-  for (const stage of ["read", "write", "build", "miniflare"] as const) {
+  for (const stage of ["read", "write", "build", "miniflare"] as const) for (const cleanupFails of [false, true]) {
     const directory = mkdtempSync(join(tmpdir(), "observer-setup-"))
     let stops = 0
-    const fail = () => { throw new Error(`injected ${stage}`) }
+    const runError = new Error(`injected ${stage}`)
+    const fail = () => { throw runError }
     try {
       await expect(runQualifiedInstance({ arm: "B", bundle: "/frozen/worker.mjs", directory, hooks: false, observer: { mode: "cpu" }, window: { id: "setup-test", cell, warmup: 5, timed: 30 }, async initialize() {}, async readback() { throw new Error("Unexpected readback") } }, {
-        fixture: () => ({ base: "http://127.0.0.1:1", dispatches: [], stop: async () => { stops++ } }),
+        fixture: () => ({ base: "http://127.0.0.1:1", dispatches: [], stop: async () => { stops++; if (cleanupFails) throw new Error("injected cleanup") } }),
         readTemplate: stage === "read" ? fail : () => "export default {}",
         writeEntry: stage === "write" ? fail : () => {},
         buildEntry: stage === "build" ? async () => fail() : async () => ({ success: true, logs: [] }),
         createMiniflare: fail,
-      })).rejects.toThrow(`injected ${stage}`)
+      })).rejects.toBe(runError)
       expect(stops).toBe(1)
       const receipt = JSON.parse(readFileSync(join(directory, "cleanup-receipt.json"), "utf8"))
       expect(receipt.completed).toBe(false)
-      expect(receipt.fixtureStopped).toBe(true)
+      expect(receipt.fixtureStopped).toBe(!cleanupFails)
       expect(receipt.workerdCreated).toBe(false)
       expect(receipt.runError).toContain(`injected ${stage}`)
+      expect(receipt.errors).toEqual(cleanupFails ? ["fixture stop: Error: injected cleanup"] : [])
+      expect(existsSync(join(directory, "receipt.json"))).toBe(false)
     } finally { rmSync(directory, { recursive: true, force: true }) }
   }
 })

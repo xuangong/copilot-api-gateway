@@ -29,12 +29,16 @@ export class UpstreamObservation {
   readonly tokens: Partial<Record<TokenMetric, number>> = {}
   private readonly messageInput: Partial<Record<"input_tokens" | "cache_read_input_tokens" | "cache_creation_input_tokens", number>> = {}
   private endedAt?: number
+  private firstOutputAt?: number
   private terminal = false
   failed = false
   constructor(readonly protocol: OutputProtocol, private readonly recorder: PerformanceRecorder, readonly startedAt: number) {}
 
   finish(): void { this.endedAt ??= this.recorder.now() }
   elapsed(end: number): number { return Math.max(0, (this.endedAt ?? end) - this.startedAt) }
+  firstOutputLatency(): number | undefined {
+    return this.firstOutputAt === undefined ? undefined : Math.max(0, this.firstOutputAt - this.startedAt)
+  }
   json(body: unknown): void {
     this.terminal = true
     this.recorder.synthetic = true
@@ -42,6 +46,11 @@ export class UpstreamObservation {
   }
   observe(event: unknown): void {
     const e = object(event)
+    // Native frames only: JSON synthesis never enters observe(). Stop checking
+    // after the first output, including reasoning and tool-argument deltas.
+    if (this.firstOutputAt === undefined && classifyOutputEvent(this.protocol, event).output) {
+      this.firstOutputAt = this.recorder.now()
+    }
     if (e.type === "message_stop" || e.type === "response.completed" || e.type === "response.incomplete") this.terminal = true
     if (e.type === "error" || e.type === "response.failed" || e.error !== undefined) { this.terminal = true; this.failed = true }
     this.readUsage(event, false)
@@ -152,6 +161,12 @@ export class PerformanceRecorder {
     addMeasurement(metrics, "totalMs", total)
     const upstreamMs = this.upstreams.reduce((sum, u) => sum + u.elapsed(end), 0)
     if (this.upstreams.length > 0) addMeasurement(metrics, "upstreamMs", upstreamMs)
+    // Provider-invocation samples include internal preparation/retries, exclude
+    // inter-call tool waits and apply to JSON clients. ttftMs stays downstream.
+    for (const upstream of this.upstreams) {
+      const firstOutputMs = upstream.firstOutputLatency()
+      if (firstOutputMs !== undefined) addMeasurement(metrics, "upstreamTtftMs", firstOutputMs)
+    }
     const tokens: Partial<Record<TokenMetric, number>> = {}
     for (const name of TOKEN_METRICS) {
       if (this.upstreams.length && this.upstreams.every(u => u.tokens[name] !== undefined)) {

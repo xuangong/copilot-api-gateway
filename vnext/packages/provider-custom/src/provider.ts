@@ -22,6 +22,7 @@ import {
   type ProviderResponse,
   type ExecutionFetcherForRequest,
   resolveExecutionFetcher,
+  prepareStreamingGenerationPayload,
 } from '@vibe-llm/provider-llm'
 import { fetchWithRetry, mergeHeaders, truncateBody } from '@vibe-core/http'
 import { directFetcher, type Fetcher } from '@vibe-core/upstream'
@@ -211,14 +212,16 @@ export class CustomProvider implements LlmModelProvider {
       return ordinary(url, init)
     }
     const path = this.resolvePath(req.endpoint)
-    // Wrap into a Request once. Custom has no interceptor chain, so headers
-    // and payload pass straight through. FormData payloads (images_edits)
-    // bypass JSON serialization so multipart boundaries are preserved;
+    // Custom has no interceptor chain. Only the generation wire's stream
+    // preference changes; source intent and normalized usage options survive.
+    // FormData payloads (images_edits) bypass JSON serialization so multipart
+    // boundaries are preserved;
     // send() is responsible for layering auth + content-type so callers
     // never have to think about case-sensitivity collisions on the way down.
-    const body: NonNullable<RequestInit['body']> = req.payload instanceof FormData
-      ? req.payload
-      : JSON.stringify(req.payload ?? {})
+    const payload = prepareStreamingGenerationPayload(this.kind, req)
+    const body: NonNullable<RequestInit['body']> = payload instanceof FormData
+      ? payload
+      : JSON.stringify(payload ?? {})
     const res = await this.send(
       path,
       { method: 'POST', body, headers: req.headers, signal: req.signal },

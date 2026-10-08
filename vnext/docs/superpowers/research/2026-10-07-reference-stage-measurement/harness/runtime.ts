@@ -147,6 +147,7 @@ export async function runQualifiedInstance(options: QualifiedInstanceOptions, se
   let observerClosed = false
   let completedReceipt: Obj | undefined
   let runError: unknown
+  let cleanupError: Error | undefined
   let returnedDispatches: Dispatch[] | undefined
   try {
     const source=(setup.readTemplate ?? (() => readFileSync(join(import.meta.dir,"entry.mjs.template"),"utf8")))()
@@ -276,9 +277,10 @@ export async function runQualifiedInstance(options: QualifiedInstanceOptions, se
       finally { try { await upstream.stop(); fixtureStopped = true } catch (error) { errors.push(`fixture stop: ${String(error)}`) } }
       const completed = !runError && Boolean(completedReceipt) && observerClosed && observer?.receipt.completed === true && disposed && fixtureStopped && !errors.length
       durableJson(join(directory,"cleanup-receipt.json"), { completed, observerClosed, workerdCreated: Boolean(mf), disposed, fixtureStopped, errors, runError: runError ? String(runError) : null }, true)
-      if (!completed && !runError) throw new Error(`Observer runtime cleanup incomplete: ${errors.join("; ")}`)
+      if (!completed && !runError) cleanupError = new Error(`Observer runtime cleanup incomplete: ${errors.join("; ")}`)
     }
   }
+  if (cleanupError) throw cleanupError
   if (observerConfig && completedReceipt) durableJson(join(directory,"receipt.json"),completedReceipt,true)
   if (!returnedDispatches) throw new Error("Instance dispatch result missing")
   return returnedDispatches

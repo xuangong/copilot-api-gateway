@@ -1,6 +1,62 @@
 import { describe, expect, test } from "bun:test"
 import { PerformanceRecorder } from "../src/data-plane/observability/performance-recorder"
 
+test("JSON clients measure actual upstream first output without inventing downstream TTFT", () => {
+  let now = 0
+  const recorder = new PerformanceRecorder(false, () => now)
+  now = 20
+  const upstream = recorder.beginUpstream("responses", {})
+  now = 100
+  upstream.observe({ type: "response.created", response: { status: "in_progress" } })
+  expect(recorder.snapshot().metrics.upstreamTtftMs).toBeUndefined()
+  now = 200
+  upstream.observe({ type: "response.reasoning_text.delta", delta: "reasoning" })
+  now = 400
+  upstream.observe({ type: "response.output_text.delta", delta: "answer" })
+  recorder.observeOutput("responses", { type: "response.output_text.delta", delta: "answer" })
+  now = 500
+  upstream.finish()
+  recorder.finish("success")
+  expect(recorder.snapshot().metrics.upstreamTtftMs).toMatchObject({ count: 1, sum: 180, min: 180, max: 180 })
+  expect(recorder.snapshot().metrics.ttftMs).toBeUndefined()
+  expect(recorder.snapshot().metrics.firstTextMs).toBeUndefined()
+})
+
+test("upstream first-output samples are per real call and exclude tool waits and synthetic JSON", () => {
+  let now = 0
+  const recorder = new PerformanceRecorder(true, () => now)
+  const json = recorder.beginUpstream("messages", {})
+  now = 100
+  json.json({ content: [{ type: "text", text: "buffered" }] })
+  json.finish()
+  now = 1000
+  const first = recorder.beginUpstream("chat_completions", {})
+  now = 1120
+  first.observe({ choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: "{" } }] } }] })
+  now = 1300
+  first.finish()
+  now = 2000
+  const second = recorder.beginUpstream("messages", {})
+  now = 2040
+  second.observe({ type: "content_block_delta", delta: { type: "text_delta", text: "answer" } })
+  now = 2100
+  second.finish()
+  recorder.finish("success")
+  const sample = { count: 2, sum: 160, min: 40, max: 120 }
+  expect(recorder.snapshot().metrics.upstreamTtftMs).toMatchObject(sample)
+  expect(recorder.snapshot().metrics.upstreamTtftMs).toMatchObject(sample)
+  expect(recorder.snapshot().metrics.ttftMs).toBeUndefined()
+})
+
+test("JSON-only, control-only and output-free failed upstream calls have no first-output sample", () => {
+  const recorder = new PerformanceRecorder(false, () => 100)
+  recorder.beginUpstream("messages", {}).json({ content: [{ type: "text", text: "buffered" }] })
+  recorder.beginUpstream("responses", {}).observe({ type: "response.completed", response: { output: [] } })
+  recorder.beginUpstream("chat_completions", {}).observe({ error: { message: "failed" } })
+  recorder.finish("error")
+  expect(recorder.snapshot().metrics.upstreamTtftMs).toBeUndefined()
+})
+
 describe("PerformanceRecorder", () => {
   test("measures request and actual upstream separately, reasoning before text, gaps and speed", () => {
     let now = 0

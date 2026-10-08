@@ -1,4 +1,4 @@
-export const PERFORMANCE_METRIC_NAMES = ["totalMs", "upstreamMs", "ttftMs", "firstTextMs", "generationMs", "inputTokens", "outputTokens", "cachedInputTokens", "reasoningTokens", "upstreamTps", "overallTps", "gapMs", "maxGapMs"] as const
+export const PERFORMANCE_METRIC_NAMES = ["totalMs", "upstreamMs", "upstreamTtftMs", "ttftMs", "firstTextMs", "generationMs", "inputTokens", "outputTokens", "cachedInputTokens", "reasoningTokens", "upstreamTps", "overallTps", "gapMs", "maxGapMs"] as const
 export type PerformanceMetricName = typeof PERFORMANCE_METRIC_NAMES[number]
 export function isPerformanceMetricName(name: string): name is PerformanceMetricName {
   return PERFORMANCE_METRIC_NAMES.some(metric => metric === name)

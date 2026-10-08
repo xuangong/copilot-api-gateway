@@ -1,4 +1,4 @@
-import { responsesFormatGuard, responsesFormatMismatchMessage } from '@vibe-llm/provider-llm'
+import { prepareStreamingGenerationPayload, responsesFormatGuard, responsesFormatMismatchMessage } from '@vibe-llm/provider-llm'
 import type { CopilotVariantSelection } from "./variants"
 import { rememberRawModels } from "./raw-models-cache"
 /**
@@ -11,8 +11,8 @@ import { rememberRawModels } from "./raw-models-cache"
  * After Plan B Task B2.8, the legacy `fetch(endpoint, init, opts)` overload
  * and the seven per-endpoint `call*` shim methods were retired. The provider
  * now exposes a single `fetch(req: ProviderRequest)` returning a
- * `ProviderResponse` — interceptor mutations happen on `req.payload`
- * directly; the terminal HTTP call serializes the final state.
+ * `ProviderResponse` — generation interceptors receive a provider-owned
+ * shallow payload copy; the terminal HTTP call serializes its final state.
  */
 import type { AccountType } from './account-type'
 import { defaultsForUpstream } from '@vibe-llm/protocols/flags'
@@ -198,7 +198,7 @@ export class CopilotProvider implements LlmModelProvider {
       endpoint: req.endpoint,
       enabledFlags: defaultsForUpstream('copilot'),
       sourceApi: mapSourceApi(req.sourceApi),
-      payload: req.payload as Record<string, unknown>,
+      payload: prepareStreamingGenerationPayload(this.kind, req) as Record<string, unknown>,
       headers: headerRecord,
     }
     const ctx: RequestContext = {
