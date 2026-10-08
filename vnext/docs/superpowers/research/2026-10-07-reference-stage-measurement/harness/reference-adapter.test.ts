@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from "bun:test"
 import { Database, type SQLQueryBindings } from "bun:sqlite"
 import { createHash } from "node:crypto"
-import { mkdtempSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs"
+import { mkdtempSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { gzipSync } from "node:zlib"
@@ -18,7 +18,7 @@ function record(value: unknown): Record<string, unknown> {
 function sqliteBoundary(sqlite: Database): ReferenceDatabase {
   return { prepare(sql: string) {
     const statement = sqlite.prepare(sql)
-    const bound = (values: SQLQueryBindings[]) => ({ async run() { return statement.run(...values) }, async all<T>() { return { results: statement.all(...values) as T[] } } })
+    const bound = (values: SQLQueryBindings[]) => ({ async run() { return statement.run(...values) }, async first<T>() { return statement.get(...values) as T | null }, async all<T>() { return { results: statement.all(...values) as T[] } } })
     return { ...bound([]), bind(...values: SQLQueryBindings[]) { return bound(values) } }
   } }
 }
@@ -27,7 +27,7 @@ function sqlFixture() {
   sqlite.exec(`
     CREATE TABLE users(id INTEGER PRIMARY KEY, username TEXT NOT NULL, is_admin INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL);
     CREATE TABLE api_keys(id TEXT PRIMARY KEY, user_id INTEGER NOT NULL, name TEXT NOT NULL, key TEXT NOT NULL UNIQUE, server_secret TEXT NOT NULL CHECK(length(server_secret) = 64 AND server_secret NOT GLOB '*[^0-9a-f]*'), created_at TEXT NOT NULL, dump_retention_seconds INTEGER, responses_retention_seconds INTEGER NOT NULL DEFAULT 0);
-    CREATE TABLE upstreams(id TEXT PRIMARY KEY, provider TEXT NOT NULL, name TEXT NOT NULL, config_json TEXT NOT NULL, proxy_fallback_list_json TEXT NOT NULL, hue INTEGER NOT NULL CHECK(hue >= 0 AND hue < 360), created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+    CREATE TABLE upstreams(id TEXT PRIMARY KEY, provider TEXT NOT NULL, name TEXT NOT NULL, config_json TEXT NOT NULL, proxy_fallback_list_json TEXT NOT NULL, flag_overrides TEXT NOT NULL DEFAULT '[]', enabled INTEGER DEFAULT 1, sort_order INTEGER DEFAULT 0, config_version INTEGER DEFAULT 1, state_json TEXT, disabled_public_model_ids TEXT DEFAULT '[]', model_prefix_json TEXT, models_cache_json TEXT, hue INTEGER NOT NULL CHECK(hue >= 0 AND hue < 360), created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
     CREATE TABLE dump_records(key_id TEXT NOT NULL, id TEXT NOT NULL, created_at INTEGER NOT NULL, upstream_id TEXT, meta_json TEXT NOT NULL, request_headers_json TEXT NOT NULL, response_headers_json TEXT, request_body_descriptor TEXT, response_body_descriptor TEXT, response_upstream_body_descriptor TEXT);
     CREATE TABLE spilled_files(file_key TEXT PRIMARY KEY, owner_kind TEXT NOT NULL, owner_key TEXT NOT NULL, state TEXT NOT NULL);
     CREATE TABLE usage(metric TEXT, amount TEXT); CREATE TABLE usage_requests(requests INTEGER);
@@ -36,7 +36,8 @@ function sqlFixture() {
   `)
   return { db: sqliteBoundary(sqlite), sqlite }
 }
-const seed = { baseUrl: "http://127.0.0.1:49999", apiKey: "isolated-key", fixtureSecret: "fixture-secret", dump: true, model: "bench-chat-success" }
+const referenceRoot = process.env.REFERENCE_SOURCE_ROOT ?? "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-07-reference-stage-measurement/reference-source"
+const seed = { referenceRoot, baseUrl: "http://127.0.0.1:49999", apiKey: "isolated-key", fixtureSecret: "fixture-secret", dump: true, model: "bench-chat-success" }
 
 test("seed uses R integer user identity, server secret and structured Chat capabilities", async () => {
   const { db, sqlite } = sqlFixture()
@@ -49,14 +50,15 @@ test("seed uses R integer user identity, server secret and structured Chat capab
     expect(typeof user.id).toBe("number")
     expect(key.server_secret).toMatch(/^[0-9a-f]{64}$/)
     expect(key.responses_retention_seconds).toBe(0)
-    expect(key.dump_retention_seconds).toBe(0)
+    expect(key.dump_retention_seconds).toBe(3600)
     const config = record(JSON.parse(String(upstream.config_json)))
-    expect(config.baseUrl).toBe(seed.baseUrl + "/v1")
+    expect(config.baseUrl).toBe(seed.baseUrl)
     expect(config.modelsFetch).toEqual({ enabled: false })
     expect(config.endpoints).toEqual({ openaiChatCompletions: {} })
     expect(config.models).toEqual([{ kind: "chat", upstreamModelId: seed.model, publicModelId: seed.model, endpoints: { openaiChatCompletions: {} } }])
     expect(config.ingressHeadersRules).toEqual([])
     expect(JSON.parse(String(upstream.proxy_fallback_list_json))).toEqual([{ id: "direct_fetch" }])
+    expect(JSON.parse(String(upstream.flag_overrides))).toEqual({})
   } finally { sqlite.close() }
 })
 
@@ -86,7 +88,29 @@ test("real R migrations preserve the bootstrap admin while fixture seed and phys
     }
     const bootstrapAdmin = record(sqlite.query("SELECT id,username,is_admin FROM users WHERE id = 1").get())
     expect(bootstrapAdmin).toEqual({ id: 1, username: "admin", is_admin: 1 })
+    const flagColumn = sqlite.query("PRAGMA table_info(upstreams)").all().map(record).find(column => column.name === "flag_overrides")
+    expect(flagColumn?.dflt_value).toBe("'[]'")
     await seedReference(db, seed)
+    expect(sqlite.query("SELECT json_type(flag_overrides) AS kind FROM upstreams WHERE id = 'custom:reference-fixture'").get()).toEqual({ kind: "object" })
+    expect(sqlite.query("SELECT flag_overrides FROM upstreams WHERE id = 'custom:reference-fixture'").get()).toEqual({ flag_overrides: "{}" })
+    const { SqlRepo } = await import(join(referenceRoot, "packages/gateway/src/repo/sql.ts"))
+    const { readUpstreamModelsSnapshotAndScheduleRefresh } = await import(join(referenceRoot, "packages/gateway/src/data-plane/providers/models-cache.ts"))
+    const native = await new SqlRepo(db).upstreams.getById("custom:reference-fixture")
+    expect(native.enabled).toBe(true)
+    expect(native.configVersion).toBe(1)
+    expect(native.state).toBe(null)
+    expect(native.disabledPublicModelIds).toEqual([])
+    expect(native.modelPrefix).toBe(null)
+    const scheduled: unknown[] = []
+    const snapshot = readUpstreamModelsSnapshotAndScheduleRefresh({ ...native, upstreamId: native.id }, (target: unknown) => scheduled.push(target))
+    expect(snapshot.models.map((model: { id: string }) => model.id)).toEqual([seed.model])
+    expect(snapshot.models[0].kind).toBe("chat")
+    expect(snapshot.models[0].endpoints).toEqual({ openaiChatCompletions: {} })
+    expect(snapshot.models[0].enabledFlags instanceof Set).toBe(true)
+    expect(snapshot.lastError).toBe(null)
+    expect(scheduled).toEqual([])
+    expect(sqlite.query("SELECT upstream_ids FROM users WHERE username = 'reference-fixture'").get()).toEqual({ upstream_ids: null })
+    expect(sqlite.query("SELECT upstream_ids FROM api_keys WHERE id = 'reference-key'").get()).toEqual({ upstream_ids: null })
     expect(sqlite.query("SELECT id,username,is_admin FROM users WHERE id = 1").get()).toEqual(bootstrapAdmin)
     const key = record(sqlite.query("SELECT * FROM api_keys WHERE id = 'reference-key'").get())
     const user = record(sqlite.query("SELECT id,is_admin FROM users WHERE username = 'reference-fixture'").get())
@@ -208,4 +232,113 @@ test("reference build preserves true entrypoint and records original and transfo
   expect(result.inputs).toContainEqual(expect.objectContaining({ path: join(root, "packages/gateway/migrations/0001_init.sql") }))
   expect(readFileSync(result.bundle, "utf8")).toContain("observed")
   expect(readFileSync(join(root, "packages/gateway/src/index.ts"), "utf8")).toContain("original")
+})
+
+
+test("reference build uses the named package owner above module scope manifests", async () => {
+  const root = buildFixture("1.0.0")
+  const write = (path: string, value: unknown) => { mkdirSync(dirname(join(root, path)), { recursive: true }); writeFileSync(join(root, path), typeof value === "string" ? value : JSON.stringify(value)) }
+  write("packages/gateway/src/index.ts", 'import { value } from "fake-dependency"; export { value }')
+  write("node_modules/fake-dependency/package.json", { name: "fake-dependency", version: "1.0.0", main: "esm/index.js" })
+  write("node_modules/fake-dependency/esm/package.json", { type: "module" })
+  write("node_modules/fake-dependency/esm/index.js", 'export const value = "nested-scope"')
+  const result = await buildReference(root, join(root, "out"))
+  expect(readFileSync(result.bundle, "utf8")).toContain("nested-scope")
+  expect(result.inputs).toContainEqual(expect.objectContaining({ path: join(root, "node_modules/fake-dependency/esm/package.json") }))
+})
+
+
+test("reference build accepts a locked package self export without inventing a dependency edge", async () => {
+  const root = buildFixture("1.0.0")
+  const write = (path: string, value: unknown) => { mkdirSync(dirname(join(root, path)), { recursive: true }); writeFileSync(join(root, path), typeof value === "string" ? value : JSON.stringify(value)) }
+  write("packages/gateway/src/index.ts", 'import { value } from "fake-dependency"; export { value }')
+  write("node_modules/fake-dependency/package.json", { name: "fake-dependency", version: "1.0.0", type: "module", exports: { ".": "./index.js", "./value": "./value.js" } })
+  write("node_modules/fake-dependency/index.js", 'export { value } from "fake-dependency/value"')
+  write("node_modules/fake-dependency/value.js", 'export const value = "self-export"')
+  const result = await buildReference(root, join(root, "out"))
+  expect(readFileSync(result.bundle, "utf8")).toContain("self-export")
+})
+
+
+test("reference build still rejects a hoisted locked package without a declared dependency edge", async () => {
+  const root = buildFixture("1.0.0")
+  const write = (path: string, value: unknown) => { mkdirSync(dirname(join(root, path)), { recursive: true }); writeFileSync(join(root, path), typeof value === "string" ? value : JSON.stringify(value)) }
+  write("packages/gateway/src/index.ts", 'import { value } from "fake-dependency"; export { value }')
+  write("node_modules/fake-dependency/index.js", 'exports.value = require("hoisted-dependency").value')
+  write("node_modules/hoisted-dependency/package.json", { name: "hoisted-dependency", version: "1.0.0", main: "index.js" })
+  write("node_modules/hoisted-dependency/index.js", 'exports.value = "hoisted"')
+  write("pnpm-lock.yaml", readFileSync(join(root, "pnpm-lock.yaml"), "utf8") + "  hoisted-dependency@1.0.0: {}\n")
+  await expect(buildReference(root, join(root, "out"))).rejects.toThrow("Bundle failed")
+  const receipt = record(JSON.parse(readFileSync(join(root, "out", "reference-build-receipt.json"), "utf8")))
+  expect(receipt.completed).toBe(false)
+})
+
+
+function privateHoistFixture() {
+  const root = buildFixture("1.0.0")
+  const write = (path: string, value: unknown) => { mkdirSync(dirname(join(root, path)), { recursive: true }); writeFileSync(join(root, path), typeof value === "string" ? value : JSON.stringify(value)) }
+  const packageRoot = "node_modules/.pnpm/fake-dependency@1.0.0/node_modules/fake-dependency"
+  mkdirSync(dirname(join(root, packageRoot)), { recursive: true })
+  renameSync(join(root, "node_modules/fake-dependency"), join(root, packageRoot))
+  symlinkSync(join(root, packageRoot), join(root, "node_modules/fake-dependency"))
+  write("packages/gateway/src/index.ts", 'import { value } from "fake-dependency"; export { value }')
+  write(packageRoot + "/index.js", 'exports.value = require("hoisted-dependency").value')
+  write("node_modules/.pnpm/hoisted-dependency@1.0.0/node_modules/hoisted-dependency/package.json", { name: "hoisted-dependency", version: "1.0.0", main: "index.js" })
+  write("node_modules/.pnpm/hoisted-dependency@1.0.0/node_modules/hoisted-dependency/index.js", 'exports.value = "private-hoist"')
+  mkdirSync(join(root, "node_modules/.pnpm/node_modules"), { recursive: true })
+  symlinkSync(join(root, "node_modules/.pnpm/hoisted-dependency@1.0.0/node_modules/hoisted-dependency"), join(root, "node_modules/.pnpm/node_modules/hoisted-dependency"))
+  write("node_modules/.modules.yaml", "packageManager: pnpm@10.24.0\nnodeLinker: isolated\nvirtualStoreDir: .pnpm\nhoistPattern: ['*']\npublicHoistPattern: []\nhoistedDependencies:\n  hoisted-dependency@1.0.0:\n    hoisted-dependency: private\n")
+  write("pnpm-lock.yaml", readFileSync(join(root, "pnpm-lock.yaml"), "utf8") + "  bridge@1.0.0: {}\n  hoisted-dependency@1.0.0: {}\nsnapshots:\n  fake-dependency@1.0.0:\n    dependencies: {bridge: 1.0.0}\n  bridge@1.0.0:\n    dependencies: {hoisted-dependency: 1.0.0}\n  hoisted-dependency@1.0.0: {}\n")
+  return { root, write }
+}
+
+test("reference build freezes and labels an existing pnpm private hoist backed by the importer lock closure", async () => {
+  const { root } = privateHoistFixture()
+  await buildReference(root, join(root, "out"))
+  const receipt = record(JSON.parse(readFileSync(join(root, "out/reference-build-receipt.json"), "utf8")))
+  expect(receipt.resolutions).toContainEqual(expect.objectContaining({ specifier: "hoisted-dependency", edgeKind: "undeclared-hoisted", expectedVersion: "1.0.0", lockPath: ["fake-dependency@1.0.0", "bridge@1.0.0", "hoisted-dependency@1.0.0"] }))
+  expect(receipt.inputs).toContainEqual(expect.objectContaining({ path: join(root, "node_modules/.modules.yaml") }))
+})
+
+test("reference build rejects private hoists with invalid installation evidence or lock ancestry", async () => {
+  for (const failure of ["metadata", "ancestry", "version", "physical"] as const) {
+    const { root, write } = privateHoistFixture()
+    if (failure === "metadata") write("node_modules/.modules.yaml", "packageManager: pnpm@10.34.5\n")
+    if (failure === "ancestry") write("pnpm-lock.yaml", readFileSync(join(root, "pnpm-lock.yaml"), "utf8").replace("dependencies: {hoisted-dependency: 1.0.0}", "dependencies: {}"))
+    if (failure === "version") write("node_modules/.pnpm/hoisted-dependency@1.0.0/node_modules/hoisted-dependency/package.json", { name: "hoisted-dependency", version: "1.0.1", main: "index.js" })
+    if (failure === "physical") {
+      rmSync(join(root, "node_modules/.pnpm/node_modules/hoisted-dependency"))
+      write("node_modules/hoisted-dependency/package.json", { name: "hoisted-dependency", version: "1.0.0", main: "index.js" })
+      write("node_modules/hoisted-dependency/index.js", 'exports.value = "wrong-physical-hoist"')
+    }
+    await expect(buildReference(root, join(root, "out"))).rejects.toThrow()
+  }
+})
+
+
+test("reference seed native Custom fetch dispatches the exact fixture URL and request", async () => {
+  const { customFetchOpenAIChatCompletions } = await import(join(referenceRoot, "packages/provider-custom/src/fetch.ts"))
+  for (const baseUrl of [seed.baseUrl, seed.baseUrl + "/v1"]) {
+    const { db, sqlite } = sqlFixture()
+    try {
+      await seedReference(db, { ...seed, baseUrl })
+      const row = record(sqlite.query("SELECT config_json FROM upstreams WHERE id = 'custom:reference-fixture'").get())
+      const config = JSON.parse(String(row.config_json))
+      const body = JSON.stringify({ model: seed.model, stream: true, messages: [{ role: "user", content: "BENCH_ID:native-dispatch" }] })
+      const calls: { url: string; method: string; body: unknown; headers: Headers }[] = []
+      let wrapped = 0
+      const response = await customFetchOpenAIChatCompletions(config, { method: "POST", body }, {
+        fetcher: async (url: string, init: RequestInit) => { calls.push({ url, method: init.method ?? "", body: init.body, headers: new Headers(init.headers) }); return new Response("fixture-native", { status: 200 }) },
+        wrapUpstreamCall: async (call: () => Promise<Response>) => { wrapped++; return await call() },
+      })
+      expect(calls).toHaveLength(1)
+      expect(calls[0]!.url).toBe(seed.baseUrl + "/v1/chat/completions")
+      expect(calls[0]!.method).toBe("POST")
+      expect(calls[0]!.body).toBe(body)
+      expect(calls[0]!.headers.get("authorization")).toBe(`Bearer ${seed.fixtureSecret}`)
+      expect(calls[0]!.headers.get("content-type")).toBe("application/json")
+      expect(wrapped).toBe(1)
+      expect(await response.text()).toBe("fixture-native")
+    } finally { sqlite.close() }
+  }
 })

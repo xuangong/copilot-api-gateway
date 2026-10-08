@@ -1,10 +1,10 @@
 # Reference comparison and stage-level resource attribution
 
-Date: 2026-10-07. Status: measurement tooling implemented and a limited A/B observer canary passed; reference runtime blocked on exact dependencies. See [qualification results](qualification-results.md). No formal three-arm performance conclusion, product change or deployment.
+Design date: 2026-10-07. Status updated 2026-10-08: all three implementations passed live qualification and a bounded 108-window workerd pilot completed with 2,700 successful requests. See [pilot results and remaining gaps](warm-pilot-results.md). The original 5,400-request proposal, stage CPU attribution, observer overhead, memory peaks and capacity remain unqualified. No product change or deployment occurred.
 
 ## Decision and scope
 
-Compare three implementations: deployed-source A, current vNext B and reference R. Measure equivalent work first, then explain the additional cost of each implementation's complete behavior. The reference is an implementation comparison, not a correctness oracle or an assumed performance target. A faster failing request is not a successful optimization.
+Compare three implementations: deployed-source A, current vNext B and reference R. Match supported source formats and diagnostic settings first, then explain the additional cost of each implementation's complete behavior. The reference is an implementation comparison, not a correctness oracle or an assumed performance target. A faster failing request is not a successful optimization.
 
 The next measurement should identify a stage, a workload dimension and a resource mechanism. Another end-to-end percentage without that decomposition would not answer whether the cost is necessary. Preserve the existing correctness, ownership, diagnostic and continuation contracts while investigating avoidable copies, traversals, stream work and retention.
 
@@ -12,11 +12,13 @@ This report defines the measurement protocol. Execution remains local: no CFW de
 
 ## 1. Source identity and what is already known
 
-| Arm | Inspected identity | Qualification boundary |
+| Arm | Initial design inspection (October 7) | Qualification boundary at that checkpoint |
 | --- | --- | --- |
 | A | `e660fb4dfcf1734d10f89e52e2d739b2985c634b`, existing deployed-source tag | Source baseline from the prior experiment; production was not queried today |
 | B | Local vNext `dc3824d4b0ae0e66c4719523dfc39195f6d738c0`, with preserved working-tree changes | The previous measured artifact was `cb5ca3b1` plus its recorded overlay/assets. A new comparison must freeze actual inputs again; HEAD alone is insufficient |
 | R | `/Volumes/Projects/copilot-gateway`, `1d7dcd923e260e425120cca0c7a240e93720af27`, clean working tree | Source inspected and archived; exact-dependency preflight failed; no runtime result |
+
+The table above records the initial inspection, not the final measurement identity. The [October 8 result](warm-pilot-results.md#identities-and-method) records the actual revalidated A/B product freeze, R compiler inputs and runtime settings.
 
 The [October 3 results](../2026-10-03-owned-preparation/results.md) compare A/B only. They establish ordinary latency, sparse sampled non-idle time, settled heap and correctness/storage observations. They do not establish B/R efficiency, stage costs, concurrent capacity or peak memory. Do not reuse those numbers as measurements of this proposal.
 
@@ -92,7 +94,7 @@ Do not start with a Cartesian product of every protocol, provider, setting and s
 
 ### First: common-path attribution
 
-Use native Chat ingress and Chat upstream, one eligible provider/model, warmed fresh catalog, no carriers, no retained history, fixed output semantics and fixed fixture timing. Compare:
+Use native Chat ingress and Chat upstream, one eligible provider/model, warmed fresh catalog, no incoming carriers, no retained history, fixed output semantics and fixed fixture timing. The pilot showed that R always emits an authenticated affinity carrier; diagnostics-off does not establish equal work. Compare:
 
 - Upstream SSE to downstream SSE as the common-format path. For downstream JSON, honor the actual provider request: A/B use JSON-to-JSON; R uses SSE-to-JSON. Keep that cell as a complete-behavior comparison with an explicit source-format difference. Never force SSE on A/B JSON and count its parse failure as a fast result.
 - Two 64 KiB request shapes: a long string and many valid messages/tools/small containers. The fixture generator must verify both byte sizes and semantic validity.
@@ -154,10 +156,11 @@ Required extensions are a reference arm/build/schema/readback adapter, reviewed 
 - [x] Inspect current A/B evidence and source identities; preserve production/no-deployment boundary.
 - [x] Inspect R's Cloudflare path, telemetry and non-equivalent contracts.
 - [x] Define shared scenarios, stage boundaries, resource ledgers and attribution rules.
-- [ ] Freeze exact three-arm source/dependency/build/fixture identities and a final bounded run manifest.
-- [ ] Implement isolated adapters/hooks and qualify clocks, process ownership, probe overhead and correctness/readback.
-- [ ] Run the small common-path comparison once; retain failed/incomplete evidence explicitly.
+- [x] Freeze exact three-arm source/dependency/build/fixture identities and the bounded pilot manifest.
+- [x] Implement isolated adapters/hooks and qualify clocks, process ownership and correctness/readback.
+- [ ] Qualify warmed observer overhead before interpreting instrumented timing.
+- [x] Run the bounded comparison with native-work differences labelled; retain failed/incomplete evidence explicitly.
 - [ ] Run only the stage-specific slopes supported by first-pass evidence, then bounded capacity/slow-reader qualification.
 - [ ] Publish per-stage results, raw receipts and prioritized fixes; remeasure the selected fixes under the same contracts.
 
-The [implementation plan](../../plans/2026-10-07-reference-stage-measurement.md) tracks individual delivered tools. The four later protocol milestones above remain open: a small A/B observer canary does not establish three-arm runtime qualification, overhead/noise bounds or comparative performance. Catalog/affinity rollback compatibility and backup/restore remain separate release prerequisites.
+The [implementation plan](../../plans/2026-10-07-reference-stage-measurement.md) tracks individual delivered tools. Three-arm runtime qualification and the uninstrumented pilot are complete. Stage attribution, observer/noise bounds, memory time series and stress milestones remain open; the pilot does not establish causal or release conclusions. Catalog/affinity rollback compatibility and backup/restore remain separate release prerequisites.

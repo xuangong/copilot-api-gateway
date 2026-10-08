@@ -1,0 +1,295 @@
+{
+  "schema": "three-arm-warm-evidence-index-v1",
+  "createdAt": "2026-10-08T07:22:32.396295+00:00",
+  "rawRoot": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-reference-workerd",
+  "passedRun": "warm-pilot-01",
+  "qualificationRuns": [
+    "qualification-ab-03",
+    "qualification-reference-07"
+  ],
+  "warmComparisonCompleted": true,
+  "fullComparisonCompleted": false,
+  "pilotArtifactCount": 8940,
+  "files": [
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-reference-workerd/pilot-artifacts-manifest.json",
+      "size": 3296882,
+      "sha256": "fd8b731256da92667bcdd5ac5c0998d49ffddb1e4ece76c58ace94d1f1553a54"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-reference-workerd/warm-independent-reaggregate.json",
+      "size": 64071,
+      "sha256": "9aa7c9af6e5754a3f76b85776af72a556ff487a2fe675a8672f30f9dc4dcff4c"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-reference-workerd/independent-numeric-review.json",
+      "size": 68436,
+      "sha256": "d53d9899d85ff31557ca7fd22152f55fef4b57165b44325bd44e7760f07aab1b"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-reference-workerd/final-independent-integrity-review.json",
+      "size": 3840,
+      "sha256": "e1e88c3db2f3ccf2cabfa638d26c985a93e896d82e9e94f9ac019cb5fb38a988"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-reference-workerd/harness-tests-isolated-final.log",
+      "size": 14257,
+      "sha256": "fb273de921badbdfc09171f2737d0e824fdac8faaad7404fe392709855a4c5b4"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-reference-workerd/harness-tsc-isolated-final.log",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-reference-workerd/reference-dependency-recovery-02.json",
+      "size": 2675,
+      "sha256": "bbb90c619f672dc342d23ef0254d8fbe7eef5977803f40b925cb1329200bc5ec"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-reference-workerd/reference-build-preflight-04/reference-build-receipt.json",
+      "size": 2516768,
+      "sha256": "5153044ff5f7dca44b15186dc27983530cba6cecab03e4f27464cd550ff478e0"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-reference-workerd/reference-native-readback-03.json",
+      "size": 2482,
+      "sha256": "6f63b36bed302c97b88da77adaed37cfb68c0350e4f4be9214dcc69c5fe6b9b9"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-reference-workerd/lifecycle-repro-01/diagnosis.json",
+      "size": 3021,
+      "sha256": "2e3a074063a1d8bf43fbf0e30e6dde1a571d02a7371e0f8c9b061f8e15f947f0"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-reference-workerd/main-protected.json",
+      "size": 7986,
+      "sha256": "87b9a61b53688079c89a829ad3bde5fc914574205de6347b81299ca0c6ae6f13"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-reference-workerd/repair-protected.json",
+      "size": 2797,
+      "sha256": "0e6d9321af96143f73c3f328fa9e7e7f7ea03cef7826460af58b2f4a7b7ae67e"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-reference-workerd/qualification-ab-01/inputs.json",
+      "size": 15856,
+      "sha256": "c316b02e7972f11da0e7af17657829f3a9989da8770bdf74f6cea24c3c7c6a92"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-reference-workerd/qualification-ab-01/result.json",
+      "size": 141,
+      "sha256": "29f3dff193385c61d26e80ce58baf5e3cd3a2b5c9a179c9dbafc25f2161edb10"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-reference-workerd/qualification-ab-01/disposition.json",
+      "size": 116,
+      "sha256": "17447761c719421ffb1a0dfe506769a471428cabcab6725517caaf86a1421ab5"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-reference-workerd/qualification-ab-01/supervision.json",
+      "size": 143,
+      "sha256": "9e2518c550b5847aef41022b59b12e458270d73c9ba29ffb2b55be4457c66ed7"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-reference-workerd/qualification-ab-02/inputs.json",
+      "size": 16157,
+      "sha256": "d6f844fc674a119f564b57861230a59b5113f612ce63463e768bd60f4b982fc3"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-reference-workerd/qualification-ab-02/result.json",
+      "size": 141,
+      "sha256": "29f3dff193385c61d26e80ce58baf5e3cd3a2b5c9a179c9dbafc25f2161edb10"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-reference-workerd/qualification-ab-02/disposition.json",
+      "size": 116,
+      "sha256": "abe0aef3cd30d16342a3efd577304fe222bdc7df36103c218b035c361cf6addd"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-reference-workerd/qualification-ab-02/supervision.json",
+      "size": 143,
+      "sha256": "1ab870ea1052aa1755a770a86dded359d15a901a19be9e81ecd2eb95c3c48cc1"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-reference-workerd/qualification-ab-03/inputs.json",
+      "size": 16770,
+      "sha256": "4d47a25d0236534b77850127e16546fcd1f6014fa5ededf9ccd3da7b4b93070c"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-reference-workerd/qualification-ab-03/result.json",
+      "size": 272,
+      "sha256": "a9f1b43990faf53edf019e14f53b5a39a36d2f9602db2a04528d3816006fb4d8"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-reference-workerd/qualification-ab-03/disposition.json",
+      "size": 102,
+      "sha256": "8f5c120e6ce4ba822f6b5ad9997368eb6d7dcb13573c32dc49cd17f3c897afe8"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-reference-workerd/qualification-ab-03/supervision.json",
+      "size": 143,
+      "sha256": "644ca8726e3bca779f69b2084da450f864a66b4fbd994bf2848e64621525634d"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-reference-workerd/qualification-reference-01/inputs.json",
+      "size": 15109,
+      "sha256": "8d8f51e543645af3659014e0f069f085b699aff1f1e6fbf124c8254fb4209e80"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-reference-workerd/qualification-reference-01/result.json",
+      "size": 141,
+      "sha256": "29f3dff193385c61d26e80ce58baf5e3cd3a2b5c9a179c9dbafc25f2161edb10"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-reference-workerd/qualification-reference-01/disposition.json",
+      "size": 682,
+      "sha256": "9006ec340f97a5e756b55c07451a161dc57a59e2720807333665f3cc32525c16"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-reference-workerd/qualification-reference-01/supervision.json",
+      "size": 142,
+      "sha256": "4878acc4cf7a24440e94236d60a5c679169a5207bf64e9237b9eb1fb558efd92"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-reference-workerd/qualification-reference-02/inputs.json",
+      "size": 15109,
+      "sha256": "1a31000e3d054717d68c211b32017b5c57b16f403d87d78cf2481b722e57e7f3"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-reference-workerd/qualification-reference-02/result.json",
+      "size": 141,
+      "sha256": "29f3dff193385c61d26e80ce58baf5e3cd3a2b5c9a179c9dbafc25f2161edb10"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-reference-workerd/qualification-reference-02/disposition.json",
+      "size": 925,
+      "sha256": "63aa83fdadf7a3484f01480f7af4cf5a517cf1267f30ba664225f1b0b19a5a6c"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-reference-workerd/qualification-reference-02/supervision.json",
+      "size": 142,
+      "sha256": "c249abe8b7b285ad453cfb28b479145cfec7979b01649bdc08cbd40e8ccaff74"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-reference-workerd/qualification-reference-03/inputs.json",
+      "size": 15109,
+      "sha256": "b832543a560a35f1112e68bd0798f45d3464b5de3d5d2a3b1791f379928b8e58"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-reference-workerd/qualification-reference-03/result.json",
+      "size": 141,
+      "sha256": "29f3dff193385c61d26e80ce58baf5e3cd3a2b5c9a179c9dbafc25f2161edb10"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-reference-workerd/qualification-reference-03/disposition.json",
+      "size": 737,
+      "sha256": "2d82267318c85164817fa556bfde666b5e8d1b48d8ac90946cf8a4f4bcb46b76"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-reference-workerd/qualification-reference-03/supervision.json",
+      "size": 142,
+      "sha256": "0f9afa192d7dd31632defbb5c27b2cf0a9bac3336e33c60e9f0feb7fd664cafb"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-reference-workerd/qualification-reference-04/inputs.json",
+      "size": 16024,
+      "sha256": "1039070c1f73c24c2b6ff3cecf085a3b5dfdd46b1c0ad9e7680791bf20e09f43"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-reference-workerd/qualification-reference-04/result.json",
+      "size": 141,
+      "sha256": "29f3dff193385c61d26e80ce58baf5e3cd3a2b5c9a179c9dbafc25f2161edb10"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-reference-workerd/qualification-reference-04/disposition.json",
+      "size": 136,
+      "sha256": "051a1f3b8f5789b2f4f838d09877c8347a5d1efb60909bf3f39e0874ff1c7c7a"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-reference-workerd/qualification-reference-04/supervision.json",
+      "size": 143,
+      "sha256": "9c6cd346922856c5a240772999b8635b88059e47f31a8f5ae96e0aeae508fbb3"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-reference-workerd/qualification-reference-05/inputs.json",
+      "size": 16325,
+      "sha256": "ed82466c4708d033da86346bb9f887bd30431bc3f2e2a21ab165d7a9f31b279c"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-reference-workerd/qualification-reference-05/result.json",
+      "size": 141,
+      "sha256": "29f3dff193385c61d26e80ce58baf5e3cd3a2b5c9a179c9dbafc25f2161edb10"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-reference-workerd/qualification-reference-05/disposition.json",
+      "size": 114,
+      "sha256": "b13a7b5652e8321a97407c0840923679b0828a7c5d7738ce2c9d2017cdea8675"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-reference-workerd/qualification-reference-05/supervision.json",
+      "size": 143,
+      "sha256": "4a3dc5d63f481292d83e18d061f99bd01dd43cbe0316ba024cccc20f2ab3dd4e"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-reference-workerd/qualification-reference-06/inputs.json",
+      "size": 16325,
+      "sha256": "e416d2fe4d1d46cbfd7246fad5bf98f022b2a7a1c38f58116045a8877b330f72"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-reference-workerd/qualification-reference-06/result.json",
+      "size": 270,
+      "sha256": "19cd1325cab92708cfe1e0f2cb7de435bebdff40ca14e77295dcd395b8c9faf7"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-reference-workerd/qualification-reference-06/disposition.json",
+      "size": 100,
+      "sha256": "fe14d400d14f351148f2c96a630dd53290d03954def5accbe1b03678e10038f2"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-reference-workerd/qualification-reference-06/supervision.json",
+      "size": 143,
+      "sha256": "426e3506b23ed8ac89d29614bc82ad08400aeb55e377745ff5ec13d17da533f9"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-reference-workerd/qualification-reference-07/inputs.json",
+      "size": 16938,
+      "sha256": "a178f1e8c43d1a73ab45b78009be23e3218af2d89d8a42a869766c266d00aad2"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-reference-workerd/qualification-reference-07/result.json",
+      "size": 270,
+      "sha256": "993a6a14b60aceb33690c0a1dc0fa0defd438ed8d3e8eeee999b72785b9c77b9"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-reference-workerd/qualification-reference-07/disposition.json",
+      "size": 100,
+      "sha256": "fe14d400d14f351148f2c96a630dd53290d03954def5accbe1b03678e10038f2"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-reference-workerd/qualification-reference-07/supervision.json",
+      "size": 143,
+      "sha256": "8534caf12cef1f35aa80dfd2c58b1f1eadd837a9d9d8879606b6846d4c5f5710"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-reference-workerd/warm-pilot-01/inputs.json",
+      "size": 16944,
+      "sha256": "8b7f0f0c0d4b53f79f7e9eccb6c5fdcbeed9467b5581a86edd0b6894abdab344"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-reference-workerd/warm-pilot-01/result.json",
+      "size": 311,
+      "sha256": "55976ace2d0da66fd07e6f30c955c8796429e766f29b9cd4b4d77b3be1fe194c"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-reference-workerd/warm-pilot-01/disposition.json",
+      "size": 187,
+      "sha256": "8787502dd1385ed7ec279e44ce10c548bc94c61ebc12a051b45a12c3c5042c14"
+    },
+    {
+      "path": "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-08-reference-workerd/warm-pilot-01/supervision.json",
+      "size": 143,
+      "sha256": "1996a153501b87ca921e6b842a5a7c9abb4ec092c312268e44bc515c65d7b24e"
+    }
+  ]
+}

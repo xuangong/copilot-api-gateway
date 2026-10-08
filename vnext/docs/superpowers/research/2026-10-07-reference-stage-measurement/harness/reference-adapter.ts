@@ -30,10 +30,11 @@ function packageManifest(name: string, from: string): string {
     if (dirname(directory) === directory) throw new Error(`Missing reference dependency ${name} from ${from}`)
   }
 }
-function ownerManifest(path: string): string {
+function ownerManifest(path: string, load: (path: string) => string): string {
   for (let directory = dirname(path);; directory = dirname(directory)) {
     const candidate = join(directory, "package.json")
-    if (existsSync(candidate)) return candidate
+    // Module scope manifests (for example esm/package.json) are not package owners.
+    if (existsSync(candidate) && (JSON.parse(load(candidate)) as Package).name) return candidate
     if (dirname(directory) === directory) throw new Error(`No package owner for ${path}`)
   }
 }
@@ -109,6 +110,44 @@ export async function buildReference(root: string, out: string, options: Referen
     inspect(platform.directory, platform.pkg)
     const blockers = dependencies.filter(entry => entry.status !== "available")
     if (blockers.length) throw new Error(`Reference dependency preflight failed: ${blockers.map(entry => `${entry.name}:${entry.status}`).join(", ")}`)
+    const physicalHoists: { path: string; manifest: string }[] = []
+    const provePrivateHoist = (name: string, installed: Package, manifest: string, importing: Package, importingManifest: string) => {
+      const virtualRoot = join(root, "node_modules/.pnpm")
+      if (!importingManifest.startsWith(virtualRoot + "/") || !importing.name || !importing.version || !manifest.startsWith(virtualRoot + "/")) throw new Error(`Undeclared reference dependency has no private virtual-store owner: ${name}`)
+      const modules = Bun.YAML.parse(load(join(root, "node_modules/.modules.yaml"))) as { packageManager?: string; nodeLinker?: string; virtualStoreDir?: string; hoistPattern?: string[]; publicHoistPattern?: string[]; hoistedDependencies?: Record<string, Record<string, string>> }
+      if (modules.packageManager !== "pnpm@10.24.0" || modules.nodeLinker !== "isolated" || modules.virtualStoreDir !== ".pnpm" || JSON.stringify(modules.hoistPattern) !== '["*"]' || JSON.stringify(modules.publicHoistPattern) !== "[]") throw new Error(`Reference private hoist installation contract differs: ${name}`)
+      const hoistKeys = Object.entries(modules.hoistedDependencies ?? {}).filter(([key, names]) => plainVersion(key) === `${name}@${installed.version}` && names[name] === "private")
+      if (hoistKeys.length !== 1) throw new Error(`Reference private hoist metadata missing or ambiguous: ${name}`)
+      const hoistedManifest = join(virtualRoot, "node_modules", name, "package.json")
+      if (realpathSync(hoistedManifest) !== manifest || packageManifest(name, dirname(importingManifest)) !== manifest) throw new Error(`Reference private hoist physical resolution differs: ${name}`)
+      const snapshots = lock.snapshots ?? {}
+      const snapshotKey = (packageName: string, version: string) => {
+        if (snapshots[`${packageName}@${version}`]) return `${packageName}@${version}`
+        const matches = Object.keys(snapshots).filter(key => plainVersion(key) === `${packageName}@${plainVersion(version)}`)
+        if (matches.length !== 1) throw new Error(`Reference private hoist lock snapshot ambiguous: ${packageName}@${version}`)
+        return matches[0]!
+      }
+      const start = snapshotKey(importing.name, importing.version)
+      const queue = [[start]]
+      const visited = new Set<string>()
+      let lockPath: string[] | undefined
+      while (queue.length) {
+        const path = queue.shift()!
+        const key = path[path.length - 1]!
+        if (visited.has(key)) continue
+        visited.add(key)
+        if (plainVersion(key) === `${name}@${installed.version}`) { lockPath = path; break }
+        const snapshot = snapshots[key]!
+        for (const [child, version] of Object.entries({ ...snapshot.dependencies, ...snapshot.optionalDependencies })) {
+          const expected = plainVersion(version)
+          if (!lock.packages[`${child}@${expected}`]) throw new Error(`Reference private hoist ancestor absent from lock: ${child}@${expected}`)
+          queue.push([...path, snapshotKey(child, version)])
+        }
+      }
+      if (!lockPath) throw new Error(`Reference undeclared private hoist is outside importer lock closure: ${importing.name} -> ${name}`)
+      physicalHoists.push({ path: hoistedManifest, manifest })
+      return { edgeKind: "undeclared-hoisted", expectedVersion: installed.version, lockPath, hoistedManifest, manifest, installationMetadata: join(root, "node_modules/.modules.yaml") }
+    }
     const builtins = new Set([...builtinModules, ...builtinModules.map(name => `node:${name}`)])
     const result = await Bun.build({
       entrypoints: [entrypoint], outdir: out, naming: "worker.mjs", target: "node", sourcemap: "external",
@@ -119,25 +158,29 @@ export async function buildReference(root: string, out: string, options: Referen
           const name = nameOf(args.path)
           const local = bare ? workspace.get(name) : undefined
           let resolved: string
+          let edgeEvidence: Obj = {}
           if (local) {
             const subpath = args.path === name ? "." : "." + args.path.slice(name.length)
             const target = local.pkg.exports?.[subpath]
             const value = typeof target === "string" ? target : target?.import
             if (!value?.startsWith("./")) throw new Error(`Unsupported reference workspace export ${args.path}`)
-            const importing = JSON.parse(load(ownerManifest(args.importer))) as Package
+            const importing = JSON.parse(load(ownerManifest(args.importer, load))) as Package
             if (!importing.dependencies?.[name]) throw new Error(`Undeclared reference workspace import ${args.path}`)
             resolved = realpathSync(resolve(local.directory, value))
           } else {
             resolved = realpathSync(Bun.resolveSync(args.path, dirname(args.importer || entrypoint)))
             if (bare) {
-              const manifest = ownerManifest(resolved)
+              const manifest = ownerManifest(resolved, load)
               const installed = JSON.parse(load(manifest)) as Package
-              const importingManifest = ownerManifest(args.importer)
+              const importingManifest = ownerManifest(args.importer, load)
               const importing = JSON.parse(load(importingManifest)) as Package
-              if (!importing.dependencies?.[name] && !importing.peerDependencies?.[name] && !importing.optionalDependencies?.[name]) throw new Error(`Undeclared reference dependency import ${name} in ${args.importer}`)
+              const self = importing.name === name && manifest === importingManifest
+              const declared = !!(importing.dependencies?.[name] || importing.peerDependencies?.[name] || importing.optionalDependencies?.[name])
               if (installed.name !== name || !installed.version || !lock.packages[`${name}@${installed.version}`]) throw new Error(`Resolved reference dependency is absent from lock: ${name}`)
               const sourceImporter = relative(root, dirname(importingManifest)).replaceAll("\\", "/")
-              let expected = lock.importers[sourceImporter]?.dependencies?.[name]?.version
+              if (!self && !declared) edgeEvidence = provePrivateHoist(name, installed, manifest, importing, importingManifest)
+              else edgeEvidence = { edgeKind: self ? "self-export" : "declared" }
+              let expected = self || !declared ? installed.version : lock.importers[sourceImporter]?.dependencies?.[name]?.version
               if (!expected) {
                 const candidates = Object.entries(lock.snapshots ?? {}).filter(([key]) => key === `${importing.name}@${importing.version}` || key.startsWith(`${importing.name}@${importing.version}(`))
                 const versions = new Set(candidates.flatMap(([, snapshot]) => { const version = snapshot.dependencies?.[name] ?? snapshot.optionalDependencies?.[name]; return version ? [plainVersion(version)] : [] }))
@@ -148,7 +191,7 @@ export async function buildReference(root: string, out: string, options: Referen
             }
           }
           load(resolved)
-          resolutions.push({ specifier: args.path, importer: args.importer, resolved })
+          resolutions.push({ specifier: args.path, importer: args.importer, resolved, ...edgeEvidence })
           return { path: resolved }
         })
         builder.onLoad({ filter: /\.[cm]?[jt]sx?$/ }, args => {
@@ -162,24 +205,35 @@ export async function buildReference(root: string, out: string, options: Referen
     })
     if (!result.success) throw new Error(`Reference build failed: ${result.logs.map(String).join("\n")}`)
     for (const identity of inputs.values()) if (sha(readFileSync(identity.path)) !== identity.sha256) throw new Error(`Reference input changed after build: ${identity.path}`)
+    for (const hoist of physicalHoists) if (realpathSync(hoist.path) !== hoist.manifest) throw new Error(`Reference private hoist changed during build: ${hoist.path}`)
     receipt(true)
     return { bundle: join(out, "worker.mjs"), migrationRoot, inputs: [...inputs.values()], resolutionNotes }
   } catch (error) { receipt(false, error); throw error }
 }
 
-export async function seedReference(db: ReferenceDatabase, opts: { baseUrl: string; apiKey: string; fixtureSecret: string; dump: boolean; model: string }): Promise<void> {
+export async function seedReference(db: ReferenceDatabase, opts: { referenceRoot: string; baseUrl: string; apiKey: string; fixtureSecret: string; dump: boolean; model: string }): Promise<{ hostInputs: ReferenceInput[] }> {
   const base = new URL(opts.baseUrl)
   if (base.protocol !== "http:" || !["127.0.0.1", "localhost", "[::1]"].includes(base.hostname) || base.username || base.password || base.search || base.hash || !["/", "/v1", "/v1/"].includes(base.pathname)) throw new Error("Reference fixture must be a local HTTP origin or /v1 URL without credentials")
   if (![opts.apiKey, opts.fixtureSecret, opts.model].every(value => typeof value === "string" && value.trim().length > 0) || typeof opts.dump !== "boolean") throw new Error("Invalid reference fixture identity")
   const now = "2026-10-07T00:00:00.000Z"
   const endpoints = { openaiChatCompletions: {} }
-  const config = JSON.stringify({ baseUrl: base.origin + "/v1", authStyle: "bearer", apiKey: opts.fixtureSecret, ingressHeadersRules: [], modelsFetch: { enabled: false }, endpoints, models: [{ kind: "chat", upstreamModelId: opts.model, publicModelId: opts.model, endpoints }] })
+  const config = JSON.stringify({ baseUrl: base.origin, authStyle: "bearer", apiKey: opts.fixtureSecret, ingressHeadersRules: [], modelsFetch: { enabled: false }, endpoints, models: [{ kind: "chat", upstreamModelId: opts.model, publicModelId: opts.model, endpoints }] })
   await db.prepare("INSERT INTO users(username,is_admin,created_at) VALUES(?,?,?)").bind("reference-fixture", 0, now).run()
   const users = (await db.prepare("SELECT id FROM users WHERE username = 'reference-fixture'").all<{ id: number }>()).results
   const user = users[0]
   if (users.length !== 1 || !user || !Number.isSafeInteger(user.id) || user.id <= 0) throw new Error("Reference fixture user identity was not persisted uniquely")
-  await db.prepare("INSERT INTO api_keys(id,user_id,name,key,server_secret,created_at,dump_retention_seconds,responses_retention_seconds) VALUES(?,?,?,?,?,?,?,?)").bind("reference-key", user.id, "Fixture", opts.apiKey, sha(`reference-measurement-only:${opts.apiKey}`), now, opts.dump ? 0 : null, 0).run()
-  await db.prepare("INSERT INTO upstreams(id,provider,name,config_json,proxy_fallback_list_json,hue,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)").bind("custom:reference-fixture", "custom", "Fixture Chat", config, '[{"id":"direct_fetch"}]', 93, now, now).run()
+  await db.prepare("INSERT INTO api_keys(id,user_id,name,key,server_secret,created_at,dump_retention_seconds,responses_retention_seconds) VALUES(?,?,?,?,?,?,?,?)").bind("reference-key", user.id, "Fixture", opts.apiKey, sha(`reference-measurement-only:${opts.apiKey}`), now, opts.dump ? 3600 : null, 0).run()
+  const root = realpathSync(opts.referenceRoot)
+  const paths = ["packages/provider-custom/src/provider.ts", "packages/gateway/src/repo/upstream-codecs.ts", "packages/gateway/src/repo/models-cache-contract.ts"].map(path => realpathSync(join(root, path)))
+  if (paths.some(path => !path.startsWith(root + "/"))) throw new Error("Reference seed helper escaped supplied root")
+  const hostInputs = paths.map(path => ({ path, sha256: sha(readFileSync(path)) }))
+  const [{ projectCustomModels }, { encodeUpstreamModelsCache }, { MODEL_CATALOG_REVISION }] = await Promise.all(paths.map(path => import(path)))
+  const upstream = { id: "custom:reference-fixture", kind: "custom", name: "Fixture Chat", enabled: true, sortOrder: 0, createdAt: now, updatedAt: now, config: JSON.parse(config), state: null, modelsCache: null, flagOverrides: {}, disabledPublicModelIds: [], proxyFallbackList: [{ id: "direct_fetch" }], modelPrefix: null, hue: 93 }
+  const models = projectCustomModels(upstream)
+  const cache = encodeUpstreamModelsCache({ revision: MODEL_CATALOG_REVISION, fetchedAt: Date.now(), models, lastError: null })
+  await db.prepare("INSERT INTO upstreams(id,provider,name,enabled,sort_order,config_version,config_json,state_json,proxy_fallback_list_json,flag_overrides,disabled_public_model_ids,model_prefix_json,models_cache_json,hue,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)").bind(upstream.id, "custom", upstream.name, 1, 0, 1, config, null, '[{"id":"direct_fetch"}]', "{}", "[]", null, cache, 93, now, now).run()
+  for (const input of hostInputs) if (sha(readFileSync(input.path)) !== input.sha256) throw new Error(`Reference seed helper changed: ${input.path}`)
+  return { hostInputs }
 }
 
 type Descriptor = { key: string; type: "bytes" | "events" | "capture" }
