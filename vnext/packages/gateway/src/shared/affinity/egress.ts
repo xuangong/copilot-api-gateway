@@ -8,6 +8,8 @@ import type { ProtocolFrame } from "@vibe-core/result"
 import { stampAffinityItem } from "./analysis.ts"
 import type { AffinityExecutionState } from "./context.ts"
 import type { AffinityProtocol } from "./analysis.ts"
+import { OriginEgress } from "./origin-egress.ts"
+import { GeminiOriginEgress, hasGeminiAffinitySlot } from "./gemini-origin-egress.ts"
 
 function responseOpaqueKeys(item: Record<string, unknown>): string[] {
   if (["program", "program_output"].includes(String(item.type))) return ["encrypted_content", "fingerprint"]
@@ -134,7 +136,8 @@ export class AffinityEgress {
   private readonly closedIds = new Map<string, number>()
   private readonly finalized = new Map<string, Record<string, unknown>>()
   private readonly items = new Map<string, Promise<Record<string, unknown>>>()
-  constructor(private readonly affinity: AffinityExecutionState | undefined) {}
+  private readonly origin: OriginEgress
+  constructor(private readonly affinity: AffinityExecutionState | undefined) { this.origin = new OriginEgress(affinity) }
   private async item(protocol: AffinityProtocol, value: Record<string, unknown>): Promise<Record<string, unknown>> {
     const state = this.affinity
     if (!state?.actual) return Promise.resolve(value)
@@ -144,7 +147,8 @@ export class AffinityEgress {
       : protocol === "gemini" ? typeof value.thoughtSignature === "string"
       : protocol === "responses" ? hasOpaque(value)
       : value.type === "thinking" ? typeof value.signature === "string" : value.type === "redacted_thinking" && typeof value.data === "string"
-    if (!signable) return value
+    if (!signable) return protocol === "chat_completions" && value.role === "assistant" && value.reasoning_opaque === undefined
+      ? this.origin.item(protocol, value) : value
     const codec = state.codec ?? await state.loadCodec?.()
     if (!codec) return value
     const key = JSON.stringify([protocol, value])
@@ -157,13 +161,12 @@ export class AffinityEgress {
   async body<T>(protocol: AffinityProtocol, body: T): Promise<T> {
     if (!object(body) || !this.affinity?.actual) return body
     if (protocol === "chat_completions" && Array.isArray(body.choices)) return { ...body, choices: await Promise.all(body.choices.map(async choice => object(choice) && object(choice.message) ? { ...choice, message: await this.item(protocol, choice.message) } : choice)) } as T
-    if (protocol === "gemini" && Array.isArray(body.candidates)) return { ...body, candidates: await Promise.all(body.candidates.map(async candidate => object(candidate) && object(candidate.content) && Array.isArray(candidate.content.parts)
-      ? { ...candidate, content: { ...candidate.content, parts: await Promise.all(candidate.content.parts.map(part => object(part) ? this.item(protocol, part) : part)) } } : candidate)) } as T
+    if (protocol === "gemini") return hasGeminiAffinitySlot(body) ? await (await this.geminiWriter())?.body(body) ?? body : body
     const key = protocol === "responses" ? "output" : "content"
     const values = body[key]
     if (!Array.isArray(values)) return body
     const closed = [...this.closed].sort(([left], [right]) => left - right).map(([, value]) => value)
-    return { ...body, [key]: await Promise.all(values.map((item, index) => {
+    const stamped = { ...body, [key]: await Promise.all(values.map((item, index) => {
       if (!object(item)) return item
       if (protocol === "responses") {
         const exact = this.finalized.get(itemKey(item, index))
@@ -176,6 +179,7 @@ export class AffinityEgress {
       }
       return this.item(protocol, item)
     })) } as T
+    return protocol === "messages" ? this.origin.messagesBody(stamped) : stamped
   }
   async *chat<T>(frames: AsyncIterable<ProtocolFrame<T>>): AsyncGenerator<ProtocolFrame<T>> {
     if (!this.affinity?.actual) { yield* frames; return }
@@ -204,6 +208,9 @@ export class AffinityEgress {
           if (state.hasSignature) {
             const item = await this.item("chat_completions", { reasoning_text: state.thinking, reasoning_opaque: state.signature })
             visible.reasoning_opaque = item.reasoning_opaque
+          } else {
+            const item = await this.origin.item("chat_completions", { role: "assistant" })
+            if (typeof item.reasoning_opaque === "string") visible.reasoning_opaque = item.reasoning_opaque
           }
           states.delete(index)
           finished.add(index)
@@ -216,7 +223,37 @@ export class AffinityEgress {
     if (pending()) throw new InvalidAffinityStateError()
   }
   async *gemini(frames: AsyncIterable<unknown>): AsyncGenerator<unknown> {
-    for await (const frame of frames) yield await this.body("gemini", frame)
+    if (!this.affinity?.actual) { yield* frames; return }
+    const iterator = frames[Symbol.asyncIterator]()
+    let completed = false
+    async function* remaining(first: unknown): AsyncGenerator<unknown> {
+      yield first
+      while (true) {
+        const next = await iterator.next()
+        if (next.done) { completed = true; return }
+        yield next.value
+      }
+    }
+    try {
+      while (true) {
+        const next = await iterator.next()
+        if (next.done) { completed = true; return }
+        if (!hasGeminiAffinitySlot(next.value)) { yield next.value; continue }
+        const writer = await this.geminiWriter()
+        const source = remaining(next.value)
+        yield* writer ? writer.stream(source) : source
+        return
+      }
+    } finally { if (!completed) await iterator.return?.() }
+  }
+  private async geminiWriter(): Promise<GeminiOriginEgress | undefined> {
+    const state = this.affinity
+    if (!state?.actual) return undefined
+    const codec = state.codec ?? await state.loadCodec?.()
+    if (!codec) return undefined
+    const origin = new OriginEgress({ ...state, codec })
+    const target = state.actual
+    return new GeminiOriginEgress(part => stampAffinityItem("gemini", part, target, codec), part => origin.item("gemini", part))
   }
   async responseEvent<T>(event: T): Promise<T> {
     if (!object(event) || !this.affinity?.actual) return event
@@ -242,6 +279,12 @@ export class AffinityEgress {
     return stripOpaque(event) as T
   }
   async *messages<T>(frames: AsyncIterable<ProtocolFrame<T>>): AsyncGenerator<ProtocolFrame<T>> {
+    for await (const frame of this.naturalMessages(frames)) {
+      if (frame.type !== "event") { yield frame; continue }
+      for (const event of await this.origin.messagesEvent(frame.event)) yield { ...frame, event }
+    }
+  }
+  private async *naturalMessages<T>(frames: AsyncIterable<ProtocolFrame<T>>): AsyncGenerator<ProtocolFrame<T>> {
     if (!this.affinity?.actual) { yield* frames; return }
     const blocks = new Map<number, { thinking: string; thinkingBudget: JsonStringBudget; signature: string }>()
     for await (const frame of frames) {

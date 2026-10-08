@@ -211,7 +211,7 @@ async function drain(res: Response): Promise<void> {
 
 test('successful streaming request → one usage row + one performance row (isError=false)', async () => {
   const { repo, captured } = stubRepo([customResponsesUpstream()])
-  initRepo(repo)
+  initRepo(repo, { apiKeys: [{ id: "k_test", ownerId: "u1" }] })
   initResponsesStore(new InMemoryResponsesSnapshotStore())
   const bg = installTrackingBackground()
   initRuntimeLocation('bun')
@@ -235,7 +235,7 @@ test('successful streaming request → one usage row + one performance row (isEr
 
 test('mapped request persists the current source model after continuation expansion', async () => {
   const { repo, captured } = stubRepo([customResponsesUpstream()])
-  initRepo(repo)
+  initRepo(repo, { apiKeys: [{ id: "k_test", ownerId: "u1" }] })
   initResponsesStore(new InMemoryResponsesSnapshotStore())
   const bg = installTrackingBackground()
   initRuntimeLocation('bun')
@@ -264,7 +264,7 @@ test('mapped request persists the current source model after continuation expans
 
 test('upstream-error (401) → zero usage rows, one performance row with isError=true', async () => {
   const { repo, captured } = stubRepo([customResponsesUpstream()])
-  initRepo(repo)
+  initRepo(repo, { apiKeys: [{ id: "k_test", ownerId: "u1" }] })
   initResponsesStore(new InMemoryResponsesSnapshotStore())
   const bg = installTrackingBackground()
   initRuntimeLocation('bun')
@@ -286,7 +286,7 @@ test('upstream-error (401) → zero usage rows, one performance row with isError
 
 test('internal-error post-binding (parse failure) → zero usage rows, one performance row isError=true', async () => {
   const { repo, captured } = stubRepo([customResponsesUpstream()])
-  initRepo(repo)
+  initRepo(repo, { apiKeys: [{ id: "k_test", ownerId: "u1" }] })
   initResponsesStore(new InMemoryResponsesSnapshotStore())
   const bg = installTrackingBackground()
   initRuntimeLocation('bun')
@@ -311,7 +311,7 @@ test('internal-error post-binding (parse failure) → zero usage rows, one perfo
 
 test('internal-error pre-binding (model not found) → zero usage rows, zero performance rows', async () => {
   const { repo, captured } = stubRepo([customResponsesUpstream()])
-  initRepo(repo)
+  initRepo(repo, { apiKeys: [{ id: "k_test", ownerId: "u1" }] })
   initResponsesStore(new InMemoryResponsesSnapshotStore())
   const bg = installTrackingBackground()
   initRuntimeLocation('bun')
@@ -332,7 +332,7 @@ test('internal-error pre-binding (model not found) → zero usage rows, zero per
 
 test('modelKey correction: upstream returns "gpt-5-corrected" → usage row carries corrected key', async () => {
   const { repo, captured } = stubRepo([customResponsesUpstream()])
-  initRepo(repo)
+  initRepo(repo, { apiKeys: [{ id: "k_test", ownerId: "u1" }] })
   initResponsesStore(new InMemoryResponsesSnapshotStore())
   const bg = installTrackingBackground()
   initRuntimeLocation('bun')

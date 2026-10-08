@@ -159,7 +159,7 @@ async function drain(res: Response): Promise<void> {
 
 test('successful streaming request → one usage row + one performance row (isError=false)', async () => {
   const { repo, captured } = stubRepo([customUpstream()])
-  initRepo(repo)
+  initRepo(repo, { apiKeys: [{ id: "k_test", ownerId: "u1" }] })
   const bg = installTrackingBackground()
   initRuntimeLocation('bun')
   installFetch({})
@@ -182,7 +182,7 @@ test('successful streaming request → one usage row + one performance row (isEr
 
 test('mapped request persists the source model as incoming identity and target as public model', async () => {
   const { repo, captured } = stubRepo([customUpstream()])
-  initRepo(repo)
+  initRepo(repo, { apiKeys: [{ id: "k_test", ownerId: "u1" }] })
   const bg = installTrackingBackground()
   initRuntimeLocation('bun')
   installFetch({})
@@ -210,7 +210,7 @@ test('mapped request persists the source model as incoming identity and target a
 
 test('upstream-error (401) → zero usage rows, one performance row with isError=true', async () => {
   const { repo, captured } = stubRepo([customUpstream()])
-  initRepo(repo)
+  initRepo(repo, { apiKeys: [{ id: "k_test", ownerId: "u1" }] })
   const bg = installTrackingBackground()
   initRuntimeLocation('bun')
   installFetch({ status: 401 })
@@ -231,7 +231,7 @@ test('upstream-error (401) → zero usage rows, one performance row with isError
 
 test('internal-error post-binding (parse failure) → zero usage rows, one performance row isError=true', async () => {
   const { repo, captured } = stubRepo([customUpstream()])
-  initRepo(repo)
+  initRepo(repo, { apiKeys: [{ id: "k_test", ownerId: "u1" }] })
   const bg = installTrackingBackground()
   initRuntimeLocation('bun')
   // For non-streaming, `readUpstreamJsonAsFrames` calls JSON.parse on the
@@ -255,7 +255,7 @@ test('internal-error post-binding (parse failure) → zero usage rows, one perfo
 
 test('internal-error pre-binding (model not found) → zero usage rows, zero performance rows', async () => {
   const { repo, captured } = stubRepo([customUpstream()])
-  initRepo(repo)
+  initRepo(repo, { apiKeys: [{ id: "k_test", ownerId: "u1" }] })
   const bg = installTrackingBackground()
   initRuntimeLocation('bun')
   installFetch({})
@@ -275,7 +275,7 @@ test('internal-error pre-binding (model not found) → zero usage rows, zero per
 
 test('modelKey correction: upstream returns "gpt-4-turbo-2025" → usage row carries corrected key', async () => {
   const { repo, captured } = stubRepo([customUpstream()])
-  initRepo(repo)
+  initRepo(repo, { apiKeys: [{ id: "k_test", ownerId: "u1" }] })
   const bg = installTrackingBackground()
   initRuntimeLocation('bun')
   installFetch({ modelInChunk: 'gpt-4-turbo-2025' })

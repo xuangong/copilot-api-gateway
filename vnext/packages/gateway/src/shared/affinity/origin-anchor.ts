@@ -32,5 +32,6 @@ export async function stampAffinityOrigin(protocol: AffinityProtocol, item: Read
   const slot = affinityOriginSlot(protocol, item)
   // A natural empty string is still native state and must not be overwritten.
   if (item[slot.key] !== undefined) throw new InvalidAffinityStateError()
-  return { ...structuredClone(item), [slot.key]: await codec.encodeOrigin(target, slot.field, { syntheticItem: slot.syntheticItem }) }
+  // Only the metadata slot changes; copying a complete visible/tool payload is unnecessary.
+  return { ...item, [slot.key]: await codec.encodeOrigin(target, slot.field, { syntheticItem: slot.syntheticItem }) }
 }

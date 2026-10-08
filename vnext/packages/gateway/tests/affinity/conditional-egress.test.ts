@@ -7,7 +7,7 @@ import { AffinityEgress } from "../../src/shared/affinity/egress.ts"
 type JsonObject = Record<string, unknown>
 const target = { provider: "custom", upstreamId: "up", upstreamIncarnation: "inc", credentialSubject: "subject", credentialRevision: "rev", model: "executed" }
 function withoutCodec(protocol: AffinityProtocol): AffinityExecutionState {
-  return { protocol, actual: target, loadCodec: async () => { throw new Error("Output without opaque state must not load the affinity codec") } }
+  return { protocol, actual: target, loadCodec: async () => undefined }
 }
 async function* values<T>(items: readonly T[]): AsyncGenerator<T> { yield* items }
 
@@ -25,7 +25,7 @@ const emptyBodies: Readonly<Record<AffinityProtocol, JsonObject>> = {
 }
 
 for (const protocol of ["responses", "messages", "chat_completions", "gemini"] as const) {
-  test(`${protocol} JSON without opaque state neither loads a codec nor inserts a carrier`, async () => {
+  test(`${protocol} JSON without a stable key keeps plain and empty output unchanged`, async () => {
     const egress = new AffinityEgress(withoutCodec(protocol))
     for (const body of [plainBodies[protocol], emptyBodies[protocol]]) {
       const expected = structuredClone(body)
@@ -35,7 +35,7 @@ for (const protocol of ["responses", "messages", "chat_completions", "gemini"] a
   })
 }
 
-test("Responses plain and empty terminal streams keep their items without loading a codec", async () => {
+test("Responses natural egress keeps plain and empty terminal items unchanged", async () => {
   for (const body of [plainBodies.responses, emptyBodies.responses]) {
     const events = [{ type: "response.created", response: { output: [] } }, { type: "response.completed", response: body }]
     const expected = structuredClone(events)
@@ -46,7 +46,7 @@ test("Responses plain and empty terminal streams keep their items without loadin
   }
 })
 
-test("Messages plain, unsigned thinking and empty streams do not add synthetic blocks or signatures", async () => {
+test("Messages without a stable key keeps plain, unsigned thinking and empty streams unchanged", async () => {
   for (const content of [[], [{ type: "text", text: "answer" }], [{ type: "thinking", thinking: "thought" }]]) {
     const frames = [eventFrame<JsonObject>({ type: "message_start", message: { content: [] } }),
       ...content.flatMap((content_block, index) => [eventFrame<JsonObject>({ type: "content_block_start", index, content_block }), eventFrame<JsonObject>({ type: "content_block_stop", index })]),
@@ -56,7 +56,7 @@ test("Messages plain, unsigned thinking and empty streams do not add synthetic b
   }
 })
 
-test("Chat plain and empty streams do not load a codec or add reasoning carriers", async () => {
+test("Chat without a stable key keeps plain and empty streams unchanged", async () => {
   for (const content of ["answer", ""]) {
     const frames = [eventFrame({ choices: [{ index: 0, delta: { content }, finish_reason: "stop" }] }), doneFrame()]
     const expected = structuredClone(frames)
@@ -64,7 +64,7 @@ test("Chat plain and empty streams do not load a codec or add reasoning carriers
   }
 })
 
-test("Gemini plain and empty streams do not load a codec or add signed Parts", async () => {
+test("Gemini without a stable key keeps plain and empty streams unchanged", async () => {
   const events = [plainBodies.gemini, emptyBodies.gemini]
   const expected = structuredClone(events)
   expect(await Array.fromAsync(new AffinityEgress(withoutCodec("gemini")).gemini(values(events)))).toEqual(expected)

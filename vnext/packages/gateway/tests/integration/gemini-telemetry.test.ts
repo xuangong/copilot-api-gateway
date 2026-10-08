@@ -199,7 +199,7 @@ async function drain(res: Response): Promise<void> {
 
 test('gemini: successful streaming request → one usage row + one performance row (isError=false)', async () => {
   const { repo, captured } = stubRepo([customUpstream()])
-  initRepo(repo)
+  initRepo(repo, { apiKeys: [{ id: "k_test", ownerId: "u1" }] })
   const bg = installTrackingBackground()
   initRuntimeLocation('bun')
   installFetch({})
@@ -227,7 +227,7 @@ test('gemini: successful streaming request → one usage row + one performance r
 
 test('gemini: pinned mapped request persists canonical source identity and target public model', async () => {
   const { repo, captured } = stubRepo([customUpstream()])
-  initRepo(repo)
+  initRepo(repo, { apiKeys: [{ id: "k_test", ownerId: "u1" }] })
   const bg = installTrackingBackground()
   initRuntimeLocation('bun')
   installFetch({})
@@ -255,7 +255,7 @@ test('gemini: pinned mapped request persists canonical source identity and targe
 
 test('gemini: upstream-error (401) → zero usage rows, one performance row with isError=true', async () => {
   const { repo, captured } = stubRepo([customUpstream()])
-  initRepo(repo)
+  initRepo(repo, { apiKeys: [{ id: "k_test", ownerId: "u1" }] })
   const bg = installTrackingBackground()
   initRuntimeLocation('bun')
   installFetch({ status: 401 })
@@ -274,7 +274,7 @@ test('gemini: upstream-error (401) → zero usage rows, one performance row with
 
 test('gemini: internal-error post-binding (parse failure) → zero usage rows, one performance row isError=true', async () => {
   const { repo, captured } = stubRepo([customUpstream()])
-  initRepo(repo)
+  initRepo(repo, { apiKeys: [{ id: "k_test", ownerId: "u1" }] })
   const bg = installTrackingBackground()
   initRuntimeLocation('bun')
   // For non-streaming the gemini attempt synthesises hub frames from the
@@ -297,7 +297,7 @@ test('gemini: internal-error post-binding (parse failure) → zero usage rows, o
 
 test('gemini: internal-error pre-binding (model not found) → zero usage rows, zero performance rows', async () => {
   const { repo, captured } = stubRepo([customUpstream()])
-  initRepo(repo)
+  initRepo(repo, { apiKeys: [{ id: "k_test", ownerId: "u1" }] })
   const bg = installTrackingBackground()
   initRuntimeLocation('bun')
   installFetch({})
@@ -315,7 +315,7 @@ test('gemini: internal-error pre-binding (model not found) → zero usage rows, 
 
 test('gemini: public model is retained while the upstream model becomes the provider key', async () => {
   const { repo, captured } = stubRepo([customUpstream()])
-  initRepo(repo)
+  initRepo(repo, { apiKeys: [{ id: "k_test", ownerId: "u1" }] })
   const bg = installTrackingBackground()
   initRuntimeLocation('bun')
   // The Messages hub reports its provider-specific model in message_start.

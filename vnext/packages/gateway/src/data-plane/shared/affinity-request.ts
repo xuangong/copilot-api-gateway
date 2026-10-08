@@ -25,7 +25,8 @@ export async function createRequestAffinity(protocol: AffinityProtocol, source: 
     return new AffinityCodec({ ...secret, apiKeyId: key.id, ownerId: key.ownerId })
   })()
   // Analysis owns the only canonical snapshot; each mutable consumer gets a copy.
-  // Ordinary requests need neither key material nor candidate preparation.
+  // Ordinary ingress needs neither key material nor candidate preparation;
+  // per-turn issuance loads key material lazily at egress.
   // An owned marker still authenticates eagerly, before any provider I/O.
   const codec = containsAffinityMarker(protocol, source) ? await loadCodec() : undefined
   return { analysis: await analyzeAffinityRequest(protocol, source, codec), execution: { protocol, codec, loadCodec, plaintextCompactions: new Set() } }

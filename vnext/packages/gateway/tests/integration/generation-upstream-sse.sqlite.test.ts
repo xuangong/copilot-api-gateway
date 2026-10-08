@@ -238,7 +238,12 @@ function expectFinal(source: Protocol, body: JsonObject): void {
     expect(output.find(item => item.type === "function_call")).toMatchObject({ call_id: "call_fixture", name: "weather", arguments: toolArguments })
     expect(body.usage).toMatchObject({ input_tokens: 31, output_tokens: 7, total_tokens: 38 })
   } else {
-    expect(body).toMatchObject({ type: "message", role: "assistant", stop_reason: "tool_use", content: [{ type: "text", text }, { type: "tool_use", id: "call_fixture", name: "weather", input: { city: "Oslo" } }], usage: { input_tokens: 31, output_tokens: 7 } })
+    expect(body).toMatchObject({ type: "message", role: "assistant", stop_reason: "tool_use", usage: { input_tokens: 31, output_tokens: 7 } })
+    const content = items(body.content)
+    const [origin, ...visible] = content
+    expect(origin).toMatchObject({ type: "redacted_thinking", data: expect.stringContaining("vnext-affinity:2:") })
+    expect(Object.keys(origin ?? {}).sort()).toEqual(["data", "type"])
+    expect(visible).toEqual([{ type: "text", text }, { type: "tool_use", id: "call_fixture", name: "weather", input: { city: "Oslo" } }])
   }
 }
 

@@ -310,7 +310,7 @@ test("Bun-style backpressured acceptance enqueues once and resumes only on drain
   expect(sent).toHaveLength(1)
   c.session.drain()
   await until(() => sent.some(e => e.type === "response.completed"))
-  expect(sent.map(e => e.type)).toEqual(["response.created", "response.in_progress", "response.completed"])
+  expect(sent.map(e => e.type)).toEqual(["response.created", "response.output_item.added", "response.output_item.done", "response.in_progress", "response.completed"])
   expect(f.calls).toHaveLength(1)
 })
 
@@ -400,21 +400,21 @@ for (const unobservable of [false, true]) {
       let total = 0
       const observed: Record<string, unknown>[] = []
       const c = await f.connect({ pressure: unobservable ? { kind: "unobservable" } : { kind: "observable", bufferedBytes: () => 0 }, sendText(text) { total += utf8Bytes(text); observed.push(JSON.parse(text)); return "accepted" } })
+      const count = 17
+      const base = { type: "response.in_progress", sequence_number: 1, response: { id: "r", model: "model", status: "in_progress" }, padding: "" }
+      f.extraEvents(Array.from({ length: count }, () => base))
       c.session.receiveText(create())
       await until(() => observed.some(e => e.type === "response.completed") && c.session.state === "idle")
       const priorTotal = total
-      // Response IDs resp_1 and resp_2 have equal size. Explicit padding-frame
-      // sequences preserve the measured created/completed canonical sizes.
-      const fixed = observed.filter(e => e.type !== "response.in_progress").reduce((sum, event) => sum + utf8Bytes(JSON.stringify(event)), 0)
+      // Rehearse the same frame count to measure all origin envelopes and
+      // canonical sequence digits. resp_1/resp_2 and issued tokens have equal size.
+      const fixed = priorTotal
       const target = (unobservable ? RESPONSES_WS_UNOBSERVABLE_LIFETIME_BYTES - priorTotal : RESPONSES_WS_MAX_TURN_EVENT_BYTES) + delta
-      const count = 17
-      const base = { type: "response.in_progress", sequence_number: 1, response: { id: "r", model: "model", status: "in_progress" }, padding: "" }
-      const overhead = utf8Bytes(JSON.stringify(base))
       let remainder = target - fixed
       const extra = Array.from({ length: count }, (_, index) => {
         const bytes = Math.floor(remainder / (count - index))
         remainder -= bytes
-        return { ...base, padding: "x".repeat(bytes - overhead) }
+        return { ...base, padding: "x".repeat(bytes) }
       })
       f.extraEvents(extra)
       c.session.receiveText(create())

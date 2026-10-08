@@ -55,8 +55,10 @@ test("deferred server-tool turns share actual identity and plaintext compactions
     const turn = createResponsesTurn(result, { wantsStream: false, affinity: affinity.execution })
     const body = await (await renderResponsesTurn(turn)).json() as { output: Array<{ encrypted_content: string }> }
     expect(calls).toBe(2)
-    expect(body.output[0]?.encrypted_content).toStartWith("vnext-affinity:1:")
-    expect(body.output[1]?.encrypted_content).toBe("summary")
+    expect(body.output).toHaveLength(3)
+    expect(body.output[0]?.encrypted_content).toStartWith("vnext-affinity:2:")
+    expect(body.output[1]?.encrypted_content).toStartWith("vnext-affinity:1:")
+    expect(body.output[2]?.encrypted_content).toBe("summary")
     expect((await turn.completion).outcome).toBe("completed")
   } finally { db.close() }
 })

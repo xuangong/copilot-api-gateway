@@ -98,7 +98,7 @@ async function waitForSave(store: InMemoryResponsesSnapshotStore, id: string, ap
 }
 
 test('round-trip: responses→responses identity preserves id across turns', async () => {
-  initRepo(stubRepo([stubUpstream()]))
+  initRepo(stubRepo([stubUpstream()]), { apiKeys: [{ id: "k1", ownerId: "u1" }] })
   const store = new InMemoryResponsesSnapshotStore()
   initResponsesStore(store)
 
@@ -182,7 +182,7 @@ for (const stream of [false, true]) {
   for (const retention of [undefined, 0, 86400, 259200, 604800]) {
     for (const requestedStore of [undefined, false, true]) {
       test(`snapshot policy: stream=${stream}, retention=${retention}, store=${requestedStore}`, async () => {
-        initRepo(stubRepo([stubUpstream()]))
+        initRepo(stubRepo([stubUpstream()]), { apiKeys: [{ id: "k1", ownerId: "u1" }] })
         const store = new InMemoryResponsesSnapshotStore()
         initResponsesStore(store)
         const pending: Promise<unknown>[] = []
@@ -234,7 +234,7 @@ for (const stream of [false, true]) {
 
 for (const retention of [0, 86400]) {
   test(`store:false continuation reads prior state only when key retention=${retention}`, async () => {
-    initRepo(stubRepo([stubUpstream()]))
+    initRepo(stubRepo([stubUpstream()]), { apiKeys: [{ id: "k1", ownerId: "u1" }] })
     const store = new InMemoryResponsesSnapshotStore()
     initResponsesStore(store)
     const expiresAt = Date.now() + 60_000
@@ -274,7 +274,7 @@ for (const retention of [0, 86400]) {
 
 for (const requestedStore of [undefined, true]) {
   test(`continuation renews previous snapshot when store=${requestedStore}`, async () => {
-    initRepo(stubRepo([stubUpstream()]))
+    initRepo(stubRepo([stubUpstream()]), { apiKeys: [{ id: "k1", ownerId: "u1" }] })
     const store = new InMemoryResponsesSnapshotStore()
     initResponsesStore(store)
     const now = Date.now()

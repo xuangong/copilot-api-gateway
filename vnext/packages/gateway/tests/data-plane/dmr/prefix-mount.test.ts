@@ -82,7 +82,7 @@ beforeEach(() => {
   // Usage/perf persistence runs off the response path; swallow it here so a
   // stub repo without those tables doesn't fail the request under test.
   initBackground({ waitUntil: (p) => { void p.catch(() => {}) } })
-  initRepo(repo())
+  initRepo(repo(), { apiKeys: [{ id: "k1", ownerId: OWNER }] })
   globalThis.fetch = (async (input: RequestInfo | URL) => {
     const url = new URL(typeof input === 'string' ? input : input instanceof Request ? input.url : String(input))
     if (url.pathname.endsWith('/copilot_internal/v2/token')) {

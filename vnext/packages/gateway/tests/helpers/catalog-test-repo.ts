@@ -15,10 +15,27 @@ __registerPlatformReset(() => { for (const database of databases.splice(0)) data
  * Source fixture edits are mirrored before catalog operations; unchanged fixture
  * rows never overwrite credentials rotated by a provider in the SQL repository.
  */
-export function initCatalogTestRepo(source: Repo): void {
+export function initCatalogTestRepo(source: Repo, options: {
+  apiKeys?: ReadonlyArray<{ id: string; ownerId?: string }>
+} = {}): void {
   const database = new Database(":memory:")
   databases.push(database)
   const stored = new BunSqliteRepo(database)
+  // Only explicitly authenticated fixture keys receive real signing state.
+  // Keep other key operations (including telemetry spies) on the source repo.
+  const seededKeys = new Set(options.apiKeys?.map(key => key.id))
+  for (const key of options.apiKeys ?? []) {
+    database.run("INSERT INTO api_keys (id, name, key, owner_id, created_at) VALUES (?, ?, ?, ?, ?)",
+      [key.id, "fixture", `synthetic-key-${key.id}`, key.ownerId ?? null, "2026-01-01T00:00:00Z"])
+  }
+  const apiKeys = new Proxy(stored.apiKeys, { get(target, key) {
+    if (key === "getById") return async (...args: Parameters<typeof target.getById>) =>
+      seededKeys.has(args[0]) ? target.getById(...args) : source.apiKeys?.getById?.(...args) ?? null
+    if (key === "getOrCreateAffinitySecret") return async (...args: Parameters<typeof target.getOrCreateAffinitySecret>) =>
+      seededKeys.has(args[0]) ? target.getOrCreateAffinitySecret(...args) : source.apiKeys?.getOrCreateAffinitySecret?.(...args) ?? null
+    const original: unknown = source.apiKeys && Reflect.get(source.apiKeys, key)
+    return typeof original === "function" ? original.bind(source.apiKeys) : original
+  } })
   const observed = new Map<string, string>()
   let pending = Promise.resolve()
   const syncRow = (row: UpstreamRecord<unknown>) => {
@@ -77,6 +94,7 @@ export function initCatalogTestRepo(source: Repo): void {
   initRepo(new Proxy(source, { get(target, key) {
     if (key === "upstreams") return upstreams
     if (key === "catalogs") return catalogs
+    if (key === "apiKeys" && options.apiKeys) return apiKeys
     if (key === "proxies") return target.proxies ?? stored.proxies
     if (key === "proxyBackoffs") return target.proxyBackoffs ?? stored.proxyBackoffs
     return Reflect.get(target, key)

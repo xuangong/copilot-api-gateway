@@ -110,7 +110,7 @@ beforeEach(() => {
   recordedUsage.length = 0
   initRuntimeLocation('bun')
   initBackground({ waitUntil: (p) => { void p.catch(() => {}) } })
-  initRepo(repo())
+  initRepo(repo(), { apiKeys: [{ id: "k1", ownerId: OWNER }] })
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(typeof input === 'string' ? input : input instanceof Request ? input.url : String(input))
     if (url.pathname.endsWith('/copilot_internal/v2/token')) {

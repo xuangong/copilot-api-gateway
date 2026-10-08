@@ -66,7 +66,7 @@ const COPILOT_TOKEN = 'tkn'
 const MODEL_ID = 'gpt-5-mini'
 
 test('responses + previous_response_id expands snapshot and clears the field', async () => {
-  initRepo(stubRepo([stubUpstream()]))
+  initRepo(stubRepo([stubUpstream()]), { apiKeys: [{ id: "k1", ownerId: "u1" }] })
   const store = new InMemoryResponsesSnapshotStore()
   await store.save({
     responseId: 'resp_prev',
@@ -127,7 +127,7 @@ test('responses + previous_response_id expands snapshot and clears the field', a
 
 test('responses maps the model after expanding previous_response_id', async () => {
   const source = 'source-model'
-  initRepo(stubRepo([stubUpstream()]))
+  initRepo(stubRepo([stubUpstream()]), { apiKeys: [{ id: "k1", ownerId: "u1" }] })
   const store = new InMemoryResponsesSnapshotStore()
   await store.save({
     responseId: 'resp_prev', apiKeyId: 'k1', model: MODEL_ID,
@@ -166,7 +166,7 @@ test('responses maps the model after expanding previous_response_id', async () =
 
 test('responses continuation keeps current source model when routing is disabled', async () => {
   const source = 'gpt-5-mini-source'
-  initRepo(stubRepo([stubUpstream()]))
+  initRepo(stubRepo([stubUpstream()]), { apiKeys: [{ id: "k1", ownerId: "u1" }] })
   const store = new InMemoryResponsesSnapshotStore()
   await store.save({
     responseId: 'resp_prev', apiKeyId: 'k1', model: 'snapshot-model',
@@ -199,7 +199,7 @@ test('responses continuation keeps current source model when routing is disabled
 })
 
 test('responses + unknown previous_response_id returns 400 with verbatim envelope', async () => {
-  initRepo(stubRepo([stubUpstream()]))
+  initRepo(stubRepo([stubUpstream()]), { apiKeys: [{ id: "k1", ownerId: "u1" }] })
   const store = new InMemoryResponsesSnapshotStore()
   initResponsesStore(store)
   installFetch((req) => {
@@ -238,7 +238,7 @@ test('responses + non-array input is rejected by Zod before expand mutates paylo
   // silently coerce a non-array `input` to []. With expand moved into dispatch
   // (post-parse), Zod must reject malformed input first and the snapshot store
   // must never be touched.
-  initRepo(stubRepo([stubUpstream()]))
+  initRepo(stubRepo([stubUpstream()]), { apiKeys: [{ id: "k1", ownerId: "u1" }] })
   const store = new InMemoryResponsesSnapshotStore()
   // If expand were to fire we'd want it to fail loudly — wrap load() to throw.
   const guardedStore = new Proxy(store, {
@@ -270,7 +270,7 @@ test('responses + non-array input is rejected by Zod before expand mutates paylo
 })
 
 test('responses + previous_response_id owned by another api key returns 400', async () => {
-  initRepo(stubRepo([stubUpstream()]))
+  initRepo(stubRepo([stubUpstream()]), { apiKeys: [{ id: "k1", ownerId: "u1" }] })
   const store = new InMemoryResponsesSnapshotStore()
   await store.save({
     responseId: 'resp_owned',
@@ -309,7 +309,7 @@ test('responses + previous_response_id owned by another api key returns 400', as
 })
 
 test('responses non-stream saves snapshot using upstream response.id', async () => {
-  initRepo(stubRepo([stubUpstream()]))
+  initRepo(stubRepo([stubUpstream()]), { apiKeys: [{ id: "k1", ownerId: "u1" }] })
   const store = new InMemoryResponsesSnapshotStore()
   initResponsesStore(store)
   installFetch((req) => {
@@ -352,7 +352,7 @@ test('responses non-stream saves snapshot using upstream response.id', async () 
 })
 
 test('responses stream saves snapshot when response.completed fires', async () => {
-  initRepo(stubRepo([stubUpstream()]))
+  initRepo(stubRepo([stubUpstream()]), { apiKeys: [{ id: "k1", ownerId: "u1" }] })
   const store = new InMemoryResponsesSnapshotStore()
   initResponsesStore(store)
 
@@ -424,7 +424,7 @@ for (const stream of [false, true]) {
       const store = createBunResponsesStore(new BunSqliteDatabase(db))
       const gate = Promise.withResolvers<void>()
       let writes = 0
-      initRepo(stubRepo([stubUpstream()]))
+      initRepo(stubRepo([stubUpstream()]), { apiKeys: [{ id: "k1", ownerId: "u1" }] })
       initResponsesStore({
         load: (...args) => store.load(...args),
         save: async (snapshot) => { writes++; await gate.promise; await store.save(snapshot) },

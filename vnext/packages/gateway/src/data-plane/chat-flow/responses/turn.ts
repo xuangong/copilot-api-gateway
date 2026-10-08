@@ -1,5 +1,6 @@
 import { disposeEventProducerBody } from "../shared/producer-ownership"
 import { AffinityEgress, guardAffinityFrames } from "../../../shared/affinity/egress"
+import { OriginEgress } from "../../../shared/affinity/origin-egress"
 import type { AffinityExecutionState } from "../../shared/affinity-request"
 import { StreamTail, closeStream, settleStreamMetadata } from "../shared/stream-tail"
 import { parseSSEStream } from "@vibe-core/result/parse"
@@ -444,6 +445,7 @@ export function createResponsesTurn(
       if (abortController.signal.aborted) return
       source = normalized()[Symbol.asyncIterator]()
       const egress = new AffinityEgress(options.affinity)
+      const origin = new OriginEgress(options.affinity)
       while (!abortController.signal.aborted) {
         const next = await tail.next(source, abortController.signal)
         if (next.done) break
@@ -462,12 +464,23 @@ export function createResponsesTurn(
         }
         const observed = output.observe(event)
         if (!options.wantsStream) continue
-        const canonical = await egress.responseEvent(observed)
-        if (!abortController.signal.aborted) { options.telemetryCtx?.metrics?.observeOutput("responses", canonical); yield canonical }
+        for (const canonical of await origin.responsesEvent(await egress.responseEvent(observed))) {
+          if (!abortController.signal.aborted) { options.telemetryCtx?.metrics?.observeOutput("responses", canonical); yield canonical }
+        }
       }
       if (abortController.signal.aborted) return
       if (!terminal) throw new Error("responses stream ended without terminal lifecycle frame")
-      terminal = await egress.responseEvent(terminal)
+      const projectedTerminal = await origin.responsesEvent(await egress.responseEvent(terminal))
+      terminal = projectedTerminal.at(-1)
+      if (!terminal) throw new Error("Responses origin projection omitted its terminal event.")
+      // Terminal-only sources still introduce their prefix before entering the
+      // save barrier, so cancellation during those events cannot start a save.
+      if (options.wantsStream) for (const prefix of projectedTerminal.slice(0, -1)) {
+        if (abortController.signal.aborted) return
+        options.telemetryCtx?.metrics?.observeOutput("responses", prefix)
+        yield prefix
+      }
+      if (abortController.signal.aborted) return
       if (terminal.type === "response.completed") {
         await persistCompleted(terminal.response, options, save => {
           pendingSave = save
