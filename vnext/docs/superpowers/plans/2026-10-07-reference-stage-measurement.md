@@ -67,7 +67,7 @@ Files: `harness/build.ts`, `manifest.ts`, `entry.mjs.template`, `runtime.ts`, `f
 ## Task 5: Local delivery
 
 - [x] Recheck protected files and reference cleanliness, source identity, owned process cleanup and evidence preservation.
-- [ ] Commit only the new tooling/design/results and merge completed work to local vNext under existing authorization.
+- [x] Commit only the new tooling/design/results and merge completed work to local vNext under existing authorization.
 - [x] Document what was measured, what remains unqualified and the next optimization priority. No CFW deployment is part of this plan.
 
 ## 2026-10-07 execution checkpoint
@@ -98,7 +98,7 @@ Files: `harness/build.ts`, `manifest.ts`, `entry.mjs.template`, `runtime.ts`, `f
 - [x] Pass fresh R control/probe and extracted A/B control/probe qualification after correcting native record correlation and pre-affinity canonical-stream assumptions.
 - [x] Run all 108 independent windows in balanced arm order, with 540 warmup and 2,160 timed requests. Freeze inputs first; retain any failed window without retry or selective pooling.
 - [x] Independently reaggregate and document the qualified comparison, block variation, whole-process CPU, EOF-only latency and RSS endpoint limitations.
-- [ ] Recheck protected files, preserve all failed evidence, run focused harness tests/strict typecheck and merge only this delivery into local vNext.
+- [x] Recheck protected files, preserve all failed evidence, run focused harness tests/strict typecheck and merge only this delivery into local vNext.
 
 The October 8 canary failures have localized measurement-adapter assumptions, not established product regressions. R generates dump IDs during background persistence and has no A/B-style dump-ID response header. Native record correlation must use the unique stored request marker and full request bytes. Its canonical response is observed before the affinity egress wrapper; raw client capture must still exactly match the observed wire. All final arms use a native-valid one-hour positive dump retention (or NULL when disabled), with response history disabled.
 
@@ -109,3 +109,5 @@ The warmed pilot is a bounded exploratory revision, not completion of the origin
 **Frozen execution:** `warm-pilot-01` started after the latest harness validation (131 tests, 808 assertions, strict TypeScript success). Each instance runs in a fresh non-detached Bun child within the outer owned process group. Job/context hashes, normal child exit and complete group cleanup become additional independent offline gates. The 108-window run completed with all 2,700 requests passing. Independent saved-evidence aggregation and a separate Python numeric review both passed; outer and all inner process groups were clean. See [the measured results and remaining gaps](../research/2026-10-07-reference-stage-measurement/warm-pilot-results.md).
 
 **Measured outcome:** B aggregate CPU is below R in all six cells, but above A in four cells, nearly equal in JSON diagnostics-off and below A in JSON-container-full. Block signs vary, so this is an exploratory direction rather than a universal regression/improvement claim. B's median whole-process RSS endpoints remain about 7–21 MiB above A; peak/isolate-memory improvements are unproven. Prioritize diagnostic serialization/compression/persistence profiles, then the small diagnostics-off SSE difference. R's always-on affinity carrier and JSON upstream format differences rule out an equal-work claim.
+
+**October 8 local delivery:** measurement tools, result tables, machine-readable summary and evidence index were committed as `11441a41b11d9171c2dab115ab1bd383d81a9c1c` and fast-forwarded into local `vNext`. Post-merge verification kept all 38 MAIN and 14 repair protected files unchanged. The 56 evidence-index roots and 8,940 saved pilot artifacts passed size/hash validation. No push, CFW deployment or production access occurred. Remaining open items above retain their unqualified status.
