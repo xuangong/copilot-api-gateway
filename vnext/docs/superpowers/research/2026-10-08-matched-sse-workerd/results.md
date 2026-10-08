@@ -1,6 +1,6 @@
 # Matched upstream SSE workerd study
 
-Status: correctness canaries and source analysis complete; `cpu-02` CPU/latency and `memory-03` sampled-RSS comparisons are qualified and independently audited. The failed `memory-01` and `memory-02` attempts remain separate. Overall correctness qualification remains false. Local integration is pending. No product code is changed by this study.
+Status: correctness canaries and source analysis complete; `cpu-02` CPU/latency and `memory-03` sampled-RSS comparisons are qualified and independently audited. The failed `memory-01` and `memory-02` attempts remain separate. Overall correctness qualification remains false. Study commit `e3b7284a` is integrated into local `vNext`; nothing was pushed or deployed. No product code is changed by this study.
 
 ## Frozen inputs and scope
 
@@ -78,7 +78,7 @@ The successful run adds an explicit after-boundary barrier: while the owned work
 
 ## Tooling verification
 
-Final retained verification logs record 92 passing Bun tests with 325 assertions and zero failures, eight passing Python tests, TypeScript exit 0, and lint with zero errors and two warnings. The logs are `tests-final-05.log`, `python-tests-final-02.log`, `typecheck-final-04.log` and `lint-final-03.log` under the evidence root. These are harness checks; the correctness and resource findings above retain their separate runtime qualification. Commit and local integration remain pending.
+Final retained verification logs record 92 passing Bun tests with 325 assertions and zero failures, eight passing Python tests, TypeScript exit 0, and lint with zero errors and two warnings. The logs are `tests-final-05.log`, `python-tests-final-02.log`, `typecheck-final-04.log` and `lint-final-03.log` under the evidence root. These are harness checks; the correctness and resource findings above retain their separate runtime qualification. The final staged check removed one extra EOF blank line, preserving its measured bytes and recording snapshot 06; CPU/memory remain bound to snapshots 03/05. Independent final review, all 52 protected-file hashes and local fast-forward integration passed. Raw evidence and the existing worktree remain local and retained.
 
 ## Retained unsuccessful attempts
 

@@ -1,6 +1,6 @@
 # Matched SSE workerd measurement and correctness
 
-Status: `cpu-02` CPU/latency and `memory-03` sampled-RSS comparisons are complete and independently qualified; failed `memory-01` and `memory-02` evidence remains separate. Final tooling verification is complete; commit and local integration are pending. The selected correctness population is complete, with three retained failures and no release-readiness claim. [Results and evidence boundaries](../research/2026-10-08-matched-sse-workerd/results.md).
+Status: `cpu-02` CPU/latency and `memory-03` sampled-RSS comparisons are complete and independently qualified; failed `memory-01` and `memory-02` evidence remains separate. Final tooling verification and local `vNext` integration of study commit `e3b7284a` are complete; nothing was pushed or deployed. The selected correctness population is complete, with three retained failures and no release-readiness claim. [Results and evidence boundaries](../research/2026-10-08-matched-sse-workerd/results.md).
 
 ## Scope and constraints
 
@@ -18,7 +18,7 @@ Use the existing resource-fix worktree and installed dependencies. Preserve all 
 - [x] Complete the separate `memory-03` run: all twelve windows, 60 warmup and 240 timed requests qualify, with supervisor exit 0 and complete cleanup. Preserve failed `memory-01` and `memory-02` without combining their samples. Sampled whole-workerd maxima are lower bounds, not isolate heap or CFW memory-limit measurements.
 - [x] Independently re-read the complete memory population, raw samples, identities, cadence, endpoints, native request/storage contracts and cleanup. `memory-03-independent-review.json` records `passed:true` and no blocking findings. Record three-window RSS medians/ranges and paired comparisons; actual covering-sample gaps have median 115.17 ms and maximum 177.25 ms, with 7–11 in-window samples per window.
 - [x] Verify final tooling: 92 Bun tests and 325 assertions pass; eight Python tests pass; TypeScript exits 0; lint reports zero errors and two warnings. Retain the final logs under the evidence root.
-- [ ] Preserve final evidence hashes, commit the measurement/tooling/docs and integrate into local vNext.
+- [x] Preserve final evidence hashes, commit the measurement/tooling/docs and integrate into local vNext (`e3b7284a`). Final review passed; 52 protected files remain unchanged. Retain the worktree and raw evidence; no push or deployment.
 
 ## Measurement contract
 
