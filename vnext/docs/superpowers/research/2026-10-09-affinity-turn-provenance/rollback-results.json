@@ -1,0 +1,11 @@
+{
+  "passed": true,
+  "oldReader": "6b5ff39d",
+  "readerRollbackBaseline": "ba80b869",
+  "checks": [
+    "new v1 readable by old/current readers",
+    "v2 rejected by frozen pre-reader",
+    "v2 authenticated and inherited by dual reader",
+    "origin stripped without removing required state"
+  ]
+}

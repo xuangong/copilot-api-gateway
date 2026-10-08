@@ -1,0 +1,113 @@
+{
+  "scope": "Local Bun gateway serve functions, real SQLite and loopback upstream; installed official SDK collectors; no deployment",
+  "versions": {
+    "openai": {
+      "version": "6.33.0",
+      "collector": "lib/responses/ResponseStream.mjs",
+      "sha256": "b31953aeb7a7060d5d3695a523445770e903a16e04d9dca54e28966f37631a05"
+    },
+    "anthropic": {
+      "version": "0.80.0",
+      "collector": "lib/MessageStream.mjs",
+      "sha256": "f909cb84c12c633171533c129cbb919edee9b2d17a0bdb376e9f8c5889ad42dc"
+    }
+  },
+  "responses": {
+    "sdkFinal": "pass",
+    "intermediateTextAndArgumentsSnapshots": "pass",
+    "jsonAndReplay": "pass",
+    "textSnapshots": [
+      {
+        "type": "response.output_text.delta",
+        "output_index": 2,
+        "content_index": 0,
+        "item_id": "message_sdk",
+        "delta": "plain ",
+        "sequence_number": 8,
+        "snapshot": "plain "
+      },
+      {
+        "type": "response.output_text.delta",
+        "output_index": 2,
+        "content_index": 0,
+        "item_id": "message_sdk",
+        "delta": "answer",
+        "sequence_number": 9,
+        "snapshot": "plain answer"
+      }
+    ],
+    "argumentSnapshots": [
+      {
+        "type": "response.function_call_arguments.delta",
+        "output_index": 3,
+        "item_id": "function_sdk",
+        "delta": "{\"city\":",
+        "sequence_number": 14,
+        "snapshot": "{\"city\":"
+      },
+      {
+        "type": "response.function_call_arguments.delta",
+        "output_index": 3,
+        "item_id": "function_sdk",
+        "delta": "\"Oslo\"}",
+        "sequence_number": 15,
+        "snapshot": "{\"city\":\"Oslo\"}"
+      }
+    ],
+    "strictWireAccumulator": {
+      "frames": 19,
+      "added": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "completed": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "terminalOutputCount": 4
+    },
+    "sdkLimit": "OpenAI 6.33.0 ignores response.in_progress and output_item.done in its snapshot reducer. Strict independent wire accumulation checks those lifecycle replacements and done items; this is supplemental contract coverage, not a claim about this SDK reducer."
+  },
+  "messages": {
+    "sdkFinal": "pass",
+    "textSnapshots": [
+      "plain ",
+      "plain answer"
+    ],
+    "redactedAndNativeBlocks": "pass",
+    "jsonAndReplay": "pass",
+    "blockIndices": [
+      0,
+      1,
+      2,
+      3
+    ]
+  },
+  "chat": {
+    "collectorSha256": "ebc004a77c6949877575d7fecc37322396a3bda855d03115765667c767e608ed",
+    "modes": {
+      "plain": {
+        "rawChunkOrigin": "pass",
+        "finalCollectorOrigin": "pass",
+        "jsonAndReplay": "pass",
+        "textAndToolsPreserved": "pass"
+      },
+      "tool": {
+        "rawChunkOrigin": "pass",
+        "finalCollectorOrigin": "pass",
+        "jsonAndReplay": "pass",
+        "textAndToolsPreserved": "pass"
+      },
+      "legacy": {
+        "rawChunkOrigin": "pass",
+        "finalCollectorOrigin": "not-preserved",
+        "cause": "OpenAI 6.33.0 legacy function_call finalizer does not spread messageRest; ordinary and tool_calls finalizers do"
+      }
+    }
+  },
+  "status": "pass-with-documented-sdk-limits"
+}

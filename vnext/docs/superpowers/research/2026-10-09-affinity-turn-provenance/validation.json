@@ -1,0 +1,45 @@
+{
+  "scope": "Local existing worktree; pre-existing protected collaboration changes present but neither modified nor committed; no push or deployment",
+  "readerRollbackCommit": "ba80b869b52e5824c589a9f317f730c665960c41",
+  "writerCommit": "b184053c0e01fcd73ed9edeb7d318b7ba654a701",
+  "representationGuardCommit": "33701ce769e79c03015dbf013d55f5a98a7a15b7",
+  "ci": {
+    "command": "SETUP_TEST_CODEX=/Users/zhangxian/.local/bin/codex bun run ci:local",
+    "exitCode": 0,
+    "log": "ci-local-02.log",
+    "sha256": "ffb3fea532f81bdb697712c8da8fca65b151a9c735af9224d11bfdcbd7effe8e",
+    "testPassed": 6506,
+    "testSkipped": 1,
+    "testFailed": 0,
+    "assertions": 241084,
+    "testFiles": 598,
+    "lintErrors": 0,
+    "lintWarnings": 41,
+    "typecheck": "passed",
+    "frameworkPurity": "passed",
+    "dashboardBuild": "passed",
+    "workerDryRun": "passed"
+  },
+  "workerd": {
+    "attempt": "workerd-04",
+    "exitCode": 0,
+    "passedCells": 24,
+    "failedCells": 0,
+    "upstreamCalls": 52,
+    "bundleSha256": "09d2a24119e98af09e892b5705869ae3d8dbc672d895f2fbc981a9390c1983d0"
+  },
+  "sdk": "pass-with-documented-sdk-limits; see sdk-results.json",
+  "protected": {
+    "checked": 52,
+    "changed": 0
+  },
+  "notMeasured": [
+    "Writer CPU and memory against functionally matched reference",
+    "Production CFW isolate memory and latency"
+  ],
+  "retainedFailures": [
+    "ci-local-01.log",
+    "workerd-01/result.json",
+    "writer-blobless-regression.log (4 focused compact tests need Background initialization; preload rerun passed)"
+  ]
+}

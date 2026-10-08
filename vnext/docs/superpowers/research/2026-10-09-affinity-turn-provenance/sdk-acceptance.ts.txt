@@ -1,0 +1,325 @@
+import assert from "node:assert/strict"
+import { createHash } from "node:crypto"
+import { join } from "node:path"
+import { fileURLToPath } from "node:url"
+
+const checkout = process.env.AFFINITY_GATEWAY_CHECKOUT ?? fileURLToPath(new URL("../../../../", import.meta.url))
+const { setupTestPlatform } = await import(join(checkout, "vnext/packages/gateway/tests/_setup-platform.ts"))
+const { __resetPlatformForTests, initBackground, initSocketDial } = await import(join(checkout, "vnext/packages/platform/src/index.ts"))
+const { bunSocketDial } = await import(join(checkout, "vnext/apps/platform-bun/src/bun-socket-dial.ts"))
+const { serveResponses } = await import(join(checkout, "vnext/packages/gateway/src/data-plane/chat-flow/responses/serve.ts"))
+const { serveMessages } = await import(join(checkout, "vnext/packages/gateway/src/data-plane/chat-flow/messages/serve.ts"))
+const { serveChatCompletions } = await import(join(checkout, "vnext/packages/gateway/src/data-plane/chat-flow/chat-completions/serve.ts"))
+
+// Existing local SDK packages are supplied explicitly; no dependency installation
+// or production credentials are involved in this evidence-only acceptance run.
+const openaiRoot = process.env.AFFINITY_OPENAI_SDK
+const anthropicRoot = process.env.AFFINITY_ANTHROPIC_SDK
+assert(openaiRoot && anthropicRoot, "Supply paths to already installed SDK packages")
+const OpenAI = (await import(join(openaiRoot, "index.mjs"))).default
+const Anthropic = (await import(join(anthropicRoot, "index.mjs"))).default
+const outputDirectory = fileURLToPath(new URL(".", import.meta.url))
+type Json = Record<string, unknown>
+const natural = "sdk-native-opaque-state"
+const thought = "  retained native thought\n"
+const answer = "plain answer"
+const argumentsJson = '{"city":"Oslo"}'
+function object(value: unknown): Json {
+  assert(value && typeof value === "object" && !Array.isArray(value))
+  return value as Json
+}
+function array(value: unknown): Json[] {
+  assert(Array.isArray(value))
+  return value.map(object)
+}
+function events(wire: string): Json[] {
+  return wire.split("\n").filter(line => line.startsWith("data: ") && line !== "data: [DONE]").map(line => object(JSON.parse(line.slice(6))))
+}
+function sse(frames: Json[]): Response {
+  return new Response(frames.map(frame => `event: ${frame.type}\ndata: ${JSON.stringify(frame)}\n\n`).join(""), { headers: { "content-type": "text/event-stream" } })
+}
+function responsesFrames(): Json[] {
+  const reasoning = { type: "reasoning", id: "reasoning_sdk", summary: [{ type: "summary_text", text: thought }], encrypted_content: natural }
+  const message = { type: "message", id: "message_sdk", role: "assistant", status: "completed", content: [{ type: "output_text", text: answer, annotations: [] }] }
+  const call = { type: "function_call", id: "function_sdk", call_id: "call_sdk", name: "weather", arguments: argumentsJson, status: "completed" }
+  const final = { id: "response_sdk", object: "response", model: "model", status: "completed", output: [reasoning, message, call], usage: { input_tokens: 3, output_tokens: 4, total_tokens: 7 } }
+  return [
+    { type: "response.created", response: { ...final, output: [], status: "in_progress" } },
+    { type: "response.in_progress", response: { ...final, output: [], status: "in_progress" } },
+    { type: "response.output_item.added", output_index: 0, item: { type: "reasoning", id: "reasoning_sdk", summary: [] } },
+    { type: "response.output_item.done", output_index: 0, item: reasoning },
+    { type: "response.output_item.added", output_index: 1, item: { ...message, status: "in_progress", content: [] } },
+    { type: "response.content_part.added", output_index: 1, content_index: 0, item_id: "message_sdk", part: { type: "output_text", text: "", annotations: [] } },
+    { type: "response.output_text.delta", output_index: 1, content_index: 0, item_id: "message_sdk", delta: "plain " },
+    { type: "response.output_text.delta", output_index: 1, content_index: 0, item_id: "message_sdk", delta: "answer" },
+    { type: "response.output_text.done", output_index: 1, content_index: 0, item_id: "message_sdk", text: answer },
+    { type: "response.content_part.done", output_index: 1, content_index: 0, item_id: "message_sdk", part: message.content[0] },
+    { type: "response.output_item.done", output_index: 1, item: message },
+    { type: "response.output_item.added", output_index: 2, item: { ...call, status: "in_progress", arguments: "" } },
+    { type: "response.function_call_arguments.delta", output_index: 2, item_id: "function_sdk", delta: '{"city":' },
+    { type: "response.function_call_arguments.delta", output_index: 2, item_id: "function_sdk", delta: '"Oslo"}' },
+    { type: "response.function_call_arguments.done", output_index: 2, item_id: "function_sdk", arguments: argumentsJson },
+    { type: "response.output_item.done", output_index: 2, item: call },
+    { type: "response.completed", response: final },
+  ]
+}
+function messagesFrames(): Json[] {
+  return [
+    { type: "message_start", message: { id: "message_sdk", type: "message", role: "assistant", model: "model", content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 3, output_tokens: 0 } } },
+    { type: "content_block_start", index: 0, content_block: { type: "thinking", thinking: "", signature: "" } },
+    { type: "content_block_delta", index: 0, delta: { type: "thinking_delta", thinking: thought } },
+    { type: "content_block_delta", index: 0, delta: { type: "signature_delta", signature: natural } },
+    { type: "content_block_stop", index: 0 },
+    { type: "content_block_start", index: 1, content_block: { type: "text", text: "" } },
+    { type: "content_block_delta", index: 1, delta: { type: "text_delta", text: "plain " } },
+    { type: "content_block_delta", index: 1, delta: { type: "text_delta", text: "answer" } },
+    { type: "content_block_stop", index: 1 },
+    { type: "content_block_start", index: 2, content_block: { type: "tool_use", id: "call_sdk", name: "weather", input: {} } },
+    { type: "content_block_delta", index: 2, delta: { type: "input_json_delta", partial_json: '{"city":' } },
+    { type: "content_block_delta", index: 2, delta: { type: "input_json_delta", partial_json: '"Oslo"}' } },
+    { type: "content_block_stop", index: 2 },
+    { type: "message_delta", delta: { stop_reason: "tool_use", stop_sequence: null }, usage: { output_tokens: 4 } },
+    { type: "message_stop" },
+  ]
+}
+function chatResponse(mode: "plain" | "tool" | "legacy"): Response {
+  const base = { id: "chat_sdk", object: "chat.completion.chunk", model: "model", created: 1 }
+  const chunk = (delta: Json, finish_reason: string | null = null) => ({ ...base, choices: [{ index: 0, delta, finish_reason }] })
+  const frames = [chunk({ role: "assistant", content: "plain " }), chunk({ content: "answer" })]
+  if (mode === "tool") frames.push(
+    chunk({ tool_calls: [{ index: 0, id: "call_sdk", type: "function", function: { name: "weather", arguments: '{"city":' } }] }),
+    chunk({ tool_calls: [{ index: 0, function: { arguments: '"Oslo"}' } }] }),
+  )
+  if (mode === "legacy") frames.push(
+    chunk({ function_call: { name: "weather", arguments: '{"city":' } }),
+    chunk({ function_call: { arguments: '"Oslo"}' } }),
+  )
+  frames.push(chunk({}, mode === "plain" ? "stop" : mode === "tool" ? "tool_calls" : "function_call"))
+  return new Response(frames.map(frame => `data: ${JSON.stringify(frame)}\n\n`).join("") + "data: [DONE]\n\n", { headers: { "content-type": "text/event-stream" } })
+}
+async function fixture(protocol: "responses" | "messages" | "chat_completions", chatMode: "plain" | "tool" | "legacy" = "plain") {
+  const { db, repo } = setupTestPlatform()
+  initSocketDial(bunSocketDial)
+  const pending: Promise<unknown>[] = []
+  const wires: Array<{ path: string; contentType: string | null; text: string }> = []
+  initBackground({ waitUntil: promise => { pending.push(promise) } })
+  db.run("INSERT INTO api_keys (id, name, key, owner_id, created_at) VALUES ('key', 'sdk-test', 'sdk-fixture-only', 'owner', 'now')")
+  const sent: Json[] = []
+  const upstream = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(request) {
+    sent.push(object(await request.json()))
+    return protocol === "chat_completions" ? chatResponse(chatMode) : sse(protocol === "responses" ? responsesFrames() : messagesFrames())
+  } })
+  await repo.upstreams.save({ id: "up", provider: "custom", ownerId: "owner", name: "sdk-test", enabled: true, sortOrder: 0,
+    config: { name: "sdk-test", baseUrl: upstream.url.toString().replace(/\/$/, ""), authStyle: "none", endpoints: [protocol], models: ["model"] }, state: {},
+    flagOverrides: {}, disabledPublicModelIds: [], proxyFallbackList: [], createdAt: "now", updatedAt: "now" })
+  const gateway = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(request) {
+    const args = { raw: await request.json(), auth: { userId: "owner", apiKeyId: "key" }, obsCtx: {}, signal: request.signal }
+    return protocol === "responses" ? (await serveResponses(args)).response : protocol === "messages" ? serveMessages(args) : serveChatCompletions(args)
+  } })
+  return {
+    sent, wires,
+    options: { apiKey: "synthetic-sdk-key", baseURL: gateway.url.toString(), maxRetries: 0, timeout: 10000,
+      async fetch(input: string | URL | Request, init?: RequestInit) {
+        const response = await fetch(input, init)
+        const copy = response.clone()
+        pending.push(copy.text().then(text => { wires.push({ path: String(input), contentType: copy.headers.get("content-type"), text }) }))
+        return response
+      },
+    },
+    async flush() { await Promise.all(pending) },
+    async close() { gateway.stop(true); upstream.stop(true); await Promise.allSettled(pending); db.close(); __resetPlatformForTests() },
+  }
+}
+function expectResponses(items: Json[]): void {
+  assert.equal(items.length, 4)
+  const [origin, reasoning, message, call] = items
+  assert(origin && reasoning && message && call)
+  assert.equal(origin.type, "reasoning")
+  assert.deepEqual(origin.summary, [])
+  assert.match(String(origin.encrypted_content), /^vnext-affinity:2:/)
+  assert.match(String(reasoning.encrypted_content), /^vnext-affinity:1:/)
+  assert.deepEqual(reasoning.summary, [{ type: "summary_text", text: thought }])
+  assert.deepEqual(array(message.content).map(({ parsed: _sdkParsed, ...part }) => part), [{ type: "output_text", text: answer, annotations: [] }])
+  assert.equal(call.arguments, argumentsJson)
+}
+function strictResponses(frames: Json[]): Json {
+  let snapshot: Json | undefined
+  const added: number[] = []
+  const completed: number[] = []
+  for (const [sequence, frame] of frames.entries()) {
+    assert.equal(frame.sequence_number, sequence)
+    if (frame.type === "response.created") {
+      assert.equal(snapshot, undefined)
+      snapshot = structuredClone(object(frame.response))
+      assert.deepEqual(snapshot.output, [])
+      continue
+    }
+    assert(snapshot)
+    const output = snapshot.output as Json[]
+    if (frame.type === "response.in_progress") {
+      assert.deepEqual(object(frame.response).output, output, "Lifecycle replacement must retain exactly one already emitted origin")
+      snapshot = structuredClone(object(frame.response))
+    } else if (frame.type === "response.output_item.added") {
+      assert.equal(frame.output_index, output.length, "Added index must extend the snapshot once")
+      output.push(structuredClone(object(frame.item)))
+      added.push(Number(frame.output_index))
+    } else if (frame.type === "response.output_item.done") {
+      const index = Number(frame.output_index)
+      assert(output[index])
+      assert.equal(output[index].id, object(frame.item).id)
+      output[index] = structuredClone(object(frame.item))
+      completed.push(index)
+    } else if (frame.type === "response.completed") {
+      assert.deepEqual(object(frame.response).output, output)
+      snapshot = structuredClone(object(frame.response))
+    } else if (typeof frame.output_index === "number") {
+      const item = output[frame.output_index]
+      assert(item)
+      assert.equal(item.id, frame.item_id)
+      if (frame.type === "response.content_part.added") {
+        assert.equal(frame.content_index, array(item.content).length)
+        const content = item.content as Json[]
+        content.push(structuredClone(object(frame.part)))
+      } else if (frame.type === "response.output_text.delta") {
+        const content = (item.content as Json[])[Number(frame.content_index)]
+        assert(content && content.type === "output_text")
+        content.text = String(content.text) + String(frame.delta)
+      } else if (frame.type === "response.output_text.done") {
+        assert.equal(array(item.content)[Number(frame.content_index)]?.text, frame.text)
+      } else if (frame.type === "response.content_part.done") {
+        assert.deepEqual(array(item.content)[Number(frame.content_index)], frame.part)
+      } else if (frame.type === "response.function_call_arguments.delta") {
+        assert.equal(item.type, "function_call")
+        item.arguments = String(item.arguments) + String(frame.delta)
+      } else if (frame.type === "response.function_call_arguments.done") {
+        assert.equal(item.arguments, frame.arguments)
+      }
+    }
+  }
+  assert(snapshot)
+  assert.deepEqual(added, [0, 1, 2, 3])
+  assert.deepEqual(completed, [0, 1, 2, 3])
+  expectResponses(array(snapshot.output))
+  return { frames: frames.length, added, completed, terminalOutputCount: array(snapshot.output).length }
+}
+function expectReplay(sent: Json): void {
+  const serialized = JSON.stringify(sent)
+  assert(!serialized.includes("vnext-affinity:"))
+  assert(serialized.includes(natural))
+  assert(serialized.includes(JSON.stringify(thought).slice(1, -1)))
+  assert(serialized.includes(answer))
+  assert(serialized.includes("Oslo"))
+  assert(serialized.includes("continue"))
+}
+
+const report: Json = { scope: "Local Bun gateway serve functions, real SQLite and loopback upstream; installed official SDK collectors; no deployment", versions: {} }
+for (const [name, root, source] of [["openai", openaiRoot, "lib/responses/ResponseStream.mjs"], ["anthropic", anthropicRoot, "lib/MessageStream.mjs"]]) {
+  assert(root && name && source)
+  object(report.versions)[name] = { version: object(await Bun.file(join(root, "package.json")).json()).version, collector: source, sha256: createHash("sha256").update(await Bun.file(join(root, source)).text()).digest("hex") }
+}
+const responseFixture = await fixture("responses")
+try {
+  const client = new OpenAI(responseFixture.options)
+  const stream = client.responses.stream({ model: "model", input: "question" })
+  const textSnapshots: Json[] = []
+  const argumentSnapshots: Json[] = []
+  stream.on("response.output_text.delta", (event: unknown) => { textSnapshots.push(structuredClone(object(event))) })
+  stream.on("response.function_call_arguments.delta", (event: unknown) => { argumentSnapshots.push(structuredClone(object(event))) })
+  const final = object(await stream.finalResponse())
+  expectResponses(array(final.output))
+  assert.deepEqual(textSnapshots.map(event => ({ index: event.output_index, snapshot: event.snapshot })), [{ index: 2, snapshot: "plain " }, { index: 2, snapshot: answer }])
+  assert.deepEqual(argumentSnapshots.map(event => ({ index: event.output_index, snapshot: event.snapshot })), [{ index: 3, snapshot: '{"city":' }, { index: 3, snapshot: argumentsJson }])
+  const saved = JSON.parse(JSON.stringify(final))
+  const replay = object(await client.responses.create({ model: "model", input: [...array(object(saved).output), { role: "user", content: "continue" }] }))
+  expectResponses(array(replay.output))
+  assert.equal(responseFixture.sent.length, 2)
+  expectReplay(object(responseFixture.sent[1]))
+  await responseFixture.flush()
+  const wire = responseFixture.wires.find(entry => entry.contentType?.includes("text/event-stream"))
+  assert(wire)
+  const strict = strictResponses(events(wire.text))
+  await Bun.write(join(outputDirectory, "responses.sse"), wire.text)
+  await Bun.write(join(outputDirectory, "responses-sdk-final.json"), JSON.stringify(saved, null, 2) + "\n")
+  await Bun.write(join(outputDirectory, "responses-replay-upstream.json"), JSON.stringify(responseFixture.sent[1], null, 2) + "\n")
+  report.responses = { sdkFinal: "pass", intermediateTextAndArgumentsSnapshots: "pass", jsonAndReplay: "pass", textSnapshots, argumentSnapshots, strictWireAccumulator: strict,
+    sdkLimit: "OpenAI 6.33.0 ignores response.in_progress and output_item.done in its snapshot reducer. Strict independent wire accumulation checks those lifecycle replacements and done items; this is supplemental contract coverage, not a claim about this SDK reducer." }
+} finally { await responseFixture.close() }
+
+const messageFixture = await fixture("messages")
+try {
+  const client = new Anthropic(messageFixture.options)
+  const stream = client.messages.stream({ model: "model", messages: [{ role: "user", content: "question" }], max_tokens: 100 })
+  const textSnapshots: string[] = []
+  stream.on("text", (_delta: string, snapshot: string) => { textSnapshots.push(snapshot) })
+  const final = object(await stream.finalMessage())
+  const content = array(final.content)
+  assert.deepEqual(content.map(block => block.type), ["redacted_thinking", "thinking", "text", "tool_use"])
+  assert.match(String(content[0]?.data), /^vnext-affinity:2:/)
+  assert.match(String(content[1]?.signature), /^vnext-affinity:1:/)
+  assert.equal(content[1]?.thinking, thought)
+  assert.equal(content[2]?.text, answer)
+  assert.deepEqual(content[3]?.input, { city: "Oslo" })
+  assert.deepEqual(textSnapshots, ["plain ", answer])
+  const saved = JSON.parse(JSON.stringify(final))
+  const replay = object(await client.messages.create({ model: "model", messages: [{ role: "assistant", content: object(saved).content }, { role: "user", content: "continue" }], max_tokens: 100 }))
+  assert.equal(array(replay.content).length, 4)
+  assert.equal(messageFixture.sent.length, 2)
+  expectReplay(object(messageFixture.sent[1]))
+  await messageFixture.flush()
+  const wire = messageFixture.wires.find(entry => entry.contentType?.includes("text/event-stream"))
+  assert(wire)
+  const starts = events(wire.text).filter(event => event.type === "content_block_start")
+  assert.deepEqual(starts.map(event => event.index), [0, 1, 2, 3])
+  await Bun.write(join(outputDirectory, "messages.sse"), wire.text)
+  await Bun.write(join(outputDirectory, "messages-sdk-final.json"), JSON.stringify(saved, null, 2) + "\n")
+  await Bun.write(join(outputDirectory, "messages-replay-upstream.json"), JSON.stringify(messageFixture.sent[1], null, 2) + "\n")
+  report.messages = { sdkFinal: "pass", textSnapshots, redactedAndNativeBlocks: "pass", jsonAndReplay: "pass", blockIndices: starts.map(event => event.index) }
+} finally { await messageFixture.close() }
+
+report.chat = { collectorSha256: createHash("sha256").update(await Bun.file(join(openaiRoot, "lib/ChatCompletionStream.mjs")).text()).digest("hex"), modes: {} }
+for (const mode of ["plain", "tool", "legacy"] as const) {
+  const chatFixture = await fixture("chat_completions", mode)
+  try {
+    const client = new OpenAI(chatFixture.options)
+    const stream = client.chat.completions.stream({ model: "model", messages: [{ role: "user", content: "question" }] })
+    const chunks: Json[] = []
+    stream.on("chunk", (chunk: unknown) => { chunks.push(structuredClone(object(chunk))) })
+    const final = object(await stream.finalChatCompletion())
+    const choice = array(final.choices)[0]
+    assert(choice)
+    const message = object(choice.message)
+    assert.equal(message.content, answer)
+    const originChunk = chunks.find(chunk => array(chunk.choices).some(value => String(object(value.delta).reasoning_opaque).startsWith("vnext-affinity:2:")))
+    assert(originChunk, "The SDK raw chunk listener must receive origin metadata")
+    if (mode === "legacy") {
+      // SDK 6.33.0's legacy function_call finalizer explicitly rebuilds the
+      // message without spreading extension fields. Raw chunks retain origin.
+      assert.equal(message.reasoning_opaque, undefined)
+      assert.deepEqual(message.function_call, { name: "weather", arguments: argumentsJson })
+      object(object(report.chat).modes)[mode] = { rawChunkOrigin: "pass", finalCollectorOrigin: "not-preserved", cause: "OpenAI 6.33.0 legacy function_call finalizer does not spread messageRest; ordinary and tool_calls finalizers do" }
+    } else {
+      assert.match(String(message.reasoning_opaque), /^vnext-affinity:2:/)
+      if (mode === "tool") assert.deepEqual(array(message.tool_calls).map(value => ({ id: value.id, type: value.type, function: value.function })), [{ id: "call_sdk", type: "function", function: { name: "weather", arguments: argumentsJson } }])
+      const saved = JSON.parse(JSON.stringify(message))
+      const replay = object(await client.chat.completions.create({ model: "model", messages: [saved, { role: "user", content: "continue" }] }))
+      const replayChoice = array(replay.choices)[0]
+      assert(replayChoice)
+      assert.match(String(object(replayChoice.message).reasoning_opaque), /^vnext-affinity:2:/)
+      assert.equal(chatFixture.sent.length, 2)
+      const upstream = JSON.stringify(chatFixture.sent[1])
+      assert(!upstream.includes("vnext-affinity:"))
+      assert(upstream.includes(answer) && upstream.includes("continue"))
+      if (mode === "tool") assert(upstream.includes("Oslo"))
+      object(object(report.chat).modes)[mode] = { rawChunkOrigin: "pass", finalCollectorOrigin: "pass", jsonAndReplay: "pass", textAndToolsPreserved: "pass" }
+      await Bun.write(join(outputDirectory, `chat-${mode}-replay-upstream.json`), JSON.stringify(chatFixture.sent[1], null, 2) + "\n")
+    }
+    await chatFixture.flush()
+    const wire = chatFixture.wires.find(entry => entry.contentType?.includes("text/event-stream"))
+    assert(wire)
+    await Bun.write(join(outputDirectory, `chat-${mode}.sse`), wire.text)
+    await Bun.write(join(outputDirectory, `chat-${mode}-sdk-final.json`), JSON.stringify(final, null, 2) + "\n")
+  } finally { await chatFixture.close() }
+}
+report.status = "pass-with-documented-sdk-limits"
+await Bun.write(join(outputDirectory, "summary.json"), JSON.stringify(report, null, 2) + "\n")
+console.log(JSON.stringify(report, null, 2))

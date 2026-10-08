@@ -1,5 +1,17 @@
 # Reference Adoption Follow-up Implementation Plan
 
+## October 9: authenticated turn provenance
+
+- [x] Reconstruct reference #225/#233/#279/#513/#523 requirements and the later removal of ordinary sticky routing. Adopt per-turn provenance without resurrecting withdrawn selection behavior. [Design](../specs/2026-10-09-affinity-turn-provenance.md).
+- [x] Land v2 reader and ordered Responses inheritance separately from issuance; preserve natural v1 and establish reader-only rollback baseline `ba80b869`. Focused reader suite: 86 pass, zero failures; gateway typecheck and independent review passed.
+- [x] Complete four-protocol issuance (`b184053c`), native representation rejection (`33701ce7`), independent review and full local CI: 6,506 pass / one existing skip / zero failures; lint zero errors / 41 warnings. Integrate into local vNext with protected work preserved. [Execution plan](2026-10-09-affinity-turn-provenance.md).
+- [x] Verify full app/workerd/WebCrypto/local D1 ordinary JSON/SSE history replay across 9 cross-protocol pairs and 3 native paths (24 cells), wrong-key/unknown-version rejection, required-source mismatch and stored Responses inheritance. Final workerd-04 covers the delivered product and passes all 24 cells; no production validation or resource claims.
+- [ ] **Provider prerequisite:** Claude Code credential-scoped refresh/import/invalidation fencing and actual-execution capture; it currently has no trustworthy affinity authority.
+- [x] Retain and locate the inherited Messages initial-text-in-start streaming translation loss from workerd-01. [Delivery evidence and precise remaining boundaries](../research/2026-10-09-affinity-turn-provenance/README.md).
+- [x] Validate installed OpenAI/Anthropic SDK collectors; record legacy Chat function_call dropping extensions as a client-side limit.
+- [ ] Repair the retained initial-text, downstream cancellation and nonstandard-MIME gaps; legacy blobless context_compaction remains outside the adopted representation contract.
+- [ ] Before release, qualify a clean build and remeasure CPU/memory with the new ordinary writer against matched reference behavior. Keep reader-only ba80b869 as the v2-compatible rollback baseline; pre-reader binaries reject v2 histories.
+
 ## October 8: conditional affinity and upstream streaming
 
 - [x] Confirm existing affinity provenance/compatibility behavior; add four-protocol zero-codec/secret and single-layer SSE-to-JSON replay contracts.
@@ -18,7 +30,7 @@
 - [x] Complete final harness verification: 92 Bun tests / 325 assertions, eight Python tests, TypeScript exit 0, lint zero errors / two warnings.
 - [x] Commit the measurement/tooling/docs and integrate into local vNext (`e3b7284a`). Final review and staged checks passed; all 52 protected files remain unchanged. Raw evidence and worktree retained; no push or deployment.
 - [ ] **Priority 1:** locate delayed downstream-close-to-turn-abort propagation on local workerd and require timely upstream release before fixture cleanup.
-- [ ] **Priority 2:** design versioned Responses source inheritance for blob-less state, including synthetic whole-item identity and old/new reader compatibility. C01's existing opaque contract remains complete; this is an additional contract, not equivalence already achieved.
+- [x] **Priority 2:** deliver versioned Responses source inheritance for blob-less state, authenticated synthetic whole-item identity and a dual-reader rollback baseline in the October 9 package above. Older pre-reader binaries remain incompatible with v2; this does not change their frozen behavior.
 - [ ] **Priority 3:** add bounded nonstandard-MIME JSON fallback for Chat SSE clients; retain the source evidence that this predates the streaming adoption.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement an individually scoped work package task-by-task. This document is the tracking index. The user authorized the implementation pass on September 29; apply its global constraints and preserve the explicitly conditional decisions.

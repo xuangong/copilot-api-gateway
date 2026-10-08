@@ -1,0 +1,33 @@
+{
+  "passed": true,
+  "runtime": "full app/workerd/WebCrypto/local D1",
+  "bundleSha256": "09d2a24119e98af09e892b5705869ae3d8dbc672d895f2fbc981a9390c1983d0",
+  "cases": [
+    "responses->responses/JSON",
+    "responses->responses/SSE",
+    "responses->messages/JSON",
+    "responses->messages/SSE",
+    "responses->chat_completions/JSON",
+    "responses->chat_completions/SSE",
+    "messages->responses/JSON",
+    "messages->responses/SSE",
+    "messages->messages/JSON",
+    "messages->messages/SSE",
+    "messages->chat_completions/JSON",
+    "messages->chat_completions/SSE",
+    "chat_completions->responses/JSON",
+    "chat_completions->responses/SSE",
+    "chat_completions->messages/JSON",
+    "chat_completions->messages/SSE",
+    "chat_completions->chat_completions/JSON",
+    "chat_completions->chat_completions/SSE",
+    "gemini->responses/JSON",
+    "gemini->responses/SSE",
+    "gemini->messages/JSON",
+    "gemini->messages/SSE",
+    "gemini->chat_completions/JSON",
+    "gemini->chat_completions/SSE"
+  ],
+  "failures": [],
+  "calls": 52
+}
