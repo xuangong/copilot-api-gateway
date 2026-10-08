@@ -5,6 +5,7 @@ import { affinityTargetMatch, parseAffinityExecutionTarget } from "@vibe-llm/pro
 import type { AffinityExecutionTarget } from "@vibe-llm/provider-llm"
 import { AFFINITY_MARKER, MAX_AFFINITY_WIRE_CHARS, MAX_AFFINITY_PAYLOAD_BYTES, InvalidAffinityStateError } from "./carrier.ts"
 import type { AffinityCodec, AffinityField, DecodedAffinity } from "./carrier.ts"
+import { affinityOriginSlot } from "./origin-anchor.ts"
 
 export type AffinityProtocol = "responses" | "messages" | "chat_completions" | "gemini"
 export type AffinityCandidateClass = "exact" | "compatible" | "degraded" | "unavailable"
@@ -13,6 +14,7 @@ type Path = readonly (string | number)[]
 interface Slot { key: string; field: AffinityField }
 interface Block { path: Path; slots: Slot[]; required: boolean; unsafeToRemove: boolean }
 interface OwnedBlock extends Block { decoded: Array<{ key: string; state: Extract<DecodedAffinity, { kind: "owned" }> }> }
+interface OriginBlock extends Block { origin: { key: string; state: Extract<DecodedAffinity, { kind: "origin" }> } }
 
 export class AffinityRoutingUnavailableError extends Error {
   readonly code = "affinity_routing_unavailable"
@@ -38,11 +40,12 @@ function canonical(value: unknown): unknown {
   return value
 }
 
-function slots(protocol: AffinityProtocol, item: JsonObject): Slot[] {
+function slots(protocol: AffinityProtocol, item: JsonObject, carried = true): Slot[] {
+  const origin = (key: string) => carried && typeof item[key] === "string" && item[key].startsWith(`${AFFINITY_MARKER}2:`)
   if (protocol === "chat_completions") return typeof item.reasoning_opaque === "string"
-    ? [{ key: "reasoning_opaque", field: { domain: "chat_completions/reasoning/reasoning_opaque", block: JSON.stringify({ reasoning_text: chatReasoningText(item) ?? "" }) } }] : []
+    ? [{ key: "reasoning_opaque", field: { domain: "chat_completions/reasoning/reasoning_opaque", ...(origin("reasoning_opaque") ? {} : { block: JSON.stringify({ reasoning_text: chatReasoningText(item) ?? "" }) }) } }] : []
   if (protocol === "gemini") return typeof item.thoughtSignature === "string"
-    ? [{ key: "thoughtSignature", field: { domain: "gemini/part/thoughtSignature", block: JSON.stringify(canonical(Object.fromEntries(Object.entries(item).filter(([key]) => key !== "thoughtSignature")))) } }] : []
+    ? [{ key: "thoughtSignature", field: { domain: "gemini/part/thoughtSignature", ...(origin("thoughtSignature") ? {} : { block: JSON.stringify(canonical(Object.fromEntries(Object.entries(item).filter(([key]) => key !== "thoughtSignature")))) }) } }] : []
   const type = item.type
   if (typeof type !== "string") return []
   let keys: string[] = []
@@ -65,7 +68,7 @@ function slots(protocol: AffinityProtocol, item: JsonObject): Slot[] {
     // Bind visible companion content, excluding mutable protocol ids and aliases.
     companion = Object.fromEntries(["summary", "content", "code", "result", "call_id"].filter(key => item[key] !== undefined).map(key => [key, item[key]]))
   }
-  const block = JSON.stringify(canonical(companion))
+  const block = keys.every(origin) ? undefined : JSON.stringify(canonical(companion))
   return keys.map(key => ({ key, field: { domain: `${protocol}/${domainType}/${key}`, block } }))
 }
 
@@ -100,7 +103,7 @@ async function agentField(item: JsonObject, carried: boolean): Promise<AffinityF
 /** Egress building block only. Call after actual execution identity is finalized. */
 export async function stampAffinityItem(protocol: AffinityProtocol, item: Readonly<JsonObject>, target: AffinityExecutionTarget, codec: AffinityCodec): Promise<JsonObject> {
   const copy: JsonObject = structuredClone({ ...item })
-  for (const slot of slots(protocol, copy)) {
+  for (const slot of slots(protocol, copy, false)) {
     const value = copy[slot.key]
     if (typeof value === "string") copy[slot.key] = await codec.encode(value, target, slot.field)
   }
@@ -188,11 +191,15 @@ export function containsAffinityMarker(protocol: AffinityProtocol, body: Readonl
 export interface AffinityAnalysis {
   readonly hasOwned: boolean
   readonly hasRequiredOwned: boolean
+  /** Native or inherited state constrains routing; provenance alone does not. */
+  readonly hasRouteConstraints: boolean
   classify(target: AffinityExecutionTarget | undefined): AffinityCandidateClass
   /** Input candidates must already satisfy owner/key/alias/disabled/pin policy. */
   rankAuthorizedCandidates<T>(candidates: readonly T[], targetOf: (candidate: T) => AffinityExecutionTarget | undefined): T[]
-  /** Independent carrier-preserving input for candidate preparation. */
+  /** Independent carrier-preserving canonical history. */
   cloneSource(): JsonObject
+  /** Strip origin metadata before translation; preserve native carriers. */
+  prepareSource(): JsonObject
   /** Fresh clone per attempt. Required mismatch fails before provider invocation. */
   materialize(target: AffinityExecutionTarget | undefined): JsonObject
 }
@@ -203,6 +210,9 @@ export async function analyzeAffinityRequest(protocol: AffinityProtocol, body: R
   const input = captureAffinityInput({ ...body })
   const snapshot = input.snapshot
   const owned: OwnedBlock[] = []
+  const tracked: Array<OwnedBlock | OriginBlock> = []
+  const inherited: AffinityExecutionTarget[] = []
+  let latestOwnedTarget: AffinityExecutionTarget | undefined
   if (codec) for (const block of await blocks(protocol, snapshot)) {
     const item = at(snapshot, block.path)
     if (!object(item)) throw new InvalidAffinityStateError()
@@ -211,14 +221,40 @@ export async function analyzeAffinityRequest(protocol: AffinityProtocol, body: R
       const value = item[slot.key]
       if (typeof value !== "string") throw new InvalidAffinityStateError()
       const state = await codec.decode(value, slot.field)
-      if (state.kind === "owned") decoded.push({ key: slot.key, state })
+      if (state.kind === "owned") {
+        decoded.push({ key: slot.key, state })
+        latestOwnedTarget = state.target
+      } else if (state.kind === "origin") {
+        const expected = affinityOriginSlot(protocol, item)
+        if (expected.key !== slot.key || expected.field.domain !== slot.field.domain || expected.syntheticItem !== state.syntheticItem) throw new InvalidAffinityStateError()
+        if (protocol === "messages") {
+          const message = at(snapshot, block.path.slice(0, 2))
+          if (!object(message) || message.role !== "assistant") throw new InvalidAffinityStateError()
+        }
+        tracked.push({ ...block, origin: { key: slot.key, state } })
+        latestOwnedTarget = state.target
+      }
     }
-    if (decoded.length) owned.push({ ...block, decoded })
+    if (decoded.length) {
+      const native = { ...block, decoded }
+      owned.push(native)
+      tracked.push(native)
+    }
+    // A foreign recognized slot suppresses inheritance for this item only.
+    // Earlier authenticated provenance remains the cursor for subsequent items.
+    if (protocol === "responses" && block.path.length === 2 && block.slots.length === 0
+      && ["program", "program_output", "compaction", "compaction_summary"].includes(String(item.type)) && latestOwnedTarget) {
+      inherited.push(latestOwnedTarget)
+    }
   }
   const shouldRemove = (block: OwnedBlock, target: AffinityExecutionTarget | undefined) => block.decoded.some(({ state }) => state.synthetic || !target || affinityTargetMatch(state.target, target) === "incompatible")
   const classify = (input: AffinityExecutionTarget | undefined): AffinityCandidateClass => {
     const target = input === undefined ? undefined : parseAffinityExecutionTarget(input)
     let result: AffinityCandidateClass = "exact"
+    for (const source of inherited) {
+      if (!target || affinityTargetMatch(source, target) === "incompatible") return "unavailable"
+      if (affinityTargetMatch(source, target) === "compatible") result = "compatible"
+    }
     for (const block of owned) {
       if (shouldRemove(block, target)) {
         if (block.required || block.unsafeToRemove) return "unavailable"
@@ -227,10 +263,53 @@ export async function analyzeAffinityRequest(protocol: AffinityProtocol, body: R
     }
     return result
   }
+  const project = (target: AffinityExecutionTarget | undefined, preserveNative: boolean): JsonObject => {
+    const copy = input.clone()
+    // Descending paths avoid index shifts during whole-block removal.
+    const removedMessages = new Set<number>()
+    for (let index = tracked.length - 1; index >= 0; index--) {
+      const block = tracked[index]!
+      if ("origin" in block && !block.origin.state.syntheticItem) {
+        const item = at(copy, block.path)
+        if (!object(item)) throw new InvalidAffinityStateError()
+        delete item[block.origin.key]
+        continue
+      }
+      if (!("origin" in block) && preserveNative) continue
+      if ("origin" in block || shouldRemove(block, target)) {
+        if (protocol === "chat_completions" && !("origin" in block)) {
+          const message = at(copy, block.path)
+          if (!object(message)) throw new InvalidAffinityStateError()
+          for (const key of ["reasoning_text", "reasoning_content", "reasoning", "reasoning_opaque", "reasoning_items"]) delete message[key]
+          // The loose Chat schema can carry refusal, audio, or provider payloads.
+          // Remove only a bare role with absent/empty text after stripping reasoning.
+          if (Object.keys(message).every(key => key === "role" || (key === "content" && (message.content == null || message.content === "")))) removedMessages.add(Number(block.path[1]))
+          continue
+        }
+        const parent = at(copy, block.path.slice(0, -1))
+        const itemIndex = block.path.at(-1)
+        if (!Array.isArray(parent) || typeof itemIndex !== "number") throw new InvalidAffinityStateError()
+        parent.splice(itemIndex, 1)
+        const messageIndex = block.path[1]
+        if (protocol === "messages" && typeof messageIndex === "number") removedMessages.add(messageIndex)
+      } else {
+        const item = at(copy, block.path)
+        if (!object(item)) throw new InvalidAffinityStateError()
+        for (const { key, state } of block.decoded) item[key] = state.value
+      }
+    }
+    if (protocol === "chat_completions" && Array.isArray(copy.messages)) copy.messages = copy.messages.filter((_, index) => !removedMessages.has(index))
+    if (!preserveNative && protocol === "gemini" && Array.isArray(copy.contents)) copy.contents = copy.contents.filter(content => !object(content) || content.role !== "model" || !Array.isArray(content.parts) || content.parts.length > 0)
+    if (protocol === "messages" && Array.isArray(copy.messages)) copy.messages = copy.messages.filter((message, index) =>
+      !removedMessages.has(index) || !object(message) || message.role !== "assistant" || !Array.isArray(message.content) || message.content.length > 0)
+    return copy
+  }
   return Object.freeze({
     cloneSource: () => input.clone(),
-    hasOwned: owned.length > 0,
-    hasRequiredOwned: owned.some(block => block.required),
+    prepareSource: () => project(undefined, true),
+    hasOwned: tracked.length > 0,
+    hasRequiredOwned: inherited.length > 0 || owned.some(block => block.required),
+    hasRouteConstraints: owned.length > 0 || inherited.length > 0,
     classify,
     rankAuthorizedCandidates<T>(candidates: readonly T[], targetOf: (candidate: T) => AffinityExecutionTarget | undefined): T[] {
       const ranks = { exact: 0, compatible: 1, degraded: 2, unavailable: 3 }
@@ -239,37 +318,7 @@ export async function analyzeAffinityRequest(protocol: AffinityProtocol, body: R
     },
     materialize(target: AffinityExecutionTarget | undefined): JsonObject {
       if (classify(target) === "unavailable") throw new AffinityRoutingUnavailableError()
-      const copy = input.clone()
-      // Descending paths avoid index shifts during whole-block removal.
-      const removedMessages = new Set<number>()
-      for (const block of [...owned].reverse()) {
-        if (shouldRemove(block, target)) {
-          if (protocol === "chat_completions") {
-            const message = at(copy, block.path)
-            if (!object(message)) throw new InvalidAffinityStateError()
-            for (const key of ["reasoning_text", "reasoning_content", "reasoning", "reasoning_opaque", "reasoning_items"]) delete message[key]
-            // The loose Chat schema can carry refusal, audio, or provider payloads.
-            // Remove only a bare role with absent/empty text after stripping reasoning.
-            if (Object.keys(message).every(key => key === "role" || (key === "content" && (message.content == null || message.content === "")))) removedMessages.add(Number(block.path[1]))
-            continue
-          }
-          const parent = at(copy, block.path.slice(0, -1))
-          const index = block.path.at(-1)
-          if (!Array.isArray(parent) || typeof index !== "number") throw new InvalidAffinityStateError()
-          parent.splice(index, 1)
-          const messageIndex = block.path[1]
-          if (protocol === "messages" && typeof messageIndex === "number") removedMessages.add(messageIndex)
-        } else {
-          const item = at(copy, block.path)
-          if (!object(item)) throw new InvalidAffinityStateError()
-          for (const { key, state } of block.decoded) item[key] = state.value
-        }
-      }
-      if (protocol === "chat_completions" && Array.isArray(copy.messages)) copy.messages = copy.messages.filter((_, index) => !removedMessages.has(index))
-      if (protocol === "gemini" && Array.isArray(copy.contents)) copy.contents = copy.contents.filter(content => !object(content) || content.role !== "model" || !Array.isArray(content.parts) || content.parts.length > 0)
-      if (protocol === "messages" && Array.isArray(copy.messages)) copy.messages = copy.messages.filter((message, index) =>
-        !removedMessages.has(index) || !object(message) || message.role !== "assistant" || !Array.isArray(message.content) || message.content.length > 0)
-      return copy
+      return project(target, false)
     },
   })
 }

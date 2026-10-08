@@ -45,7 +45,7 @@ export async function selectAffinityCandidate<T extends Candidate>(candidates: r
     return candidate as MaterializedCandidate<T>
   }
   if (affinity && !("analysis" in affinity)) throw new AffinityRoutingUnavailableError()
-  if (!affinity || !affinity.analysis.hasOwned) {
+  if (!affinity || !affinity.analysis.hasRouteConstraints) {
     for (const candidate of candidates) {
       options.signal?.throwIfAborted()
       const selected = await ready(candidate)
@@ -68,7 +68,7 @@ export async function selectAffinityCandidate<T extends Candidate>(candidates: r
     const selected = await ready(candidate)
     if (!selected) continue
     try {
-      const source: Record<string, unknown> = { ...affinity.analysis.cloneSource(), model: bareModel }
+      const source: Record<string, unknown> = { ...affinity.analysis.prepareSource(), model: bareModel }
       const translated = await translator.translateRequest(source, { signal: options.signal ?? new AbortController().signal, model: bareModel })
       const payload = selectedTierRequest(execution.protocol, candidate.targetEndpoint, source, translated as Record<string, unknown>)
       const request: ProviderRequest = {

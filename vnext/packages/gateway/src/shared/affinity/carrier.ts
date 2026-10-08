@@ -23,11 +23,12 @@ export class InvalidAffinityStateError extends Error {
 export interface AffinityField {
   /** Stable protocol/item/field identifier, not an array position. */
   readonly domain: string
-  /** Complete companion content, serialized canonically by the protocol adapter. */
+  /** Native v1 companion content, serialized canonically by the protocol adapter. */
   readonly block?: string
 }
 export type DecodedAffinity = { readonly kind: "foreign"; readonly value: string }
   | { readonly kind: "owned"; readonly value: string; readonly target: AffinityExecutionTarget; readonly synthetic: boolean }
+  | { readonly kind: "origin"; readonly target: AffinityExecutionTarget; readonly syntheticItem: boolean }
 export interface AffinityCodecOptions extends ApiKeyAffinitySecret {
   readonly ownerId: string
   readonly apiKeyId: string
@@ -35,6 +36,12 @@ export interface AffinityCodecOptions extends ApiKeyAffinitySecret {
 
 function boundedField(field: AffinityField): void {
   if (!field.domain || field.domain.length > 512 || (field.block?.length ?? 0) > MAX_AFFINITY_PAYLOAD_BYTES) throw new InvalidAffinityStateError()
+}
+
+function validateOriginField(field: AffinityField, syntheticItem: unknown): void {
+  const expected = field.domain === "responses/reasoning/encrypted_content" || field.domain === "messages/redacted_thinking/data"
+    ? true : field.domain === "chat_completions/reasoning/reasoning_opaque" || field.domain === "gemini/part/thoughtSignature" ? false : undefined
+  if (expected === undefined || syntheticItem !== expected) throw new InvalidAffinityStateError()
 }
 
 /** A recognizable outer marker makes corrupt/unknown gateway state fail closed.
@@ -57,6 +64,21 @@ export class AffinityCodec {
     return buffer(concatBytes(encoder.encode(JSON.stringify(["v1", ...this.#binding, field.domain, field.block ?? null])), original))
   }
 
+  private originAad(field: AffinityField): ArrayBuffer {
+    // Provenance authenticates its producer, not client-assembled visible text.
+    // Native v1 state continues to bind its original bytes and companion content.
+    return buffer(encoder.encode(JSON.stringify(["v2", ...this.#binding, field.domain])))
+  }
+
+  async encodeOrigin(target: AffinityExecutionTarget, field: AffinityField, options: { syntheticItem: boolean }): Promise<string> {
+    validateOriginField(field, options.syntheticItem)
+    const metadata = encoder.encode(JSON.stringify({ version: 2, target: parseAffinityExecutionTarget(target), syntheticItem: options.syntheticItem }))
+    if (metadata.length + 28 > MAX_AFFINITY_TRAILER_BYTES) throw new InvalidAffinityStateError()
+    const iv = crypto.getRandomValues(new Uint8Array(12))
+    const encrypted = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv, additionalData: this.originAad(field) }, await this.#key, buffer(metadata)))
+    return `${AFFINITY_MARKER}2:${appendOpaqueTrailer(undefined, concatBytes(iv, encrypted))}`
+  }
+
   async encode(value: string, target: AffinityExecutionTarget, field: AffinityField, options: { synthetic?: boolean } = {}): Promise<string> {
     boundedField(field)
     if (value.length > MAX_AFFINITY_PAYLOAD_BYTES) throw new InvalidAffinityStateError()
@@ -72,6 +94,19 @@ export class AffinityCodec {
   async decode(value: string, field: AffinityField): Promise<DecodedAffinity> {
     if (!value.startsWith(AFFINITY_MARKER)) return { kind: "foreign", value }
     try {
+      if (value.startsWith(`${AFFINITY_MARKER}2:`)) {
+        // No native payload is permitted in an origin-only frame.
+        if (value.length > Math.ceil((MAX_AFFINITY_TRAILER_BYTES + 2) / 3) * 4 + AFFINITY_MARKER.length + 2) throw new InvalidAffinityStateError()
+        const split = splitOpaqueTrailer(value.slice(AFFINITY_MARKER.length + 2), 28)
+        if (!split || split.original.length !== 0 || split.trailer.length > MAX_AFFINITY_TRAILER_BYTES) throw new InvalidAffinityStateError()
+        const plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv: buffer(split.trailer.subarray(0, 12)), additionalData: this.originAad(field) }, await this.#key, buffer(split.trailer.subarray(12)))
+        const data: unknown = JSON.parse(decoder.decode(plain))
+        if (!data || typeof data !== "object" || Array.isArray(data)) throw new InvalidAffinityStateError()
+        const parsed = data as Record<string, unknown>
+        if (Object.keys(parsed).some(key => !["version", "target", "syntheticItem"].includes(key)) || parsed.version !== 2) throw new InvalidAffinityStateError()
+        validateOriginField(field, parsed.syntheticItem)
+        return { kind: "origin", target: parseAffinityExecutionTarget(parsed.target), syntheticItem: parsed.syntheticItem as boolean }
+      }
       boundedField(field)
       if (!value.startsWith(`${AFFINITY_MARKER}1:`) || value.length > MAX_AFFINITY_WIRE_CHARS) throw new InvalidAffinityStateError()
       const split = splitOpaqueTrailer(value.slice(AFFINITY_MARKER.length + 2), 28)
