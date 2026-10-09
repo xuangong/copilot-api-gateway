@@ -1,14 +1,21 @@
 import { afterEach, describe, expect, test } from "bun:test"
+import { createHash } from "node:crypto"
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
 import { coverage, hookTargets, patchSource, type Arm } from "./instrumentation.ts"
 
-const roots: Record<Arm, string> = {
-  A: process.env.MEASUREMENT_SOURCE_A ?? "/Volumes/Projects/copilot-api-gateway-cfw-validation-20260930-001627/baseline/vnext",
-  B: process.env.MEASUREMENT_SOURCE_B ?? resolve(import.meta.dir, "../../../../.."),
-  R: process.env.MEASUREMENT_SOURCE_R ?? "/Volumes/Projects/copilot-gateway",
+const roots: Record<Arm, string | undefined> = {
+  A: process.env.MEASUREMENT_SOURCE_A,
+  B: process.env.MEASUREMENT_SOURCE_B,
+  R: process.env.MEASUREMENT_SOURCE_R,
 }
-const sourceAt = (arm: Arm, path: string) => readFileSync(resolve(roots[arm], path), "utf8")
+// These tests qualify the historical transforms, whose hashes deliberately do
+// not follow product changes. Checked-in bytes also work in shallow checkouts.
+const fixtureRoot = resolve(import.meta.dir, "fixtures/instrumentation-source")
+const sourceAt = (arm: Arm, path: string) => {
+  const root = roots[arm]
+  return readFileSync(root === undefined ? resolve(fixtureRoot, arm, `${path}.txt`) : resolve(root, path), "utf8")
+}
 const probeKey = Symbol.for("gateway.measurement.probe")
 const globalProbe = globalThis as unknown as Record<symbol, unknown>
 const oldProbe = globalProbe[probeKey]
@@ -18,6 +25,26 @@ afterEach(() => {
 })
 
 describe("measurement-only source instrumentation", () => {
+  test("checked-in source fixtures retain their complete frozen identities", () => {
+    const manifest = JSON.parse(readFileSync(resolve(fixtureRoot, "manifest.json"), "utf8")) as {
+      schema: string
+      arms: Record<Arm, { commit: string; files: { path: string; fixture: string; bytes: number; sha256: string }[] }>
+    }
+    expect(manifest.schema).toBe("measurement-instrumentation-test-source-v1")
+    for (const arm of ["A", "B", "R"] as const) {
+      const source = manifest.arms[arm]
+      expect(source.commit).toMatch(/^[a-f0-9]{40}$/)
+      expect(source.files.map(file => file.path).sort()).toEqual(hookTargets(arm).sort())
+      for (const file of source.files) {
+        expect(file.fixture).toBe(`${arm}/${file.path}.txt`)
+        const bytes = readFileSync(resolve(fixtureRoot, file.fixture))
+        expect(bytes.byteLength).toBe(file.bytes)
+        expect(createHash("sha256").update(bytes).digest("hex")).toBe(file.sha256)
+        expect(patchSource(arm, file.path, bytes.toString("utf8")).applied.length).toBeGreaterThan(0)
+      }
+    }
+  })
+
   test("all three arms expose the required common Chat route and direct fetch hooks", () => {
     for (const arm of ["A", "B"] as const) {
       expect(hookTargets(arm)).toContain("packages/gateway/src/data-plane/chat-flow/chat-completions/http.ts")

@@ -1,0 +1,213 @@
+{
+  "schema": "measurement-instrumentation-test-source-v1",
+  "purpose": "Immutable original source bytes for the historical transform unit tests only; not a measurement input freeze or a new performance result",
+  "arms": {
+    "A": {
+      "repository": "copilot-api-gateway",
+      "commit": "e660fb4dfcf1734d10f89e52e2d739b2985c634b",
+      "repositoryPrefix": "vnext/",
+      "files": [
+        {
+          "path": "packages/gateway/src/data-plane/chat-flow/chat-completions/http.ts",
+          "fixture": "A/packages/gateway/src/data-plane/chat-flow/chat-completions/http.ts.txt",
+          "bytes": 1018,
+          "sha256": "f1fb0726ddfb919ccbe218b2e026acf0cd6568845d71d13c80bb82219a6f76c6"
+        },
+        {
+          "path": "packages/gateway/src/data-plane/chat-flow/shared/dump-open.ts",
+          "fixture": "A/packages/gateway/src/data-plane/chat-flow/shared/dump-open.ts.txt",
+          "bytes": 2107,
+          "sha256": "f9cfabb283e40f3045a07385111579cf2ec8e3aaa25259f8f7e5ddc2de461911"
+        },
+        {
+          "path": "packages/gateway/src/data-plane/chat-flow/shared/select-binding.ts",
+          "fixture": "A/packages/gateway/src/data-plane/chat-flow/shared/select-binding.ts.txt",
+          "bytes": 3868,
+          "sha256": "d8574013e96cc2b9de47f31a1a99f2ef3e3bc1c4f49567fad16f962ffca2c5f7"
+        },
+        {
+          "path": "packages/gateway/src/data-plane/chat-flow/shared/performance-upstream.ts",
+          "fixture": "A/packages/gateway/src/data-plane/chat-flow/shared/performance-upstream.ts.txt",
+          "bytes": 2211,
+          "sha256": "3b13e33c409848db12732e66a697912be21363d64ec921621e7ee413fdfe30b5"
+        },
+        {
+          "path": "packages/gateway/src/repo/configuration-cache.ts",
+          "fixture": "A/packages/gateway/src/repo/configuration-cache.ts.txt",
+          "bytes": 14008,
+          "sha256": "04a5145bee3be064146647e3b54ebeaf378581ea39c839bd7f88ca6656508200"
+        },
+        {
+          "path": "packages/upstream/src/fetcher.ts",
+          "fixture": "A/packages/upstream/src/fetcher.ts.txt",
+          "bytes": 924,
+          "sha256": "1e1c4ced362392cf06fe845610e669295394ad1077563a1f40ff32dd4b652fca"
+        },
+        {
+          "path": "packages/http/src/fetch-retry.ts",
+          "fixture": "A/packages/http/src/fetch-retry.ts.txt",
+          "bytes": 3456,
+          "sha256": "1fdc2faf06da6672fa70eba95149ee77d4a069ace06f846b4aa53f122b4fcb33"
+        },
+        {
+          "path": "packages/result/src/parse-sse.ts",
+          "fixture": "A/packages/result/src/parse-sse.ts.txt",
+          "bytes": 2037,
+          "sha256": "61f72c3415e16fcdc736b7c86e5b300c8f03591675931bb4ef0b1f2c854fb87a"
+        },
+        {
+          "path": "packages/gateway/src/repo/dump-store.ts",
+          "fixture": "A/packages/gateway/src/repo/dump-store.ts.txt",
+          "bytes": 15447,
+          "sha256": "cdff47fa521fee5c497b6e8345f04d2c05e2f7c5dc07332ebc4119d3504ab02b"
+        },
+        {
+          "path": "packages/gateway/src/shared/dump/accumulator.ts",
+          "fixture": "A/packages/gateway/src/shared/dump/accumulator.ts.txt",
+          "bytes": 13002,
+          "sha256": "7c9f78c32698275a3a92e9c8d4e8934f531780468c1722c9fea055ab384712a1"
+        }
+      ]
+    },
+    "B": {
+      "repository": "copilot-api-gateway",
+      "commit": "8f3a0d62188994fdeb369a69891bfb626ac313fd",
+      "repositoryPrefix": "vnext/",
+      "files": [
+        {
+          "path": "packages/gateway/src/data-plane/chat-flow/chat-completions/http.ts",
+          "fixture": "B/packages/gateway/src/data-plane/chat-flow/chat-completions/http.ts.txt",
+          "bytes": 1018,
+          "sha256": "f1fb0726ddfb919ccbe218b2e026acf0cd6568845d71d13c80bb82219a6f76c6"
+        },
+        {
+          "path": "packages/gateway/src/data-plane/chat-flow/shared/dump-open.ts",
+          "fixture": "B/packages/gateway/src/data-plane/chat-flow/shared/dump-open.ts.txt",
+          "bytes": 2123,
+          "sha256": "b707c4119e3bac88e3cbd0f47a928c7e06ce97bf34de4c21a690741990ba298d"
+        },
+        {
+          "path": "packages/gateway/src/data-plane/chat-flow/shared/select-binding.ts",
+          "fixture": "B/packages/gateway/src/data-plane/chat-flow/shared/select-binding.ts.txt",
+          "bytes": 5454,
+          "sha256": "90023cce5e7be6d9870b349a16dc65fdcc23ea3120940e4cb2317d12bc966cc5"
+        },
+        {
+          "path": "packages/gateway/src/data-plane/chat-flow/shared/performance-upstream.ts",
+          "fixture": "B/packages/gateway/src/data-plane/chat-flow/shared/performance-upstream.ts.txt",
+          "bytes": 2211,
+          "sha256": "3b13e33c409848db12732e66a697912be21363d64ec921621e7ee413fdfe30b5"
+        },
+        {
+          "path": "packages/gateway/src/repo/configuration-cache.ts",
+          "fixture": "B/packages/gateway/src/repo/configuration-cache.ts.txt",
+          "bytes": 15679,
+          "sha256": "07d8dd9ab481c5c0590b11251ecfb9a8947f70a8de848bddf26f1f50e598a427"
+        },
+        {
+          "path": "packages/upstream/src/fetcher.ts",
+          "fixture": "B/packages/upstream/src/fetcher.ts.txt",
+          "bytes": 924,
+          "sha256": "1e1c4ced362392cf06fe845610e669295394ad1077563a1f40ff32dd4b652fca"
+        },
+        {
+          "path": "packages/http/src/fetch-retry.ts",
+          "fixture": "B/packages/http/src/fetch-retry.ts.txt",
+          "bytes": 4569,
+          "sha256": "257b8f199b97e4fc8dc4e2b138afdd51e465abf964fe85a3b04d6b2866cd197d"
+        },
+        {
+          "path": "packages/result/src/parse-sse.ts",
+          "fixture": "B/packages/result/src/parse-sse.ts.txt",
+          "bytes": 3202,
+          "sha256": "5f8e708a1c588f1eb02e0e396cd4fa07929d8e06602ea0e522ed8a3f4359c295"
+        },
+        {
+          "path": "packages/gateway/src/repo/dump-store.ts",
+          "fixture": "B/packages/gateway/src/repo/dump-store.ts.txt",
+          "bytes": 25998,
+          "sha256": "4baae7eccf2e81cd0200882e659206b20c47158ae0b969563b3bb7dbbb2b04c2"
+        },
+        {
+          "path": "packages/gateway/src/shared/dump/accumulator.ts",
+          "fixture": "B/packages/gateway/src/shared/dump/accumulator.ts.txt",
+          "bytes": 27636,
+          "sha256": "cb155264dc88381d8e765d02316cee48530041f75c85c4fddfd38d61b53977f7"
+        }
+      ]
+    },
+    "R": {
+      "repository": "copilot-gateway",
+      "commit": "1d7dcd923e260e425120cca0c7a240e93720af27",
+      "repositoryPrefix": "",
+      "files": [
+        {
+          "path": "packages/gateway/src/middleware/auth.ts",
+          "fixture": "R/packages/gateway/src/middleware/auth.ts.txt",
+          "bytes": 6427,
+          "sha256": "5305d0918448dac1fb3600741447b789d4e9502c02118a0d3a252e453559deef"
+        },
+        {
+          "path": "packages/gateway/src/data-plane/chat/openai-chat-completions/http.ts",
+          "fixture": "R/packages/gateway/src/data-plane/chat/openai-chat-completions/http.ts.txt",
+          "bytes": 4758,
+          "sha256": "06ab4f61b0cf15c7570401a744d3d99c2ece60439d542cdb62d1f8e4dab591a3"
+        },
+        {
+          "path": "packages/gateway/src/data-plane/chat/openai-chat-completions/serve.ts",
+          "fixture": "R/packages/gateway/src/data-plane/chat/openai-chat-completions/serve.ts.txt",
+          "bytes": 3051,
+          "sha256": "8c3a5a302ecc0b9522b5db616064012f3f790751d932b339575005e6025baafa"
+        },
+        {
+          "path": "packages/gateway/src/data-plane/chat/openai-chat-completions/attempt.ts",
+          "fixture": "R/packages/gateway/src/data-plane/chat/openai-chat-completions/attempt.ts.txt",
+          "bytes": 4492,
+          "sha256": "6b20d1f015b03ad795b6d030487395996cf47e20ba1704cc47f03e1506d51c95"
+        },
+        {
+          "path": "packages/gateway/src/data-plane/shared/iterate-candidates.ts",
+          "fixture": "R/packages/gateway/src/data-plane/shared/iterate-candidates.ts.txt",
+          "bytes": 3706,
+          "sha256": "0b745356760bdee74f401cfda7370ea6d0bc107fc98b27d8ccc8a43dd7bb044a"
+        },
+        {
+          "path": "apps/platform-cloudflare/src/fetch.ts",
+          "fixture": "R/apps/platform-cloudflare/src/fetch.ts.txt",
+          "bytes": 1401,
+          "sha256": "bd42515fbb839496f27969e42cda45c5e303a31e524c8eff14da7370a7eb68d0"
+        },
+        {
+          "path": "packages/provider-custom/src/fetch.ts",
+          "fixture": "R/packages/provider-custom/src/fetch.ts.txt",
+          "bytes": 6139,
+          "sha256": "c19472f868145ff3229a676b468195e39dd117cace4452a9dbcf0b009e8873d9"
+        },
+        {
+          "path": "packages/protocols/src/common/parse-sse.ts",
+          "fixture": "R/packages/protocols/src/common/parse-sse.ts.txt",
+          "bytes": 1855,
+          "sha256": "3eecfd06d265e4ef892f599b75dd50283d5cd2594dd3f625c19e89e867274d02"
+        },
+        {
+          "path": "packages/gateway/src/shared/gzip.ts",
+          "fixture": "R/packages/gateway/src/shared/gzip.ts.txt",
+          "bytes": 2024,
+          "sha256": "1b4679dcefabd73bfe576a713af8046e448d1f75ca06651a8ab008ee537a8757"
+        },
+        {
+          "path": "packages/gateway/src/repo/dump-store.ts",
+          "fixture": "R/packages/gateway/src/repo/dump-store.ts.txt",
+          "bytes": 19500,
+          "sha256": "d713ccfbbbdf9b491837ca9403eb8fb9c62b68723838caa5b47de6707f012f15"
+        },
+        {
+          "path": "packages/gateway/src/dump/accumulator.ts",
+          "fixture": "R/packages/gateway/src/dump/accumulator.ts.txt",
+          "bytes": 16165,
+          "sha256": "e51a685281bd0e8e3fe8aec059cad3cffcf3b6cc8a3b4e9d8a9f44e2207fe498"
+        }
+      ]
+    }
+  }
+}
