@@ -1,3 +1,4 @@
+import { getSharedSessionConfig, setSharedSessionConfig } from "../shared-session-secret"
 import { queryUsageKeyMetadata, queryUsageAssigneeMetadata } from "../usage-metadata"
 import { getOrCreateAffinitySecret } from "../affinity-secret.ts"
 import { SharedCatalogRepo } from "./catalogs.ts"
@@ -98,6 +99,8 @@ function toApiKey(row: any): ApiKey {
     } catch {}
   }
   return {
+    sharedSessionEnabled: row.shared_session_enabled === 1,
+    sharedSessionConfigured: row.shared_session_configured === 1,
     id: row.id as ApiKeyId,
     name: row.name,
     key: row.key,
@@ -340,6 +343,8 @@ function buildKeyIdRangeQuery(table: string, cols: string, opts: { keyId?: ApiKe
 }
 
 class SharedApiKeyRepo implements ApiKeyRepo {
+  getSharedSessionConfig(id: ApiKeyId, ownerId: UserId) { return getSharedSessionConfig(this.x, id, ownerId) }
+  setSharedSessionConfig(id: ApiKeyId, ownerId: UserId, config: { enabled: boolean; secret?: string }) { return setSharedSessionConfig(this.x, id, ownerId, config) }
   getOrCreateAffinitySecret(id: ApiKeyId, ownerId: UserId | undefined) {
     return getOrCreateAffinitySecret(this.x, id, ownerId)
   }
@@ -369,7 +374,7 @@ class SharedApiKeyRepo implements ApiKeyRepo {
         ownerId, ownerId, relay, hostId],
     )
     const row = await this.x.first(
-      `SELECT ${API_KEY_COLS} FROM api_keys
+      `SELECT ${API_KEY_COLS}, shared_session_enabled, (shared_session_secret IS NOT NULL) AS shared_session_configured FROM api_keys
        WHERE owner_id = ? AND agent_remote_relay = ? AND agent_remote_host_id = ?
          AND EXISTS (SELECT 1 FROM users WHERE id = ? AND disabled = 0)`,
       [ownerId, relay, hostId, ownerId],
@@ -385,20 +390,20 @@ class SharedApiKeyRepo implements ApiKeyRepo {
   }
 
   async list(): Promise<ApiKey[]> {
-    return (await this.x.all(`SELECT ${API_KEY_COLS} FROM api_keys ORDER BY created_at`, [])).map(toApiKey)
+    return (await this.x.all(`SELECT ${API_KEY_COLS}, shared_session_enabled, (shared_session_secret IS NOT NULL) AS shared_session_configured FROM api_keys ORDER BY created_at`, [])).map(toApiKey)
   }
 
   async listByOwner(ownerId: UserId): Promise<ApiKey[]> {
-    return (await this.x.all(`SELECT ${API_KEY_COLS} FROM api_keys WHERE owner_id = ? ORDER BY created_at`, [ownerId])).map(toApiKey)
+    return (await this.x.all(`SELECT ${API_KEY_COLS}, shared_session_enabled, (shared_session_secret IS NOT NULL) AS shared_session_configured FROM api_keys WHERE owner_id = ? ORDER BY created_at`, [ownerId])).map(toApiKey)
   }
 
   async findByRawKey(rawKey: string): Promise<ApiKey | null> {
-    const row = await this.x.first(`SELECT ${API_KEY_COLS} FROM api_keys WHERE key = ?`, [rawKey])
+    const row = await this.x.first(`SELECT ${API_KEY_COLS}, shared_session_enabled, (shared_session_secret IS NOT NULL) AS shared_session_configured FROM api_keys WHERE key = ?`, [rawKey])
     return row ? toApiKey(row) : null
   }
 
   async getById(id: ApiKeyId): Promise<ApiKey | null> {
-    const row = await this.x.first(`SELECT ${API_KEY_COLS} FROM api_keys WHERE id = ?`, [id])
+    const row = await this.x.first(`SELECT ${API_KEY_COLS}, shared_session_enabled, (shared_session_secret IS NOT NULL) AS shared_session_configured FROM api_keys WHERE id = ?`, [id])
     return row ? toApiKey(row) : null
   }
 

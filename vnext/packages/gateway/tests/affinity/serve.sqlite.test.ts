@@ -37,13 +37,17 @@ function upstreamResponse(protocol: "responses" | "messages", stream: boolean, r
     { type: "message_stop" },
   ]) : Response.json(body)
 }
-async function fixture(protocol: "responses" | "messages", stream: boolean, customResponse?: () => Response) {
+async function fixture(protocol: "responses" | "messages", stream: boolean, customResponse?: () => Response, shared = false) {
   const { db, repo } = setupTestPlatform()
   initSocketDial(bunSocketDial)
   const pending: Promise<unknown>[] = []
   initBackground({ waitUntil: promise => { pending.push(promise) } })
   cleanup.push(() => db.close())
   db.run("INSERT INTO api_keys (id, name, key, owner_id, created_at) VALUES ('key', 'test', 'fixture-key', 'owner', 'now'), ('other', 'test', 'other-key', 'owner', 'now')")
+  if (shared) for (const key of await repo.apiKeys.list()) {
+    if (!key.ownerId) throw new Error("Missing owner")
+    await repo.apiKeys.setSharedSessionConfig(key.id, key.ownerId, { enabled: true, secret: "ab".repeat(32) })
+  }
   const sent: Record<string, unknown>[] = []
   const upstream = Bun.serve({ port: 0, hostname: "127.0.0.1", async fetch(request) {
     sent.push(await request.json() as Record<string, unknown>)
@@ -71,10 +75,10 @@ async function fixture(protocol: "responses" | "messages", stream: boolean, cust
 function events(text: string): Array<Record<string, unknown>> { return text.split("\n").filter(line => line.startsWith("data: ") && line !== "data: [DONE]").map(line => JSON.parse(line.slice(6)) as Record<string, unknown>) }
 function object(value: unknown): Record<string, unknown> { if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Expected fixture object"); return value as Record<string, unknown> }
 function objects(value: unknown): Array<Record<string, unknown>> { if (!Array.isArray(value)) throw new Error("Expected fixture array"); return value.map(object) }
-function naturalItem(items: Array<Record<string, unknown>>, key: string): Record<string, unknown> {
-  const item = items.find(value => typeof value[key] === "string" && value[key].startsWith("vnext-affinity:1:"))
+function naturalItem(items: Array<Record<string, unknown>>, key: string, version = 1): Record<string, unknown> {
+  const item = items.find(value => typeof value[key] === "string" && value[key].startsWith(`vnext-affinity:${version}:`))
   if (!item) throw new Error(`Expected one natural affinity item in ${key}`)
-  expect(items.filter(value => typeof value[key] === "string" && value[key].startsWith("vnext-affinity:1:"))).toHaveLength(1)
+  expect(items.filter(value => typeof value[key] === "string" && value[key].startsWith(`vnext-affinity:${version}:`))).toHaveLength(1)
   return item
 }
 function messageBlocks(frames: Array<Record<string, unknown>>): Array<Record<string, unknown>> {
@@ -108,20 +112,20 @@ function outputItems(source: "responses" | "messages", body: string, stream: boo
   return objects(object(terminal.response).output)
 }
 
-for (const source of ["responses", "messages"] as const) for (const target of ["responses", "messages"] as const) for (const stream of [false, true]) {
-  test(`actual ${source} -> ${target} ${stream ? "SSE" : "JSON"} signs, replays, and rejects another key before inference`, async () => {
-    const f = await fixture(target, stream)
+for (const source of ["responses", "messages"] as const) for (const target of ["responses", "messages"] as const) for (const stream of [false, true]) for (const shared of [false, true]) {
+  test(`actual ${source} -> ${target} ${stream ? "SSE" : "JSON"} ${shared ? "shared" : "isolated"} mode signs and enforces key compatibility`, async () => {
+    const f = await fixture(target, stream, undefined, shared)
     const initial = source === "responses" ? { input: "question" } : { messages: [{ role: "user", content: "question" }], max_tokens: 100 }
     const first = await f.call(source, initial)
     expect(first.status).toBe(200)
     const text = await first.text()
     const items = outputItems(source, text, stream)
-    const item = naturalItem(items, source === "responses" ? "encrypted_content" : "signature")
+    const item = naturalItem(items, source === "responses" ? "encrypted_content" : "signature", shared ? 3 : 1)
     if (source === "responses" && stream) {
       const done = events(text).find(event => event.type === "response.output_item.done" && object(event.item).encrypted_content === item.encrypted_content)
       expect(done?.item).toEqual(item)
     }
-    expect(source === "responses" ? item.encrypted_content : item.signature).toStartWith("vnext-affinity:1:")
+    expect(source === "responses" ? item.encrypted_content : item.signature).toStartWith(`vnext-affinity:${shared ? 3 : 1}:`)
     const replay = source === "responses" ? { input: items } : { messages: [{ role: "assistant", content: items }, { role: "user", content: "continue" }], max_tokens: 100 }
     const second = await f.call(source, replay)
     expect(second.status).toBe(200)
@@ -131,9 +135,9 @@ for (const source of ["responses", "messages"] as const) for (const target of ["
     expect(JSON.stringify(f.sent[1])).not.toContain("vnext-affinity")
     expect(JSON.stringify(f.sent[1])).toContain(JSON.stringify(thought).slice(1, -1))
     const wrongKey = await f.call(source, replay, "other")
-    expect(wrongKey.status).toBe(400)
+    expect(wrongKey.status).toBe(shared ? 200 : 400)
     await wrongKey.text()
-    expect(f.sent).toHaveLength(2)
+    expect(f.sent).toHaveLength(shared ? 3 : 2)
   })
 }
 

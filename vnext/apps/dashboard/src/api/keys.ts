@@ -21,6 +21,8 @@ export interface ApiKeyModelMapping {
 }
 
 export interface ApiKeyDetail {
+  shared_session_enabled?: boolean
+  shared_session_configured?: boolean
   responses_retention_seconds: number
   id: string
   name: string
@@ -225,4 +227,12 @@ export async function testKeyWebSearch(id: string): Promise<WebSearchTestResult>
     const message = e instanceof Error ? e.message : String(e)
     return { ok: false, provider: "", query: "", error: { code: "request_failed", message } }
   }
+}
+
+export function setSharedSession(id: string, body: { enabled: boolean; secret?: string }): Promise<{ enabled: boolean }> {
+  return api(`/api/keys/${encodeURIComponent(id)}/shared-session`, { method: "PUT", body })
+}
+
+export function revealSharedSessionSecret(id: string): Promise<{ secret: string | null }> {
+  return api(`/api/keys/${encodeURIComponent(id)}/shared-session/secret`)
 }

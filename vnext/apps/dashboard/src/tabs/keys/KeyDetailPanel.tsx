@@ -3,6 +3,7 @@ import type { QuotaLoad, QuotaUsage } from "../../state/key-quota"
 import { useModelCatalog } from "../../state/models"
 import { AssigneesPanel, SharedByOwnerPanel } from "./AssigneesPanel"
 import { ConfigurationPanel } from "./ConfigurationPanel"
+import { SharedSessionPanel } from "./SharedSessionPanel"
 import { ResponsesRetentionPanel } from "./ResponsesRetentionPanel"
 import { QuotaEditor } from "./QuotaEditor"
 import { WebSearchPanel } from "./WebSearchPanel"
@@ -17,6 +18,7 @@ interface Props {
   busy: boolean
   quotaUsage: QuotaUsage | null
   quotaLoad: QuotaLoad
+  onSettingsSaved: () => Promise<void>
   onQuotaRetry: () => void
   wsUsage: WebSearchUsage
   wsUsageRange: WebSearchRange
@@ -35,6 +37,7 @@ export function KeyDetailPanel({
   busy,
   quotaUsage,
   quotaLoad,
+  onSettingsSaved,
   onQuotaRetry,
   wsUsage,
   wsUsageRange,
@@ -71,6 +74,8 @@ export function KeyDetailPanel({
           })
         }
       />
+
+      <SharedSessionPanel key={keyRow.id} keyRow={keyRow} canEdit={canManage} busy={busy} onSaved={onSettingsSaved} />
 
       <ResponsesRetentionPanel key={keyRow.id} keyRow={keyRow} canEdit={canManage} busy={busy} onSave={onPatch} />
 

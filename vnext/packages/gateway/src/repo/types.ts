@@ -12,7 +12,11 @@ export type { SearchConfig, WebSearchProviderName } from "../shared/web-search-p
 export type { ApiKeyModelMapping, ApiKeyRoutingPolicy } from '../shared/api-key-model-mappings.ts'
 export type { ProxyRepo, ProxyBackoffRepo, ProxyRecord, ProxyFallbackEntry, BackoffRow } from "@vibe-core/proxy-repo"
 
+import type { SharedSessionConfig } from "./shared-session-secret"
+
 export interface ApiKey {
+  readonly sharedSessionEnabled?: boolean
+  readonly sharedSessionConfigured?: boolean
   id: ApiKeyId
   name: string
   key: string
@@ -60,7 +64,7 @@ export interface ApiKey {
   dumpRetentionSeconds?: number | null
 }
 
-export type ApiKeyPatch = Partial<Omit<ApiKey, "id" | "createdAt" | "modelMappingsInvalid" | "upstreamIdsInvalid">>
+export type ApiKeyPatch = Partial<Omit<ApiKey, "id" | "createdAt" | "modelMappingsInvalid" | "upstreamIdsInvalid" | "sharedSessionEnabled" | "sharedSessionConfigured">>
 
 export interface GitHubUser {
   id: GitHubAccountId
@@ -177,6 +181,8 @@ export interface AgentHostKeyScope {
 }
 
 export interface ApiKeyRepo {
+  getSharedSessionConfig(id: ApiKeyId, ownerId: UserId): Promise<SharedSessionConfig | null>
+  setSharedSessionConfig(id: ApiKeyId, ownerId: UserId, config: { enabled: boolean; secret?: string }): Promise<boolean>
   /** Authoritative private read; ownerless keys have no affinity identity. */
   getOrCreateAffinitySecret(id: ApiKeyId, ownerId: UserId | undefined): Promise<ApiKeyAffinitySecret | null>
   /** Existing owned or assigned key IDs, resolved in one query. */

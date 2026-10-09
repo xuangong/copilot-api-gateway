@@ -40,7 +40,9 @@ export const copilotProviderPlugin: LlmProviderPlugin = {
             const session = await getToken(githubToken, accountType, githubHost, fetcher)
             return { token: session.token, baseUrl: session.apiEndpoint }
           } catch (error) {
-            if (!ctx.copilotFallback) throw error
+            // A captured identity belongs to the configured GitHub account.
+            // An unrelated fallback session cannot execute under that identity.
+            if (!ctx.copilotFallback || ctx.affinityAuthority) throw error
             return { token: ctx.copilotFallback.copilotToken }
           }
         }

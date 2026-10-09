@@ -23,6 +23,31 @@ const snapshot = (db: Database) =>
 const listSql = () => readdirSync(dir).filter((f) => f.endsWith(".sql"))
 
 describe("migration corpus", () => {
+  test("shared-session upgrade defaults off, preserves isolated secrets and revises changed configuration", () => {
+    const db = new Database(":memory:")
+    try {
+      db.exec("CREATE TABLE _migrations (name TEXT PRIMARY KEY)")
+      for (const file of listSql().sort().filter(file => file < "0024_")) {
+        db.exec(readFileSync(`${dir}/${file}`, "utf8"))
+        db.run("INSERT INTO _migrations (name) VALUES (?)", [file])
+      }
+      db.run("INSERT INTO api_keys (id,name,key,created_at,affinity_secret,affinity_key_id,affinity_version) VALUES ('existing','test','test','now','legacy-secret','legacy-id',1)")
+      applyMigrations(db, dir)
+      applyMigrations(db, dir)
+      expect(db.query("SELECT shared_session_enabled,shared_session_secret,affinity_secret,affinity_key_id,affinity_version FROM api_keys").get()).toEqual({
+        shared_session_enabled: 0, shared_session_secret: null, affinity_secret: "legacy-secret", affinity_key_id: "legacy-id", affinity_version: 1,
+      })
+      const revision = () => db.query<{ revision: number }, []>("SELECT revision FROM configuration_revision WHERE id=1").get()?.revision ?? -1
+      const before = revision()
+      db.run("UPDATE api_keys SET shared_session_enabled=1,shared_session_secret=?", ["ab".repeat(32)])
+      expect(revision()).toBe(before + 1)
+      db.run("UPDATE api_keys SET shared_session_enabled=1")
+      expect(revision()).toBe(before + 1)
+      db.run("UPDATE api_keys SET shared_session_enabled=0")
+      expect(revision()).toBe(before + 2)
+    } finally { db.close() }
+  })
+
   test("upstream sidecar migration keeps legacy rows capture-unavailable and applies once", () => {
     const db = new Database(":memory:")
     try {

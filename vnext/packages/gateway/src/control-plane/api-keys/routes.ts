@@ -1,3 +1,4 @@
+import { mountSharedSessionRoutes } from "./shared-session"
 /**
  * API-keys control-plane router — Week 5a-impl.
  *
@@ -99,6 +100,10 @@ function keyToJson(
   // can deserialize createdAt/lastUsedAt/ownerId/ownerName without a client
   // update. Adding new fields → add both variants.
   return {
+    shared_session_enabled: k.sharedSessionEnabled === true,
+    shared_session_configured: k.sharedSessionConfigured === true,
+    sharedSessionEnabled: k.sharedSessionEnabled === true,
+    sharedSessionConfigured: k.sharedSessionConfigured === true,
     id: k.id, name: k.name, key: k.key, created_at: k.createdAt,
     last_used_at: k.lastUsedAt ?? null, owner_id: k.ownerId ?? null,
     owner_name: ownerName ?? null, is_owner: isOwner ?? true,
@@ -728,3 +733,5 @@ apiKeysRouter.post('/:id/copy-web-search-from/:sourceId', async (c) => {
   const sourceMap = await loadSourceMapForKey(persisted)
   return c.json(keyToJson(persisted, undefined, true, sourceMap, true))
 })
+
+mountSharedSessionRoutes(apiKeysRouter)

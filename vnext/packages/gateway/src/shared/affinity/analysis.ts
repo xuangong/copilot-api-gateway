@@ -45,7 +45,7 @@ function emptyReasoningContent(value: unknown): boolean {
 }
 
 function slots(protocol: AffinityProtocol, item: JsonObject, carried = true): Slot[] {
-  const origin = (key: string) => carried && typeof item[key] === "string" && item[key].startsWith(`${AFFINITY_MARKER}2:`)
+  const origin = (key: string) => carried && typeof item[key] === "string" && (item[key].startsWith(`${AFFINITY_MARKER}2:`) || item[key].startsWith(`${AFFINITY_MARKER}4:`))
   if (protocol === "chat_completions") return typeof item.reasoning_opaque === "string"
     ? [{ key: "reasoning_opaque", field: { domain: "chat_completions/reasoning/reasoning_opaque", ...(origin("reasoning_opaque") ? {} : { block: JSON.stringify({ reasoning_text: chatReasoningText(item) ?? "" }) }) } }] : []
   if (protocol === "gemini") return typeof item.thoughtSignature === "string"
@@ -81,7 +81,7 @@ async function decodeSlot(protocol: AffinityProtocol, item: JsonObject, slot: Sl
     return await codec.decode(value, slot.field)
   } catch (error) {
     if (!(error instanceof InvalidAffinityStateError) || protocol !== "responses" || item.type !== "reasoning"
-      || !emptyReasoningContent(item.content) || !value.startsWith(`${AFFINITY_MARKER}1:`) || slot.field.block === undefined) throw error
+      || !emptyReasoningContent(item.content) || !(value.startsWith(`${AFFINITY_MARKER}1:`) || value.startsWith(`${AFFINITY_MARKER}3:`)) || slot.field.block === undefined) throw error
     // Keep issued v1 companions unchanged for rollback readers. After an exact
     // mismatch, try only equivalent empty spellings; never omit visible content.
     const companion: unknown = JSON.parse(slot.field.block)
@@ -115,7 +115,7 @@ async function agentField(item: JsonObject, carried: boolean): Promise<AffinityF
   const commitment = await Promise.all(values.map(async value => {
     let bytes: Uint8Array
     if (carried && value.startsWith(AFFINITY_MARKER)) {
-      if (!value.startsWith(`${AFFINITY_MARKER}1:`) || value.length > MAX_AFFINITY_WIRE_CHARS) throw new InvalidAffinityStateError()
+      if (!(value.startsWith(`${AFFINITY_MARKER}1:`) || value.startsWith(`${AFFINITY_MARKER}3:`)) || value.length > MAX_AFFINITY_WIRE_CHARS) throw new InvalidAffinityStateError()
       const split = splitOpaqueTrailer(value.slice(AFFINITY_MARKER.length + 2), 28)
       if (!split || split.original.length > MAX_AFFINITY_PAYLOAD_BYTES) throw new InvalidAffinityStateError()
       bytes = split.original

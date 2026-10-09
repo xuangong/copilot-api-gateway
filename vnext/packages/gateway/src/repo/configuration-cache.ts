@@ -278,6 +278,7 @@ type ConfigurationMethodEffects = {
 // consistency effect. Operational writes must not invalidate warm auth reads.
 const configurationMethodEffects = {
   apiKeys: {
+    getSharedSessionConfig: "read", setSharedSessionConfig: "configuration-write",
     getOrCreateAffinitySecret: "state-write", // Private material is never in the configuration snapshot.
     touchLastUsed: "state-write",
     listAccessibleIds: "read", list: "read", listByOwner: "read", findByRawKey: "read", getById: "read",

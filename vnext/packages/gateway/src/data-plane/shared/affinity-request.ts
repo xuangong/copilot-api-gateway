@@ -1,4 +1,5 @@
 import { affinityExecutionState, type AffinityExecutionState, type AttemptAffinity, type RequestAffinity } from "../../shared/affinity/context.ts"
+import { sharedSessionTargetDecorator } from "../../shared/affinity/shared-session-target"
 import { allowedInboundHeaders } from "./inbound-headers"
 import { selectedTierRequest } from "../chat-flow/shared/execution-tier"
 import { affinityTargetMatch } from "@vibe-llm/provider-llm"
@@ -22,7 +23,12 @@ export async function createRequestAffinity(protocol: AffinityProtocol, source: 
     if (!key?.ownerId || key.ownerId !== ownerId) throw new InvalidAffinityStateError()
     const secret = await repo.apiKeys.getOrCreateAffinitySecret(key.id, key.ownerId)
     if (!secret) throw new InvalidAffinityStateError()
-    return new AffinityCodec({ ...secret, apiKeyId: key.id, ownerId: key.ownerId })
+    const shared = key.sharedSessionEnabled ? await repo.apiKeys.getSharedSessionConfig(key.id, key.ownerId) : null
+    if (key.sharedSessionEnabled && (!shared?.enabled || !shared.secret)) throw new InvalidAffinityStateError()
+    const sharedSecret = shared?.secret ? Uint8Array.from(shared.secret.match(/../g) ?? [], hex => Number.parseInt(hex, 16)) : undefined
+    return new AffinityCodec({ ...secret, apiKeyId: key.id, ownerId: key.ownerId,
+      ...(sharedSecret ? { sharedSecret, decorateTarget: sharedSessionTargetDecorator(sharedSecret, key.ownerId, repo.upstreams) } : {}),
+    })
   })()
   // Analysis owns the only canonical snapshot; each mutable consumer gets a copy.
   // Ordinary ingress needs neither key material nor candidate preparation;
@@ -85,7 +91,9 @@ export async function selectAffinityCandidate<T extends Candidate>(candidates: r
         sourceApi: candidate.targetEndpoint === "messages" ? "anthropic" : "openai",
         sourceProtocol: execution.protocol,
       }
-      const target = await selected.binding.provider.prepareAffinityExecution?.(request)
+      const localTarget = await selected.binding.provider.prepareAffinityExecution?.(request)
+      const codec = execution.codec ?? await execution.loadCodec?.()
+      const target = localTarget && codec ? await codec.targetForSharing(localTarget) : localTarget
       prepared.push({ candidate: selected, target })
     } catch (error) {
       if (options.signal?.aborted) throw error
