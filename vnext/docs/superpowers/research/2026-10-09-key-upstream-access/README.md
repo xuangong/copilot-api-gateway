@@ -14,9 +14,9 @@ The API Key editor combines access and priority in one setting:
 
 Key model mappings run before scoped model selection. Visibility is still the Key owner's upstreams plus global upstreams. Pins, affinity, count-token calls, image/embedding requests, WebSocket turns, and provider-backed helpers remain inside the whitelist. Disabled/deleted/invisible references do not widen scope. This adds no automatic request replay or upstream failover.
 
-The Dashboard location is **API Keys → expand a Key → Upstream access & priority**. The editor supports inheritance, custom selection, up/down ordering, restoring defaults, missing and disabled references, and preserved drafts after failures. Changes affect all callers of that Key.
+The Dashboard location is **API Keys → expand a Key → Upstream access & priority**. Its enable checkbox matches model mappings: off uses defaults, on allows customization. First enable brings in the visible upstreams in default order, all selected; checking/unchecking controls this Key's access and up/down buttons set priority. An upstream's own disabled state is labelled separately. Save/cancel, restoring defaults, unavailable references, and preserved drafts after failures remain supported. Changes affect all callers of that Key.
 
-![Chinese editor showing B before A](upstream-access-zh.png)
+![Chinese editor with customization enabled, B checked and A unchecked](upstream-access-toggle-zh.png)
 
 ## Credential and update boundaries
 
@@ -53,3 +53,11 @@ Older binaries ignore this whitelist. A rollback to an older image therefore req
 - Raw local logs, task reports, and preservation receipts are retained under the main checkout's ignored `.superpowers/sdd/2026-10-09-key-upstream-access/` directory. The checked-in browser receipt and screenshot above contain only test identities.
 
 No push, Docker/CFW/SSH deployment, live database migration, or new performance benchmark was performed. Migration and rollback requirements above apply when a deployment is requested.
+
+## Enable-toggle UI follow-up
+
+The requested checkbox interaction replaces the original inherit/custom radio buttons without adding a persistence field or migration. Off still saves `null`; on saves the selected array, including `[]`. On the first activation the editor waits for the current default choices before initializing the draft or allowing a custom save. Load failures cannot accidentally save an empty policy, and late responses cannot turn customization back on after the user disables it. Existing custom orders and empty selections are never overwritten by fetched defaults. Saving off restores inheritance; a later new edit initializes from the then-current defaults.
+
+Focused tests: **15 pass / 0 fail** after first observing the two expected failures for the missing toggle and unloaded-default state. Independent review found no open findings. [Browser follow-up receipt](toggle-acceptance.json) records 18 checks against the real isolated Bun/SQLite app, including delayed/failed choice loading, reordering, selection, actual persisted arrays, save failure/retry, off/on transitions, empty catalogs, and cancel. Chinese controls were visually inspected, with no browser console errors or warnings.
+
+Full `bun run ci:local` exited 0 again on the main checkout, including its preserved collaboration overlay: **6,681 pass / 2 skip / 0 fail** across 607 files, framework purity, workspace typechecks, lint, UI build, and Workers dry-run. All 38 original dirty/untracked files were byte-identical after this follow-up and remained uncommitted. Local receipts are under `.superpowers/sdd/2026-10-09-key-upstream-toggle/`. No push or deployment.

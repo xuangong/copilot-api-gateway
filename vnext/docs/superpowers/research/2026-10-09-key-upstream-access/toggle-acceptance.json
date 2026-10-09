@@ -1,0 +1,80 @@
+{
+  "environment": "Isolated Bun application with in-memory SQLite, two local stub upstreams, real headless Chrome; no production credentials",
+  "checks": [
+    {
+      "case": "default disabled",
+      "passed": true
+    },
+    {
+      "case": "first enable waits for defaults: checked, save disabled, no empty warning, zero rows",
+      "passed": true
+    },
+    {
+      "case": "first enable shows defaults in A-B order, all selected",
+      "passed": true
+    },
+    {
+      "case": "save failure preserves reordered draft",
+      "passed": true
+    },
+    {
+      "case": "retry persists B-A order",
+      "passed": true
+    },
+    {
+      "case": "off-on keeps existing order",
+      "passed": true
+    },
+    {
+      "case": "unchecking marks current Key disabled",
+      "passed": true
+    },
+    {
+      "case": "unchecked upstream omitted from persisted whitelist",
+      "passed": true
+    },
+    {
+      "case": "explicit empty selection displays warning",
+      "passed": true
+    },
+    {
+      "case": "save exact empty whitelist",
+      "passed": true
+    },
+    {
+      "case": "existing empty whitelist survives off-on and catalog load",
+      "passed": true
+    },
+    {
+      "case": "cancel restores saved empty whitelist",
+      "passed": true
+    },
+    {
+      "case": "disable saves inherited defaults",
+      "passed": true
+    },
+    {
+      "case": "failed initial load cannot save or show deny-all",
+      "passed": true
+    },
+    {
+      "case": "late defaults do not switch customization back on",
+      "passed": true
+    },
+    {
+      "case": "retry then enable restores complete defaults",
+      "passed": true
+    },
+    {
+      "case": "successfully loaded empty catalog is explicit empty scope",
+      "passed": true
+    },
+    {
+      "case": "empty catalog can save exact empty whitelist",
+      "passed": true
+    }
+  ],
+  "chinese_controls_visually_verified": true,
+  "browser_console_errors_or_warnings": 0,
+  "note": "Choice delays/failures/empty responses and one PATCH failure were injected in this isolated browser; successful saves and readbacks used the real app and SQLite. Changing the locale reloads the dashboard; evidence was collected before that reload."
+}

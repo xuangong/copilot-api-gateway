@@ -54,17 +54,25 @@ export function UpstreamAccessPanel({ keyRow, canEdit, busy, onSave }: Props) {
       if (controller.signal.aborted) return
       setChoices(upstreams)
       setLoaded(true)
+      setDraft((current) => current.mode === "custom" ? setUpstreamAccessMode(current, "custom", upstreams) : current)
     } catch (error) {
       if (!controller.signal.aborted) setLoadError(error instanceof Error ? error.message : String(error))
     } finally {
       if (!controller.signal.aborted) setLoading(false)
     }
   }
-  const startEdit = () => {
-    setDraft(initialUpstreamAccessDraft(keyRow))
+  const startEdit = (mode = initialUpstreamAccessDraft(keyRow).mode) => {
+    setDraft(setUpstreamAccessMode(initialUpstreamAccessDraft(keyRow), mode))
     setSaveError(null)
     setEditing(true)
     void loadChoices()
+  }
+  const toggleEnabled = (enabled: boolean) => {
+    const mode = enabled ? "custom" : "inherit"
+    if (editing) {
+      setDraft((current) => setUpstreamAccessMode(current, mode, loaded && !loading && loadError === null ? choices : undefined))
+      setSaveError(null)
+    } else startEdit(mode)
   }
   const cancel = () => {
     request.current?.abort()
@@ -82,7 +90,7 @@ export function UpstreamAccessPanel({ keyRow, canEdit, busy, onSave }: Props) {
   const missing = loaded && rows.some((row) => row.selected && row.unavailable)
   const dirty = isUpstreamAccessDirty(draft, keyRow)
   const interactionDisabled = busy || saving
-  const customBlocked = draft.mode === "custom" && (!loaded || loading || loadError !== null || missing)
+  const customBlocked = draft.mode === "custom" && (!draft.customInitialized || !loaded || loading || loadError !== null || missing)
   const save = async () => {
     if (!canEdit || interactionDisabled || !dirty || customBlocked) return
     setSaving(true)
@@ -104,13 +112,23 @@ export function UpstreamAccessPanel({ keyRow, canEdit, busy, onSave }: Props) {
           <h3 id={`${panelId}-title`} className="text-xs font-medium text-themed-dim uppercase tracking-widest">
             {t("dash.upstreamAccessLabel")}
           </h3>
-          <span className={`text-[10px] ${current.mode === "inherit" ? "text-themed-dim" : "text-accent-teal"}`}>
-            {t(current.mode === "inherit" ? "dash.upstreamAccessInherit" : "dash.upstreamAccessCustom")}
-          </span>
+          <label className="flex items-center gap-1.5 text-[10px] text-themed-secondary cursor-pointer">
+            <input
+              type="checkbox"
+              checked={current.mode === "custom"}
+              disabled={!canEdit || interactionDisabled}
+              onChange={(event) => toggleEnabled(event.target.checked)}
+              aria-label={t("dash.upstreamAccessToggleAria")}
+              className="accent-accent-violet disabled:cursor-not-allowed"
+            />
+            <span className={current.mode === "custom" ? "text-accent-teal" : "text-themed-dim"}>
+              {t(current.mode === "custom" ? "dash.wsEnabledShort" : "dash.wsDisabledShort")}
+            </span>
+          </label>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           {!editing && canEdit ? (
-            <button type="button" onClick={startEdit} disabled={interactionDisabled} className="btn-ghost text-xs">
+            <button type="button" onClick={() => startEdit()} disabled={interactionDisabled} className="btn-ghost text-xs">
               {t("dash.edit")}
             </button>
           ) : null}
@@ -136,20 +154,9 @@ export function UpstreamAccessPanel({ keyRow, canEdit, busy, onSave }: Props) {
 
       {editing ? (
         <div className="space-y-3">
-          <fieldset disabled={interactionDisabled} className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-themed-secondary">
-            <legend className="sr-only">{t("dash.upstreamAccessLabel")}</legend>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input type="radio" name={`${panelId}-mode`} checked={draft.mode === "inherit"} onChange={restoreDefault} className="accent-accent-violet" />
-              {t("dash.upstreamAccessInherit")}
-            </label>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input type="radio" name={`${panelId}-mode`} checked={draft.mode === "custom"} disabled={!loaded || loading || loadError !== null} onChange={() => setDraft((value) => setUpstreamAccessMode(value, "custom", choices))} className="accent-accent-violet" />
-              {t("dash.upstreamAccessCustom")}
-            </label>
-            <button type="button" onClick={restoreDefault} className="btn-ghost text-xs">
-              {t("dash.upstreamAccessRestore")}
-            </button>
-          </fieldset>
+          <button type="button" onClick={restoreDefault} disabled={interactionDisabled || draft.mode === "inherit"} className="btn-ghost text-xs">
+            {t("dash.upstreamAccessRestore")}
+          </button>
           <p className="text-[10px] text-themed-dim">{t("dash.upstreamAccessOrderHint")}</p>
           {loading ? <p role="status" className="text-xs text-themed-dim">{t("dash.loadingShort")}</p> : null}
           {loadError ? (
@@ -170,9 +177,12 @@ export function UpstreamAccessPanel({ keyRow, canEdit, busy, onSave }: Props) {
                         <span className="min-w-0">
                           <span className="text-xs text-themed break-all">{row.selected ? `${selectedIndex + 1}. ` : ""}{row.name}</span>
                           <span className="block text-[10px] text-themed-dim break-all">{row.id}{row.provider ? ` · ${row.provider}` : ""}</span>
-                          {loaded && !loading ? (
-                            <span className={`block text-[10px] ${row.unavailable || !row.enabled ? "text-accent-amber" : "text-accent-teal"}`}>
-                              {t(row.unavailable ? "dash.upstreamAccessUnavailable" : row.enabled ? "dash.upstreamAccessAvailable" : "dash.upstreamAccessDisabled")}
+                          <span className={`block text-[10px] ${row.selected ? "text-accent-teal" : "text-themed-dim"}`}>
+                            {t(row.selected ? "dash.upstreamAccessKeyEnabled" : "dash.upstreamAccessKeyDisabled")}
+                          </span>
+                          {loaded && !loading && (row.unavailable || !row.enabled) ? (
+                            <span className="block text-[10px] text-accent-amber">
+                              {t(row.unavailable ? "dash.upstreamAccessUnavailable" : "dash.upstreamAccessDisabled")}
                             </span>
                           ) : null}
                         </span>
@@ -201,7 +211,7 @@ export function UpstreamAccessPanel({ keyRow, canEdit, busy, onSave }: Props) {
 
       {current.mode === "inherit" ? (
         <p className="text-xs text-themed-dim mt-3">{t("dash.upstreamAccessInheritHint")}</p>
-      ) : current.ids.length === 0 ? (
+      ) : current.customInitialized && current.ids.length === 0 ? (
         <p role="status" className="rounded-md bg-accent-amber/10 text-accent-amber text-xs p-3 mt-3">{t("dash.upstreamAccessEmpty")}</p>
       ) : null}
     </section>

@@ -27,3 +27,15 @@ test("invalid settings display a fail-closed repair warning", () => {
   expect(render([], true, true)).toContain("dash.upstreamAccessInvalid")
   expect(render([], true, false)).not.toContain("dash.upstreamAccessInvalid")
 })
+
+test("the custom access toggle defaults off while explicit empty and ordered whitelists remain on", () => {
+  const toggle = (html: string) => {
+    const input = html.match(/<input[^>]*aria-label="dash\.upstreamAccessToggleAria"[^>]*>/)?.[0]
+    expect(input).toBeDefined()
+    return input ?? ""
+  }
+  expect(toggle(render(null))).not.toContain("checked")
+  expect(toggle(render([]))).toContain("checked")
+  expect(toggle(render(["up-b", "up-a"]))).toContain("checked")
+  expect(toggle(render(null, false))).toContain("disabled")
+})

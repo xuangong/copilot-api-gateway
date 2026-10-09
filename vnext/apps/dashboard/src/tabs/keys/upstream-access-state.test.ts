@@ -43,6 +43,27 @@ test("customizing inheritance starts in default order and toggling mode preserve
   expect(upstreamAccessPatch(setUpstreamAccessMode(inherited, "custom", choices))).toEqual({ upstream_ids: [] })
 })
 
+test("enabling before choices load waits for defaults instead of initializing an empty whitelist", () => {
+  const pending = setUpstreamAccessMode(initialUpstreamAccessDraft({}), "custom", undefined)
+  expect(pending.mode).toBe("custom")
+  expect(pending.customInitialized).toBe(false)
+  const loaded = setUpstreamAccessMode(pending, "custom", choices)
+  expect(loaded.customInitialized).toBe(true)
+  expect(upstreamAccessPatch(loaded)).toEqual({ upstream_ids: ["up-a", "up-b", "up-c"] })
+  const noChoices = setUpstreamAccessMode(pending, "custom", [])
+  expect(noChoices.customInitialized).toBe(true)
+  expect(upstreamAccessPatch(noChoices)).toEqual({ upstream_ids: [] })
+})
+
+test("late choices never replace a saved empty whitelist or an edited order after off-on toggles", () => {
+  for (const ids of [[], ["up-c", "up-a"]]) {
+    const saved = initialUpstreamAccessDraft({ upstream_ids: ids })
+    const disabled = setUpstreamAccessMode(saved, "inherit", undefined)
+    const enabled = setUpstreamAccessMode(disabled, "custom", undefined)
+    expect(upstreamAccessPatch(setUpstreamAccessMode(enabled, "custom", choices))).toEqual({ upstream_ids: ids })
+  }
+})
+
 test("checking appends once and unchecking removes without appending unselected upstreams", () => {
   const original = initialUpstreamAccessDraft({ upstream_ids: ["up-b"] })
   const selected = setUpstreamSelected(original, "up-a", true)

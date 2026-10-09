@@ -30,11 +30,12 @@ export function initialUpstreamAccessDraft(server: UpstreamAccessInput): Upstrea
     : { mode: "custom", ids: [...ids], customInitialized: true }
 }
 
-export function setUpstreamAccessMode(draft: UpstreamAccessDraft, mode: UpstreamAccessDraft["mode"], choices: KeyUpstreamChoice[]): UpstreamAccessDraft {
-  if (mode === "inherit") return { ...draft, mode }
+export function setUpstreamAccessMode(draft: UpstreamAccessDraft, mode: UpstreamAccessDraft["mode"], choices?: KeyUpstreamChoice[]): UpstreamAccessDraft {
+  // An unloaded default catalog is not an intentional empty whitelist.
+  if (mode === "inherit" || (!draft.customInitialized && choices === undefined)) return { ...draft, mode }
   return {
     mode,
-    ids: draft.customInitialized ? [...draft.ids] : choices.map((choice) => choice.id),
+    ids: draft.customInitialized ? [...draft.ids] : (choices ?? []).map((choice) => choice.id),
     customInitialized: true,
   }
 }
