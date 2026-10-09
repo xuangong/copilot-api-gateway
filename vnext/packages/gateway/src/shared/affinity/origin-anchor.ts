@@ -6,7 +6,7 @@ import type { AffinityCodec, AffinityField } from "./carrier.ts"
 type JsonObject = Record<string, unknown>
 interface OriginSlot { readonly key: string; readonly field: AffinityField; readonly syntheticItem: boolean }
 
-/** Synthetic deletion is an authenticated claim plus an exact empty shape.
+/** Synthetic deletion is an authenticated claim plus an empty protocol shape.
  * Metadata slots on real Chat/Gemini content never authorize whole-item removal. */
 export function affinityOriginSlot(protocol: AffinityProtocol, item: Readonly<JsonObject>): OriginSlot {
   if (protocol === "chat_completions") {
@@ -20,8 +20,14 @@ export function affinityOriginSlot(protocol: AffinityProtocol, item: Readonly<Js
     if (item.type !== "redacted_thinking" || Object.keys(item).some(key => key !== "type" && key !== "data")) throw new InvalidAffinityStateError()
     return { key: "data", field: { domain: "messages/redacted_thinking/data" }, syntheticItem: true }
   }
+  // Native clients serialize absent reasoning content as null or an empty array
+  // and attach per-turn transport metadata. Neither adds reasoning to this item.
+  const content = item.content
+  const metadata = item.internal_chat_message_metadata_passthrough
   if (item.type !== "reasoning" || !Array.isArray(item.summary) || item.summary.length !== 0
-    || Object.keys(item).some(key => !["type", "summary", "encrypted_content", "id", "status"].includes(key))
+    || (content != null && (!Array.isArray(content) || content.length !== 0))
+    || (metadata != null && (typeof metadata !== "object" || Array.isArray(metadata)))
+    || Object.keys(item).some(key => !["type", "summary", "content", "encrypted_content", "id", "status", "internal_chat_message_metadata_passthrough"].includes(key))
     || (item.id !== undefined && typeof item.id !== "string")
     || (item.status !== undefined && typeof item.status !== "string")) throw new InvalidAffinityStateError()
   return { key: "encrypted_content", field: { domain: "responses/reasoning/encrypted_content" }, syntheticItem: true }

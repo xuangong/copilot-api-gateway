@@ -40,6 +40,10 @@ function canonical(value: unknown): unknown {
   return value
 }
 
+function emptyReasoningContent(value: unknown): boolean {
+  return value == null || (Array.isArray(value) && value.length === 0)
+}
+
 function slots(protocol: AffinityProtocol, item: JsonObject, carried = true): Slot[] {
   const origin = (key: string) => carried && typeof item[key] === "string" && item[key].startsWith(`${AFFINITY_MARKER}2:`)
   if (protocol === "chat_completions") return typeof item.reasoning_opaque === "string"
@@ -70,6 +74,32 @@ function slots(protocol: AffinityProtocol, item: JsonObject, carried = true): Sl
   }
   const block = keys.every(origin) ? undefined : JSON.stringify(canonical(companion))
   return keys.map(key => ({ key, field: { domain: `${protocol}/${domainType}/${key}`, block } }))
+}
+
+async function decodeSlot(protocol: AffinityProtocol, item: JsonObject, slot: Slot, value: string, codec: AffinityCodec): Promise<DecodedAffinity> {
+  try {
+    return await codec.decode(value, slot.field)
+  } catch (error) {
+    if (!(error instanceof InvalidAffinityStateError) || protocol !== "responses" || item.type !== "reasoning"
+      || !emptyReasoningContent(item.content) || !value.startsWith(`${AFFINITY_MARKER}1:`) || slot.field.block === undefined) throw error
+    // Keep issued v1 companions unchanged for rollback readers. After an exact
+    // mismatch, try only equivalent empty spellings; never omit visible content.
+    const companion: unknown = JSON.parse(slot.field.block)
+    if (!object(companion)) throw error
+    for (const content of [undefined, [], null]) {
+      const compatible = { ...companion }
+      if (content === undefined) delete compatible.content
+      else compatible.content = content
+      const block = JSON.stringify(canonical(compatible))
+      if (block === slot.field.block) continue
+      try {
+        return await codec.decode(value, { ...slot.field, block })
+      } catch (legacyError) {
+        if (!(legacyError instanceof InvalidAffinityStateError)) throw legacyError
+      }
+    }
+    throw error
+  }
 }
 
 async function agentField(item: JsonObject, carried: boolean): Promise<AffinityField> {
@@ -220,7 +250,7 @@ export async function analyzeAffinityRequest(protocol: AffinityProtocol, body: R
     for (const slot of block.slots) {
       const value = item[slot.key]
       if (typeof value !== "string") throw new InvalidAffinityStateError()
-      const state = await codec.decode(value, slot.field)
+      const state = await decodeSlot(protocol, item, slot, value, codec)
       if (state.kind === "owned") {
         decoded.push({ key: slot.key, state })
         latestOwnedTarget = state.target

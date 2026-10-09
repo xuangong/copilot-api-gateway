@@ -72,12 +72,58 @@ test("ordinary origin authenticates history while every candidate retains first-
   expect(body.input[0]).toEqual(item)
 })
 
-test("Responses origin deletion requires authentication and exact empty shape", async () => {
+test("Responses origin survives client serialization of empty content and turn metadata", async () => {
+  const item = await origin()
+  for (const content of [undefined, null, []]) for (const metadata of [undefined, null, { turn_id: "client-turn" }]) {
+    const replay = { ...item, id: "rs_client", content, internal_chat_message_metadata_passthrough: metadata }
+    const body = { input: [replay, { role: "user", content: "continue" }] }
+    const plan = await analyzeAffinityRequest("responses", body, codec)
+    expect(plan.hasRouteConstraints).toBe(false)
+    expect(plan.cloneSource()).toEqual(body)
+    expect(plan.prepareSource()).toEqual({ input: [{ role: "user", content: "continue" }] })
+    expect(plan.materialize(other)).toEqual({ input: [{ role: "user", content: "continue" }] })
+    expect(body.input[0]).toEqual(replay)
+  }
+})
+
+test("legacy native Responses reasoning survives omission of empty companion content", async () => {
+  for (const block of ['{"summary":[]}', '{"content":[],"summary":[]}', '{"content":null,"summary":[]}']) {
+    const encrypted = await codec.encode("native-reasoning", target, { domain: field.domain, block })
+    for (const content of [undefined, null, []]) {
+      const item = { type: "reasoning", summary: [], content, encrypted_content: encrypted,
+        internal_chat_message_metadata_passthrough: { turn_id: "client-turn" } }
+      const plan = await analyzeAffinityRequest("responses", { input: [item] }, codec)
+      expect(plan.hasRouteConstraints).toBe(true)
+      expect(plan.cloneSource()).toEqual({ input: [item] })
+      expect(plan.materialize(target)).toEqual({ input: [{ ...item, encrypted_content: "native-reasoning" }] })
+      await expect(analyzeAffinityRequest("responses", { input: [{ ...item, content: [{ type: "reasoning_text", text: "changed" }] }] }, codec))
+        .rejects.toBeInstanceOf(InvalidAffinityStateError)
+    }
+  }
+})
+
+test("new native Responses reasoning preserves v1 companions for rollback readers", async () => {
+  for (const fixture of [
+    { content: undefined, block: '{"summary":[]}' },
+    { content: null, block: '{"content":null,"summary":[]}' },
+    { content: [], block: '{"content":[],"summary":[]}' },
+  ]) {
+    const item = await stampAffinityItem("responses", { type: "reasoning", summary: [], content: fixture.content, encrypted_content: "native" }, target, codec)
+    expect(item.content).toEqual(fixture.content)
+    expect(await codec.decode(String(item.encrypted_content), { domain: field.domain, block: fixture.block }))
+      .toEqual({ kind: "owned", value: "native", target, synthetic: false })
+  }
+})
+
+test("Responses origin deletion requires authentication and semantically empty content", async () => {
   const item = await origin()
   for (const changed of [
     { ...item, type: "program_output" },
     { ...item, summary: [{ type: "summary_text", text: "real reasoning" }] },
-    { ...item, content: [] }, { ...item, custom: "must not delete" },
+    { ...item, content: [{ type: "reasoning_text", text: "must not delete" }] },
+    { ...item, content: "" }, { ...item, content: {} }, { ...item, custom: "must not delete" },
+    { ...item, content: null, internal_chat_message_metadata_passthrough: [] },
+    { ...item, content: null, internal_chat_message_metadata_passthrough: "invalid" },
     { ...item, id: { nested: "content" } }, { ...item, status: { nested: "content" } },
   ]) await expect(analyzeAffinityRequest("responses", { input: [changed] }, codec)).rejects.toBeInstanceOf(InvalidAffinityStateError)
   expect((await analyzeAffinityRequest("responses", { input: [{ ...item, id: "changed-id", status: "completed" }] }, codec)).materialize(undefined).input).toEqual([])

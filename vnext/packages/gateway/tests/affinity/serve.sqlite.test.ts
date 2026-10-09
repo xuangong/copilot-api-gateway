@@ -17,12 +17,12 @@ const thinking = { type: "thinking", thinking: thought, signature: opaque }
 function wire(events: Array<Record<string, unknown>>): Response {
   return new Response(events.map(event => `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`).join(""), { headers: { "content-type": "text/event-stream" } })
 }
-function upstreamResponse(protocol: "responses" | "messages", stream: boolean): Response {
+function upstreamResponse(protocol: "responses" | "messages", stream: boolean, responseReasoning: Record<string, unknown> = reasoning): Response {
   if (protocol === "responses") {
-    const body = { id: "response", object: "response", model: "model", status: "completed", output: [reasoning], usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 } }
+    const body = { id: "response", object: "response", model: "model", status: "completed", output: [responseReasoning], usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 } }
     return stream ? wire([
       { type: "response.created", response: { ...body, status: "in_progress", output: [] } },
-      { type: "response.output_item.done", output_index: 0, item: reasoning },
+      { type: "response.output_item.done", output_index: 0, item: responseReasoning },
       { type: "response.completed", response: body },
     ]) : Response.json(body)
   }
@@ -195,6 +195,39 @@ for (const source of ["responses", "messages"] as const) for (const stream of [f
   })
 }
 
+
+for (const stream of [false, true]) test(`Responses ${stream ? "SSE" : "JSON"} replays client-normalized origin beside native reasoning`, async () => {
+  const f = await fixture("responses", stream, () => upstreamResponse("responses", stream, { ...reasoning, content: [] }))
+  const first = await f.call("responses", { input: "question" })
+  expect(first.status).toBe(200)
+  const items = outputItems("responses", await first.text(), stream)
+  const isOrigin = (item: Record<string, unknown>) => typeof item.encrypted_content === "string" && item.encrypted_content.startsWith("vnext-affinity:2:")
+  expect(items.filter(isOrigin)).toHaveLength(1)
+  const replayItems = items.map(item => isOrigin(item)
+    ? { ...item, content: null, internal_chat_message_metadata_passthrough: { turn_id: "client-turn" } }
+    : { ...item, content: undefined, internal_chat_message_metadata_passthrough: { turn_id: "native-turn" } })
+  const raw = { input: [...replayItems, { role: "user", content: "continue" }] }
+  const replay = await f.call("responses", raw)
+  expect(replay.status).toBe(200)
+  await replay.text()
+  expect(f.sent).toHaveLength(2)
+  const sent = objects(f.sent[1]?.input)
+  expect(sent.filter(item => item.type === "reasoning")).toHaveLength(1)
+  expect(sent.find(item => item.type === "reasoning")?.encrypted_content).toBe(opaque)
+  expect(JSON.stringify(sent)).toContain("continue")
+  expect(JSON.stringify(sent)).not.toContain("vnext-affinity:")
+  expect(JSON.stringify(sent)).not.toContain("client-turn")
+  expect(JSON.stringify(sent)).toContain("native-turn")
+  const wrongKey = await f.call("responses", raw, "other")
+  expect(wrongKey.status).toBe(400)
+  await wrongKey.text()
+  const visibleContent = await f.call("responses", { input: replayItems.map(item => isOrigin(item)
+    ? { ...item, content: [{ type: "reasoning_text", text: "must not delete" }] } : item) })
+  expect(visibleContent.status).toBe(400)
+  await visibleContent.text()
+  expect(f.sent).toHaveLength(2)
+  await Promise.all(f.pending)
+})
 
 function plainInput(source: AffinityProtocol): Record<string, unknown> {
   if (source === "responses") return { input: "question" }
