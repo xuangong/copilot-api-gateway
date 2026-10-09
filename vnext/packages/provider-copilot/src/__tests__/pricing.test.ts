@@ -103,14 +103,14 @@ test("the catalog excludes billing-only entries", () => {
   }
 })
 
-test("the dated public catalog contains exactly the models in the audited GitHub pricing table", () => {
+test("the public catalog contains the audited baseline and individually verified additions", () => {
   expect(copilotPricingCatalog().models.map((model) => model.displayName).sort()).toEqual([
     "Claude Fable 5", "Claude Fable 5.1", "Claude Haiku 4.5",
     "Claude Opus 4.7", "Claude Opus 4.8", "Claude Opus 4.8 (fast mode) (preview)",
     "Claude Opus 5", "Claude Opus 5.5", "Claude Sonnet 4", "Claude Sonnet 4.6", "Claude Sonnet 5",
     "GPT-5 mini", "GPT-5.3-Codex", "GPT-5.4", "GPT-5.4 mini", "GPT-5.4 nano",
     "GPT-5.5", "GPT-5.6 Luna", "GPT-5.6 Sol", "GPT-5.6 Terra",
-    "GPT-6 Astra", "GPT-6 Luna", "GPT-6 Sol",
+    "GPT-6 Astra", "GPT-6 Luna", "GPT-6 Sol", "GPT-6.1 Sol",
     "Gemini 3.5 Flash", "Gemini 3.6 Flash", "Gemini 3.7 Flash", "Gemini 3.8 Flash",
     "Grok 4.5", "Grok 4.6", "Grok 4.7",
     "Kimi K2.7 Code", "Kimi K3", "MAI-Code-1.1-Flash",
@@ -321,6 +321,19 @@ test("new exact GPT lookup rows expose published bands while billing resolves th
   ])
   expect(pricingForCopilotModelKey("gpt-6-sol")).toEqual(sol)
   expect(pricingForCopilotModelKey("gpt-6-luna")).toEqual(luna)
+})
+
+test("GPT-6.1 Sol uses its published cache-read rates and exact model identity", () => {
+  const pricing = { input: 2, input_cache_read: 0.1, input_cache_write: 2.5, output: 10 }
+  expect(catalogRow("GPT-6.1 Sol").tiers).toEqual([
+    { label: "Default", pricing },
+    { label: "Long context", contextThreshold: 272_000, pricing: { input: 4, input_cache_read: 0.2, input_cache_write: 5, output: 15 } },
+  ])
+  expect(pricingForCopilotPublicModelId("gpt-6.1-sol")).toEqual(pricing)
+  expect(pricingForCopilotModelKey("gpt-6.1-sol")).toEqual(pricing)
+  expect(pricingForCopilotModelKey("gpt-6.1-sol-fast")).toBeNull()
+  expect(pricingForCopilotModelKey("gpt-6.1-solar")).toBeNull()
+  expect(pricingForCopilotModelKey("gpt-6-sol")?.input_cache_read).toBe(0.2)
 })
 
 test("new Gemini and Grok lookup rows use published promotional and long-context rates", () => {

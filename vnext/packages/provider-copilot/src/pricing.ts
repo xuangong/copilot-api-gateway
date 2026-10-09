@@ -20,8 +20,8 @@
 import { copilotPublicModelId } from "./variants"
 import type { ModelPricing } from "@vibe-llm/protocols/common"
 
-// verifiedOn dates only rows in copilotPricingCatalog, which mirrors the
-// audited GitHub page. Historical and internal fallback prices stay lookup-only.
+// verifiedOn dates the last full catalog audit. Individually verified additions
+// carry their own source date below; historical/internal prices stay lookup-only.
 export const COPILOT_PRICING_SOURCE = {
   url: "https://docs.github.com/en/copilot/reference/copilot-billing/models-and-pricing",
   verifiedOn: "2026-09-29",
@@ -102,6 +102,16 @@ export const COPILOT_MODEL_PRICING: readonly CopilotModelPricing[] = [
   },
 
   // ── OpenAI ───────────────────────────────────────────────────────────────
+  // Verified against COPILOT_PRICING_SOURCE on 2026-10-09. Cache reads cost
+  // half as much as GPT-6 Sol; do not reuse that model's pricing vector.
+  {
+    displayName: "GPT-6.1 Sol",
+    match: "gpt-6.1-sol",
+    tiers: [
+      { label: "Default", pricing: { input: 2, input_cache_read: 0.1, input_cache_write: 2.5, output: 10 } },
+      { label: "Long context", contextThreshold: 272_000, pricing: { input: 4, input_cache_read: 0.2, input_cache_write: 5, output: 15 } },
+    ],
+  },
   {
     displayName: "GPT-6 Astra",
     match: "gpt-6-astra",
