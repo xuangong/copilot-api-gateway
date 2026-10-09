@@ -24,10 +24,10 @@ Files: shared/api-key-model-mappings.ts, new shared/api-key-upstreams.ts, shared
 
 Produces: optional internal upstreamIds fields, API DTO/PATCH upstream_ids and safe GET /:id/upstreams choices described in the spec. Only this task owns the shared policy type and credential-auth projection. Export normalization helpers from shared/api-key-upstreams.ts if useful; consumers need only the field contract.
 
-- [ ] Add failing SQLite tests and route tests. Core assertions: `expect(saved.upstreamIds).toEqual([])` and `expect(saved.upstreamIds).toEqual([b.id,a.id])`; old rows remain `null`, foreign IDs return 400, unauthorized callers return 403.
-- [ ] Run focused tests, record RED failure in task report.
-- [ ] Implement nullable JSON storage and field-local patch, strict parser, permission checks, safe choices, auth projection and revision invalidation. Verify invalid model mappings never clear an upstream whitelist.
-- [ ] Run tests and relevant typechecks; record GREEN evidence and exact owned files. Do not commit while other workers edit the shared worktree; root coordinates commits.
+- [x] Add failing SQLite tests and route tests. Core assertions: `expect(saved.upstreamIds).toEqual([])` and `expect(saved.upstreamIds).toEqual([b.id,a.id])`; old rows remain `null`, foreign IDs return 400, unauthorized callers return 403.
+- [x] Run focused tests, record RED failure in task report.
+- [x] Implement nullable JSON storage and field-local patch, strict parser, permission checks, safe choices, auth projection and revision invalidation. Verify invalid model mappings never clear an upstream whitelist.
+- [x] Run tests and relevant typechecks; record GREEN evidence and exact owned files. Do not commit while other workers edit the shared worktree; root coordinates commits.
 
 ### Task 2: Data-plane enforcement
 
@@ -35,10 +35,10 @@ Files: data-plane/providers/registry.ts, routing/candidates.ts and binding-resol
 
 Consumes: ApiKeyRoutingPolicy.upstreamIds and auth projection from Task 1. Produces uniform optional upstreamIds options, ordered filtering before provider creation and catalog dedupe. Preserve legacy undefined semantics.
 
-- [ ] Add failing tests with duplicate models and keys ordered `[B,A]` versus `[A,B]`; check scope `[]`, foreign/disabled/stale IDs, pin outside whitelist, alias resolution, inherited affinity, catalogs and non-chat paths.
-- [ ] Run focused tests and record RED before implementation.
-- [ ] Implement request-local filtering/order, policy propagation to all relevant ingress paths, safe catalogs and suppression of virtual token fallback for explicit scope. No whitelist escape via retries, translation, or auxiliary dispatch.
-- [ ] Verify focused tests/typecheck. Record entrypoint coverage and exact files in report.
+- [x] Add failing tests with duplicate models and keys ordered `[B,A]` versus `[A,B]`; check scope `[]`, foreign/disabled/stale IDs, pin outside whitelist, alias resolution, inherited affinity, catalogs and non-chat paths.
+- [x] Run focused tests and record RED before implementation.
+- [x] Implement request-local filtering/order, policy propagation to all relevant ingress paths, safe catalogs and suppression of virtual token fallback for explicit scope. No whitelist escape via retries, translation, or auxiliary dispatch.
+- [x] Verify focused tests/typecheck. Record entrypoint coverage and exact files in report.
 
 ### Task 3: Key editor
 
@@ -46,18 +46,21 @@ Files: apps/dashboard/src/api/{types,keys}.ts, tabs/keys/KeyDetailPanel.tsx, new
 
 Consumes: DTO fields upstream_ids/upstream_ids_invalid/can_manage_upstreams, PATCH upstream_ids, GET /:id/upstreams safe choices. Key editing permissions match model mappings. The real existing key API prefix is discovered from api/keys.ts, not assumed.
 
-- [ ] Add failing state tests: null inherits, empty custom remains empty, selection and order stable, cancel resets, removed references visible, restored default saves null.
-- [ ] Implement editor using existing patterns; display inherit/custom, selected upstream order, enabled/unavailable states, and explanation that changes affect every caller of the Key. Only selected IDs are saved; never silently convert [] to null.
-- [ ] Refresh Key-specific catalog after save, handle loading/errors without destroying drafts. Test API paths, state helper and dashboard typecheck/build.
-- [ ] Record RED/GREEN evidence and changed files; root owns commits.
+- [x] Add failing state tests: null inherits, empty custom remains empty, selection and order stable, cancel resets, removed references visible, restored default saves null.
+- [x] Implement editor using existing patterns; display inherit/custom, selected upstream order, enabled/unavailable states, and explanation that changes affect every caller of the Key. Only selected IDs are saved; never silently convert [] to null.
+- [x] Refresh Key-specific catalog after save, handle loading/errors without destroying drafts. Test API paths, state helper and dashboard typecheck/build.
+- [x] Record RED/GREEN evidence and changed files; root owns commits.
 
 ### Task 4: Integration and review
 
 Files: this plan, spec if needed, release-independent validation notes, targeted integration tests for identified gaps.
 
-- [ ] Review each task against its contract and code quality; resolve findings with the responsible worker.
-- [ ] Run `bun run ci:local` in the isolated worktree. Investigate failures at the failing boundary, not by weakening checks.
-- [ ] Review the complete diff independently, including permission boundaries, empty scope, implicit fallbacks, stale scope and cache invalidation.
-- [ ] Validate the inherited dirty collaboration overlay separately if integration touches its files. Preserve all protected main-worktree edits.
-- [ ] Commit meaningful changes and merge into local vNext under existing user authorization. Do not push or deploy.
-- [ ] Mark completed tasks and report checks, contract, migration and deployment boundary.
+- [x] Complete the review-driven control-plane credential identity boundary and real-auth regression tests. API Keys must not inherit their owner's management authority.
+- [x] Review each task against its contract and code quality; resolve findings with the responsible worker.
+- [x] Run `bun run ci:local` in the isolated worktree. Investigate failures at the failing boundary, not by weakening checks.
+- [x] Review the complete diff independently, including permission boundaries, empty scope, implicit fallbacks, stale scope and cache invalidation.
+- [x] Validate the inherited dirty collaboration overlay separately if integration touches its files. Preserve all protected main-worktree edits.
+- [x] Commit meaningful changes and merge into local vNext under existing user authorization. Do not push or deploy.
+- [x] Mark completed tasks and report checks, contract, migration and deployment boundary.
+
+Completion evidence: [Key upstream access validation](../research/2026-10-09-key-upstream-access/README.md). Full CI: 6,630 pass / 2 skip / 0 fail; integrated overlay: 175 pass / 0 fail. Feature commit `64785b83`, frozen test-fixture commit `64eb632e`; all original main-worktree edits preserved. No push or deployment.

@@ -1,0 +1,137 @@
+{
+  "environment": "Isolated Bun app + in-memory SQLite + two local stub upstreams, real browser; no production credentials",
+  "checks": [
+    {
+      "case": "Save B then A through UI",
+      "result": "pass; exact ordered array persisted, chat output Upstream B, SDK catalog winner B"
+    },
+    {
+      "case": "Save only A through UI",
+      "result": "pass; chat output Upstream A, SDK catalog winner A, explicit B pin returns 404"
+    },
+    {
+      "case": "Save custom empty scope through UI",
+      "result": "pass; exact [] persisted, chat 404, final restarted app returned 200 with empty SDK catalog"
+    },
+    {
+      "case": "Restore default after injected PATCH 503",
+      "result": "pass; UI retained inherited draft and retry action; retry saved null and chat returned Upstream A"
+    },
+    {
+      "case": "Choice GET 503 and reload",
+      "result": "pass; UI displays translated error, disables custom until reload, recovers without losing selection semantics"
+    },
+    {
+      "case": "Unavailable B / disabled A metadata",
+      "result": "pass; exact stale reference preserved, translated states visible, custom save blocked until stale reference explicitly removed"
+    },
+    {
+      "case": "Cancel draft",
+      "result": "pass; persisted B then A retained"
+    },
+    {
+      "case": "Chinese locale",
+      "result": "pass; controls translated and panel screenshot saved"
+    },
+    {
+      "case": "Browser console",
+      "result": "no errors or warnings reported after checks"
+    }
+  ],
+  "final_routing": [
+    {
+      "saved": {
+        "status": 200,
+        "scope": [
+          "up_scope_B",
+          "up_scope_A"
+        ]
+      },
+      "chat": {
+        "status": 200,
+        "output": "Upstream B"
+      },
+      "catalog": {
+        "status": 200,
+        "models": [
+          {
+            "id": "scope-model",
+            "upstream": "up_scope_B"
+          }
+        ]
+      }
+    },
+    {
+      "saved": {
+        "status": 200,
+        "scope": [
+          "up_scope_A"
+        ]
+      },
+      "chat": {
+        "status": 200,
+        "output": "Upstream A"
+      },
+      "catalog": {
+        "status": 200,
+        "models": [
+          {
+            "id": "scope-model",
+            "upstream": "up_scope_A"
+          }
+        ]
+      },
+      "forbiddenPin": {
+        "status": 404
+      }
+    },
+    {
+      "saved": {
+        "status": 200,
+        "scope": []
+      },
+      "chat": {
+        "status": 404
+      },
+      "catalog": {
+        "status": 200,
+        "models": []
+      }
+    },
+    {
+      "saved": {
+        "status": 200,
+        "scope": null
+      },
+      "chat": {
+        "status": 200,
+        "output": "Upstream A"
+      },
+      "catalog": {
+        "status": 200,
+        "models": [
+          {
+            "id": "scope-model",
+            "upstream": "up_scope_A"
+          }
+        ]
+      }
+    }
+  ],
+  "final_credentials": {
+    "selfKeys": [
+      {
+        "id": "scope_fixture_key",
+        "isOwner": false,
+        "canManage": false,
+        "scope": []
+      }
+    ],
+    "setScopeStatus": 403,
+    "createStatus": 403,
+    "upstreamsStatus": 403,
+    "otherPreviewStatus": 403,
+    "ownPreviewStatus": 200,
+    "finalScope": []
+  }
+}
