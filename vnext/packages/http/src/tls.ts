@@ -17,6 +17,7 @@ import { webcryptoCrypto } from '@reclaimprotocol/tls/webcrypto';
 
 import { signalAbortReason } from './abort.ts';
 import { copy } from './bytes.ts';
+import { getTlsLogger } from './tls-logger.ts';
 import type { DuplexStream } from './types.ts';
 
 let cryptoInstalled = false;
@@ -192,6 +193,7 @@ export const userspaceTls = async (
     onTlsEnd?: (error?: unknown) => void;
   };
   const tlsOptions: PatchedTLSOptions = {
+    logger: getTlsLogger(),
     host: opts.host,
     verifyHost: opts.verifyHost,
     verifyServerCertificate: !opts.insecure,
@@ -336,10 +338,6 @@ export const userspaceTls = async (
 // already closed" but a real bug would otherwise be silenced. Gate behind
 // an env flag so we don't log on hot paths where any console output is
 // undesirable (e.g. inside a Worker request).
-interface NodeProcessShape { env?: { DEBUG_USERSPACE_TLS?: string } }
 const logTlsTeardownError = (e: unknown): void => {
-  const proc = (globalThis as unknown as { process?: NodeProcessShape }).process;
-  if (proc?.env?.DEBUG_USERSPACE_TLS) {
-    console.debug('[userspace-tls] teardown:', e);
-  }
+  getTlsLogger().debug({ err: e }, 'teardown failed');
 };

@@ -76,6 +76,17 @@ bun run ci:local         # purity + typecheck + test + lint + build:ui + wrangle
 
 Gateway 代码从 `@vibe-core/platform` 消费 singleton,业务层不感知平台差异。
 
+### Userspace TLS diagnostics
+
+Normal TLS handshakes and graceful `CLOSE_NOTIFY` alerts are quiet by default.
+Other warnings and errors remain visible as single-line JSON events with
+`component: "userspace-tls"`; TLS failures still propagate to the caller.
+For Bun/Docker diagnosis, set `DEBUG_USERSPACE_TLS=1` (or `true`) to enable
+handshake and teardown events. Unset it or use `0` to disable them.
+Packet traces, raw payloads, certificates, key material and error objects are
+never forwarded by this logger, including in debug mode. This switch is read
+from the runtime process environment; it is not a Cloudflare binding.
+
 ## 客户端 SDK 兼容
 
 Gateway 接受下列 client shapes(与 upstream 类型正交):
