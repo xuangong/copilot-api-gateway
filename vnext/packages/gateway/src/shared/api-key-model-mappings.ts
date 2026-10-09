@@ -4,6 +4,7 @@ export interface ApiKeyModelMapping {
 }
 
 export interface ApiKeyRoutingPolicy {
+  upstreamIds?: readonly string[] | null
   modelMappingsEnabled: boolean
   modelMappings: readonly ApiKeyModelMapping[]
 }

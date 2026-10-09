@@ -24,8 +24,8 @@ import { ChannelCapacityError, type ChannelCapacityReason } from '../../shared/r
 const LIST_LIMIT_DEFAULT = 100
 const LIST_LIMIT_MAX = 200
 
-// Owner-scoped key lookup + dump-enabled gate. Returns:
-//   - the key id (string) when the caller owns a key with dump retention on
+// Owner-scoped or explicit self-key lookup + dump-enabled gate. Returns:
+//   - the key id when an owner/admin or the same owned API key can read dumps
 //   - a Response (404 / 403) otherwise
 //
 // Admin passthrough matches other control-plane routes (see api-keys/routes.ts).
@@ -37,7 +37,12 @@ const ownedDumpKey = async (c: Context): Promise<ApiKeyId | Response> => {
   const hasIdentity = typeof auth.userId === 'string' && auth.userId.trim().length > 0
   const ownsKey = hasIdentity && typeof key.ownerId === 'string'
     && key.ownerId.trim().length > 0 && key.ownerId === auth.userId
-  if (!hasIdentity || (auth.isAdmin !== true && !ownsKey)) {
+  const hasOwner = typeof key.ownerId === 'string' && key.ownerId.trim().length > 0
+  const isApiKey = auth.apiKeyId !== undefined || auth.authKind === 'apiKey'
+  const permitted = isApiKey
+    ? auth.apiKeyId === key.id && hasOwner
+    : hasIdentity && (auth.isAdmin === true || ownsKey)
+  if (!permitted) {
     return c.json({ error: 'Forbidden' }, 403)
   }
   if (key.dumpRetentionSeconds === null || key.dumpRetentionSeconds === undefined) {

@@ -11,7 +11,7 @@ import { z } from 'zod'
 import type { Env } from '../../app.ts'
 import { getRepo } from '../../repo/index.ts'
 import type { InviteCode } from '../../repo/types.ts'
-import type { InviteCodeId, SessionToken, UserId } from '../../repo/branded-ids.ts'
+import type { ApiKeyId, InviteCodeId, SessionToken, UserId } from '../../repo/branded-ids.ts'
 import { ADMIN_EMAILS } from '../../shared/config/constants.ts'
 import { validateApiKey } from '../lib/api-keys.ts'
 import { zValidator } from '../middleware/zod-validator.ts'
@@ -27,6 +27,7 @@ export interface AuthCtx {
   userId?: string
   isAdmin?: boolean
   authKind?: 'public' | 'session' | 'apiKey'
+  apiKeyId?: ApiKeyId
   authenticatedAt?: number
 }
 
@@ -111,15 +112,17 @@ authRouter.post('/login', zValidator('json', loginBody), async (c) => {
     return c.json({
       ok: true,
       isAdmin: false,
-      isUser: !!result.ownerId,
-      userId: result.ownerId,
+      isUser: false,
+      authKind: "apiKey",
+      apiKeyId: result.id,
       keyId: result.id,
       keyName: result.name,
       keyHint: sessionToken.slice(-4),
       // snake_case aliases — see comment in the session branch above.
       is_admin: false,
-      is_user: !!result.ownerId,
-      user_id: result.ownerId,
+      is_user: false,
+      auth_kind: "apiKey",
+      api_key_id: result.id,
       key_id: result.id,
       key_name: result.name,
       key_hint: sessionToken.slice(-4),

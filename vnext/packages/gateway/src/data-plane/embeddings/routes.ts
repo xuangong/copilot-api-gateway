@@ -82,6 +82,7 @@ export async function embeddingsHandler(
     const binding = await resolveBinding(resolved.routedModel, 'embeddings', {
       dump,
       ownerId: auth.userId,
+      upstreamIds: auth.routingPolicy?.upstreamIds,
       copilot: auth.copilot,
       pin: resolved.upstreamPin,
     })

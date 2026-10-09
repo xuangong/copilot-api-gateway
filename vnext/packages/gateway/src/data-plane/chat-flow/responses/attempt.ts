@@ -415,6 +415,7 @@ export const responsesAttempt = {
         incomingModel: telemetryCtx.incomingModel,
         targetEndpoint: sel.targetEndpoint,
         bindingScope: {
+          upstreamIds: auth.upstreamIds,
           ...(auth.ownerId !== undefined ? { ownerId: auth.ownerId } : {}),
           ...(auth.copilot !== undefined ? { copilot: auth.copilot } : {}),
           ...(auth.pin !== undefined ? { pin: auth.pin } : {}),

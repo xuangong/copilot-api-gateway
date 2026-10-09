@@ -90,7 +90,7 @@ function toDmrModel(m: OpenAIShapedModel): DmrModel {
 }
 
 async function listDmrModels(auth: DataPlaneAuthCtx): Promise<DmrModel[]> {
-  const list = await listUpstreamModels({ ownerId: auth.userId, copilot: auth.copilot })
+  const list = await listUpstreamModels({ ownerId: auth.userId, upstreamIds: auth.routingPolicy?.upstreamIds, copilot: auth.copilot })
   return (list.data as unknown as OpenAIShapedModel[]).filter(isChatModel).map(toDmrModel)
 }
 

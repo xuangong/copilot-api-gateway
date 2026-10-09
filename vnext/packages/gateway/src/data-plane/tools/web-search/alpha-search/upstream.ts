@@ -37,7 +37,7 @@ export const resolveAlphaSearchDispatcher = async (args: {
   const enumeration = await enumerateBindingCandidates({
     model: config.model,
     pickTarget: pickAlphaSearch as never,
-    opts: { dump: args.dump, ownerId: auth.userId, copilot: auth.copilot, pin: config.upstreamId },
+    opts: { dump: args.dump, ownerId: auth.userId, upstreamIds: auth.routingPolicy?.upstreamIds, copilot: auth.copilot, pin: config.upstreamId },
   })
   const descriptor = enumeration.candidates.find((c) => c.binding.upstream === config.upstreamId)
   const candidate = descriptor ? await enumeration.materialize?.(descriptor) : undefined

@@ -105,7 +105,7 @@ presenceRouter.post('/heartbeat', zValidator('json', heartbeatBody), async (c) =
     clientName: displayName,
     keyId: auth.apiKeyId,
     keyName: apiKey?.name ?? null,
-    ownerId: auth.userId ?? null,
+    ownerId: apiKey?.ownerId ?? null,
     gatewayUrl: gatewayUrl ?? null,
     lastSeenAt: new Date().toISOString(),
   })

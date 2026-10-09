@@ -33,6 +33,7 @@ export type SelectBindingResult =
 
 export interface SelectBindingAuth {
   readonly ownerId?: string
+  readonly upstreamIds?: readonly string[] | null
   readonly pin?: string
   readonly copilot?: EnumerateOptions['copilot']
   readonly apiKeyId?: ApiKeyId
@@ -87,7 +88,7 @@ export async function selectBindingForProtocol(
 ): Promise<SelectBindingResult> {
   const enumeration = await (args.enumerate ?? enumerateBindingCandidates)({
     model: args.model, pickTarget: args.pickTarget,
-    opts: { signal: args.affinityOptions?.signal, dump: args.dump, ownerId: args.auth.ownerId, copilot: args.auth.copilot, pin: args.auth.pin },
+    opts: { signal: args.affinityOptions?.signal, dump: args.dump, ownerId: args.auth.ownerId, upstreamIds: args.auth.upstreamIds, copilot: args.auth.copilot, pin: args.auth.pin },
   })
   const bareModel = enumeration.bareModel
   if (enumeration.candidates.length === 0) await enumeration.reconcile?.()

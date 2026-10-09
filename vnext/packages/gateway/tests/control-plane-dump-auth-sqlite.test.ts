@@ -47,7 +47,7 @@ const apiKeyId = (value: string): ApiKeyId => value as ApiKeyId
 const sessionToken = (value: string): SessionToken => value as SessionToken
 const dumpRecordId = (value: string): DumpRecordId => value as DumpRecordId
 
-test("dump readers require an explicit owner or admin identity through app.fetch and SQLite", async () => {
+test("dump readers require a user identity or their own owned API key through app.fetch and SQLite", async () => {
   expect(isDevAuthEnabled()).toBe(false)
   const db = new Database(":memory:")
   try {
@@ -75,6 +75,7 @@ test("dump readers require an explicit owner or admin identity through app.fetch
 
     for (const [id, ownerId, retention] of [
       ["dump_owned", "dump_owner", 3600],
+      ["dump_sibling", "dump_owner", 3600],
       ["dump_ownerless", undefined, 3600],
       ["dump_disabled", "dump_owner", null],
     ] as const) {
@@ -173,6 +174,10 @@ test("dump readers require an explicit owner or admin identity through app.fetch
     expect((await request("/api/keys/dump_ownerless/records", "dump_owner")).status).toBe(403)
     expect((await request("/api/keys/dump_ownerless/records", "raw_dump_ownerless", "apiKey")).status).toBe(403)
     expect((await request("/api/keys/dump_owned/records", "raw_dump_ownerless", "apiKey")).status).toBe(403)
+    expect((await request("/api/keys/dump_sibling/records", "raw_dump_owned", "apiKey")).status).toBe(403)
+    expect((await request("/api/keys/dump_sibling/records/missing", "raw_dump_owned", "apiKey")).status).toBe(403)
+    expect((await request("/api/keys/dump_sibling/records/missing/export", "raw_dump_owned", "apiKey")).status).toBe(403)
+    expect((await request("/api/keys/dump_sibling/stream", "raw_dump_owned", "apiKey")).status).toBe(403)
 
     const owned = await request("/api/keys/dump_owned/records", "dump_owner")
     expect(owned.status).toBe(200)
@@ -181,6 +186,7 @@ test("dump readers require an explicit owner or admin identity through app.fetch
     expect((await request("/api/keys/dump_owned/records/01H0000000000000000000AAAA", "dump_owner")).status).toBe(200)
     expect((await request("/api/keys/dump_owned/records", "raw_dump_owned", "apiKey")).status).toBe(200)
     expect((await request("/api/keys/dump_owned/records/01H0000000000000000000AAAA", "raw_dump_owned", "apiKey")).status).toBe(200)
+    expect((await request(exportPath, "raw_dump_owned", "apiKey")).status).toBe(200)
     expect((await request("/api/keys/dump_ownerless/records", "dump_admin")).status).toBe(200)
     expect((await request("/api/keys/dump_ownerless/records/01H0000000000000000000NONE", "dump_admin")).status).toBe(200)
 

@@ -12,6 +12,8 @@ Approved direction: the user explicitly selected the reference contract combinin
 - This is selection policy, not a new retry/failover mechanism. Preserve existing response and composite-model resolution semantics.
 - Apply policy consistently to inference, count-tokens, model discovery, key previews, and provider-backed helper dispatch. Keep aggregate administrator inspection independent where explicitly authorized.
 - Settings use the existing mapping-management permission boundary (admin, key owner, or assigned user). They affect all callers using the same key. Choice lists must be resolved for the key owner, not the dashboard viewer, and expose only safe metadata.
+- A Key bearer is an inference credential, not its owner's management identity. Preserve dedicated self-service reads and telemetry, but only authenticated management identities may create credentials or change their policy. Project this boundary at the control-plane entry without removing owner visibility from inference.
+- Device authorization requires an account login identity. API Key bearers receive 401 and cannot derive a user session that would escape their whitelist or revocation. Existing account sessions and legacy User Keys keep their device-flow contract.
 - PATCH is field-local and atomic. Whitelist changes participate in configuration revision invalidation on both SQLite and D1. The hot path must not add SQL reads or per-key copies of the entire upstream catalog.
 - UI provides inherit/custom mode, upstream selection, ordered movement, restore-default, unavailable references, and an explicit empty-selection explanation. Reuse existing dashboard styling and translated copy.
 - Add migration 0023; never change an applied migration. Docker/Bun/CFW share the contract.
@@ -27,3 +29,7 @@ Routing: optional `upstreamIds?: readonly string[] | null` in provider list/reso
 ## Acceptance
 
 Real SQLite tests cover old-row default, null/empty/ordered round trips, malformed stored data, atomic patches, configuration revision. Route tests cover owner/assigned/admin and forbidden callers, safe choice scope, invalid IDs and dual-cased DTO. Dispatch tests use two upstreams serving a duplicate model and two keys with reversed lists; omitted upstreams, explicit pins, empty scopes, mappings, disabled/deleted upstreams, affinity, catalog metadata and non-chat routes must obey scope. UI state tests cover inherit/custom/empty and stable draft ordering. Run `bun run ci:local`, independent code review, and an isolated local smoke if useful. No deployment is authorized by this feature approval.
+
+## Operations and rollback
+
+Migration 0023 defaults existing keys to inheritance and is additive. Older gateway binaries do not enforce this new whitelist, so retaining the old image does not make a restricted Key safe to downgrade. Rollback must retain whitelist enforcement or take affected credentials out of service before restoring an old binary. No live database or deployed service is changed by this implementation task.

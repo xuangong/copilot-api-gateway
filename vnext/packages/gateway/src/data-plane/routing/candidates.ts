@@ -23,6 +23,7 @@ export interface EnumerateOptions {
   signal?: AbortSignal
   dump?: DumpAccumulator | null
   ownerId?: string
+  upstreamIds?: readonly string[] | null
   copilot?: CreateProviderOptions
   pin?: string
 }
@@ -85,6 +86,7 @@ export async function enumerateBindingCandidates(args: {
   let incomplete = false
   const bindings = await listRoutingBindings(routingScope(opts.ownerId), {
     signal: opts.signal,
+    upstreamIds: opts.upstreamIds,
     pin: upstreamPin,
     copilot: opts.copilot,
     dump: opts.dump,

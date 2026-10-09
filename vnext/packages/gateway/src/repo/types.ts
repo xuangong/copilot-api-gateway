@@ -23,6 +23,9 @@ export interface ApiKey {
   modelMappings: ApiKeyModelMapping[]
   /** True when persisted model mappings failed validation and were fail-closed. */
   modelMappingsInvalid?: boolean
+  /** Null or missing inherits; arrays are ordered whitelists, including deny-all []. */
+  upstreamIds?: string[] | null
+  upstreamIdsInvalid?: boolean
   lastUsedAt?: string
   ownerId?: UserId
   quotaRequestsPerMonth?: number
@@ -56,6 +59,8 @@ export interface ApiKey {
   /** Rolling window in seconds for per-key request dumps. `null` = capture disabled. */
   dumpRetentionSeconds?: number | null
 }
+
+export type ApiKeyPatch = Partial<Omit<ApiKey, "id" | "createdAt" | "modelMappingsInvalid" | "upstreamIdsInvalid">>
 
 export interface GitHubUser {
   id: GitHubAccountId
@@ -183,6 +188,8 @@ export interface ApiKeyRepo {
   findByRawKey(rawKey: string): Promise<ApiKey | null>
   getById(id: ApiKeyId): Promise<ApiKey | null>
   save(key: ApiKey): Promise<void>
+  /** Atomically updates only explicitly supplied fields. */
+  patch(id: ApiKeyId, patch: ApiKeyPatch): Promise<boolean>
   /** Atomically update only the supplied mapping settings. */
   patchModelMappings(id: ApiKeyId, patch: { modelMappingsEnabled?: boolean; modelMappings?: ApiKeyModelMapping[] }): Promise<boolean>
   delete(id: ApiKeyId): Promise<boolean>

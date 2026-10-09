@@ -128,6 +128,7 @@ const messagesHooks: ServeTemplateHooks<
 export async function serveMessages(args: MessagesServeArgs): Promise<Response> {
   const auth: MessagesServeAuth = {
     ownerId: args.auth.userId,
+    upstreamIds: args.auth.routingPolicy?.upstreamIds,
     copilot: args.auth.copilot,
     apiKeyId: args.auth.apiKeyId,
     routingPolicy: args.auth.routingPolicy,

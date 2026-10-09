@@ -1131,32 +1131,24 @@ const resolveImageCandidate = async (
   const endpointPath = isEdit ? '/images/edits' : '/images/generations'
   const pickTarget = (endpoints: ModelEndpoints): EndpointKey | null =>
     endpoints[endpointKey] !== undefined ? endpointKey : null
+  const outerScope = state.bindingScope?.upstreamIds
+  const upstreamIds = outerScope == null ? state.upstreamIds
+    : state.upstreamIds == null ? outerScope : outerScope.filter(id => state.upstreamIds?.includes(id))
   let resolution
   try {
     resolution = await enumerateBindingCandidates({
       model: state.config.model,
       pickTarget,
-      // Scope this enumeration to what the caller can see. Without it
-      // `listVisibleUpstreams(undefined)` returns only globally-owned
-      // upstreams, and an owner-scoped image model resolves to
-      // `sawModel:false` — i.e. "no upstream provides model 'X'" for a model
-      // the same key serves fine on `POST /v1/images/generations`.
-      //
-      // `upstreamIds` below is a second, narrower filter (the caller's pinned
-      // set) applied post-enumeration; it cannot substitute for the scope,
-      // which decides what is enumerable in the first place.
-      opts: { ...(state.bindingScope ?? {}), dump: state.dump },
+      // Both the enclosing key and a narrower helper scope apply before catalog access.
+      opts: { ...(state.bindingScope ?? {}), upstreamIds, dump: state.dump },
     })
   } catch (e) {
     return { ok: false, error: serverError(e) }
   }
-  const filtered = state.upstreamIds === null || state.upstreamIds === undefined
-    ? resolution.candidates
-    : resolution.candidates.filter(c => state.upstreamIds!.includes(c.binding.upstream))
   let match: MaterializedBindingCandidate | undefined
   try {
     if (resolution.candidates.length === 0) await resolution.reconcile?.()
-    for (const candidate of filtered) {
+    for (const candidate of resolution.candidates) {
       const ready = await resolution.materialize?.(candidate)
       if (ready) { match = ready; break }
     }
@@ -1167,7 +1159,7 @@ const resolveImageCandidate = async (
     sawModel: resolution.sawModel,
     scopedToOwner: state.bindingScope?.ownerId !== undefined,
     candidates: resolution.candidates.length,
-    afterUpstreamFilter: filtered.length,
+    afterUpstreamFilter: resolution.candidates.length,
     upstreamPin: state.upstreamIds ?? null,
     chosen: match === undefined
       ? null

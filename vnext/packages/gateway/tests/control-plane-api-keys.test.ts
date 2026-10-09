@@ -34,6 +34,12 @@ function inMemoryRepo() {
       findByRawKey: async (raw: string) => [...keys.values()].find((k) => k.key === raw) ?? null,
       getById: async (id: string) => keys.get(id) ?? null,
       save: async (k: ApiKey) => { keys.set(k.id, k) },
+      patch: async (id: string, patch: import('../src/repo/types.ts').ApiKeyPatch) => {
+        const current = keys.get(id)
+        if (!current) return false
+        keys.set(id, { ...current, ...patch })
+        return true
+      },
       patchModelMappings: async (id: string, patch: { modelMappingsEnabled?: boolean; modelMappings?: ApiKey['modelMappings'] }) => {
         const current = keys.get(id)
         if (!current) return false
@@ -830,7 +836,7 @@ test('camel-only PATCH does not save or change stored mapping settings', async (
   store.repo.apiKeys.save = async (updated) => { saves++; await realSave(updated) }
   const response = await patchKey(buildApp({ isUser: true, userId: 'owner' }), key.id, { modelMappingsEnabled: true })
   expect(response.status).toBe(200)
-  expect(saves).toBe(1)
+  expect(saves).toBe(0)
   expect((await store.repo.apiKeys.getById(key.id))?.modelMappingsEnabled).toBe(false)
 })
 

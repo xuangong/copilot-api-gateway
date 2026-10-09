@@ -126,7 +126,7 @@ export function toShow(m: OpenAIShapedModel): Record<string, unknown> {
 }
 
 async function catalog(auth: DataPlaneAuthCtx): Promise<OpenAIShapedModel[]> {
-  const list = await listUpstreamModels({ ownerId: auth.userId, copilot: auth.copilot })
+  const list = await listUpstreamModels({ ownerId: auth.userId, upstreamIds: auth.routingPolicy?.upstreamIds, copilot: auth.copilot })
   return (list.data as unknown as OpenAIShapedModel[]).filter(isOllamaListable)
 }
 

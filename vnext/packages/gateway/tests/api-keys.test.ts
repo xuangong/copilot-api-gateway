@@ -25,6 +25,16 @@ function inMemoryApiKeyRepo() {
       findByRawKey: async (raw: string) => [...store.values()].find((k) => k.key === raw) ?? null,
       getById: async (id: string) => store.get(id) ?? null,
       save: async (k: ApiKey) => { store.set(k.id, k) },
+      patch: async (id: string, patch: import('../src/repo/types.ts').ApiKeyPatch) => {
+        const current = store.get(id)
+        if (!current) return false
+        store.set(id, { ...current, ...patch })
+        return true
+      },
+      touchLastUsed: async (id: string) => {
+        const current = store.get(id)
+        if (current) store.set(id, { ...current, lastUsedAt: new Date().toISOString() })
+      },
       delete: async (id: string) => store.delete(id),
       deleteAll: async () => { store.clear() },
     },
@@ -99,7 +109,7 @@ test('validateApiKey returns only its minimal routing projection', async () => {
     name: 'a',
     ownerId: 'owner-x',
     responsesRetentionSeconds: 0,
-    routingPolicy: { modelMappingsEnabled: false, modelMappings: DEFAULT_API_KEY_MODEL_MAPPINGS },
+    routingPolicy: { modelMappingsEnabled: false, modelMappings: DEFAULT_API_KEY_MODEL_MAPPINGS, upstreamIds: null },
   })
   expect(v).not.toHaveProperty('key')
   expect(v).not.toHaveProperty('webSearchEnabled')
@@ -141,7 +151,7 @@ test('validateApiKey excludes all non-routing API key fields', async () => {
   const validated = await validateApiKey(key.key)
   if (!validated) throw new Error('test key was not validated')
   expect(Object.keys(validated).sort()).toEqual(['id', 'name', 'ownerId', 'responsesRetentionSeconds', 'routingPolicy'])
-  expect(Object.keys(validated.routingPolicy).sort()).toEqual(['modelMappings', 'modelMappingsEnabled'])
+  expect(Object.keys(validated.routingPolicy).sort()).toEqual(['modelMappings', 'modelMappingsEnabled', 'upstreamIds'])
 })
 
 test('validateApiKey fail-closes invalid stored mappings and clones its routing policy', async () => {
@@ -153,7 +163,7 @@ test('validateApiKey fail-closes invalid stored mappings and clones its routing 
   stored.modelMappingsInvalid = true
 
   const v = await validateApiKey(a.key)
-  expect(v?.routingPolicy).toEqual({ modelMappingsEnabled: false, modelMappings: [] })
+  expect(v?.routingPolicy).toEqual({ modelMappingsEnabled: false, modelMappings: [], upstreamIds: null })
 
   stored.modelMappingsInvalid = false
   const valid = await validateApiKey(a.key)

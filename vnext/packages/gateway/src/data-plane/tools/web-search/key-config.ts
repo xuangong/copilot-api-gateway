@@ -274,6 +274,8 @@ export const resolveKeyWebSearch = async (
 
 /** The subset of an upstream record this module reads. */
 interface CopilotTokenSource {
+  createdAt?: string
+  id?: string
   provider: string
   enabled: boolean
   sortOrder: number
@@ -286,16 +288,18 @@ interface CopilotTokenSource {
  * That engine calls GitHub's MCP endpoint on the caller's behalf, and an API
  * key has nowhere to store a GitHub token — so it borrows one from a Copilot
  * upstream, which already holds exactly this credential. Selection is by
- * `sortOrder` so the choice is deterministic when several are configured, and
- * an upstream with a blank token is skipped rather than short-circuiting the
- * search.
+ * `sortOrder` by default, or the key's ordered whitelist when supplied. A
+ * scoped empty list cannot borrow a token; blank tokens are skipped.
  */
 export const pickCopilotSearchToken = (
   upstreams: readonly CopilotTokenSource[],
+  upstreamIds?: readonly string[] | null,
 ): string | undefined => {
-  const candidates = upstreams
-    .filter((u) => u.provider === 'copilot' && u.enabled)
-    .sort((a, b) => a.sortOrder - b.sortOrder)
+  const visible = new Map(upstreams.filter(upstream => upstream.id !== undefined).map(upstream => [upstream.id, upstream]))
+  const ordered = upstreamIds == null ? [...upstreams].sort((a, b) =>
+    a.sortOrder - b.sortOrder || (a.createdAt ?? "").localeCompare(b.createdAt ?? "") || (a.id ?? "").localeCompare(b.id ?? ""))
+    : upstreamIds.flatMap(id => { const row = visible.get(id); return row ? [row] : [] })
+  const candidates = ordered.filter((u) => u.provider === 'copilot' && u.enabled)
   for (const candidate of candidates) {
     const token = candidate.config?.githubToken
     if (typeof token === 'string' && token.length > 0) return token

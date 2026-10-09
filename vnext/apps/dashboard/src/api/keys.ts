@@ -1,4 +1,5 @@
 import { api, ApiError } from "./client"
+import type { KeyUpstreamChoice } from "./types"
 import { adaptUsageRow, fetchUsageOverview, type ServerUsageRow, type UsageOverviewMetrics } from "./usage"
 
 // Shape returned by GET /api/keys (see src/routes/api-keys.ts keyToJson()).
@@ -30,6 +31,10 @@ export interface ApiKeyDetail {
   owner_name: string | null
   is_owner: boolean
   can_manage_model_mappings: boolean
+  can_manage_upstreams: boolean
+  upstream_ids?: string[] | null
+  upstreamIds?: string[] | null
+  upstream_ids_invalid: boolean
   model_mappings_enabled: boolean
   model_mappings: ApiKeyModelMapping[]
   model_mappings_invalid: boolean
@@ -52,6 +57,7 @@ export interface ApiKeyDetail {
 }
 
 export interface KeyPatchBody {
+  upstream_ids?: string[] | null
   responses_retention_seconds?: number
   model_mappings_enabled?: boolean
   model_mappings?: ApiKeyModelMapping[]
@@ -127,6 +133,13 @@ export function deleteKey(id: string): Promise<{ ok: true }> {
 
 export function patchKey(id: string, body: KeyPatchBody): Promise<ApiKeyDetail> {
   return api<ApiKeyDetail>(`/api/keys/${encodeURIComponent(id)}`, { method: "PATCH", body })
+}
+
+export async function getKeyUpstreams(id: string, signal?: AbortSignal): Promise<KeyUpstreamChoice[]> {
+  const result = await api<{ upstreams: KeyUpstreamChoice[] }>(
+    `/api/keys/${encodeURIComponent(id)}/upstreams`, { signal },
+  )
+  return result.upstreams
 }
 
 export function copyWebSearchFrom(id: string, sourceId: string): Promise<ApiKeyDetail> {

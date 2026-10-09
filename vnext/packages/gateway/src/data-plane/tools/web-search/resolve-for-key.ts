@@ -8,7 +8,7 @@
  */
 
 import { getDataPlaneConfiguration } from '../../../repo/index.ts'
-import type { ApiKeyId } from '../../../repo/branded-ids.ts'
+import type { ApiKeyId, UserId } from '../../../repo/branded-ids.ts'
 import { pickCopilotSearchToken, resolveKeyWebSearch, type KeyWebSearchResolution } from './key-config.ts'
 
 /**
@@ -29,7 +29,14 @@ export const resolveWebSearchForKey = async (
   return await resolveKeyWebSearch(
     key,
     (id) => repo.apiKeys.getById(id as ApiKeyId),
-    async () => pickCopilotSearchToken(await repo.upstreams.list({ includeDisabled: true })),
+    async () => {
+      const [globalUpstreams, ownerUpstreams] = await Promise.all([
+        repo.upstreams.list({ ownerId: '' as UserId }),
+        key.ownerId ? repo.upstreams.list({ ownerId: key.ownerId }) : Promise.resolve([]),
+      ])
+      const visible = [...new Map([...globalUpstreams, ...ownerUpstreams].map(upstream => [upstream.id, upstream])).values()]
+      return pickCopilotSearchToken(visible, key.upstreamIdsInvalid ? [] : key.upstreamIds)
+    },
     // Borrowing is scoped to keys the borrower's owner can see. Admin-owned
     // and same-owner keys qualify; a key owned by someone else does not.
     async (source, borrowerOwnerId) =>

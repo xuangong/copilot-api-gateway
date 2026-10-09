@@ -33,6 +33,7 @@ export async function createApiKey(name: string, ownerId?: UserId): Promise<ApiK
     ownerId,
     webSearchEnabled: true,
     responsesRetentionSeconds: 0,
+    upstreamIds: null,
     modelMappingsEnabled: false,
     modelMappings: cloneModelMappings(DEFAULT_API_KEY_MODEL_MAPPINGS),
   }
@@ -53,19 +54,15 @@ export function getApiKeyById(id: ApiKeyId): Promise<ApiKey | null> {
 }
 
 export async function renameApiKey(id: ApiKeyId, name: string): Promise<ApiKey | null> {
-  const existing = await getRepo().apiKeys.getById(id)
-  if (!existing) return null
-  const updated = { ...existing, name }
-  await getRepo().apiKeys.save(updated)
-  return updated
+  const repo = getRepo()
+  if (!await repo.apiKeys.patch(id, { name })) return null
+  return repo.apiKeys.getById(id)
 }
 
 export async function rotateApiKey(id: ApiKeyId): Promise<ApiKey | null> {
-  const existing = await getRepo().apiKeys.getById(id)
-  if (!existing) return null
-  const updated = { ...existing, key: generateKey() }
-  await getRepo().apiKeys.save(updated)
-  return updated
+  const repo = getRepo()
+  if (!await repo.apiKeys.patch(id, { key: generateKey() })) return null
+  return repo.apiKeys.getById(id)
 }
 
 export function deleteApiKey(id: ApiKeyId): Promise<boolean> {
@@ -73,10 +70,5 @@ export function deleteApiKey(id: ApiKeyId): Promise<boolean> {
 }
 
 export async function touchApiKeyLastUsed(id: ApiKeyId): Promise<void> {
-  const existing = await getRepo().apiKeys.getById(id)
-  if (!existing) return
-  await getRepo().apiKeys.save({
-    ...existing,
-    lastUsedAt: new Date().toISOString(),
-  })
+  await getRepo().apiKeys.touchLastUsed(id)
 }

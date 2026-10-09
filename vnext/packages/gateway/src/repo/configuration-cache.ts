@@ -281,7 +281,7 @@ const configurationMethodEffects = {
     getOrCreateAffinitySecret: "state-write", // Private material is never in the configuration snapshot.
     touchLastUsed: "state-write",
     listAccessibleIds: "read", list: "read", listByOwner: "read", findByRawKey: "read", getById: "read",
-    save: "configuration-write", patchModelMappings: "configuration-write",
+    save: "configuration-write", patch: "configuration-write", patchModelMappings: "configuration-write",
     delete: "configuration-write", deleteAll: "configuration-write",
     ensureAgentHostKey: "configuration-write", revokeAgentHostKey: "configuration-write",
   },

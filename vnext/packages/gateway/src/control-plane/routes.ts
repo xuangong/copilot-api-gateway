@@ -31,8 +31,11 @@ import { pricingRouter } from './pricing/routes.ts'
 import { proxiesRouter, proxyOptionsRouter } from './proxies/routes.ts'
 import { capabilitiesRouter } from './capabilities/routes.ts'
 import { setupRouter } from './setup/routes.ts'
+import { controlPlaneAuthMiddleware } from './auth/control-plane-auth.ts'
 
 export const controlPlane = new Hono<{ Bindings: Env }>()
+
+controlPlane.use('*', controlPlaneAuthMiddleware)
 
 controlPlane.route('/api', capabilitiesRouter)
 controlPlane.route('/api/upstreams', upstreamsRouter)

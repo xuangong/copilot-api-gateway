@@ -60,8 +60,11 @@ deviceAuthRouter.post('/device/code', async (c) => {
 })
 
 deviceAuthRouter.post('/device/verify', zValidator('json', verifyBody), async (c) => {
-  const userId = c.get('auth')?.userId
-  if (!userId) {
+  const auth = c.get('auth')
+  const userId = auth?.userId
+  // A scoped API key must never become a full owner session. Guard here as
+  // well as at the control-plane boundary for independently mounted routers.
+  if (auth?.apiKeyId || auth?.authKind === 'apiKey' || !userId) {
     return c.json({ error: 'You must be logged in to verify a device' }, 401)
   }
   const { user_code } = c.req.valid('json')

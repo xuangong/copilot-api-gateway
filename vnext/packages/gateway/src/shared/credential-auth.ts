@@ -37,6 +37,7 @@ export async function validateApiKey(rawKey: string): Promise<ValidatedApiKey | 
         modelMappingsEnabled: key.modelMappingsEnabled,
         modelMappings: key.modelMappings.map((mapping) => ({ ...mapping })),
       }
+  routingPolicy.upstreamIds = key.upstreamIdsInvalid ? [] : key.upstreamIds == null ? null : [...key.upstreamIds]
   return { id: key.id, name: key.name, ownerId: key.ownerId, routingPolicy, responsesRetentionSeconds: key.responsesRetentionSeconds ?? 0 }
 }
 

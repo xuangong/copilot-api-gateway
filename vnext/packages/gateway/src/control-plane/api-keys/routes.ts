@@ -16,6 +16,7 @@
  *     equivalent: admin OR same owner OR key-assignment grant.
  */
 import { Hono } from 'hono'
+import { controlPlaneAuthMiddleware } from '../auth/control-plane-auth.ts'
 import { z } from 'zod'
 import type { Env } from '../../app.ts'
 import {
@@ -34,11 +35,14 @@ import type { ApiKeyId, UserId } from '../../repo/branded-ids.ts'
 import { zValidator } from '../middleware/zod-validator.ts'
 import { loadOwned } from '../shared/ownership.ts'
 import { listRoutingBindings, routingScope } from '../../data-plane/providers/registry.ts'
+import { normalizeApiKeyUpstreamIds } from "../../shared/api-key-upstreams.ts"
+import type { ApiKeyPatch } from "../../repo/types.ts"
 import { normalizeApiKeyModelMappings } from '../../shared/api-key-model-mappings.ts'
 import { buildCompositeModelId, composeModelOptions, copilotPublicModelId } from '@vibe-llm/provider-copilot'
 import type { Model, ModelsResponse } from '@vibe-llm/provider-copilot'
 
 export interface AuthCtx {
+  authKind?: "public" | "session" | "apiKey"
   isAdmin?: boolean
   isUser?: boolean
   apiKeyId?: ApiKeyId
@@ -119,6 +123,9 @@ function keyToJson(
     model_mappings: k.modelMappingsInvalid ? [] : k.modelMappings.map(({ source, destination }) => ({ source, destination })),
     model_mappings_invalid: k.modelMappingsInvalid === true,
     can_manage_model_mappings: canManageModelMappings,
+    upstream_ids: k.upstreamIdsInvalid ? [] : k.upstreamIds ?? null,
+    upstream_ids_invalid: k.upstreamIdsInvalid === true,
+    can_manage_upstreams: canManageModelMappings,
     // camelCase aliases for llm-relay compatibility.
     createdAt: k.createdAt,
     lastUsedAt: k.lastUsedAt ?? null,
@@ -128,6 +135,9 @@ function keyToJson(
     modelMappings: k.modelMappingsInvalid ? [] : k.modelMappings.map(({ source, destination }) => ({ source, destination })),
     modelMappingsInvalid: k.modelMappingsInvalid === true,
     canManageModelMappings,
+    upstreamIds: k.upstreamIdsInvalid ? [] : k.upstreamIds ?? null,
+    upstreamIdsInvalid: k.upstreamIdsInvalid === true,
+    canManageUpstreams: canManageModelMappings,
   }
 }
 
@@ -172,10 +182,11 @@ function validateModelMappings(value: unknown): ModelMappingInput[] | { error: s
   return validationError(`model_mappings index ${normalized.index ?? 0} ${normalized.field ?? 'source'} must be at most 256 characters`)
 }
 
-async function destinationsAreAvailable(ownerId: string | undefined, mappings: readonly ModelMappingInput[]): Promise<boolean> {
+async function destinationsAreAvailable(ownerId: string | undefined, mappings: readonly ModelMappingInput[], upstreamIds?: readonly string[] | null): Promise<boolean> {
   if (mappings.length === 0) return true
   let catalogIncomplete = false
   const routing = await listRoutingBindings(routingScope(ownerId), {
+    upstreamIds,
     onCatalogError: () => { catalogIncomplete = true },
   })
   const available = new Set<string>()
@@ -231,6 +242,9 @@ function invalidateResolverCache(_keyId: string): void {
 }
 
 export const apiKeysRouter = new Hono<{ Bindings: Env; Variables: Vars }>()
+
+// This router can be mounted independently of the control-plane facade.
+apiKeysRouter.use('*', controlPlaneAuthMiddleware)
 
 apiKeysRouter.get('/_health', (c) => c.json({ scope: 'control-plane:api-keys', status: 'scaffold' }))
 
@@ -343,7 +357,7 @@ apiKeysRouter.get('/', async (c) => {
     const key = await getApiKeyById(apiKeyId)
     if (!key) return c.json([])
     const sourceMap = await loadSourceMapForKey(key)
-    return c.json([keyToJson(key, undefined, true, sourceMap)])
+    return c.json([keyToJson(key, undefined, false, sourceMap)])
   }
 
   return c.json([])
@@ -360,10 +374,11 @@ const assignKeyBody = z.object({
 // POST / — create
 apiKeysRouter.post('/', zValidator('json', createKeyBody), async (c) => {
   const auth = c.get('auth') ?? {}
+  if (!auth.isAdmin && (!auth.isUser || !auth.userId)) return c.json({ error: 'Forbidden' }, 403)
   const { name } = c.req.valid('json')
   const ownerId = auth.isUser && auth.userId ? auth.userId : undefined
   const key = await createApiKey(name, ownerId)
-  return c.json(keyToJson(key, undefined, true, new Map()))
+  return c.json(keyToJson(key, undefined, true, new Map(), await canManageModelMappings(key, auth)))
 })
 
 // GET /:id
@@ -378,6 +393,17 @@ apiKeysRouter.get('/:id', async (c) => {
   return c.json(keyToJson(key, undefined, key.ownerId === auth.userId || auth.isAdmin === true, sourceMap, true))
 })
 
+// Choices reflect the key owner's universe, including unavailable disabled rows.
+apiKeysRouter.get('/:id/upstreams', async (c) => {
+  const auth = c.get('auth') ?? {}
+  const key = await visibleKey(c.req.param('id') as ApiKeyId, auth)
+  if (!key) return c.json({ error: 'Forbidden' }, 403)
+  const upstreams = (await getRepo().upstreams.list({ includeDisabled: true }))
+    .filter((upstream) => !upstream.ownerId || upstream.ownerId === key.ownerId)
+    .map(({ id, name, provider, enabled }) => ({ id, name, provider, enabled }))
+  return c.json({ upstreams })
+})
+
 // PATCH /:id — rename + quota + web_search (XOR literal vs ref)
 apiKeysRouter.patch('/:id', async (c) => {
   const auth = c.get('auth') ?? {}
@@ -388,16 +414,33 @@ apiKeysRouter.patch('/:id', async (c) => {
     : {}
   const mappingFields = new Set(['model_mappings_enabled', 'model_mappings'])
   const hasMappingUpdate = [...mappingFields].some((field) => Object.hasOwn(body, field))
+  const hasUpstreamUpdate = Object.hasOwn(body, 'upstream_ids')
+  const routingFields = new Set([...mappingFields, 'upstream_ids'])
+  const hasRoutingUpdate = hasMappingUpdate || hasUpstreamUpdate
   const isMappingOnlyBody = Object.keys(body).every((field) => mappingFields.has(field))
+  const isRoutingOnlyBody = Object.keys(body).every((field) => routingFields.has(field))
   const existing = await getApiKeyById(id)
   if (!existing) return c.json({ error: 'Forbidden' }, 403)
   const canManageMappings = await canManageModelMappings(existing, auth)
   const isOwner = auth.isAdmin === true || (!!auth.userId && existing.ownerId === auth.userId)
-  if ((!isOwner && (!hasMappingUpdate || !isMappingOnlyBody)) || (!canManageMappings && hasMappingUpdate)) {
+  if ((!isOwner && (!hasRoutingUpdate || !isRoutingOnlyBody)) || (!canManageMappings && hasRoutingUpdate)) {
     return c.json({ error: 'Forbidden' }, 403)
   }
-  if (!isOwner && !hasMappingUpdate) return c.json({ error: 'Forbidden' }, 403)
-  const updated: ApiKey = { ...existing }
+  if (!isOwner && !hasRoutingUpdate) return c.json({ error: 'Forbidden' }, 403)
+  const updated: ApiKeyPatch = {}
+  if (hasUpstreamUpdate) {
+    const normalized = normalizeApiKeyUpstreamIds(body.upstream_ids)
+    if (!normalized.ok) return c.json(validationError(`upstream_ids ${normalized.reason}`), 400)
+    if (normalized.value !== null) {
+      const visible = new Set((await getRepo().upstreams.list({ includeDisabled: true }))
+        .filter((upstream) => !upstream.ownerId || upstream.ownerId === existing.ownerId)
+        .map((upstream) => upstream.id as string))
+      if (normalized.value.some((id) => !visible.has(id))) {
+        return c.json(validationError('upstream_ids contains an unknown or inaccessible upstream'), 400)
+      }
+    }
+    updated.upstreamIds = normalized.value
+  }
   if (Object.hasOwn(body, 'responses_retention_seconds')) {
     const retention = body.responses_retention_seconds
     if (typeof retention !== 'number' || !Number.isSafeInteger(retention)
@@ -419,13 +462,12 @@ apiKeysRouter.patch('/:id', async (c) => {
       updated.modelMappings = mappings
     }
     try {
-      if (!await destinationsAreAvailable(existing.ownerId, updated.modelMappings)) {
+      if (!await destinationsAreAvailable(existing.ownerId, updated.modelMappings ?? existing.modelMappings, hasUpstreamUpdate ? updated.upstreamIds : existing.upstreamIdsInvalid ? [] : existing.upstreamIds)) {
         return c.json(validationError('model_mappings destination is not available'), 400)
       }
     } catch {
       return c.json({ error: 'Unable to validate model mappings' }, 503)
     }
-    updated.modelMappingsInvalid = false
     if (isMappingOnlyBody) {
       const patch = {
         ...(Object.hasOwn(body, 'model_mappings_enabled') && { modelMappingsEnabled: updated.modelMappingsEnabled }),
@@ -514,10 +556,12 @@ apiKeysRouter.patch('/:id', async (c) => {
     updated.webSearchPassthroughModel = bodyForLegacy.web_search_passthrough_model ?? undefined
   }
 
-  await getRepo().apiKeys.save(updated)
-  invalidateResolverCache(updated.id)
-  const sourceMap = await loadSourceMapForKey(updated)
-  return c.json(keyToJson(updated, undefined, true, sourceMap))
+  await getRepo().apiKeys.patch(id, updated)
+  const persisted = await getApiKeyById(id)
+  if (!persisted) return c.json({ error: 'Forbidden' }, 403)
+  invalidateResolverCache(id)
+  const sourceMap = await loadSourceMapForKey(persisted)
+  return c.json(keyToJson(persisted, undefined, isOwner, sourceMap, canManageMappings))
 })
 
 // POST /:id/rotate
@@ -528,7 +572,7 @@ apiKeysRouter.post('/:id/rotate', async (c) => {
   const key = await rotateApiKey(id)
   if (!key) return c.json({ error: 'Key not found' }, 404)
   const sourceMap = await loadSourceMapForKey(key)
-  return c.json(keyToJson(key, undefined, true, sourceMap))
+  return c.json(keyToJson(key, undefined, true, sourceMap, true))
 })
 
 // POST /:id/web-search-test — run one fixed query on this key's own engines.
@@ -667,8 +711,7 @@ apiKeysRouter.post('/:id/copy-web-search-from/:sourceId', async (c) => {
   const target = await getApiKeyById(id)
   const source = await getApiKeyById(sourceId)
   if (!target || !source) return c.json({ error: 'Key not found' }, 404)
-  const updated: ApiKey = {
-    ...target,
+  const updated: ApiKeyPatch = {
     webSearchEnabled: source.webSearchEnabled,
     webSearchPriority: source.webSearchPriority,
     webSearchLangsearchKey: undefined,
@@ -678,8 +721,10 @@ apiKeysRouter.post('/:id/copy-web-search-from/:sourceId', async (c) => {
     webSearchMsGroundingKey: undefined,
     webSearchMsGroundingRef: source.webSearchMsGroundingKey ? source.id : undefined,
   }
-  await getRepo().apiKeys.save(updated)
-  invalidateResolverCache(updated.id)
-  const sourceMap = await loadSourceMapForKey(updated)
-  return c.json(keyToJson(updated, undefined, true, sourceMap))
+  await getRepo().apiKeys.patch(id, updated)
+  const persisted = await getApiKeyById(id)
+  if (!persisted) return c.json({ error: 'Key not found' }, 404)
+  invalidateResolverCache(id)
+  const sourceMap = await loadSourceMapForKey(persisted)
+  return c.json(keyToJson(persisted, undefined, true, sourceMap, true))
 })

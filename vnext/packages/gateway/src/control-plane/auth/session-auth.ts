@@ -13,6 +13,7 @@
 import type { Context, MiddlewareHandler } from 'hono'
 import { getRuntimeLocation } from '@vibe-core/platform'
 import { getRepo, hasConfigurationSnapshot } from '../../repo/index.ts'
+import type { UserId } from '../../repo/branded-ids.ts'
 import type { AccountType } from '../../shared/config/constants.ts'
 import { extractHeaderCredential, resolveCredential, type FullAuthCtx } from '../../shared/credential-auth.ts'
 import { getCachedCopilotToken } from '../../shared/copilot-token-cache.ts'
@@ -80,7 +81,13 @@ export const sessionAuthMiddleware: MiddlewareHandler = async (c, next) => {
     // image generation) can reach into auth.copilot/githubToken without each
     // route having to repeat the lookup.
     try {
-      const upstreams = await getRepo().upstreams.list({ ownerId: resolvedUserId })
+      const ownerUpstreams = await getRepo().upstreams.list({ ownerId: resolvedUserId })
+      const globals = ctx.apiKeyId ? await getRepo().upstreams.list({ ownerId: '' as UserId }) : []
+      const visible = new Map([...ownerUpstreams, ...globals].map(upstream => [upstream.id, upstream]))
+      const upstreamIds = ctx.routingPolicy?.upstreamIds
+      const upstreams = upstreamIds == null
+        ? [...visible.values()].sort((a, b) => a.sortOrder - b.sortOrder || a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id))
+        : upstreamIds.flatMap(id => { const row = visible.get(id); return row ? [row] : [] })
       const copilot = upstreams.find((u) => u.provider === 'copilot' && u.enabled !== false)
       const cfg = copilot?.config as { githubToken?: string; accountType?: AccountType; githubHost?: string } | undefined
       if (cfg?.githubToken && copilot) {

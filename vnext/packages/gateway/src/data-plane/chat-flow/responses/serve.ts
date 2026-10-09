@@ -275,6 +275,7 @@ export function startResponsesTurn(args: ResponsesServeArgs): ResponsesTurn {
 async function prepareResponses(args: ResponsesServeArgs, upstreamAbortController: AbortController): Promise<ResponsesPreparation> {
   const auth: ResponsesServeAuth = {
     ownerId: args.auth.userId,
+    upstreamIds: args.auth.routingPolicy?.upstreamIds,
     copilot: args.auth.copilot,
     apiKeyId: args.auth.apiKeyId,
     routingPolicy: args.auth.routingPolicy,

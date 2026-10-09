@@ -1,11 +1,13 @@
 import { afterEach, beforeEach, expect, test } from "bun:test"
 import { Database } from "bun:sqlite"
+import { Hono } from "hono"
 import { BunSqliteRepo } from "@vibe-llm/platform-bun/src/bun-sqlite-repo.ts"
 import { __resetPlatformForTests, initEnv } from "@vibe-core/platform"
 import { initRepo } from "../src/repo/index.ts"
 import type { ApiKeyId, SessionToken, UserId } from "../src/repo/branded-ids.ts"
 import { app } from "../src/app.ts"
 import { hashPassword } from "../src/control-plane/lib/password.ts"
+import { deviceAuthRouter } from "../src/control-plane/auth/device-routes.ts"
 
 const origin = "https://gateway.example"
 const secret = "synthetic-authentication-time-secret-0123456789"
@@ -74,14 +76,47 @@ test("device authorization and repeated derivation preserve original authenticat
   }
 }, 5000)
 
-test("API key derived sessions remain valid Gateway credentials without gaining Agents freshness", async () => {
-  await repo.apiKeys.save({ id: "synthetic-key" as ApiKeyId, key: "sk_synthetic_auth_time", name: "Synthetic", ownerId: userId, createdAt: new Date().toISOString(), modelMappingsEnabled: false, modelMappings: [] })
-  const token = await derive("sk_synthetic_auth_time")
+test("API keys cannot exchange their upstream scope for owner sessions through device authorization", async () => {
+  const keyId = "synthetic-key" as ApiKeyId
+  const token = "sk_synthetic_auth_time"
+  const sessionCount = () => db.query<{ count: number }, []>("SELECT COUNT(*) AS count FROM user_sessions").get()?.count
+  for (const upstreamIds of [[], ["upstream-second", "upstream-first"]]) {
+    await repo.apiKeys.save({ id: keyId, key: token, name: "Synthetic", ownerId: userId, createdAt: new Date().toISOString(), modelMappingsEnabled: false, modelMappings: [], upstreamIds })
+    const before = sessionCount()
+    const code = await (await request("/auth/device/code", "", {})).json() as { device_code: string; user_code: string }
+    expect((await request("/auth/device/verify", token, { user_code: code.user_code })).status).toBe(401)
+    expect(sessionCount()).toBe(before)
+    expect(await (await request("/auth/device/poll", "", { device_code: code.device_code })).json()).toEqual({ status: "pending" })
+    expect((await repo.apiKeys.getById(keyId))?.upstreamIds).toEqual(upstreamIds)
+    expect((await request("/auth/login", token, { key: token })).status).toBe(200)
+    expect((await request("/api/keys", token, { name: "Unrestricted" })).status).toBe(403)
+    expect((await launch(token)).status).toBe(401)
+    expect((await share(token)).status).toBe(401)
+  }
+}, 5000)
+
+test("independently mounted device authorization rejects API key identities even with owner or admin fields", async () => {
+  for (const marker of [{ apiKeyId: "synthetic-key" as ApiKeyId }, { authKind: "apiKey" as const }]) {
+    const code = await (await request("/auth/device/code", "", {})).json() as { device_code: string; user_code: string }
+    const standalone = new Hono<{ Variables: { auth: { userId: string; isAdmin: boolean; apiKeyId?: ApiKeyId; authKind?: "apiKey" } } }>()
+    standalone.use("*", (c, next) => { c.set("auth", { userId, isAdmin: true, ...marker }); return next() })
+    standalone.route("/auth", deviceAuthRouter)
+    expect((await standalone.request("/auth/device/verify", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ user_code: code.user_code }) })).status).toBe(401)
+    expect(await (await request("/auth/device/poll", "", { device_code: code.device_code })).json()).toEqual({ status: "pending" })
+    expect(db.query<{ count: number }, []>("SELECT COUNT(*) AS count FROM user_sessions").get()?.count).toBe(1)
+  }
+})
+
+test("legacy User Keys retain device authorization without gaining Agents authentication freshness", async () => {
+  const userKey = "legacy_synthetic_authentication_time"
+  await repo.users.update(userId, { userKey })
+  const token = await derive(userKey)
+  expect((await repo.sessions.findByToken(token))?.userId).toBe(userId)
+  expect((await repo.sessions.findByToken(token))?.authenticatedAt).toBeUndefined()
   expect((await request("/auth/login", token, { key: token })).status).toBe(200)
   expect((await launch(token)).status).toBe(403)
   expect((await share(token)).status).toBe(403)
-  expect((await launch(await derive(token))).status).toBe(403)
-}, 5000)
+})
 
 test("sessions without authentication provenance cannot launch Agents or create shares", async () => {
   const token = "ses_unknown_origin" as SessionToken

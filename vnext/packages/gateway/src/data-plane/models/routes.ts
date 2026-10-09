@@ -124,6 +124,9 @@ export const modelsRouter = new Hono<{ Bindings: Env; Variables: Vars }>()
  * from the client would let anyone enumerate another user's models.
  */
 async function keyCatalogContextVisibleTo(keyId: ApiKeyId, auth: DataPlaneAuthCtx): Promise<DataPlaneAuthCtx | null> {
+  // A key's owner identity scopes its upstreams; it does not grant the owner's
+  // dashboard permissions. Reuse authenticated policy without another key read.
+  if (auth.apiKeyId !== undefined) return auth.apiKeyId === keyId ? auth : null
   const key = await getDataPlaneConfiguration().apiKeys.getById(keyId)
   if (!key?.ownerId) return null
   if (!auth.isAdmin && key.ownerId !== auth.userId) {
@@ -134,9 +137,10 @@ async function keyCatalogContextVisibleTo(keyId: ApiKeyId, auth: DataPlaneAuthCt
   return {
     userId: key.ownerId,
     copilot: key.ownerId === auth.userId ? auth.copilot : undefined,
-    routingPolicy: key.modelMappingsInvalid ? undefined : {
-      modelMappingsEnabled: key.modelMappingsEnabled,
-      modelMappings: key.modelMappings,
+    routingPolicy: {
+      upstreamIds: key.upstreamIdsInvalid ? [] : key.upstreamIds,
+      modelMappingsEnabled: !key.modelMappingsInvalid && key.modelMappingsEnabled,
+      modelMappings: key.modelMappingsInvalid ? [] : key.modelMappings,
     },
   }
 }
@@ -148,7 +152,7 @@ modelsRouter.get('/api/models', async (c) => {
   const dedupe = c.req.query('dedupe') !== '0'
   // `?allOwners=1` drops owner scoping so the dashboard's upstream cards can show
   // models for upstreams belonging to other users. Silently ignored for non-admins.
-  const allOwners = c.req.query('allOwners') === '1' && auth.isAdmin === true
+  const allOwners = c.req.query('allOwners') === '1' && auth.isAdmin === true && auth.apiKeyId === undefined
 
   // `?keyId=` asks for the catalog the given key can actually reach, which is
   // what the dashboard's per-key config snippets need.
@@ -160,14 +164,14 @@ modelsRouter.get('/api/models', async (c) => {
     catalogAuth = keyAuth
   }
 
-  const models = await listAvailableModels({ ownerId: catalogAuth.userId, copilot: catalogAuth.copilot, dedupe: false, allOwners })
+  const models = await listAvailableModels({ ownerId: catalogAuth.userId, upstreamIds: allOwners ? undefined : catalogAuth.routingPolicy?.upstreamIds, copilot: catalogAuth.copilot, dedupe: false, allOwners })
   return c.json(allOwners ? (dedupe ? collapseModelCatalog(models) : models) : withKeyModelAliases(models, catalogAuth.routingPolicy, dedupe))
 })
 
 async function handleList(auth: DataPlaneAuthCtx) {
-  const raw = await listAvailableModels({ ownerId: auth.userId, copilot: auth.copilot, dedupe: false })
+  const raw = await listAvailableModels({ ownerId: auth.userId, upstreamIds: auth.routingPolicy?.upstreamIds, copilot: auth.copilot, dedupe: false })
   const models = withKeyModelAliases(raw, auth.routingPolicy)
-  if (!models.data.length && !auth.copilot?.copilotToken) {
+  if (!models.data.length && !auth.copilot?.copilotToken && auth.routingPolicy?.upstreamIds == null) {
     return { ok: false, models } as const
   }
   return { ok: true, models } as const
@@ -276,7 +280,7 @@ function geminiError(status: 404 | 502, message: string): Response {
 
 modelsRouter.get('/v1beta/models', async (c) => {
   const auth = c.get('auth') ?? {}
-  const list = await listAvailableModels({ ownerId: auth.userId, copilot: auth.copilot }, 'gemini')
+  const list = await listAvailableModels({ ownerId: auth.userId, upstreamIds: auth.routingPolicy?.upstreamIds, copilot: auth.copilot }, 'gemini')
   const models = (list.data as OpenAIShapedModel[]).filter(isChatModel).map(toGeminiShape)
   return c.json({ models })
 })
@@ -286,7 +290,7 @@ modelsRouter.get('/v1beta/models/:modelId{.+}', async (c) => {
   const modelId = raw.replace(/^models\//, '')
   if (!modelId) return geminiError(404, 'Model not found: ')
   const auth = c.get('auth') ?? {}
-  const list = await listAvailableModels({ ownerId: auth.userId, copilot: auth.copilot }, 'gemini')
+  const list = await listAvailableModels({ ownerId: auth.userId, upstreamIds: auth.routingPolicy?.upstreamIds, copilot: auth.copilot }, 'gemini')
   const match = (list.data as OpenAIShapedModel[])
     .filter(isChatModel)
     .find((m) => m.id === modelId)

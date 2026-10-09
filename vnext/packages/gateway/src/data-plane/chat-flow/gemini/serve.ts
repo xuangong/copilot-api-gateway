@@ -139,6 +139,7 @@ export async function serveGemini(args: GeminiServeArgs): Promise<Response> {
   const auth: GeminiServeAuth = {
     ...args.auth,
     ownerId: args.auth.userId,
+    upstreamIds: args.auth.routingPolicy?.upstreamIds,
   }
   const { response } = await serveTemplate(
     geminiHooks,

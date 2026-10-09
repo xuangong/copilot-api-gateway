@@ -24,6 +24,7 @@ export type { ModelRoutingHint } from './model-routing.ts'
 export interface ResolveBindingOptions {
   dump?: DumpAccumulator | null
   ownerId?: string
+  upstreamIds?: readonly string[] | null
   copilot?: CreateProviderOptions
   pin?: string
   errorFormat?: 'gemini'
@@ -39,6 +40,7 @@ export async function resolveBinding(
   const bareModel = parsed.bareModel
   let incomplete = false
   const bindings = await listRoutingBindings(routingScope(opts.ownerId), {
+    upstreamIds: opts.upstreamIds,
     pin: upstreamPin,
     copilot: opts.copilot,
     dump: opts.dump,

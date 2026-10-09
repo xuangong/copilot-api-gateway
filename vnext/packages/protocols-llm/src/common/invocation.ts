@@ -51,16 +51,18 @@ export interface RequestContext {
   // as "no upstream provides model 'X'".
   //
   // Reference: copilot-gateway threads `GatewayCtx.upstreamIds` (an api-key
-  // scoped upstream id set) into `ShimState` for exactly this. vNext scopes by
-  // owner instead of by id set, so this carries the owner-shaped equivalent.
+  // scoped upstream id set) into `ShimState` for exactly this. vNext carries
+  // both owner visibility and the key's ordered whitelist across this boundary.
   readonly bindingScope?: BindingScope
 }
 
-/** Owner/pin/credential triple that decides which upstreams a request can see.
+/** Visibility, whitelist, pin, and credentials for provider-backed subcalls.
  *  Mirrors `ListUpstreamModelsOptions` in the gateway registry, declared here
  *  so `RequestContext` stays free of a gateway import. */
 export interface BindingScope {
   readonly ownerId?: string
+  /** Ordered whitelist; null / omitted inherits the visible upstream set. */
+  readonly upstreamIds?: readonly string[] | null
   readonly copilot?: { readonly copilotToken: string; readonly accountType: AccountType }
   /** Single-upstream pin from the model id (`model@upstream`) or the api key. */
   readonly pin?: string

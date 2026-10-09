@@ -98,6 +98,7 @@ async function handleGenerations(c: ImagesCtx): Promise<Response> {
     const binding = await resolveBinding(resolved.routedModel, 'images_generations', {
       dump,
       ownerId: auth.userId,
+      upstreamIds: auth.routingPolicy?.upstreamIds,
       copilot: auth.copilot,
       pin: resolved.upstreamPin,
     })
@@ -232,6 +233,7 @@ async function handleEdits(c: ImagesCtx): Promise<Response> {
     const binding = await resolveBinding(resolved.routedModel, 'images_edits', {
       dump,
       ownerId: auth.userId,
+      upstreamIds: auth.routingPolicy?.upstreamIds,
       copilot: auth.copilot,
       pin: resolved.upstreamPin,
     })

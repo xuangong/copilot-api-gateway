@@ -41,6 +41,8 @@ export interface ListUpstreamModelsOptions {
   signal?: AbortSignal
   dump?: DumpAccumulator | null
   ownerId?: string
+  /** null / omitted inherits; arrays are ordered whitelists, including []. */
+  upstreamIds?: readonly string[] | null
   copilot?: CreateProviderOptions
   /**
    * Collapse duplicate model ids across upstreams (default true). SDK-facing
@@ -303,6 +305,14 @@ export async function listRoutingBindings(
     upstreams = []
   }
 
+  if (opts.upstreamIds != null) {
+    const visible = new Map(upstreams.map(upstream => [upstream.id, upstream]))
+    upstreams = [...new Set(opts.upstreamIds)].flatMap(id => {
+      const upstream = visible.get(id)
+      return upstream?.enabled ? [upstream] : []
+    })
+  }
+
   // Keep the all-visible-upstream preflight outside the contribution catch:
   // a proxy repository failure must never turn into implicit direct egress.
   const fetcherForUpstream = await preparePerRequestFetcher(getRuntimeLocation(), upstreams)
@@ -384,7 +394,7 @@ export async function listRoutingBindings(
 
   // Request-token catalogs are never published or retained across requests.
   // Keep the stored-Copilot existence gate, including disabled/invisible pins.
-  if (!upstreams.some(upstream => upstream.provider === "copilot") && opts.copilot) {
+  if (opts.upstreamIds == null && !upstreams.some(upstream => upstream.provider === "copilot") && opts.copilot) {
     try {
       const provider = createCopilotProvider(opts.copilot, observation ? request => {
         const operation = operationForProviderRequest(request)

@@ -121,6 +121,7 @@ const chatCompletionsHooks: ServeTemplateHooks<
 export async function serveChatCompletions(args: ChatCompletionsServeArgs): Promise<Response> {
   const auth: ChatCompletionsServeAuth = {
     ownerId: args.auth.userId,
+    upstreamIds: args.auth.routingPolicy?.upstreamIds,
     copilot: args.auth.copilot,
     apiKeyId: args.auth.apiKeyId,
     routingPolicy: args.auth.routingPolicy,

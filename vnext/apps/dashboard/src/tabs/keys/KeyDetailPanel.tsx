@@ -7,6 +7,7 @@ import { ResponsesRetentionPanel } from "./ResponsesRetentionPanel"
 import { QuotaEditor } from "./QuotaEditor"
 import { WebSearchPanel } from "./WebSearchPanel"
 import { ModelMappingsPanel } from "./ModelMappingsPanel"
+import { UpstreamAccessPanel } from "./UpstreamAccessPanel"
 
 interface Props {
   keyRow: ApiKeyDetail
@@ -85,6 +86,18 @@ export function KeyDetailPanel({
         onSave={onPatch}
         onCopyFrom={onCopyWebSearchFrom}
         catalog={modelCatalogState.catalog}
+      />
+
+      <UpstreamAccessPanel
+        key={keyRow.id}
+        keyRow={keyRow}
+        canEdit={keyRow.can_manage_upstreams}
+        busy={busy}
+        onSave={async (body) => {
+          const saved = await onPatch(body)
+          if (saved) await modelCatalogState.refresh()
+          return saved
+        }}
       />
 
       <ModelMappingsPanel

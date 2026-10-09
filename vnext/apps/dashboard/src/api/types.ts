@@ -58,6 +58,8 @@ export interface UpstreamRecord {
   updatedAt: string
 }
 
+export type KeyUpstreamChoice = Pick<UpstreamRecord, "id" | "name" | "provider" | "enabled">
+
 export interface ApiKey {
   id: string
   name: string
