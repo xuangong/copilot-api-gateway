@@ -58,3 +58,17 @@ describe('parseResponsesStream', () => {
     expect(seqs).toEqual([7, 8])
   })
 })
+
+test.each([[], ['message'], null].map(marker => ({ marker })))('fast-path expansion preserves function encryption marker %j', async ({ marker }) => {
+  const item = {
+    type: 'function_call', id: 'fc_1', call_id: 'call_1', namespace: 'collaboration',
+    name: 'send_message', arguments: '{"message":"opaque"}', status: 'completed', encrypted_function_args: marker,
+  }
+  const response = { id: 'r', object: 'response', model: 'test', status: 'completed', error: null, incomplete_details: null, output: [item] }
+  const frames = await collect(parseResponsesStream(streamFromString(`data: ${JSON.stringify({ type: 'response.completed', response })}\n\ndata: [DONE]\n\n`)))
+  const events = frames.flatMap(frame => frame.type === 'event' ? [frame.event] : [])
+  expect(events.find(event => event.type === 'response.output_item.added')).toMatchObject({
+    item: { namespace: 'collaboration', encrypted_function_args: marker },
+  })
+  expect(events.find(event => event.type === 'response.function_call_arguments.done')).toMatchObject({ encrypted_function_args: marker })
+})

@@ -95,6 +95,12 @@ export const OPTIONAL_FLAGS = [
     defaultFor: ["copilot", "azure", "custom"],
   },
   {
+    id: "responses-collaboration-shim",
+    label: "Responses plaintext collaboration shim",
+    description: "Project Codex collaboration tools onto an ordinary upstream namespace and mark restored message calls as plaintext. Prevents new collaboration messages from acquiring upstream-specific encrypted content. Existing encrypted history is preserved and cannot be decrypted by this shim.",
+    defaultFor: ["copilot"],
+  },
+  {
     id: "responses-compact-shim",
     label: "Responses compact shim",
     description: "Simulate a `response.compaction` envelope against upstreams that have no native compaction wire. Runs the summarization turn through the upstream's standard /responses generate wire under the vendored openai/codex SUMMARIZATION_PROMPT, then packs the summary into a synthetic `response.compaction` output item. Structurally required (always engages, ignoring this flag) on non-Responses target endpoints because those translators cannot carry the `compaction_trigger` / `compaction` item variants.",

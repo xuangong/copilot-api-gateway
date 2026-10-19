@@ -207,10 +207,8 @@ const responsesFunctionCallEvents = (item: ResponsesOutputFunctionCall, outputIn
       type: 'response.output_item.added',
       output_index: outputIndex,
       item: {
-        type: 'function_call',
+        ...item,
         id: itemId,
-        call_id: item.call_id,
-        name: item.name,
         arguments: '',
         status: 'in_progress',
       },
@@ -231,6 +229,7 @@ const responsesFunctionCallEvents = (item: ResponsesOutputFunctionCall, outputIn
     item_id: itemId,
     output_index: outputIndex,
     arguments: item.arguments,
+    ...(item.encrypted_function_args !== undefined ? { encrypted_function_args: item.encrypted_function_args } : {}),
   })
   events.push({
     type: 'response.output_item.done',

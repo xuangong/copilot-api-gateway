@@ -31,13 +31,6 @@ export interface ResponsesNamespaceTool {
 export type ResponsesTool = ResponsesFunctionTool | ResponsesCustomTool | ResponsesNamespaceTool
   | ({ type: string } & Record<string, unknown>)
 
-export interface ResponsesAdditionalToolsItem {
-  type: 'additional_tools'
-  role: 'developer'
-  id?: string | null
-  tools: ResponsesTool[]
-}
-
 // ── Input-side mirror types referenced from output items / stream events ──
 
 export type ResponsesInputContent = ResponsesInputText | ResponsesInputImage
@@ -114,6 +107,17 @@ export interface ResponsesToolSearchOutputItem extends ResponsesPermissiveItem<'
   call_id?: string
   output?: unknown
 }
+
+export type ResponsesAdditionalToolsItem =
+  | {
+    type: 'additional_tools'
+    role: 'developer'
+    id?: string | null
+    tools: ResponsesTool[]
+  }
+  | (ResponsesPermissiveItem<'additional_tools'> & {
+    tools: Array<{ type: string; [key: string]: unknown }>
+  })
 
 export type ResponsesCompactionItem = ResponsesPermissiveItem<'compaction'>
 
@@ -238,10 +242,12 @@ export interface ResponsesInputMessage {
 
 export interface ResponsesFunctionCallItem {
   type: 'function_call'
+  namespace?: string
+  /** Empty means a plaintext collaboration message; null/non-empty means encrypted. */
+  encrypted_function_args?: string[] | null
   id?: string
   call_id: string
   name: string
-  namespace?: string
   arguments: string
   status?: 'completed' | 'in_progress' | 'incomplete'
   caller?: ResponsesToolCaller | null
@@ -284,7 +290,6 @@ export interface ResponsesInputImageGenerationCall {
 // this union — canonicalize lifts it to `ResponsesInputMessage` at wire
 // boundary so post-canonicalize code always sees the explicit discriminator.
 export type ResponsesInputItem =
-  | ResponsesAdditionalToolsItem
   | ResponsesInputMessage
   | ResponsesFunctionCallItem
   | ResponsesFunctionCallOutputItem
@@ -299,6 +304,7 @@ export type ResponsesInputItem =
   | ResponsesComputerCallOutputItem
   | ResponsesToolSearchCallItem
   | ResponsesToolSearchOutputItem
+  | ResponsesAdditionalToolsItem
   | ResponsesProgramItem
   | ResponsesProgramOutputItem
   | ResponsesInputAgentMessageItem
@@ -368,7 +374,6 @@ export interface ResponsesResult {
 }
 
 export type ResponsesOutputItem =
-  | ResponsesAdditionalToolsItem
   | ResponsesOutputMessage
   | ResponsesOutputFunctionCall
   | ResponsesFunctionCallOutputItem
@@ -381,6 +386,7 @@ export type ResponsesOutputItem =
   | ResponsesComputerCallOutputItem
   | ResponsesToolSearchCallItem
   | ResponsesToolSearchOutputItem
+  | ResponsesAdditionalToolsItem
   | ResponsesCompactionItem
   | ResponsesCodeInterpreterCallItem
   | ResponsesLocalShellCallItem
@@ -420,10 +426,12 @@ export interface ResponsesOutputRefusal {
 
 export interface ResponsesOutputFunctionCall {
   type: 'function_call'
+  namespace?: string
+  /** Empty means a plaintext collaboration message; null/non-empty means encrypted. */
+  encrypted_function_args?: string[] | null
   id?: string
   call_id: string
   name: string
-  namespace?: string
   arguments: string
   status: string
 }
@@ -633,6 +641,7 @@ export type ResponsesStreamEventVariant =
   }
   | {
     type: 'response.function_call_arguments.done'
+    encrypted_function_args?: string[] | null
     item_id: string
     output_index: number
     arguments: string

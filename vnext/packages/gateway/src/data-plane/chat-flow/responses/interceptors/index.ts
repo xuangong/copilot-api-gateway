@@ -1,4 +1,5 @@
 import type { ResponsesInterceptor } from './types'
+import { withResponsesCollaborationShim } from './with-responses-collaboration-shim'
 import { withToolArgumentWhitespaceAborted } from './with-tool-argument-whitespace-aborted'
 import { withPromptCacheKeyStripped } from './with-prompt-cache-key-stripped'
 import { withReasoningDisabledOnForcedToolChoice } from './with-reasoning-disabled-on-forced-tool-choice'
@@ -31,6 +32,9 @@ export { withResponsesServerToolShim } from './server-tool-shim'
 //     it before any downstream interceptor runs. Engages under either the
 //     `responses-compact-shim` flag or structurally when the target
 //     endpoint is not Responses.
+//   - `withResponsesCollaborationShim` projects Codex collaboration onto a
+//     plaintext namespace. It wraps the entire hosted-tool loop so every
+//     downstream turn shares one alias and only the client stream is restored.
 //   - `withToolArgumentWhitespaceAborted` watches
 //     `response.function_call_arguments.delta` for runaway whitespace and
 //     aborts the stream early so a degenerate Copilot tool call cannot hang
@@ -65,6 +69,7 @@ export { withResponsesServerToolShim } from './server-tool-shim'
 //     iteration produced by the shim above.
 export const responsesInterceptors: readonly ResponsesInterceptor[] = [
   withResponsesCompactShim,
+  withResponsesCollaborationShim,
   withToolArgumentWhitespaceAborted,
   withPromptCacheKeyStripped,
   withImageGenerationToolInjected,
