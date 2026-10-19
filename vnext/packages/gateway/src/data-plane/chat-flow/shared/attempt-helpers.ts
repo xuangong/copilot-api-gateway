@@ -27,7 +27,11 @@ import { withUpstreamTelemetry } from './upstream-telemetry.ts'
  */
 export interface AttemptBindingShape {
   readonly upstream: string
-  readonly model: { readonly id: string; readonly providerModelKey?: string }
+  readonly model: {
+    readonly id: string
+    readonly providerModelKey?: string
+    readonly limits?: { readonly maxContextWindowTokens?: number; readonly maxPromptTokens?: number }
+  }
   readonly provider: {
     readonly getPricingForModelKey: (k: string) => unknown | null
   }

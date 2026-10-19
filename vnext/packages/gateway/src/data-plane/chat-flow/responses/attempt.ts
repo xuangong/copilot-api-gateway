@@ -203,6 +203,106 @@ export async function* synthesizeResponsesFramesFromJson(
   void eventFrame // keep import live for tooling parity with messages/attempt.ts
 }
 
+function logFailureDiagnostics(
+  event: ResponsesStreamEvent,
+  context: { request_id: string; upstream: string; model: string; diagnostic_stage: string; upstream_request_id: string | null },
+  payload: Record<string, unknown>,
+  limits: AttemptBindingShape['model']['limits'],
+): void {
+  if (event.type === 'response.failed') {
+    const raw = asRecord(event)
+    const response = asRecord(raw.response)
+    const location = response.error != null ? 'response.error' : raw.error != null ? 'event.error' : 'none'
+    const error = asRecord(response.error ?? raw.error)
+    const code = error.code
+    // Error messages and response IDs may contain request data or opaque
+    // credentials. Log only bounded symbolic codes, never the envelope.
+    console.warn({
+      event: 'upstream_response_failed',
+      ...context,
+      error_code: symbolicValue(code),
+      error_location: location,
+      event_fields: symbolicKeys(raw),
+      response_fields: symbolicKeys(response),
+      error_fields: symbolicKeys(error),
+      response_error_shape: valueShape(response.error),
+      event_error_shape: valueShape(raw.error),
+      response_status: symbolicValue(response.status),
+      incomplete_reason: symbolicValue(asRecord(response.incomplete_details).reason),
+      error_message_present: typeof error.message === 'string' && error.message.length > 0,
+      error_message_chars: stringLength(error.message),
+      error_message_kind: failureMessageKind(error.message),
+      ...requestShape(payload),
+      max_context_window_tokens: limits?.maxContextWindowTokens ?? null,
+      max_prompt_tokens: limits?.maxPromptTokens ?? null,
+    })
+  }
+}
+
+const symbolicValue = (value: unknown): string | null =>
+  typeof value === 'string' && /^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/.test(value) ? value : null
+
+const symbolicKeys = (value: Record<string, unknown>): string[] =>
+  Object.keys(value).filter(key => symbolicValue(key) !== null).slice(0, 32)
+
+const valueShape = (value: unknown): string => value === null ? 'null' : Array.isArray(value) ? 'array' : typeof value
+
+const asRecord = (value: unknown): Record<string, unknown> =>
+  value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
+
+const stringLength = (value: unknown): number => typeof value === 'string' ? value.length : 0
+
+// Heuristic labels are kept separate from the upstream's exact error code.
+// Free-form upstream messages can echo input, so they never enter logs.
+function failureMessageKind(message: unknown): string {
+  if (typeof message !== 'string') return 'unknown'
+  if (/context.{0,40}(length|window|limit)|too many tokens|token.{0,20}limit/i.test(message)) return 'context_limit'
+  if (/encrypt|decrypt/i.test(message)) return 'encrypted_content'
+  if (/tool.{0,30}(call|output)|call_id|item.{0,20}(missing|invalid|not found)/i.test(message)) return 'history_structure'
+  if (/rate.?limit|too many requests/i.test(message)) return 'rate_limit'
+  if (/policy|safety|content.?filter/i.test(message)) return 'policy'
+  return 'unknown'
+}
+
+function requestShape(payload: Record<string, unknown>) {
+  const input = Array.isArray(payload.input) ? payload.input : []
+  let textChars = stringLength(payload.input)
+  let toolOutputChars = 0
+  let encryptedChars = 0
+  let compactions = 0
+  let reasoning = 0
+  let calls = 0
+  let outputs = 0
+  for (const value of input) {
+    const item = asRecord(value)
+    if (item.type === 'compaction') compactions++
+    if (item.type === 'reasoning') reasoning++
+    if (item.type === 'function_call') calls++
+    if (item.type === 'function_call_output') { outputs++; toolOutputChars += stringLength(item.output) }
+    encryptedChars += stringLength(item.encrypted_content)
+    textChars += stringLength(item.content)
+    if (Array.isArray(item.content)) {
+      for (const part of item.content) textChars += stringLength(asRecord(part).text)
+    }
+  }
+  // Character counts are not token estimates. Avoid serializing a second
+  // copy of a long request just to measure it inside a memory-limited Worker.
+  return {
+    input_items: input.length,
+    input_text_chars: textChars,
+    tool_output_chars: toolOutputChars,
+    encrypted_content_chars: encryptedChars,
+    compaction_items: compactions,
+    reasoning_items: reasoning,
+    tool_call_items: calls,
+    tool_output_items: outputs,
+    instructions_chars: stringLength(payload.instructions),
+    tool_count: Array.isArray(payload.tools) ? payload.tools.length : 0,
+    max_output_tokens: typeof payload.max_output_tokens === 'number' ? payload.max_output_tokens : null,
+    previous_response_id_present: typeof payload.previous_response_id === 'string',
+  }
+}
+
 // ─── Main attempt ─────────────────────────────────────────────────────────
 
 async function selectResponsesAttempt(args: ResponsesAttemptArgs) {
@@ -362,12 +462,20 @@ export const responsesAttempt = {
       const isClientStreaming = invocation.payload.stream === true
       const upstreamContentType = upstreamResp.headers.get('content-type') ?? ''
       const upstreamLooksJson = !upstreamContentType.includes('text/event-stream') && (!isClientStreaming || upstreamContentType.includes('application/json'))
+      const diagnose = (event: ResponsesStreamEvent): void => logFailureDiagnostics(event, {
+        request_id: telemetryCtx.requestId,
+        upstream: bindingForTelemetry.upstream,
+        model: publicModel,
+        diagnostic_stage: upstreamLooksJson ? 'upstream_json' : 'upstream_sse',
+        upstream_request_id: symbolicValue(upstreamResp?.headers.get('x-request-id') ?? upstreamResp?.headers.get('x-github-request-id')),
+      }, asRecord(upstreamPayload), bindingForTelemetry.model.limits)
 
       let frames: AsyncIterable<ProtocolFrame<ResponsesStreamEvent>>
       if (upstreamLooksJson) {
         // JSON.parse failures land in the outer try/catch below — they surface
         // as an internal-error result populated with `performance` ctx.
         const parsed = await readUpstreamResponsesJson(upstreamResp.body)
+        if (parsed.status === 'failed') diagnose({ type: 'response.failed', response: parsed })
         const json = invocation.action === 'compact' && upstreamResp.compactAdapter
           ? { ...parsed, ...upstreamResp.compactAdapter(parsed) }
           : upstreamResp.responsesAdapter?.result?.(parsed) ?? parsed
@@ -375,7 +483,7 @@ export const responsesAttempt = {
         frames = synthesizeResponsesFramesFromJson(json)
       } else {
         frames = adaptResponsesFrames(
-          parseResponsesStream(upstreamResp.body, ctx.downstreamAbortSignal !== undefined ? { signal: ctx.downstreamAbortSignal } : {}),
+          parseResponsesStream(upstreamResp.body, { signal: ctx.downstreamAbortSignal, onEvent: diagnose }),
           upstreamResp.responsesAdapter,
         )
       }

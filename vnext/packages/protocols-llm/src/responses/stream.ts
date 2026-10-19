@@ -5,6 +5,8 @@ import { parseTargetStreamFrames, parseSSEStream } from '@vibe-core/result/parse
 
 export interface ParseResponsesStreamOptions {
   signal?: AbortSignal
+  /** Observe the wire event before fast-path expansion replaces its envelope. */
+  onEvent?: (event: ResponsesStreamEvent) => void
 }
 
 // Deny-list: anything that is not a wrapper (`response.created` /
@@ -72,6 +74,7 @@ export const parseResponsesStream = (
     }
 
     const event = projectSseJsonEvent(frame.data, frame.frame.event)
+    options.onEvent?.(event)
     if (event.type === 'ping') continue
 
     const structured = isStructuredResponsesEvent(event)

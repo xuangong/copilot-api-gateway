@@ -9,7 +9,7 @@
 // binding selection. Tests use a non-image-gen payload (no tools with type:
 // 'image_generation') to avoid that path.
 
-import { test, expect, mock } from 'bun:test'
+import { test, expect, mock, spyOn } from 'bun:test'
 import { responsesAttempt } from '../../../../src/data-plane/chat-flow/responses/attempt'
 import type { TelemetryRequestContext } from '../../../../src/data-plane/chat-flow/shared/telemetry-ctx'
 import type { RequestContext } from '@vibe-llm/protocols/common'
@@ -57,6 +57,70 @@ const fakeBindingBase = {
 }
 
 const identityTranslator = { translateRequest: (p: unknown) => p } as never
+
+for (const { stream, topLevelError } of [
+  { stream: true, topLevelError: false },
+  { stream: false, topLevelError: false },
+  { stream: true, topLevelError: true },
+]) {
+  test(`failed Responses diagnostics preserve the error and omit private data (stream=${stream}, topLevelError=${topLevelError})`, async () => {
+    const error = { code: 'server_error', message: 'Maximum context length exceeded: private prompt and sk-secret', details: 'private details' }
+    const responseError = topLevelError ? null : error
+    const response = { id: 'private-response-id', object: 'response', status: 'failed', model: 'gpt-4o', output: [], error: responseError }
+    const terminal = { type: 'response.failed', response, ...(topLevelError ? { error } : {}) }
+    const warn = spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const result = await responsesAttempt.generate({
+        payload: {
+          model: 'gpt-4o', stream, instructions: 'private instructions',
+          input: [
+            { role: 'user', content: 'private input' },
+            { type: 'compaction', encrypted_content: 'private blob' },
+            { type: 'function_call', name: 'private tool', arguments: '{}' },
+            { type: 'function_call_output', output: 'private output' },
+          ],
+          tools: [{ type: 'function', name: 'private tool' }],
+          max_output_tokens: 4096,
+        },
+        auth: baseAuth, ctx: baseCtx, telemetryCtx: baseTelemetry,
+        selectBinding: async () => ({
+          kind: 'ok', targetEndpoint: 'responses', translator: identityTranslator, bareModel: 'gpt-4o',
+          binding: {
+            ...fakeBindingBase,
+            model: { id: 'gpt-4o', limits: { maxContextWindowTokens: 128000, maxPromptTokens: 120000 } },
+            provider: {
+              ...fakeBindingBase.provider,
+              fetch: async () => makeProviderResponse({
+                status: 200,
+                body: stream ? `event: response.failed\ndata: ${JSON.stringify(terminal)}\n\n` : JSON.stringify(response),
+                contentType: stream ? 'text/event-stream' : 'application/json',
+              }),
+            },
+          },
+        }),
+      })
+      if (!('type' in result) || result.type !== 'events') throw new Error('expected events')
+      const events = []
+      for await (const frame of result.events) events.push(frame)
+      expect(events).toContainEqual(expect.objectContaining({
+        type: 'event', event: expect.objectContaining({ type: 'response.failed', response: expect.objectContaining({ error: responseError }) }),
+      }))
+      expect(warn.mock.calls).toEqual([[expect.objectContaining({
+        event: 'upstream_response_failed', request_id: 'rid', upstream: 'fake', model: 'gpt-4o',
+        error_code: 'server_error', error_message_present: true,
+        diagnostic_stage: stream ? 'upstream_sse' : 'upstream_json',
+        error_location: topLevelError ? 'event.error' : 'response.error',
+        error_message_kind: 'context_limit',
+        input_items: 4, compaction_items: 1, tool_call_items: 1, tool_output_items: 1,
+        tool_count: 1, instructions_chars: 20, max_output_tokens: 4096,
+        max_context_window_tokens: 128000, max_prompt_tokens: 120000,
+        previous_response_id_present: false,
+      })]])
+      expect(JSON.stringify(warn.mock.calls)).not.toContain('private')
+      expect(JSON.stringify(warn.mock.calls)).not.toContain('sk-secret')
+    } finally { warn.mockRestore() }
+  })
+}
 
 test('case a — same-protocol leaf returns LlmEventResult on provider 200', async () => {
   const fetchMock = mock(async () => makeProviderResponse({ status: 200, body: okJsonBody }))
