@@ -37,6 +37,62 @@ describe("pricing lookup", () => {
       input: 5, cache_read: 0.5, cache_write: 6.25, output: 25,
     })
   })
+  // GitHub Copilot models-and-pricing page, verified 2026-10-20.
+  test.each([
+    ["claude-opus-5", { input: 5, cache_read: 0.5, cache_write: 6.25, output: 25 }],
+    ["claude-opus-5-5", { input: 4, cache_read: 0.2, cache_write: 5, output: 20 }],
+    ["claude-sonnet-5", { input: 2, cache_read: 0.2, cache_write: 2.5, output: 10 }],
+    ["claude-sonnet-5-5", { input: 2, cache_read: 0.1, cache_write: 2.5, output: 10 }],
+    ["claude-haiku-5-5", { input: 0.1, cache_read: 0.01, cache_write: 0.125, output: 0.5 }],
+  ])("prices Claude 5 family %s", (id, pricing) => {
+    expect(pricingForCopilotPublicModelId(id)).toEqual(pricing)
+  })
+  test("prices Claude 5 family from raw Copilot ids", () => {
+    expect(pricingForCopilotModelKey("claude-opus-5.5")).toEqual({
+      input: 4, cache_read: 0.2, cache_write: 5, output: 20,
+    })
+    expect(pricingForCopilotModelKey("claude-sonnet-5.5-1m")).toEqual({
+      input: 2, cache_read: 0.1, cache_write: 2.5, output: 10,
+    })
+    expect(pricingForCopilotModelKey("claude-opus-5-xhigh")).toEqual({
+      input: 5, cache_read: 0.5, cache_write: 6.25, output: 25,
+    })
+    expect(pricingForCopilotModelKey("claude-haiku-5.5")).toEqual({
+      input: 0.1, cache_read: 0.01, cache_write: 0.125, output: 0.5,
+    })
+  })
+  // Default-tier rates mirrored from the vnext catalog; this table is single-tier.
+  test.each([
+    ["claude-opus-4.8-fast", { input: 10, cache_read: 1, cache_write: 12.5, output: 50 }],
+    ["claude-fable-5", { input: 10, cache_read: 1, cache_write: 12.5, output: 50 }],
+    ["claude-fable-5.1-1m", { input: 10, cache_read: 0.25, cache_write: 12.5, output: 50 }],
+    ["gpt-6.1-sol", { input: 2, cache_read: 0.1, cache_write: 2.5, output: 10 }],
+    ["gpt-6-astra-2026-09-06", { input: 10, cache_read: 1, cache_write: 12.5, output: 50 }],
+    ["gpt-6-sol", { input: 2, cache_read: 0.2, cache_write: 2.5, output: 10 }],
+    ["gpt-6-luna", { input: 0.1, cache_read: 0.01, cache_write: 0.125, output: 0.5 }],
+    ["gpt-5.6-sol", { input: 4, cache_read: 0.4, cache_write: 5, output: 20 }],
+    ["gpt-5.6-sol-fast", { input: 4, cache_read: 0.4, cache_write: 5, output: 20 }],
+    ["gpt-5.6-terra", { input: 2, cache_read: 0.2, cache_write: 2.5, output: 12 }],
+    ["gpt-5.6-luna", { input: 0.2, cache_read: 0.02, cache_write: 0.25, output: 1.2 }],
+    ["gemini-3.6-flash", { input: 0.75, cache_read: 0.075, output: 3.75 }],
+    ["gemini-3.7-flash", { input: 0.75, cache_read: 0.075, output: 3.75 }],
+    ["gemini-3.8-flash", { input: 0.75, cache_read: 0.075, output: 3.75 }],
+    ["gemini-4-argon", { input: 2, cache_read: 0.1, output: 10 }],
+    ["grok-4.5", { input: 2, cache_read: 0.5, output: 6 }],
+    ["grok-4.6", { input: 2, cache_read: 0.5, output: 6 }],
+    ["grok-4.7", { input: 2, cache_read: 0.5, output: 6 }],
+    ["mai-code-1.1-flash", { input: 0.2, cache_read: 0.02, output: 1.2 }],
+    ["mai-code-1-flash", { input: 0.75, cache_read: 0.075, output: 4.5 }],
+    ["kimi-k2.7-code", { input: 0.95, cache_read: 0.19, output: 4 }],
+    ["kimi-k3", { input: 3, cache_read: 0.3, output: 15 }],
+  ])("prices %s like the vnext catalog", (id, pricing) => {
+    expect(pricingForCopilotModelKey(id)).toEqual(pricing)
+  })
+  test("unpublished ids stay unpriced", () => {
+    for (const id of ["claude-haiku-5", "claude-opus-5-9", "gpt-6.1-sol-fast", "grok-4.50", "kimi-k30"]) {
+      expect(pricingForCopilotModelKey(id)).toBeNull()
+    }
+  })
   test("returns null for unknown model", () => {
     expect(pricingForCopilotModelKey("model-that-does-not-exist")).toBeNull()
   })
