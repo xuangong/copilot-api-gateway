@@ -89,6 +89,13 @@ export const COPILOT_MODEL_PRICING: readonly CopilotModelPricing[] = [
     match: "claude-sonnet-5",
     tiers: only({ input: 2, input_cache_read: 0.2, input_cache_write: 2.5, output: 10 }),
   },
+  // Verified against COPILOT_PRICING_SOURCE on 2026-10-20. Cache reads cost
+  // half as much as Sonnet 5; do not reuse that model's pricing vector.
+  {
+    displayName: "Claude Sonnet 5.5",
+    match: /^claude-sonnet-5[.-]5$/,
+    tiers: only({ input: 2, input_cache_read: 0.1, input_cache_write: 2.5, output: 10 }),
+  },
   {
     displayName: "Claude Fable 5",
     match: "claude-fable-5",
@@ -99,6 +106,17 @@ export const COPILOT_MODEL_PRICING: readonly CopilotModelPricing[] = [
     displayName: "Claude Haiku 4.5",
     match: /^claude-haiku-4[.-]5$/,
     tiers: only({ input: 1, input_cache_read: 0.1, input_cache_write: 1.25, output: 5 }),
+  },
+  // Verified against COPILOT_PRICING_SOURCE on 2026-10-20. Unlike the other
+  // Claude rows it has a Long context band, starting at 100K rather than the
+  // 200K/272K used elsewhere. GitHub lists no Haiku 5.
+  {
+    displayName: "Claude Haiku 5.5",
+    match: /^claude-haiku-5[.-]5$/,
+    tiers: [
+      { label: "Default", pricing: { input: 0.1, input_cache_read: 0.01, input_cache_write: 0.125, output: 0.5 } },
+      { label: "Long context", contextThreshold: 100_000, pricing: { input: 0.5, input_cache_read: 0.05, input_cache_write: 0.625, output: 2.5 } },
+    ],
   },
 
   // ── OpenAI ───────────────────────────────────────────────────────────────
@@ -279,6 +297,14 @@ export const COPILOT_MODEL_PRICING: readonly CopilotModelPricing[] = [
     tiers: only(GEMINI_FLASH_PROMO),
   },
   { displayName: "Gemini 3.8 Flash", match: "gemini-3.8-flash", tiers: only(GEMINI_FLASH_PROMO) },
+  // Verified against COPILOT_PRICING_SOURCE on 2026-10-20. Promotional rate
+  // valid until 2026-12-01; the standard rate is undisclosed. The upstream id
+  // is inferred from the Gemini naming above and has not been seen in /models.
+  {
+    displayName: "Gemini 4 Argon",
+    match: "gemini-4-argon",
+    tiers: only({ input: 2, input_cache_read: 0.1, output: 10 }),
+  },
 
   // ── xAI ──────────────────────────────────────────────────────────────────
   { match: /^grok-code-fast/, tiers: only({ input: 0.2, output: 1.5 }) },

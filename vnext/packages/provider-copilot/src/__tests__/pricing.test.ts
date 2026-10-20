@@ -105,13 +105,13 @@ test("the catalog excludes billing-only entries", () => {
 
 test("the public catalog contains the audited baseline and individually verified additions", () => {
   expect(copilotPricingCatalog().models.map((model) => model.displayName).sort()).toEqual([
-    "Claude Fable 5", "Claude Fable 5.1", "Claude Haiku 4.5",
+    "Claude Fable 5", "Claude Fable 5.1", "Claude Haiku 4.5", "Claude Haiku 5.5",
     "Claude Opus 4.7", "Claude Opus 4.8", "Claude Opus 4.8 (fast mode) (preview)",
-    "Claude Opus 5", "Claude Opus 5.5", "Claude Sonnet 4", "Claude Sonnet 4.6", "Claude Sonnet 5",
+    "Claude Opus 5", "Claude Opus 5.5", "Claude Sonnet 4", "Claude Sonnet 4.6", "Claude Sonnet 5", "Claude Sonnet 5.5",
     "GPT-5 mini", "GPT-5.3-Codex", "GPT-5.4", "GPT-5.4 mini", "GPT-5.4 nano",
     "GPT-5.5", "GPT-5.6 Luna", "GPT-5.6 Sol", "GPT-5.6 Terra",
     "GPT-6 Astra", "GPT-6 Luna", "GPT-6 Sol", "GPT-6.1 Sol",
-    "Gemini 3.5 Flash", "Gemini 3.6 Flash", "Gemini 3.7 Flash", "Gemini 3.8 Flash",
+    "Gemini 3.5 Flash", "Gemini 3.6 Flash", "Gemini 3.7 Flash", "Gemini 3.8 Flash", "Gemini 4 Argon",
     "Grok 4.5", "Grok 4.6", "Grok 4.7",
     "Kimi K2.7 Code", "Kimi K3", "MAI-Code-1.1-Flash",
   ].sort())
@@ -354,4 +354,32 @@ test("unpublished family versions and suffixes have no fallback price", () => {
   for (const id of ["claude-opus-5.9", "claude-fable-5.9", "grok-4.50", "kimi-k30", "gpt-6-sol-extra", "gpt-6-luna-fast", "gemini-3.8-flash-extra", "grok-4.7-preview"]) {
     expect(pricingForCopilotModelKey(id)).toBeNull()
   }
+})
+
+test("Sonnet 5.5 halves Sonnet 5's cache-read rate through raw variants", () => {
+  const sonnet5 = { input: 2, input_cache_read: 0.2, input_cache_write: 2.5, output: 10 }
+  const sonnet55 = { input: 2, input_cache_read: 0.1, input_cache_write: 2.5, output: 10 }
+  expect(catalogRow("Claude Sonnet 5.5").tiers).toEqual([{ label: "Default", pricing: sonnet55 }])
+  for (const id of ["claude-sonnet-5.5", "claude-sonnet-5-5"]) expect(pricingForCopilotPublicModelId(id)).toEqual(sonnet55)
+  expect(pricingForCopilotModelKey("claude-sonnet-5.5-1m")).toEqual(sonnet55)
+  expect(pricingForCopilotModelKey("claude-sonnet-5")).toEqual(sonnet5)
+})
+
+test("Haiku 5.5 bills its default band and displays the >100K long-context band", () => {
+  const pricing = { input: 0.1, input_cache_read: 0.01, input_cache_write: 0.125, output: 0.5 }
+  expect(catalogRow("Claude Haiku 5.5").tiers).toEqual([
+    { label: "Default", pricing },
+    { label: "Long context", contextThreshold: 100_000, pricing: { input: 0.5, input_cache_read: 0.05, input_cache_write: 0.625, output: 2.5 } },
+  ])
+  for (const id of ["claude-haiku-5.5", "claude-haiku-5-5"]) expect(pricingForCopilotPublicModelId(id)).toEqual(pricing)
+  expect(pricingForCopilotModelKey("claude-haiku-5.5-20261001")).toEqual(pricing)
+  // GitHub lists no Haiku 5; it must not inherit a neighbouring rate.
+  expect(pricingForCopilotModelKey("claude-haiku-5")).toBeNull()
+})
+
+test("Gemini 4 Argon uses its promotional rate without a cache-write column", () => {
+  const pricing = { input: 2, input_cache_read: 0.1, output: 10 }
+  expect(catalogRow("Gemini 4 Argon").tiers).toEqual([{ label: "Default", pricing }])
+  expect(pricingForCopilotModelKey("gemini-4-argon")).toEqual(pricing)
+  expect(pricingForCopilotModelKey("gemini-4-argon-preview")).toBeNull()
 })
