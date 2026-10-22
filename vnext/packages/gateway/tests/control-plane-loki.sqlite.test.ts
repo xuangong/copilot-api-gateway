@@ -9,6 +9,7 @@ import { lokiManagementRouter, lokiSyncRouter } from "../src/control-plane/loki/
 import type { SessionToken, UserId } from "../src/repo/branded-ids"
 import { app as gateway } from "../src/app"
 import { exportConfig, parseConfigBundle } from "../src/control-plane/lib/import-export"
+import { LokiProvider } from "@vibe-llm/provider-loki"
 
 const owner = "loki-owner" as UserId
 const other = "loki-other" as UserId
@@ -182,4 +183,58 @@ test("configuration backups never export or restore Loki session authority", asy
   // Importing an old/manual bundle cannot revive an earlier generation either.
   const restored = parseConfigBundle({ version: 2, apiKeys: [], githubAccounts: [], upstreams: rows }).bundle.upstreams[0]
   expect(JSON.stringify(restored)).not.toContain("fixture-private-token")
+})
+
+test("endpoint settings persist, invalidate old providers and preserve pairing, tokens and backup configuration", async () => {
+  const created = await request("/upstreams", { name: "Configured Loki", baseUrl: " https://first.example/api/ " })
+  expect(created.status).toBe(201)
+  const { pairing, upstream } = await created.json() as { pairing: Pairing; upstream: { config: { baseUrl: string } } }
+  expect(upstream.config.baseUrl).toBe("https://first.example/api")
+  expect((await request(`/sync/${pairing.upstreamId}`, body(pairing), pairing.syncSecret)).status).toBe(200)
+  const before = await repo.upstreams.getById(pairing.upstreamId)
+  if (!before) throw new Error("missing fixture")
+  const seen: string[] = []
+  const fetcher = async (url: string) => { seen.push(url); return Response.json({ data: [] }) }
+  const oldProvider = new LokiProvider(before, () => repo.upstreams.getById(pairing.upstreamId), fetcher)
+  await oldProvider.getModels()
+  const saved = await request(`/upstreams/${pairing.upstreamId}`, { baseUrl: "https://second.example/prefix///" }, session, "PATCH")
+  expect(saved.status).toBe(200)
+  const text = await saved.text()
+  expect(text).toContain('"baseUrl":"https://second.example/prefix"')
+  expect(text).not.toContain("fixture-private-token")
+  const after = await repo.upstreams.getById(pairing.upstreamId)
+  if (!after) throw new Error("missing fixture")
+  expect(after.state).toEqual(before.state)
+  expect(after.credentialGeneration).toBe(before.credentialGeneration)
+  expect(after.catalogGeneration).toBeGreaterThan(before.catalogGeneration ?? 0)
+  await expect(oldProvider.getModels()).rejects.toThrow("loki_binding_replaced")
+  await new LokiProvider(after, () => repo.upstreams.getById(pairing.upstreamId), fetcher).getModels()
+  expect(seen).toEqual(["https://first.example/api/models", "https://second.example/prefix/models"])
+  expect((await request(`/sync/${pairing.upstreamId}`, undefined, pairing.syncSecret, "GET")).status).toBe(200)
+  for (const redactSecrets of [false, true]) {
+    const backup = exportConfig({ apiKeys: [], githubAccounts: [], upstreams: [after] }, { redactSecrets })
+    const restored = parseConfigBundle(backup).bundle.upstreams[0]
+    expect(restored?.config).toEqual({ profileId: "loki-df-v1", baseUrl: "https://second.example/prefix" })
+    expect(JSON.stringify(restored)).not.toContain("fixture-private-token")
+  }
+  const reset = await request(`/upstreams/${pairing.upstreamId}`, { baseUrl: "" }, session, "PATCH")
+  expect(reset.status).toBe(200)
+  expect(await reset.text()).toContain("https://loki.delve.office.com/api/v1/llmapi")
+})
+
+test("endpoint updates require the owning real session and reject invalid configuration without changing state", async () => {
+  const p = await create()
+  const before = await repo.upstreams.getById(p.upstreamId)
+  const path = `/upstreams/${p.upstreamId}`
+  for (const bearer of ["loki-inference-key", p.syncSecret]) {
+    expect((await request(path, { baseUrl: "https://other.example" }, bearer, "PATCH")).status).toBe(401)
+  }
+  expect((await request(path, { baseUrl: "https://other.example" }, otherSession, "PATCH")).status).toBe(404)
+  for (const payload of [{ baseUrl: "http://other.example" }, { baseUrl: "https://user:secret@other.example" },
+    { baseUrl: "https://other.example?secret=value" }, { baseUrl: "https://other.example#fragment" },
+    { baseUrl: 1 }, { baseUrl: "https://other.example", profileId: "other-profile" }, {}]) {
+    expect((await request(path, payload, session, "PATCH")).status).toBe(400)
+  }
+  expect((await request("/upstreams", { name: "invalid", baseUrl: "http://other.example" })).status).toBe(400)
+  expect(await repo.upstreams.getById(p.upstreamId)).toEqual(before)
 })

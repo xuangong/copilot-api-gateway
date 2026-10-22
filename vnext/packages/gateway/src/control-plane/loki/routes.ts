@@ -1,6 +1,6 @@
 import { Hono } from "hono"
 import { z } from "zod"
-import { LokiSyncError, LOKI_PROFILE_ID, type LokiState } from "@vibe-llm/provider-loki"
+import { LokiSyncError, LOKI_PROFILE_ID, lokiBaseUrl, type LokiState } from "@vibe-llm/provider-loki"
 import type { Env } from "../../app"
 import { getRepo } from "../../repo"
 import type { FullAuthCtx } from "../../shared/credential-auth"
@@ -12,7 +12,12 @@ export { lokiSyncRouter } from "./sync"
 
 export const lokiManagementRouter = new Hono<{ Bindings: Env; Variables: { auth: FullAuthCtx } }>()
 
-const createBody = z.object({ name: z.string().trim().min(1).max(120) }).strict()
+const endpoint = z.string().max(2048)
+const createBody = z.object({ name: z.string().trim().min(1).max(120), baseUrl: endpoint.optional() }).strict()
+const settingsBody = z.object({ baseUrl: endpoint }).strict()
+function parseEndpoint(value: unknown): string {
+  try { return lokiBaseUrl(value) } catch { throw new LokiSyncError("invalid_endpoint", 400) }
+}
 const pairing = (origin: string, id: string, state: LokiState, syncSecret: string) => ({
   version: 1, gatewayOrigin: origin, upstreamId: id, profileId: LOKI_PROFILE_ID, generation: state.generation, syncSecret,
 })
@@ -44,17 +49,37 @@ lokiManagementRouter.post("/upstreams", async c => {
   try {
     const parsed = createBody.safeParse(await boundedJson(c.req.raw))
     if (!parsed.success) throw new LokiSyncError("invalid_request", 400)
+    const baseUrl = parseEndpoint(parsed.data.baseUrl)
     const auth = c.get("auth")
     const { state, syncSecret } = await newBinding()
     const now = new Date().toISOString()
     const id = upstreamId.parse(`up_loki_${crypto.randomUUID().replaceAll("-", "")}`)
     const saved = await getRepo().upstreams.createIfAbsent({
       id, ownerId: auth.userId, provider: "loki", name: parsed.data.name, enabled: true, sortOrder: 0,
-      config: { profileId: LOKI_PROFILE_ID }, flagOverrides: {}, disabledPublicModelIds: [], proxyFallbackList: [],
+      config: { profileId: LOKI_PROFILE_ID, ...(parsed.data.baseUrl === undefined ? {} : { baseUrl }) },
+      flagOverrides: {}, disabledPublicModelIds: [], proxyFallbackList: [],
       state, createdAt: now, updatedAt: now,
     })
     if (!saved) throw new LokiSyncError("temporarily_unavailable", 503)
     return json({ upstream: serializeUpstream(saved), pairing: pairing(new URL(c.req.url).origin, id, state, syncSecret) }, 201)
+  } catch (error) { return safeError(error) }
+})
+
+lokiManagementRouter.patch("/upstreams/:id", async c => {
+  try {
+    const parsedId = upstreamId.safeParse(c.req.param("id"))
+    if (!parsedId.success) throw new LokiSyncError("upstream_not_found", 404)
+    const repo = getRepo()
+    const row = await loadOwned(c.get("auth"), () => repo.upstreams.getById(parsedId.data))
+    if (!row || row.provider !== "loki") throw new LokiSyncError("upstream_not_found", 404)
+    const parsed = settingsBody.safeParse(await boundedJson(c.req.raw))
+    if (!parsed.success) throw new LokiSyncError("invalid_request", 400)
+    const baseUrl = parseEndpoint(parsed.data.baseUrl)
+    // Metadata CAS preserves concurrent token renewal and advances the catalog generation.
+    const saved = await repo.upstreams.patchMetadata(row, current => ({
+      ...current, config: { ...current.config, baseUrl },
+    }))
+    return json({ upstream: serializeUpstream(saved) })
   } catch (error) { return safeError(error) }
 })
 

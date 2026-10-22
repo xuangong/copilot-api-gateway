@@ -29,7 +29,7 @@ Profile ID: `loki-df-v1`.
 | Client application | `aebc6443-996d-45c2-90f0-388ff96faa56` |
 | Authority | `https://login.microsoftonline.com/organizations` |
 | Scope | `42c8f7bd-c7a8-4ba9-bc1c-91edfb716247/.default` |
-| Loki origin and prefix | `https://loki.delve.office.com/api/v1/llmapi` |
+| Default Loki origin and prefix | `https://loki.delve.office.com/api/v1/llmapi` (overridable per upstream) |
 | Required headers | `X-ClientType: Copilot`, `X-ClientFeature: LlmApiProxy` |
 
 These values come from pi_loki commit `563cc73a14fc82dea3dc451c8cb9ad67f82eb63d`. They are a reference configuration, not proof that its app registration supports MSAL.NET broker login. Do not inherit ambient `LOKI_*` overrides or accept an arbitrary OAuth profile from the gateway.
@@ -82,7 +82,7 @@ The gateway trusts the authorized assistant to report MSAL identity/expiry metad
 
 - Add a dedicated Loki provider package. Keep WAM and OS code out of the gateway/provider runtime.
 - Read credentials authoritatively at discovery and selected dispatch. Reject expired, revoked or replaced binding state before egress. No refresh-token implementation on CFW.
-- Use fixed Loki endpoint/header configuration, dynamic model discovery and only the endpoints advertised for each model. Do not expose unsupported endpoints based on model-name guesses.
+- Use the upstream's HTTPS base URL (or the default above), fixed Loki headers, dynamic model discovery and only the endpoints advertised for each model. Do not expose unsupported endpoints based on model-name guesses. Endpoint edits preserve the OAuth profile and Windows pairing.
 - Reuse existing protocol translation and streaming infrastructure. Start with models, Messages, Responses and Chat Completions when advertised; do not claim tools/images/opaque-state replay beyond tested capabilities.
 - Public upstream DTOs contain only profile, health and expiry metadata. Credential state and sync hashes never appear in ordinary dashboard/export payloads without the existing explicit secret-export semantics being reviewed.
 - Dashboard provides Create Loki upstream, Pair/re-pair Windows assistant, Copy pairing document, revoke and status. Pairing-secret display is intentional and one-time; ordinary lists never contain it.

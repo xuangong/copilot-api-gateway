@@ -3,7 +3,8 @@ import { probeViaModels, resolveExecutionFetcher, type ExecutionFetcherForReques
   type ProviderModelsResponse, type ProviderRequest, type ProviderResponse } from "@vibe-llm/provider-llm"
 import { directFetcher, type Fetcher } from "@vibe-core/upstream"
 import type { StoredUpstreamRecord } from "@vibe-core/upstream-repo"
-import { LOKI_BASE_URL, LOKI_HEADERS, LOKI_PROFILE_ID } from "./profile"
+import { LOKI_HEADERS, LOKI_PROFILE_ID } from "./profile"
+import { lokiBaseUrl } from "./config"
 import { isLokiEndpoint, lokiModelEndpoints, LOKI_PATHS, normalizeLokiModels } from "./models"
 import { lokiModelPricing } from "./pricing"
 import { readLokiState } from "./state"
@@ -16,6 +17,7 @@ export class LokiProvider implements LlmModelProvider {
   readonly supportedEndpoints = ["messages", "responses", "chat_completions"] as const
   readonly inboundHeaderAllowlist = LOKI_CONVERSATION_HEADERS
   readonly name: string
+  private readonly baseUrl: string
   private models = new Map<string, unknown>()
 
   constructor(private readonly expected: StoredUpstreamRecord,
@@ -24,6 +26,7 @@ export class LokiProvider implements LlmModelProvider {
     private readonly executionFetcher?: ExecutionFetcherForRequest) {
     this.name = expected.name
     if (expected.config.profileId !== LOKI_PROFILE_ID) throw new Error("loki_invalid_profile")
+    this.baseUrl = lokiBaseUrl(expected.config.baseUrl)
   }
 
   private async credential(forInference = false) {
@@ -31,7 +34,8 @@ export class LokiProvider implements LlmModelProvider {
     if (!row || row.provider !== "loki" || row.rowIncarnation !== this.expected.rowIncarnation
       || row.ownerId !== this.expected.ownerId || row.credentialGeneration !== this.expected.credentialGeneration
       || row.catalogGeneration !== this.expected.catalogGeneration || (forInference && !row.enabled)
-      || row.config.profileId !== LOKI_PROFILE_ID) throw new Error("loki_binding_replaced")
+      || row.config.profileId !== LOKI_PROFILE_ID
+      || lokiBaseUrl(row.config.baseUrl) !== this.baseUrl) throw new Error("loki_binding_replaced")
     const state = readLokiState(row.state)
     if (!state.syncSecretHash || !state.credential || !state.account || state.credential.expiresAt <= Date.now()
       || state.account.homeAccountId !== state.credential.account.homeAccountId
@@ -41,8 +45,8 @@ export class LokiProvider implements LlmModelProvider {
 
   async getModels(): Promise<ProviderModelsResponse> {
     const credential = await this.credential()
-    // Workers rejects redirect: "error"; manual mode keeps the bearer on the fixed origin.
-    const response = await this.fetcher(`${LOKI_BASE_URL}/models`, { method: "GET", redirect: "manual",
+    // Workers rejects redirect: "error"; manual mode keeps the bearer on the configured origin.
+    const response = await this.fetcher(`${this.baseUrl}/models`, { method: "GET", redirect: "manual",
       headers: { ...LOKI_HEADERS, authorization: `Bearer ${credential.accessToken}`, accept: "application/json" },
       signal: AbortSignal.timeout(20_000) })
     if (!response.ok) { await response.body?.cancel(); throw new Error(`loki_catalog_http_${response.status}`) }
@@ -71,7 +75,7 @@ export class LokiProvider implements LlmModelProvider {
     req.signal?.throwIfAborted()
     const fetcher = resolveExecutionFetcher(this.fetcher, this.executionFetcher, req)
     const signals = [req.signal, req.timeout ? AbortSignal.timeout(req.timeout) : undefined].filter((signal): signal is AbortSignal => signal !== undefined)
-    const response = await fetcher(`${LOKI_BASE_URL}${LOKI_PATHS[req.endpoint]}`, {
+    const response = await fetcher(`${this.baseUrl}${LOKI_PATHS[req.endpoint]}`, {
       method: "POST", redirect: "manual", signal: signals.length ? AbortSignal.any(signals) : undefined,
       headers: { ...LOKI_HEADERS, authorization: `Bearer ${credential.accessToken}`, "content-type": "application/json",
         "X-ConversationId": conversationId,

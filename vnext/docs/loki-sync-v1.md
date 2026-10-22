@@ -1,5 +1,22 @@
 # Loki Windows synchronization protocol v1
 
+## Upstream endpoint settings
+
+Each upstream may store `config.baseUrl`. An absent or blank value uses
+`https://loki.delve.office.com/api/v1/llmapi`. The URL includes the API prefix;
+the provider appends `/models`, `/v1/messages`, `/responses`, or
+`/chat/completions`. HTTPS is required, userinfo/query/fragment are rejected,
+and trailing slashes are removed. Redirects are never followed with credentials.
+
+Creation accepts an optional `baseUrl` alongside `name` at
+`POST /api/loki/upstreams`. To edit an existing upstream, send
+`PATCH /api/loki/upstreams/{id}` with `{ "baseUrl": "https://host/api/prefix" }`.
+The Dashboard exposes this as Endpoint under the upstream's Edit action.
+Both operations require a real user session and the existing ownership checks.
+Endpoint changes invalidate the model catalog and existing provider instances
+while retaining the Windows pairing, account binding, and synchronized token.
+Configuration backups retain the endpoint but continue stripping sync authority.
+
 This contract connects the standalone Windows assistant to vNext. It grants authority to synchronize one upstream; it grants no inference or management access. No token or secret is placed in a URL.
 
 ## Pairing document

@@ -11,6 +11,7 @@ test("persisted Loki credentials drive catalog discovery and all three native in
   const owner = "loki-inference-owner" as UserId
   const now = new Date().toISOString()
   const calls: string[] = []
+  let baseUrl = "https://loki.example/initial/api"
   let textOnly = false
   const billing = { price_unit: "CopilotCredit", cost_per_input_token: 0.00044, cost_per_output_token: 0.0022,
     cache_read_cost_per_token: 0.000022, cache_write_cost_per_token: 0.00055 }
@@ -28,7 +29,7 @@ test("persisted Loki credentials drive catalog discovery and all three native in
       webSearchEnabled: true, webSearchPriority: ["tavily"], webSearchTavilyKey: "fixture-search-key" })
     const account = { homeAccountId: "fixture-home", tenantId: "11111111-1111-4111-8111-111111111111" }
     await repo.upstreams.save({ id: "loki-native-fixture", provider: "loki", ownerId: owner, name: "Loki fixture", enabled: true,
-      sortOrder: 0, config: { profileId: "loki-df-v1" }, flagOverrides: {}, disabledPublicModelIds: [],
+      sortOrder: 0, config: { profileId: "loki-df-v1", baseUrl }, flagOverrides: {}, disabledPublicModelIds: [],
       proxyFallbackList: [{ id: "direct_fetch" }], createdAt: now, updatedAt: now,
       state: { version: 1, profileId: "loki-df-v1", generation: "fixture-generation", revision: 1,
         syncSecretHash: "fixture-hash", assistantStatus: "authorized", account,
@@ -39,7 +40,7 @@ test("persisted Loki credentials drive catalog discovery and all three native in
       if (url === "https://api.tavily.com/search") {
         return Response.json({ results: [{ title: "Fixture result", url: "https://example.com/fixture", content: "Fixture search result" }] })
       }
-      expect(url.startsWith("https://loki.delve.office.com/api/v1/llmapi/")).toBe(true)
+      expect(url.startsWith(`${baseUrl}/`)).toBe(true)
       const headers = new Headers(init?.headers)
       expect(headers.get("authorization")).toBe("Bearer loki-upstream-fixture-token")
       expect(headers.get("X-ClientType")).toBe("Copilot")
@@ -152,6 +153,16 @@ test("persisted Loki credentials drive catalog discovery and all three native in
     expect(overview.total.costUSD).toBeCloseTo(0.0001144, 12)
     expect(overview.total.unpricedTokens).toBe(0)
     expect(calls.filter(url => url.endsWith("/models"))).toHaveLength(1)
+    const current = await repo.upstreams.getById("loki-native-fixture")
+    if (!current) throw new Error("missing fixture upstream")
+    baseUrl = "https://loki.example/changed/api"
+    await repo.upstreams.patchMetadata(current, metadata => ({ ...metadata, config: { ...metadata.config, baseUrl } }))
+    const changedResponse = await app.request("https://gateway.example/v1/messages", { method: "POST", headers,
+      body: JSON.stringify({ model: "fixture-messages", max_tokens: 16, messages: [{ role: "user", content: "hello" }] }) })
+    expect(changedResponse.status).toBe(200)
+    await changedResponse.text()
+    expect(calls.slice(-2)).toEqual([`${baseUrl}/models`, `${baseUrl}/v1/messages`])
+    expect(calls.filter(url => url.endsWith("/models"))).toHaveLength(2)
   } finally {
     globalThis.fetch = originalFetch
     _clearModelsMemoForTest()

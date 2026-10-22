@@ -176,7 +176,7 @@ export function UpstreamRow({
             <input type="checkbox" checked={u.enabled} onChange={onToggleEnabled} disabled={locked} />
             <span>{u.enabled ? t("dash.onLabel") : t("dash.offLabel")}</span>
           </label>
-          <button onClick={onEdit} disabled={locked || busy} className="btn-ghost text-xs px-2 py-1">{editing ? t("dash.closeBtn") : t(u.provider === "loki" ? "dash.lokiPairTitle" : "dash.edit")}</button>
+          <button onClick={onEdit} disabled={locked || busy} className="btn-ghost text-xs px-2 py-1">{editing ? t("dash.closeBtn") : t("dash.edit")}</button>
           {u.provider === "custom" || u.provider === "azure" || u.provider === "sdf" ? (
             <button
               type="button"

@@ -48,6 +48,47 @@ test("discovery and inference use fixed Loki egress and authoritative bearer cre
   expect(seen[1]?.headers.get("X-ClientFeature")).toBe("LlmApiProxy")
 })
 
+test("each upstream uses its configured prefix for discovery and all native inference routes", async () => {
+  for (const baseUrl of ["https://df.loki.delve.office.com/api/v1/llmapi/", "https://loki.example/custom/prefix///"]) {
+    const { row } = fixture()
+    row.config.baseUrl = baseUrl
+    const seen: string[] = []
+    const models = { data: [{ id: "fixture", supported_endpoints: ["/v1/messages", "/responses", "/chat/completions"] }] }
+    const provider = new LokiProvider(row, async () => row, async (url, init) => {
+      seen.push(url)
+      expect(init.redirect).toBe("manual")
+      expect(new Headers(init.headers).get("authorization")).toBe("Bearer test-private-token")
+      return url.endsWith("/models") ? Response.json(models) : new Response("ok")
+    })
+    await provider.getModels()
+    for (const endpoint of ["messages", "responses", "chat_completions"] as const) {
+      await provider.fetch(request({ endpoint, payload: { model: "fixture", input: "hello", messages: [{ role: "user", content: "hello" }] } }))
+    }
+    const prefix = baseUrl.replace(/\/+$/, "")
+    expect(seen).toEqual([`${prefix}/models`, `${prefix}/v1/messages`, `${prefix}/responses`, `${prefix}/chat/completions`])
+  }
+})
+
+test("an endpoint change fences an existing provider before sending credentials", async () => {
+  const { row } = fixture()
+  let calls = 0
+  const latest = { ...row, config: { ...row.config, baseUrl: "https://changed.example/api" } }
+  const provider = new LokiProvider(row, async () => latest, async () => { calls++; return new Response("ok") })
+  provider.setModelCatalog(normalizeLokiModels(catalog))
+  await expect(provider.getModels()).rejects.toThrow("loki_binding_replaced")
+  await expect(provider.fetch(request())).rejects.toThrow("loki_binding_replaced")
+  expect(calls).toBe(0)
+})
+
+test("invalid configured endpoints are rejected before any credential can leave", () => {
+  for (const baseUrl of ["http://loki.example/api", "https://user:secret@loki.example/api", "https://loki.example/api?key=secret",
+    "https://loki.example/api#fragment", "not-a-url", 123, "https://loki.example/\\evil"]) {
+    const { row } = fixture()
+    row.config.baseUrl = baseUrl
+    expect(() => new LokiProvider(row, async () => row)).toThrow("loki_invalid_endpoint")
+  }
+})
+
 test("expired or replaced credentials never cause an upstream request", async () => {
   const { row, state } = fixture()
   let latest = row

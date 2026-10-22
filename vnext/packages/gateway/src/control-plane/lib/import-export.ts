@@ -8,7 +8,7 @@
  */
 import { parseOpaqueCompatibilityMap } from '@vibe-llm/provider-llm'
 import { parseAzureOpaqueCompatibility } from '@vibe-llm/provider-azure'
-import { LOKI_PROFILE_ID, type LokiState } from '@vibe-llm/provider-loki'
+import { LOKI_PROFILE_ID, normalizeLokiConfig, type LokiState } from '@vibe-llm/provider-loki'
 import type { UpstreamKind } from '@vibe-llm/protocols/common'
 import type { ApiKey, GitHubAccount, UpstreamRecord } from '../../repo/types.ts'
 
@@ -86,7 +86,7 @@ function withoutLokiAuthority(u: UpstreamRecord<unknown>): UpstreamRecord<unknow
   // Backups transfer configuration, not an installation's ongoing token-sync authority.
   const state: LokiState = { version: 1, profileId: LOKI_PROFILE_ID, generation: crypto.randomUUID(),
     syncSecretHash: '', revision: 0, assistantStatus: 'waiting' }
-  return { ...u, config: { profileId: LOKI_PROFILE_ID }, state }
+  return { ...u, config: normalizeLokiConfig(u.config), state }
 }
 
 function unredactConfigBlob(incoming: unknown, live: unknown): unknown {

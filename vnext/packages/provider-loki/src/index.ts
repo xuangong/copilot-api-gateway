@@ -1,4 +1,5 @@
 export * from "./profile"
+export * from "./config"
 export * from "./state"
 export * from "./models"
 export * from "./provider"
