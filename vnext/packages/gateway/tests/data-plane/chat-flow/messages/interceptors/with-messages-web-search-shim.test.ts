@@ -264,3 +264,41 @@ for (const sourceApi of ["messages", "gemini"] as const) {
     expect(events(seen).some(event => event.type === "content_block_start" && (event.content_block as { type?: string }).type === "web_search_tool_result")).toBe(false)
   })
 }
+
+describe('Loki Opus forced native search compatibility', () => {
+  const forced = () => {
+    const inv = invocation('messages')
+    inv.payload.model = 'claude-opus-5.5'
+    inv.payload.thinking = { type: 'disabled' }
+    inv.payload.tool_choice = { type: 'tool', name: 'web_search' }
+    return inv
+  }
+
+  test('uses the same model and only accepts an actual search tool call', async () => {
+    const inv = forced()
+    const script = scriptedRun([searchTurn('fixture query')])
+    const out = events(await collect(await withMessagesWebSearchShim(inv, { ...ctx, upstreamKind: 'loki' }, script.run)))
+    expect(inv.payload.model).toBe('claude-opus-5.5')
+    expect(inv.payload.tool_choice).toEqual({ type: 'auto' })
+    expect(inv.payload.system).toContain('web_search')
+    expect(out.some(e => e.type === 'content_block_start' && (e.content_block as { type: string }).type === 'web_search_tool_result')).toBe(true)
+  })
+
+  test('text-only output fails without leaking an apparent successful answer', async () => {
+    const script = scriptedRun([answerTurn('Unsearched answer')])
+    const out = events(await collect(await withMessagesWebSearchShim(forced(), { ...ctx, upstreamKind: 'loki' }, script.run)))
+    expect(out.some(e => e.type === 'error')).toBe(true)
+    expect(out.some(e => e.type === 'message_stop' || e.type === 'message_delta')).toBe(false)
+    expect(JSON.stringify(out)).not.toContain('Unsearched answer')
+  })
+
+  test('does not relax forced tools for Copilot or ordinary client tools', async () => {
+    for (const kind of ['copilot', 'loki'] as const) {
+      const inv = forced()
+      if (kind === 'loki') inv.payload.tools = [{ name: 'web_search', input_schema: { type: 'object' } }]
+      const script = scriptedRun([answerTurn('unchanged')])
+      await collect(await withMessagesWebSearchShim(inv, { ...ctx, upstreamKind: kind }, script.run))
+      expect(inv.payload.tool_choice).toEqual({ type: 'tool', name: 'web_search' })
+    }
+  })
+})

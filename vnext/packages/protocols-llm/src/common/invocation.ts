@@ -1,5 +1,6 @@
 import type { EndpointKey } from './index'
 import type { AccountType } from './index'
+import type { UpstreamKind } from './index'
 import type { LlmExecuteResult } from './result'
 import type { ProtocolFrame } from '@vibe-core/result'
 import type { ChatCompletionsStreamEvent } from '../chat'
@@ -40,6 +41,8 @@ export interface RequestContext {
   // engagement without re-running binding selection. Optional to preserve
   // legacy test constructors that build a bare RequestContext.
   readonly targetEndpoint?: EndpointKey
+  /** Selected provider; compatibility must never be inferred from a model name alone. */
+  readonly upstreamKind?: UpstreamKind
   // Binding-visibility scope for this request, injected by attempt.ts from the
   // same auth context that selected the main binding.
   //

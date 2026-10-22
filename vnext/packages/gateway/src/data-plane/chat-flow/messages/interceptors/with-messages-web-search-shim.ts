@@ -1,5 +1,6 @@
 import { WebSearchCapacityError } from "../../../tools/web-search/capacity.ts"
 import { requireNativeEventResult } from "../../shared/producer-ownership"
+import { prepareLokiForcedSearch, requireLokiSearchCall } from "./loki-forced-web-search"
 // vnext/packages/gateway/src/data-plane/chat-flow/messages/interceptors/with-messages-web-search-shim.ts
 //
 // Port of copilot-gateway chat/messages/interceptors/web-search-shim.ts to vNext.
@@ -1199,11 +1200,13 @@ export const withMessagesWebSearchShim: MessagesInterceptor = async (invocation,
     provider = resolved
   }
 
+  const requireSearch = prepared.state.mode === 'active' && prepareLokiForcedSearch(invocation, ctx, basePayload as unknown as Record<string, unknown>)
   const rawResult = await run()
   if (rawResult.type !== 'events') return rawResult
   const result = await requireNativeEventResult(rawResult, ctx.abortUpstream)
 
-  const events = rewriteMessagesWebSearchEventsToNative(result.events, prepared.state, provider)
+  const upstreamEvents = requireSearch ? requireLokiSearchCall(result.events, ctx.abortUpstream) : result.events
+  const events = rewriteMessagesWebSearchEventsToNative(upstreamEvents, prepared.state, provider)
 
   // A Messages client can honour `pause_turn` itself; anything else cannot.
   if ((invocation.sourceApi ?? 'messages') === 'messages') return { ...result, events }

@@ -10,6 +10,7 @@ const RING: Record<Provider, string> = {
   sdf: "ring-amber-400/40",
   codex: "ring-slate-400/40",
   "claude-code": "ring-slate-400/40",
+  loki: "ring-slate-400/40",
 }
 
 const BADGE_BG: Record<Provider, string> = {
@@ -19,6 +20,7 @@ const BADGE_BG: Record<Provider, string> = {
   sdf: "bg-amber-500 text-white",
   codex: "bg-slate-500 text-white",
   "claude-code": "bg-slate-500 text-white",
+  loki: "bg-slate-500 text-white",
 }
 
 const FRAME_FALLBACK: Record<Provider, string> = {
@@ -28,6 +30,7 @@ const FRAME_FALLBACK: Record<Provider, string> = {
   sdf: "bg-amber-900/40 text-amber-200",
   codex: "bg-slate-900/40 text-slate-200",
   "claude-code": "bg-slate-900/40 text-slate-200",
+  loki: "bg-slate-900/40 text-slate-200",
 }
 
 const LETTER: Record<Provider, string> = {
@@ -37,6 +40,7 @@ const LETTER: Record<Provider, string> = {
   sdf: "S",
   codex: "C",
   "claude-code": "C",
+  loki: "L",
 }
 
 const FULL_LABEL: Record<Provider, string> = {
@@ -46,6 +50,7 @@ const FULL_LABEL: Record<Provider, string> = {
   sdf: "SDF",
   codex: "Codex",
   "claude-code": "Claude Code",
+  loki: "Loki",
 }
 
 interface Props {

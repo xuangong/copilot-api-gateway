@@ -4,12 +4,14 @@ import type { UpstreamRecord } from "../../repo/types.ts"
 import { BILLING_DIMENSIONS } from "@vibe-llm/protocols/common"
 import { parseCustomChatMetadata } from "@vibe-llm/provider-custom"
 import { substrateTokenExpiry } from "@vibe-llm/provider-sdf"
+import { readLokiState, publicLokiStatus } from "@vibe-llm/provider-loki"
 
 export type PublicUpstream = Pick<UpstreamRecord<unknown>,
   "id" | "ownerId" | "provider" | "name" | "enabled" | "sortOrder" | "config" |
   "flagOverrides" | "disabledPublicModelIds" | "proxyFallbackList" | "createdAt" | "updatedAt"> & {
     tokenExpiredAt?: string
     credentialStatus?: PublicCodexCredentialStatus
+    lokiStatus?: ReturnType<typeof publicLokiStatus>
   }
 
 export interface PublicCodexCredentialStatus {
@@ -82,6 +84,8 @@ export function publicUpstreamConfig(upstream: UpstreamRecord<unknown>): Record<
   const source = record(upstream.config)
   let out: Record<string, unknown>
   switch (upstream.provider) {
+    case "loki":
+      return scalars(source, ["profileId"])
     case "copilot":
       out = scalars(source, ["accountType", "githubHost", "source"])
       secret(out, source, "githubToken")
@@ -138,5 +142,8 @@ export function serializeUpstream(upstream: UpstreamRecord<unknown>): PublicUpst
     if (exp !== null && exp * 1000 <= Date.now()) dto.tokenExpiredAt = new Date(exp * 1000).toISOString()
   }
   if (upstream.provider === "codex") dto.credentialStatus = publicCodexCredentialStatus(upstream.state)
+  if (upstream.provider === "loki") {
+    try { dto.lokiStatus = publicLokiStatus(readLokiState(upstream.state)) } catch { /* Invalid private state grants no public data. */ }
+  }
   return dto
 }

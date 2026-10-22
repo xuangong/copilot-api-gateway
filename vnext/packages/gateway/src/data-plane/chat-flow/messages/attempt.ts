@@ -38,6 +38,7 @@ import {
   llmInternalErrorResult,
   readUpstreamError,
   type EndpointKey,
+  type UpstreamKind,
   type LlmExecuteResult,
   type ModelEndpoints,
 } from '@vibe-llm/protocols/common'
@@ -126,7 +127,7 @@ export type { MessagesInterceptor } from './interceptors'
 // ─── Binding selection ───────────────────────────────────────────────────
 
 export type SelectMessagesBindingResult =
-  | { kind: 'ok'; binding: AttemptBindingShape & { readonly provider: { readonly fetch: (req: ProviderRequest) => Promise<ProviderResponse>; readonly getPricingForModelKey: (k: string) => unknown | null; readonly inboundHeaderAllowlist?: readonly InboundHeaderMatcher[] } }; targetEndpoint: EndpointKey; translator: PairTranslator; bareModel: string }
+  | { kind: 'ok'; binding: AttemptBindingShape & { readonly kind?: UpstreamKind; readonly provider: { readonly fetch: (req: ProviderRequest) => Promise<ProviderResponse>; readonly getPricingForModelKey: (k: string) => unknown | null; readonly inboundHeaderAllowlist?: readonly InboundHeaderMatcher[] } }; targetEndpoint: EndpointKey; translator: PairTranslator; bareModel: string }
   | { kind: 'catalog-unavailable'; bareModel: string }
   | { kind: 'model-not-found'; bareModel: string }
   | { kind: 'no-eligible-binding'; bareModel: string }
@@ -469,7 +470,7 @@ export const messagesAttempt = {
       // signature is kept aligned with chat-completions so future stream
       // interceptors plug in without re-shuffling attempt.ts.
       if (chain.length === 0) return await terminal()
-      const chainCtx: RequestContext = { ...args.ctx, targetEndpoint: sel.targetEndpoint }
+      const chainCtx: RequestContext = { ...args.ctx, targetEndpoint: sel.targetEndpoint, upstreamKind: sel.binding.kind }
       return await runInterceptors(invocation, chainCtx, chain, terminal)
     } catch (err) {
       if (upstreamResp?.body) void upstreamResp.body.cancel().catch(() => {})

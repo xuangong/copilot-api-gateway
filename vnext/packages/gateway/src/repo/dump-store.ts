@@ -58,6 +58,7 @@ const KNOWN_UPSTREAM_KINDS: Readonly<Record<UpstreamKind, true>> = {
   sdf: true,
   codex: true,
   "claude-code": true,
+  loki: true,
 }
 
 // A null `upstream_id` means no upstream was identified at capture time

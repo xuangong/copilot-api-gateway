@@ -7,6 +7,7 @@ import { setupTestPlatform } from "./_setup-platform.ts"
 const accountId = "00000000-0000-4000-8000-000000000001"
 const now = "2026-01-01T00:00:00.000Z"
 const configurations = {
+  loki: { config: { profileId: "loki-df-v1" }, state: null },
   copilot: { config: { githubToken: "fixture-token" }, state: null },
   custom: { config: { name: "fixture", baseUrl: "https://custom.example/v1", apiKey: "fixture-key", endpoints: ["chat_completions"] }, state: null },
   azure: { config: { name: "fixture", endpoint: "https://fixture.openai.azure.com", apiKey: "fixture-key", deployment: "fixture-model", apiVersion: "2024-02-15-preview", endpoints: ["chat_completions"] }, state: null },

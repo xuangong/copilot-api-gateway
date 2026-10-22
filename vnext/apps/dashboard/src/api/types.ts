@@ -21,7 +21,7 @@ export interface ProxyFallbackEntry {
 export interface UpstreamRecord {
   id: string
   ownerId?: string
-  provider: "copilot" | "azure" | "custom" | "sdf" | "codex" | "claude-code"
+  provider: "copilot" | "azure" | "custom" | "sdf" | "codex" | "claude-code" | "loki"
   name: string
   enabled: boolean
   sortOrder: number
@@ -47,6 +47,12 @@ export interface UpstreamRecord {
   // here. Present means expired; absent means "not expired, or unknowable", and
   // deliberately not a health signal (a live-looking token can still be revoked).
   tokenExpiredAt?: string
+  lokiStatus?: {
+    assistantStatus: "waiting" | "authorized" | "interaction_required" | "failed"
+    tokenStatus: "missing" | "valid" | "expired"
+    expiresAt: number | null
+    updatedAt: number | null
+  }
   credentialStatus?: {
     health: "active" | "access_rejected" | "session_terminated" | "refresh_failed" | "credential_expired"
     renewable: boolean

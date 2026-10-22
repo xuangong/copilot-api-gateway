@@ -104,6 +104,7 @@
         "@vibe-llm/provider-copilot": "workspace:*",
         "@vibe-llm/provider-custom": "workspace:*",
         "@vibe-llm/provider-llm": "workspace:*",
+        "@vibe-llm/provider-loki": "workspace:*",
         "@vibe-llm/provider-sdf": "workspace:*",
         "@vibe-llm/responses-store": "workspace:*",
         "@vibe-llm/translate": "workspace:*",
@@ -216,6 +217,16 @@
         "@vibe-core/result": "workspace:*",
         "@vibe-core/upstream": "workspace:*",
         "@vibe-llm/protocols": "workspace:*",
+      },
+    },
+    "packages/provider-loki": {
+      "name": "@vibe-llm/provider-loki",
+      "version": "0.0.0",
+      "dependencies": {
+        "@vibe-core/upstream": "workspace:*",
+        "@vibe-core/upstream-repo": "workspace:*",
+        "@vibe-llm/protocols": "workspace:*",
+        "@vibe-llm/provider-llm": "workspace:*",
       },
     },
     "packages/provider-sdf": {
@@ -668,6 +679,8 @@
     "@vibe-llm/provider-custom": ["@vibe-llm/provider-custom@workspace:packages/provider-custom"],
 
     "@vibe-llm/provider-llm": ["@vibe-llm/provider-llm@workspace:packages/provider-llm"],
+
+    "@vibe-llm/provider-loki": ["@vibe-llm/provider-loki@workspace:packages/provider-loki"],
 
     "@vibe-llm/provider-sdf": ["@vibe-llm/provider-sdf@workspace:packages/provider-sdf"],
 

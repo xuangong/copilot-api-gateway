@@ -8,6 +8,7 @@
  */
 import { parseOpaqueCompatibilityMap } from '@vibe-llm/provider-llm'
 import { parseAzureOpaqueCompatibility } from '@vibe-llm/provider-azure'
+import { LOKI_PROFILE_ID, type LokiState } from '@vibe-llm/provider-loki'
 import type { UpstreamKind } from '@vibe-llm/protocols/common'
 import type { ApiKey, GitHubAccount, UpstreamRecord } from '../../repo/types.ts'
 
@@ -80,6 +81,14 @@ function redactUpstream(u: UpstreamRecord<unknown>): UpstreamRecord<unknown> {
   return { ...u, config }
 }
 
+function withoutLokiAuthority(u: UpstreamRecord<unknown>): UpstreamRecord<unknown> {
+  if (u.provider !== 'loki') return u
+  // Backups transfer configuration, not an installation's ongoing token-sync authority.
+  const state: LokiState = { version: 1, profileId: LOKI_PROFILE_ID, generation: crypto.randomUUID(),
+    syncSecretHash: '', revision: 0, assistantStatus: 'waiting' }
+  return { ...u, config: { profileId: LOKI_PROFILE_ID }, state }
+}
+
 function unredactConfigBlob(incoming: unknown, live: unknown): unknown {
   if (Array.isArray(incoming)) {
     const liveArr = Array.isArray(live) ? live : []
@@ -105,7 +114,7 @@ export function exportConfig(input: BundleInput, options: ExportOptions = {}): C
   const githubAccounts = options.redactSecrets
     ? input.githubAccounts.map(redactGithubAccount)
     : [...input.githubAccounts]
-  const upstreamsIn = input.upstreams ?? []
+  const upstreamsIn = (input.upstreams ?? []).map(withoutLokiAuthority)
   const upstreams = options.redactSecrets ? upstreamsIn.map(redactUpstream) : [...upstreamsIn]
   const bundle: ConfigBundle = {
     version: CONFIG_BUNDLE_VERSION,
@@ -185,7 +194,7 @@ export function parseConfigBundle(payload: unknown): ImportResult {
         if (typeof u !== 'object' || u === null) throw new ImportError('upstreams entry must be object')
         const rec = u as UpstreamRecord<unknown>
         if (typeof rec.id !== 'string' || !rec.id) throw new ImportError('upstreams entry missing id')
-        if (rec.provider !== 'copilot' && rec.provider !== 'custom' && rec.provider !== 'azure') {
+        if (rec.provider !== 'copilot' && rec.provider !== 'custom' && rec.provider !== 'azure' && rec.provider !== 'loki') {
           throw new ImportError(`upstreams entry has unsupported provider: ${String(rec.provider)}`)
         }
         if (typeof rec.name !== 'string') throw new ImportError('upstreams entry missing name')
@@ -194,9 +203,10 @@ export function parseConfigBundle(payload: unknown): ImportResult {
         }
         if (rec.provider === 'custom') parseOpaqueCompatibilityMap(rec.config.opaqueCompatibility)
         if (rec.provider === 'azure') parseAzureOpaqueCompatibility(rec.config.opaqueCompatibility)
+        if (rec.provider === 'loki' && rec.config.profileId !== LOKI_PROFILE_ID) throw new ImportError('Unsupported Loki profile')
         redactedCount += countRedactedInBlob(rec.config)
       }
-      upstreams = raw as UpstreamRecord<unknown>[]
+      upstreams = (raw as UpstreamRecord<unknown>[]).map(withoutLokiAuthority)
     }
   }
 

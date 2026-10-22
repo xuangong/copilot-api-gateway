@@ -382,7 +382,7 @@ export function UpstreamFormModal({ mode, flagCatalog, ensureFlagCatalog, onClos
     }
     setSaving(true)
     try {
-      if (provider === "copilot" || provider === "codex" || provider === "claude-code") {
+      if (provider === "copilot" || provider === "codex" || provider === "claude-code" || provider === "loki") {
         if (!editingId) {
           toast(t("dash.errAddCopilotViaDeviceFlow"), "error")
           return

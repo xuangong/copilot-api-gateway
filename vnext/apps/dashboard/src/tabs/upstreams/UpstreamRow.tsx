@@ -146,6 +146,13 @@ export function UpstreamRow({
                   : t("dash.codexExpiryUnknown")}
               </div>
             ) : null}
+            {u.provider === "loki" && u.lokiStatus ? <div className="text-xs text-themed-dim mt-1">
+              {t(u.lokiStatus.tokenStatus === "expired" ? "dash.lokiExpired" : {
+                waiting: "dash.lokiWaiting", authorized: "dash.lokiAuthorized",
+                interaction_required: "dash.lokiInteractionRequired", failed: "dash.lokiFailed",
+              }[u.lokiStatus.assistantStatus])}
+              {u.lokiStatus.expiresAt ? ` · ${t("dash.codexExpiresAt", { at: new Date(u.lokiStatus.expiresAt).toLocaleString() })}` : ""}
+            </div> : null}
           </div>
         </div>
 
@@ -169,7 +176,7 @@ export function UpstreamRow({
             <input type="checkbox" checked={u.enabled} onChange={onToggleEnabled} disabled={locked} />
             <span>{u.enabled ? t("dash.onLabel") : t("dash.offLabel")}</span>
           </label>
-          <button onClick={onEdit} disabled={locked || busy} className="btn-ghost text-xs px-2 py-1">{editing ? t("dash.closeBtn") : t("dash.edit")}</button>
+          <button onClick={onEdit} disabled={locked || busy} className="btn-ghost text-xs px-2 py-1">{editing ? t("dash.closeBtn") : t(u.provider === "loki" ? "dash.lokiPairTitle" : "dash.edit")}</button>
           {u.provider === "custom" || u.provider === "azure" || u.provider === "sdf" ? (
             <button
               type="button"

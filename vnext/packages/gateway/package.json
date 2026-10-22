@@ -34,6 +34,7 @@
     "@vibe-llm/provider-copilot": "workspace:*",
     "@vibe-llm/provider-custom": "workspace:*",
     "@vibe-llm/provider-llm": "workspace:*",
+    "@vibe-llm/provider-loki": "workspace:*",
     "@vibe-llm/provider-sdf": "workspace:*",
     "@vibe-llm/responses-store": "workspace:*",
     "@vibe-llm/translate": "workspace:*",

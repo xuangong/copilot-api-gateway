@@ -28,6 +28,7 @@ COPY packages/provider-copilot/package.json packages/provider-copilot/
 COPY packages/provider-claude-code/package.json packages/provider-claude-code/
 COPY packages/provider-codex/package.json packages/provider-codex/
 COPY packages/provider-custom/package.json packages/provider-custom/
+COPY packages/provider-loki/package.json packages/provider-loki/
 COPY packages/provider-sdf/package.json packages/provider-sdf/
 COPY packages/responses-store/package.json packages/responses-store/
 COPY packages/cache/package.json packages/cache/

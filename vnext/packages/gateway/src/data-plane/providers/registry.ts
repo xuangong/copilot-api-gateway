@@ -24,6 +24,7 @@ import { codexProviderPlugin } from '@vibe-llm/provider-codex'
 import { claudeCodeProviderPlugin } from '@vibe-llm/provider-claude-code'
 import { customProviderPlugin } from '@vibe-llm/provider-custom'
 import { sdfProviderPlugin } from '@vibe-llm/provider-sdf'
+import { lokiProviderPlugin, lokiModelEndpoints } from '@vibe-llm/provider-loki'
 import { getCachedCopilotToken } from '../../shared/copilot-token-cache.ts'
 import { preparePerRequestFetcher, createSingleUpstreamFetcher, createObservedDirectFetcher } from '../dial/per-request.ts'
 import { directFetcher, type Fetcher } from '@vibe-core/upstream'
@@ -85,6 +86,7 @@ const BUNDLED_PROVIDER_PLUGINS = {
   "claude-code": claudeCodeProviderPlugin,
   custom: customProviderPlugin,
   sdf: sdfProviderPlugin,
+  loki: lokiProviderPlugin,
 } satisfies Record<UpstreamKind, LlmProviderPlugin>
 
 const PROVIDER_PLUGINS: ReadonlyMap<string, LlmProviderPlugin> = new Map(Object.entries(BUNDLED_PROVIDER_PLUGINS))
@@ -168,7 +170,7 @@ export function modelToBindingModel(
 ): LlmProviderBinding['model'] {
   const endpoints = kind === 'copilot'
     ? copilotModelEndpoints(model as Model)
-    : genericModelEndpoints(model as Model, provider.supportedEndpoints)
+    : kind === 'loki' ? lokiModelEndpoints(model) : genericModelEndpoints(model as Model, provider.supportedEndpoints)
   const providerData = (model as { providerData?: { upstreamModelId?: unknown } }).providerData
   const providerModelKey = typeof providerData?.upstreamModelId === 'string'
     ? providerData.upstreamModelId

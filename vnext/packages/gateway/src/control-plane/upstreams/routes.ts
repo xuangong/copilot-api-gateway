@@ -471,8 +471,11 @@ upstreamsRouter.patch('/:id', zValidator('json', upstreamBody), async (c) => {
     if (existing.provider === 'copilot' && body.config !== undefined) {
       return jsonError('config of copilot upstreams is managed by device-flow auth')
     }
-    if ((existing.provider === 'codex' || existing.provider === 'claude-code') && body.config !== undefined) {
+    if ((existing.provider === 'codex' || existing.provider === 'claude-code' || existing.provider === 'loki') && body.config !== undefined) {
       return jsonError('credential-provider config is managed by authorization')
+    }
+    if (existing.provider === 'loki' && body.ownerId !== undefined && body.ownerId !== existing.ownerId) {
+      return jsonError('Loki ownership cannot be transferred; create a new paired upstream', 400)
     }
     const next = await getRepo().upstreams.patchMetadata(existing, current => input(() => {
       const name = typeof body.name === 'string' ? body.name.trim() : current.name

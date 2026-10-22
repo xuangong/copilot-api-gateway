@@ -11,6 +11,7 @@ import { createPortableUpstreamDraft } from "./duplicate-draft"
 import type { PortableUpstreamDraft } from "./duplicate-draft"
 import type { UpstreamRecord } from "../../api/types"
 import { moveUpstream } from "../../state/reorder-upstreams"
+import { LokiPairingPanel } from "./LokiPairingPanel"
 
 type CreateMode = {
   kind: "create"
@@ -37,6 +38,7 @@ export function UpstreamsTab() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [proxyId, setProxyId] = useState<string | null>(null)
   const [deviceFlowOpen, setDeviceFlowOpen] = useState(false)
+  const [createLoki, setCreateLoki] = useState(false)
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
   const [presetMenuOpen, setPresetMenuOpen] = useState(false)
   const [drag, setDrag] = useState<DragPreview | null>(null)
@@ -148,6 +150,7 @@ export function UpstreamsTab() {
           <div className="flex flex-nowrap items-center gap-2 whitespace-nowrap overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0 sm:overflow-visible [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>button]:shrink-0">
             <button onClick={() => setDeviceFlowOpen(true)} className="btn-primary text-sm">{t("dash.addCopilot")}</button>
             <button onClick={() => openCreate("codex")} className="btn-ghost text-sm">{t("dash.addCodexImport")}</button>
+            <button onClick={() => setCreateLoki(value => !value)} className="btn-ghost text-sm">{t("dash.addLoki")}</button>
             <button
               onClick={() => setPresetMenuOpen((v) => !v)}
               className="btn-ghost text-sm"
@@ -198,6 +201,7 @@ export function UpstreamsTab() {
           </div>
         ) : null}
 
+        {createLoki ? <Expand><LokiPairingPanel onChanged={store.reload} onClose={() => setCreateLoki(false)} /></Expand> : null}
         {createMode ? (
           <Expand>
             <UpstreamFormModal
@@ -300,7 +304,7 @@ export function UpstreamsTab() {
                         />
                         {editingId === u.id && g.isMine ? (
                           <Expand>
-                            <UpstreamFormModal
+                            {u.provider === "loki" ? <LokiPairingPanel key={u.id} row={u} onChanged={store.reload} onClose={() => setEditingId(null)} /> : <UpstreamFormModal
                               mode={{ kind: "edit", row: u }}
                               flagCatalog={store.flagCatalog}
                               ensureFlagCatalog={store.ensureFlagCatalog}
@@ -309,7 +313,7 @@ export function UpstreamsTab() {
                                 setEditingId(null)
                                 store.reload()
                               }}
-                            />
+                            />}
                           </Expand>
                         ) : null}
                         {proxyId === u.id ? (
