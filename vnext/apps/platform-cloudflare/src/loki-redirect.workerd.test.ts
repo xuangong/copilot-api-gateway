@@ -44,7 +44,7 @@ beforeAll(async () => {
     { name: "provider", modules: true, modulesRoot: dir, scriptPath: bundle,
       compatibilityDate: "2025-06-01", compatibilityFlags: ["nodejs_compat"], outboundService: "upstream" },
     { name: "upstream", modules: true, script: `export default { fetch(request) {
-      if (new URL(request.url).hostname !== "df.loki.delve.office.com") return new Response("redirect followed")
+      if (new URL(request.url).hostname !== "loki.delve.office.com") return new Response("redirect followed")
       const status = Number(request.headers.get("x-fixture-status"))
       if (status !== 200) return new Response("redirect-body", { status, headers: { location: "https://redirect.invalid/secret" } })
       if (new URL(request.url).pathname.endsWith("/models")) return Response.json({ data: [

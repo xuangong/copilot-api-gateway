@@ -29,7 +29,7 @@ Profile ID: `loki-df-v1`.
 | Client application | `aebc6443-996d-45c2-90f0-388ff96faa56` |
 | Authority | `https://login.microsoftonline.com/organizations` |
 | Scope | `42c8f7bd-c7a8-4ba9-bc1c-91edfb716247/.default` |
-| Loki origin and prefix | `https://df.loki.delve.office.com/api/v1/llmapi` |
+| Loki origin and prefix | `https://loki.delve.office.com/api/v1/llmapi` |
 | Required headers | `X-ClientType: Copilot`, `X-ClientFeature: LlmApiProxy` |
 
 These values come from pi_loki commit `563cc73a14fc82dea3dc451c8cb9ad67f82eb63d`. They are a reference configuration, not proof that its app registration supports MSAL.NET broker login. Do not inherit ambient `LOKI_*` overrides or accept an arbitrary OAuth profile from the gateway.

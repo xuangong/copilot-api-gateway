@@ -39,7 +39,7 @@ test("persisted Loki credentials drive catalog discovery and all three native in
       if (url === "https://api.tavily.com/search") {
         return Response.json({ results: [{ title: "Fixture result", url: "https://example.com/fixture", content: "Fixture search result" }] })
       }
-      expect(url.startsWith("https://df.loki.delve.office.com/api/v1/llmapi/")).toBe(true)
+      expect(url.startsWith("https://loki.delve.office.com/api/v1/llmapi/")).toBe(true)
       const headers = new Headers(init?.headers)
       expect(headers.get("authorization")).toBe("Bearer loki-upstream-fixture-token")
       expect(headers.get("X-ClientType")).toBe("Copilot")

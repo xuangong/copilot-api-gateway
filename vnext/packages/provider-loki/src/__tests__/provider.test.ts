@@ -43,7 +43,7 @@ test("discovery and inference use fixed Loki egress and authoritative bearer cre
   await provider.getModels()
   const result = await provider.fetch(request())
   expect(await new Response(result.body).text()).toBe("data: fixture\n\n")
-  expect(seen[1]?.url).toBe("https://df.loki.delve.office.com/api/v1/llmapi/v1/messages")
+  expect(seen[1]?.url).toBe("https://loki.delve.office.com/api/v1/llmapi/v1/messages")
   expect(seen[1]?.headers.get("authorization")).toBe("Bearer test-private-token")
   expect(seen[1]?.headers.get("X-ClientFeature")).toBe("LlmApiProxy")
 })
