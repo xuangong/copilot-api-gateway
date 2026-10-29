@@ -58,11 +58,13 @@ test("each upstream uses its configured prefix for discovery and all native infe
       seen.push(url)
       expect(init.redirect).toBe("manual")
       expect(new Headers(init.headers).get("authorization")).toBe("Bearer test-private-token")
+      expect(new Headers(init.headers).get("X-Llm-Api-Version")).toBe("2026-10-21")
       return url.endsWith("/models") ? Response.json(models) : new Response("ok")
     })
     await provider.getModels()
     for (const endpoint of ["messages", "responses", "chat_completions"] as const) {
-      await provider.fetch(request({ endpoint, payload: { model: "fixture", input: "hello", messages: [{ role: "user", content: "hello" }] } }))
+      await provider.fetch(request({ endpoint, headers: new Headers({ "X-Llm-Api-Version": "invalid-client-version" }),
+        payload: { model: "fixture", input: "hello", messages: [{ role: "user", content: "hello" }] } }))
     }
     const prefix = baseUrl.replace(/\/+$/, "")
     expect(seen).toEqual([`${prefix}/models`, `${prefix}/v1/messages`, `${prefix}/responses`, `${prefix}/chat/completions`])
