@@ -74,6 +74,9 @@ const COPILOT_PATHS: Partial<Record<EndpointKey, string>> = {
   messages: '/v1/messages',
   messages_count_tokens: '/v1/messages/count_tokens',
   embeddings: '/embeddings',
+  // Image models advertise these `/v1`-prefixed paths in `supported_endpoints`.
+  images_generations: '/v1/images/generations',
+  images_edits: '/v1/images/edits',
 }
 
 const COPILOT_SUPPORTED: readonly EndpointKey[] = [
@@ -82,6 +85,8 @@ const COPILOT_SUPPORTED: readonly EndpointKey[] = [
   'messages',
   'messages_count_tokens',
   'embeddings',
+  'images_generations',
+  'images_edits',
 ]
 
 export class CopilotProvider implements LlmModelProvider {

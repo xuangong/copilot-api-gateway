@@ -208,6 +208,47 @@ test('POST /v1/images/generations 404 when no binding', async () => {
   expect(res.status).toBe(404)
 })
 
+// Copilot catalogs image models with `/v1`-prefixed image paths only. Before
+// Copilot routed images, the model had no usable endpoint, and an unrelated
+// failing upstream turned that miss into "Model catalog is temporarily
+// unavailable".
+const copilotImageModel = {
+  ...stubModel('gpt-image-2.5-flare', 'image'),
+  vendor: 'Experimental',
+  preview: true,
+  supported_endpoints: ['/v1/images/generations', '/v1/images/edits'],
+} satisfies Model
+
+for (const withFailingUpstream of [false, true]) {
+  test(`POST /v1/images/generations routes a Copilot image model${withFailingUpstream ? ' while another catalog fails' : ''}`, async () => {
+    const upstreams = [stubUpstream({ id: 'copilot:images' })]
+    if (withFailingUpstream) upstreams.push(stubUpstream({ id: 'copilot:broken', config: { githubToken: 'ghp_broken' } }))
+    initRepo(stubRepo(upstreams))
+    const inference: string[] = []
+    globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+      const req = input instanceof Request ? input : new Request(input as string, init)
+      const path = new URL(req.url).pathname
+      if (path.endsWith('/copilot_internal/v2/token') && req.headers.get('authorization')?.includes('ghp_broken')) {
+        return Promise.resolve(new Response('unavailable', { status: 500 }))
+      }
+      const token = syntheticCopilotTokenResponse(req)
+      if (token) return Promise.resolve(token)
+      if (path.endsWith('/models')) return Promise.resolve(Response.json({ object: 'list', data: [copilotImageModel] }))
+      inference.push(req.url)
+      return Promise.resolve(Response.json({ created: 1, data: [{ b64_json: 'aGk=' }] }))
+    }) as typeof fetch
+
+    const res = await buildApp(imagesRouter).request('/v1/images/generations', {
+      method: 'POST',
+      body: JSON.stringify({ model: 'gpt-image-2.5-flare', prompt: 'a tree' }),
+      headers: { 'content-type': 'application/json' },
+    })
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ created: 1, data: [{ b64_json: 'aGk=' }] })
+    expect(inference).toEqual(['https://api.githubcopilot.com/v1/images/generations'])
+  })
+}
+
 const imageUsageResponseBody = JSON.stringify({
   data: [{ url: 'https://image.test/generated.png' }],
   usage: {

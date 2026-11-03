@@ -6,7 +6,8 @@ import type { Fetcher } from "@vibe-core/upstream"
 
 interface CallCopilotAPIOptions {
   endpoint: string
-  payload: Record<string, unknown>
+  /** FormData is the multipart `/v1/images/edits` body, forwarded as-is. */
+  payload: Record<string, unknown> | FormData
   operationName: string
   copilotToken: string
   accountType: AccountType
@@ -24,7 +25,7 @@ interface CallCopilotAPIOptions {
 
 export interface PreparedCopilotCall {
   ready: boolean
-  body: string | undefined
+  body: string | FormData | undefined
   isStreaming: boolean
 }
 
@@ -48,17 +49,21 @@ export async function callCopilotAPI({
     throw new Error("Copilot token not found")
   }
 
+  const form = payload instanceof FormData ? payload : undefined
+  const json = payload instanceof FormData ? undefined : payload
+
   if (!preparedCall?.ready) {
-    if (requireModel && (!payload.model || typeof payload.model !== "string")) {
+    const model = form ? form.get("model") : json?.model
+    if (requireModel && (!model || typeof model !== "string")) {
       throw new Error("Model is required and must be a string")
     }
 
     // Normalize Claude model IDs: Anthropic SDK uses dashes (claude-opus-4-6-1m)
     // but Copilot API uses dots (claude-opus-4.6-1m). Convert version separators.
-    if (typeof payload.model === "string" && payload.model.startsWith("claude-")) {
+    if (json && typeof json.model === "string" && json.model.startsWith("claude-")) {
       // Match patterns like claude-opus-4-6-1m or claude-sonnet-4-5
       // Version numbers use dashes in SDK but dots in Copilot
-      payload.model = payload.model.replace(
+      json.model = json.model.replace(
         /^(claude-(?:opus|sonnet|haiku)-)((\d)-(\d)(-1m)?)$/,
         (_match, prefix, _ver, major, minor, suffix = "") => `${prefix}${major}.${minor}${suffix}`,
       )
@@ -66,7 +71,7 @@ export async function callCopilotAPI({
   }
 
   const baseUrl = baseUrlOverride ?? getCopilotBaseUrl(accountType)
-  const isStreaming = preparedCall?.ready ? preparedCall.isStreaming : payload.stream === true
+  const isStreaming = preparedCall?.ready ? preparedCall.isStreaming : json?.stream === true
   const requestId = crypto.randomUUID().slice(0, 8)
 
   // Log sync requests for debugging (they can hang)
@@ -83,10 +88,12 @@ export async function callCopilotAPI({
     if (value === "") headers.delete(name)
     else headers.set(name, value)
   }
+  // fetch derives the multipart boundary from a FormData body.
+  if (form) headers.delete("content-type")
 
   let response: Response
   try {
-    const body = preparedCall?.ready ? preparedCall.body : JSON.stringify(payload)
+    const body = preparedCall?.ready ? preparedCall.body : form ?? JSON.stringify(json)
     if (preparedCall && !preparedCall.ready) {
       preparedCall.body = body
       preparedCall.isStreaming = isStreaming

@@ -23,6 +23,8 @@ const ENDPOINT_BY_PATH: Record<string, keyof ModelEndpoints> = {
   "/chat/completions": "chat_completions",
   "/responses": "responses",
   "/v1/messages": "messages",
+  "/v1/images/generations": "images_generations",
+  "/v1/images/edits": "images_edits",
 }
 
 export function copilotModelEndpoints(model: Model): ModelEndpoints {
@@ -78,8 +80,8 @@ export function copilotModelEndpoints(model: Model): ModelEndpoints {
   }
 
   // Needed by the gemini → messages translator for non-claude models, and
-  // never advertised by Copilot on any entry.
-  endpoints.messages_count_tokens = {}
+  // never advertised by Copilot on any entry. Image models have no messages.
+  if (capType !== "image") endpoints.messages_count_tokens = {}
 
   return endpoints
 }

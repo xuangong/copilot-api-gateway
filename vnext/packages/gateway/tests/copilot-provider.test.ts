@@ -56,7 +56,7 @@ test('CopilotProvider rejects unsupported endpoints', async () => {
   const provider = new CopilotProvider({ copilotToken: 'tok', accountType: 'individual' })
   await expect(
     provider.fetch({
-      endpoint: 'images_generations',
+      endpoint: 'alpha_search',
       payload: {},
       headers: new Headers({ 'content-type': 'application/json' }),
       sourceApi: 'openai',
