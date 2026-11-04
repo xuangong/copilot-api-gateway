@@ -26,13 +26,13 @@ Profile ID: `loki-df-v1`.
 
 | Field | Value |
 | --- | --- |
-| Client application | `aebc6443-996d-45c2-90f0-388ff96faa56` |
+| Client application | `0ec893e0-5785-4de6-99da-4ed124e5296c` |
 | Authority | `https://login.microsoftonline.com/organizations` |
 | Scope | `42c8f7bd-c7a8-4ba9-bc1c-91edfb716247/.default` |
 | Default Loki origin and prefix | `https://loki.delve.office.com/api/v1/llmapi` (overridable per upstream) |
-| Required headers | `X-ClientType: Copilot`, `X-ClientFeature: LlmApiProxy` |
+| Required headers | `X-ClientFeature: LlmApiProxy`, `X-ClientScenario: Code`, `X-ClientType: Copilot`, `X-HostPlatform: Windows`, `X-Llm-Api-Version: 2026-09-22` |
 
-These values come from pi_loki commit `563cc73a14fc82dea3dc451c8cb9ad67f82eb63d`. They are a reference configuration, not proof that its app registration supports MSAL.NET broker login. Do not inherit ambient `LOKI_*` overrides or accept an arbitrary OAuth profile from the gateway.
+The original profile was based on pi_loki commit `563cc73a14fc82dea3dc451c8cb9ad67f82eb63d`; the client application and required headers above were updated by operator request on 2026-11-04. The client application change still needs to be applied to the separate Windows helper source. These are configuration requirements, not proof that the new app registration supports MSAL.NET broker login. Do not inherit ambient `LOKI_*` overrides or accept an arbitrary OAuth profile from the gateway.
 
 The helper returns a nonempty access token, an actual future expiry, and stable account identifiers supplied by MSAL (home account ID plus tenant ID). A username/login hint is not a stable binding. Silent acquisition must match that identity exactly; no first-account fallback. Missing expiry or identity fails closed. Interactive acquisition is user initiated, and a different identity requires explicit re-pairing.
 

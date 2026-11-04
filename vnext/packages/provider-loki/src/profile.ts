@@ -3,5 +3,7 @@ export const LOKI_BASE_URL = "https://loki.delve.office.com/api/v1/llmapi"
 export const LOKI_HEADERS = {
   "X-ClientType": "Copilot",
   "X-ClientFeature": "LlmApiProxy",
-  "X-Llm-Api-Version": "2026-10-21",
+  "X-ClientScenario": "Code",
+  "X-HostPlatform": "Windows",
+  "X-Llm-Api-Version": "2026-09-22",
 } as const
