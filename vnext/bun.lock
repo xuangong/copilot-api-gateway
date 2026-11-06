@@ -3,6 +3,10 @@
   "workspaces": {
     "": {
       "name": "copilot-gateway-vnext",
+      "dependencies": {
+        "@peculiar/asn1-cms": "^2.3.14",
+        "@peculiar/asn1-rsa": "^2.3.14",
+      },
       "devDependencies": {
         "@eslint/js": "^10.0.1",
         "@types/bun": "latest",
@@ -125,7 +129,7 @@
         "@noble/hashes": "^1.8.0",
         "@peculiar/asn1-cms": "^2.3.14",
         "@peculiar/asn1-rsa": "^2.3.14",
-        "@reclaimprotocol/tls": "0.1.2",
+        "@reclaimprotocol/tls": "0.1.5",
         "@vibe-core/platform": "workspace:*",
       },
     },
@@ -245,7 +249,7 @@
       "dependencies": {
         "@noble/ciphers": "^2.2.0",
         "@noble/hashes": "^1.8.0",
-        "@reclaimprotocol/tls": "0.1.2",
+        "@reclaimprotocol/tls": "0.1.5",
         "@vibe-core/http": "workspace:*",
       },
     },
@@ -296,6 +300,9 @@
         "@vibe-core/upstream": "workspace:*",
       },
     },
+  },
+  "patchedDependencies": {
+    "@reclaimprotocol/tls@0.1.5": "patches/@reclaimprotocol%2Ftls@0.1.5.patch",
   },
   "packages": {
     "@alloc/quick-lru": ["@alloc/quick-lru@5.2.0", "", {}, "sha512-UrcABB+4bUrFABwbluTIBErXwvbsU/V7TZWfmbgJfbkwiBuziS9gxdODUyuiecfdGQ85jglMW6juS3+z5TsKLw=="],
@@ -544,7 +551,7 @@
 
     "@poppinss/exception": ["@poppinss/exception@1.2.3", "", {}, "sha512-dCED+QRChTVatE9ibtoaxc+WkdzOSjYTKi/+uacHWIsfodVfpsueo3+DKpgU5Px8qXjgmXkSvhXvSCz3fnP9lw=="],
 
-    "@reclaimprotocol/tls": ["@reclaimprotocol/tls@0.1.2", "https://ms-feed-17.pkgs.visualstudio.com/1es-public/_packaging/npm-public/npm/registry/@reclaimprotocol/tls/-/tls-0.1.2.tgz", { "dependencies": { "@noble/ciphers": "^1.3.0", "@noble/curves": "^1.9.6", "@noble/hashes": "^1.8.0", "@peculiar/asn1-ecc": "^2.3.14", "@peculiar/asn1-schema": "^2.3.13", "@peculiar/x509": "^1.12.3", "micro-rsa-dsa-dh": "^0.1.0" } }, "sha1-tmcNtBefVIjLnn6GzzpO9WWarsk="],
+    "@reclaimprotocol/tls": ["@reclaimprotocol/tls@0.1.5", "https://ms-feed-17.pkgs.visualstudio.com/1es-public/_packaging/npm-public/npm/registry/@reclaimprotocol/tls/-/tls-0.1.5.tgz", { "dependencies": { "@noble/ciphers": "^1.3.0", "@noble/curves": "^1.9.6", "@noble/hashes": "^1.8.0", "@peculiar/asn1-ecc": "^2.3.14", "@peculiar/asn1-schema": "^2.3.13", "@peculiar/x509": "^1.12.3", "micro-rsa-dsa-dh": "^0.1.0" } }, "sha512-pFVZil0U4izuSjbE0MacYOXF+Eb4/w/hhMEfMWqb+wDzPYSqV+vZBJKsQlDdxXFYzkyjvOgw+mNQULOFfX9PpA=="],
 
     "@rtsao/scc": ["@rtsao/scc@1.1.0", "", {}, "sha512-zt6OdqaDoOnJ1ZYsCYGt9YmWzDXl4vQdKTyJev62gFhRGKdx7mcT54V9KIjg+d2wi9EXsPvAPKe7i7WjfVWB8g=="],
 

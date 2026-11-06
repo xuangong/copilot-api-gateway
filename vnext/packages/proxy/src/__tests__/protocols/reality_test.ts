@@ -131,11 +131,10 @@ describe('dialReality — pre-connect config validation', () => {
 });
 
 describe('dialReality — runtime X25519 derive failure', () => {
-  // Bun 1.3 lacks X25519 deriveBits (throws NotSupportedError). The reclaim-tls
-  // state machine swallows the sync throw from onClientHelloPack instead of
-  // propagating it, so the promise never resolves under Bun. Node runs this fine.
-  // Skip on Bun until Bun's WebCrypto covers X25519 deriveBits.
-  it.skip('wraps an off-curve / mistyped pbk that decodes but fails ECDH as a config-stage dial error', async () => {
+  // The derive runs inside onClientHelloPack, one of the hooks the pinned
+  // @reclaimprotocol/tls patch adds. Without the patch the hook never runs and
+  // this dial hangs instead of failing.
+  it('wraps an off-curve / mistyped pbk that decodes but fails ECDH as a config-stage dial error', async () => {
     // 32 bytes of zero, encoded as 43 base64url chars (one byte of padding
     // would round to '=', which we strip — reality.ts accepts both forms).
     const allZeroPbk = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';

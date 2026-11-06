@@ -15,6 +15,10 @@
     "ci:local": "bun run build:setup && bun run scripts/check-framework-purity.ts && bun run typecheck && bun test && bun run lint && bun run build:ui && bun run --filter '@vibe-llm/platform-cloudflare' deploy:dry",
     "build:setup": "bun scripts/build-setup-assets.ts"
   },
+  "dependencies": {
+    "@peculiar/asn1-cms": "^2.3.14",
+    "@peculiar/asn1-rsa": "^2.3.14"
+  },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@types/bun": "latest",
@@ -25,5 +29,8 @@
     "globals": "^17.6.0",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.60.1"
+  },
+  "patchedDependencies": {
+    "@reclaimprotocol/tls@0.1.5": "patches/@reclaimprotocol%2Ftls@0.1.5.patch"
   }
 }

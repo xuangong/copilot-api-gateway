@@ -8,6 +8,8 @@ ENV NODE_ENV=production
 # Build context is ./vnext (set in docker-compose.vnext.yml). All COPY
 # paths below are relative to vnext/.
 COPY package.json bun.lock ./
+# `patchedDependencies` in package.json; `bun install` applies them.
+COPY patches ./patches
 
 # Per-package manifests for workspace resolution. Copy them before sources
 # so `bun install` can build the workspace graph from manifests alone.

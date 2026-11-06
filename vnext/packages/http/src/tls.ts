@@ -180,7 +180,8 @@ export const userspaceTls = async (
   let pendingPrefix: Uint8Array | null = opts.prefix ?? null;
 
   // `@reclaimprotocol/tls`'s exported TLSClientOptions typing is missing
-  // two things this call site uses: `verifyHost` (added by our pnpm patch)
+  // two things this call site uses: `verifyHost` (added by the patch pinned in
+  // `vnext/patches/`)
   // and a relaxed `onTlsEnd` error type (we forward errors from the runtime
   // which can be non-Error rejects, but the upstream typing assumes
   // `Error`). Build the options against a locally extended adapter type so
