@@ -2,12 +2,22 @@ import type { MessagesInterceptor } from './types'
 
 import { PROMPT_TOO_LONG_MESSAGE, messageIsContextExceeded, isContextExceededError } from "@vibe-llm/protocols/messages"
 
-const PROMPT_TOO_LONG_BODY = new TextEncoder().encode(
+const promptTooLongBody = (message: string) => new TextEncoder().encode(
   JSON.stringify({
     type: 'error',
-    error: { type: 'invalid_request_error', message: PROMPT_TOO_LONG_MESSAGE },
+    error: { type: 'invalid_request_error', message },
   }),
 )
+
+// Copilot reports real counts ("prompt token count of 1003456 exceeds the limit
+// of 1000000"). Claude Code reads them back out of Anthropic's wording to size
+// how many old turns it trims, so keep them when they exist.
+const COPILOT_PROMPT_TOKENS = /prompt token count of (\d+) exceeds the limit of (\d+)/
+
+const promptTooLongMessage = (text: string): string => {
+  const counts = COPILOT_PROMPT_TOKENS.exec(text)
+  return counts ? `prompt is too long: ${counts[1]} tokens > ${counts[2]} maximum` : PROMPT_TOO_LONG_MESSAGE
+}
 
 interface MaybeErrorBody { error?: unknown }
 
@@ -44,6 +54,6 @@ export const withContextWindowErrorRewritten: MessagesInterceptor = async (_inv,
     type: 'upstream-error',
     status: 400,
     headers: new Headers({ 'content-type': 'application/json' }),
-    body: PROMPT_TOO_LONG_BODY,
+    body: promptTooLongBody(promptTooLongMessage(body)),
   }
 }

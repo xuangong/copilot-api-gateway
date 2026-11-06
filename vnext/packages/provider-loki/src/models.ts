@@ -45,4 +45,9 @@ export function normalizeLokiModels(value: unknown) {
   return { object: "list", data }
 }
 
+export function lokiContextWindow(model: unknown): number | undefined {
+  const value = record(record(record(model).capabilities).limits).max_context_window_tokens
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0 ? value : undefined
+}
+
 export const isLokiEndpoint = (endpoint: EndpointKey): endpoint is LokiEndpoint => Object.hasOwn(LOKI_PATHS, endpoint)

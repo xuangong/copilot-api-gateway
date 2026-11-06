@@ -77,6 +77,30 @@ test('withContextWindowErrorRewritten: rewrites "context_length_exceeded" payloa
   expect(decoded.error.type).toBe('invalid_request_error')
 })
 
+test('withContextWindowErrorRewritten: keeps Copilot token counts in Anthropic wording so Claude Code can size the trim', async () => {
+  const result = await withContextWindowErrorRewritten(
+    baseInv,
+    baseCtx,
+    upstreamErrorRun(400, JSON.stringify({ error: {
+      code: 'model_max_prompt_tokens_exceeded', message: 'prompt token count of 1003456 exceeds the limit of 1000000',
+    } })),
+  )
+  expect(result.type).toBe('upstream-error')
+  if (result.type !== 'upstream-error') return
+  expect(result.status).toBe(400)
+  const decoded = JSON.parse(new TextDecoder().decode(result.body))
+  expect(decoded.error.message).toBe('prompt is too long: 1003456 tokens > 1000000 maximum')
+})
+
+test('withContextWindowErrorRewritten: leaves Anthropic prompt-too-long rejections byte for byte', async () => {
+  const body = JSON.stringify({ type: 'error', error: { type: 'invalid_request_error', message: 'prompt is too long: 1003456 tokens > 1000000 maximum' } })
+  const result = await withContextWindowErrorRewritten(baseInv, baseCtx, upstreamErrorRun(400, body))
+  expect(result.type).toBe('upstream-error')
+  if (result.type !== 'upstream-error') return
+  expect(result.status).toBe(400)
+  expect(new TextDecoder().decode(result.body)).toBe(body)
+})
+
 test('withContextWindowErrorRewritten: leaves unrelated upstream errors untouched', async () => {
   const result = await withContextWindowErrorRewritten(
     baseInv,

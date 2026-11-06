@@ -5,12 +5,13 @@ import { directFetcher, type Fetcher } from "@vibe-core/upstream"
 import type { StoredUpstreamRecord } from "@vibe-core/upstream-repo"
 import { LOKI_HEADERS, LOKI_PROFILE_ID } from "./profile"
 import { lokiBaseUrl } from "./config"
-import { isLokiEndpoint, lokiModelEndpoints, LOKI_PATHS, normalizeLokiModels } from "./models"
+import { isLokiEndpoint, lokiContextWindow, lokiModelEndpoints, LOKI_PATHS, normalizeLokiModels } from "./models"
 import { lokiModelPricing } from "./pricing"
 import { readLokiState } from "./state"
 import { LOKI_CONVERSATION_HEADERS, lokiConversationId } from "./conversation"
 import { lokiMessagesBetaHeader, normalizeLokiMessages } from "./messages"
 import { lokiRequestShape } from "./diagnostics"
+import { lokiMessagesRejection } from "./rejections"
 
 export class LokiProvider implements LlmModelProvider {
   readonly kind = "loki" as const
@@ -94,6 +95,9 @@ export class LokiProvider implements LlmModelProvider {
         incoming: lokiRequestShape(req.payload as Record<string, unknown>), outgoing: lokiRequestShape(payload),
       }))
     }
-    return { status: response.status, headers: response.headers, body: response.body }
+    const result = req.endpoint === "messages"
+      ? await lokiMessagesRejection(response, payload, lokiContextWindow(this.models.get(payload.model)))
+      : response
+    return { status: result.status, headers: result.headers, body: result.body }
   }
 }
