@@ -216,7 +216,7 @@ export const OPTIONAL_FLAGS = [
   {
     id: "strip-billing-attribution",
     label: "Strip Claude Code billing-attribution block from /v1/messages system",
-    description: "Remove Claude Code's `x-anthropic-billing-header` line and per-turn `cch=<hash>` from `payload.system` before forwarding. The hash flips every turn, so leaving it in destroys upstream prompt-cache hit rate on every non-claude-code upstream. Must remain OFF for a claude-code subscription upstream (that endpoint reads the block to bill against the user's plan).",
+    description: "Remove Claude Code's `x-anthropic-billing-header` line and per-turn `cch=<hash>` from `payload.system`, and its `claude-code-20250219` anthropic-beta from count_tokens, before forwarding. The hash flips every turn, so leaving it in destroys upstream prompt-cache hit rate on every non-claude-code upstream; on the official Anthropic API with an API key, either marker also bills the request as Claude Code usage, which subscription API credits do not cover. Must remain OFF for a claude-code subscription upstream (that endpoint reads the markers to bill against the user's plan).",
     defaultFor: ["copilot", "azure", "custom", "codex"],
   },
 ] as const satisfies readonly Flag[]

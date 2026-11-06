@@ -2,7 +2,8 @@ import { withDumpExceptionCleanup } from '@vibe-core/chat-flow-kit'
 // packages/gateway/src/data-plane/chat-flow/count-tokens/serve.ts
 import type { DataPlaneAuthCtx } from '../../models/routes.ts'
 import { parseMessagesCountTokensPayload } from '../../parsers.ts'
-import { resolveBinding } from '../../routing/binding-resolver.ts'
+import { effectiveFlags, resolveBinding } from '../../routing/binding-resolver.ts'
+import { withoutClaudeCodeBeta } from '../messages/interceptors/with-billing-attribution-stripped.ts'
 import { resolveKeyModel } from '../../routing/key-model-mapping.ts'
 import { forwardUpstreamError } from '../../errors/forward.ts'
 import { HTTPError } from '@vibe-llm/provider-copilot'
@@ -53,6 +54,12 @@ export async function serveCountTokens(args: CountTokensServeArgs): Promise<Resp
     try {
       const headers = new Headers({ 'content-type': 'application/json' })
       for (const [k, v] of Object.entries(args.forwardedHeaders)) headers.set(k, v)
+      const beta = headers.get('anthropic-beta')
+      if (beta !== null && effectiveFlags(binding).has('strip-billing-attribution')) {
+        const kept = withoutClaudeCodeBeta(beta)
+        if (kept === undefined) headers.delete('anthropic-beta')
+        else headers.set('anthropic-beta', kept)
+      }
       const pr = await binding.provider.fetch({
         endpoint: 'messages_count_tokens',
         payload: forwardPayload,

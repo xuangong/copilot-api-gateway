@@ -30,6 +30,18 @@ import { withRequestNormalization } from "../../shared/request-normalization"
 
 const BILLING_HEADER_LINE_RE = /x-anthropic-billing-header[^\n]*/g
 const CCH_HASH_RE = /cch=[0-9a-f]{5,};?/gi
+// Claude Code's second marker. On the official Anthropic API with an API key,
+// either marker bills the request as Claude Code usage, which the API credits
+// bundled with Max/Team plans do not cover. Generation never forwards client
+// betas to a non-claude-code upstream; count_tokens does, so it filters here.
+// https://platform.claude.com/docs/en/about-claude/api-credits-for-subscribers#what-the-credits-cover
+const CLAUDE_CODE_BETA = 'claude-code-20250219'
+
+/** `anthropic-beta` without Claude Code's marker; undefined when nothing remains. */
+export function withoutClaudeCodeBeta(value: string): string | undefined {
+  const kept = value.split(',').map((beta) => beta.trim()).filter((beta) => beta !== '' && beta !== CLAUDE_CODE_BETA)
+  return kept.length > 0 ? kept.join(',') : undefined
+}
 
 const stripText = (text: string): string =>
   text.replace(BILLING_HEADER_LINE_RE, '').replace(CCH_HASH_RE, '').trim()
