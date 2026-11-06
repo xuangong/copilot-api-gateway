@@ -130,6 +130,23 @@ export const COPILOT_MODEL_PRICING: readonly CopilotModelPricing[] = [
       { label: "Long context", contextThreshold: 272_000, pricing: { input: 4, input_cache_read: 0.2, input_cache_write: 5, output: 15 } },
     ],
   },
+  // Verified against COPILOT_PRICING_SOURCE on 2026-11-06.
+  {
+    displayName: "GPT-6.1 Terra",
+    match: "gpt-6.1-terra",
+    tiers: [
+      { label: "Default", pricing: { input: 1, input_cache_read: 0.05, input_cache_write: 1.25, output: 5 } },
+      { label: "Long context", contextThreshold: 272_000, pricing: { input: 2, input_cache_read: 0.1, input_cache_write: 2.5, output: 7.5 } },
+    ],
+  },
+  // Verified against COPILOT_PRICING_SOURCE on 2026-11-06. An image model has
+  // no text output rate. The $2 cached image input has no billing metric, so
+  // only the text cache-read rate is recorded.
+  {
+    displayName: "GPT Image 2.5 Flare",
+    match: "gpt-image-2.5-flare",
+    tiers: only({ input: 5, input_cache_read: 1.25, input_image: 8, output_image: 30 }),
+  },
   {
     displayName: "GPT-6 Astra",
     match: "gpt-6-astra",
@@ -344,6 +361,11 @@ export const COPILOT_MODEL_PRICING: readonly CopilotModelPricing[] = [
   // ── Billing-only: not listed on the docs page ────────────────────────────
   { match: "goldeneye", tiers: only({ input: 1.25, input_cache_read: 0.125, output: 10 }) },
   { match: "minimax-m2.5", tiers: only({ input: 0.3, output: 1.2 }) },
+  // From the live catalog's `billing.token_prices` on 2026-11-06 (credits per
+  // million tokens, 1 credit = $0.01). Both quote a cache-read rate and a zero
+  // cache-write rate, so no write column is recorded.
+  { match: "mai-code-2", tiers: only({ input: 1, input_cache_read: 0.05, output: 5 }) },
+  { match: "mai-code-2-flash", tiers: only({ input: 0.1, input_cache_read: 0.01, output: 0.5 }) },
   { match: /^text-embedding-3-small/, tiers: only({ input: 0.02, output: 0 }) },
   { match: "text-embedding-ada-002", tiers: only({ input: 0.1, output: 0 }) },
 

@@ -110,7 +110,7 @@ test("the public catalog contains the audited baseline and individually verified
     "Claude Opus 5", "Claude Opus 5.5", "Claude Sonnet 4", "Claude Sonnet 4.6", "Claude Sonnet 5", "Claude Sonnet 5.5",
     "GPT-5 mini", "GPT-5.3-Codex", "GPT-5.4", "GPT-5.4 mini", "GPT-5.4 nano",
     "GPT-5.5", "GPT-5.6 Luna", "GPT-5.6 Sol", "GPT-5.6 Terra",
-    "GPT-6 Astra", "GPT-6 Luna", "GPT-6 Sol", "GPT-6.1 Sol",
+    "GPT-6 Astra", "GPT-6 Luna", "GPT-6 Sol", "GPT-6.1 Sol", "GPT-6.1 Terra", "GPT Image 2.5 Flare",
     "Gemini 3.5 Flash", "Gemini 3.6 Flash", "Gemini 3.7 Flash", "Gemini 3.8 Flash", "Gemini 4 Argon",
     "Grok 4.5", "Grok 4.6", "Grok 4.7",
     "Kimi K2.7 Code", "Kimi K3", "MAI-Code-1.1-Flash",
@@ -382,4 +382,30 @@ test("Gemini 4 Argon uses its promotional rate without a cache-write column", ()
   expect(catalogRow("Gemini 4 Argon").tiers).toEqual([{ label: "Default", pricing }])
   expect(pricingForCopilotModelKey("gemini-4-argon")).toEqual(pricing)
   expect(pricingForCopilotModelKey("gemini-4-argon-preview")).toBeNull()
+})
+
+test("GPT-6.1 Terra bills its default band and displays the >272K band", () => {
+  const pricing = { input: 1, input_cache_read: 0.05, input_cache_write: 1.25, output: 5 }
+  expect(catalogRow("GPT-6.1 Terra").tiers).toEqual([
+    { label: "Default", pricing },
+    { label: "Long context", contextThreshold: 272_000, pricing: { input: 2, input_cache_read: 0.1, input_cache_write: 2.5, output: 7.5 } },
+  ])
+  expect(pricingForCopilotModelKey("gpt-6.1-terra")).toEqual(pricing)
+})
+
+// An image model has no text output rate: GitHub prices its text and image
+// input separately and its output in image tokens only.
+test("GPT Image 2.5 Flare prices text and image tokens separately", () => {
+  const pricing = { input: 5, input_cache_read: 1.25, input_image: 8, output_image: 30 }
+  expect(catalogRow("GPT Image 2.5 Flare").tiers).toEqual([{ label: "Default", pricing }])
+  expect(pricingForCopilotModelKey("gpt-image-2.5-flare")).toEqual(pricing)
+})
+
+// Neither MAI-Code-2 model is on the docs page; both rates come from the live
+// Copilot catalog's `billing.token_prices`, so they price without a catalog row.
+test("MAI-Code-2 and MAI-Code-2-Flash price from the live catalog outside the docs table", () => {
+  expect(pricingForCopilotModelKey("mai-code-2")).toEqual({ input: 1, input_cache_read: 0.05, output: 5 })
+  expect(pricingForCopilotModelKey("mai-code-2-flash")).toEqual({ input: 0.1, input_cache_read: 0.01, output: 0.5 })
+  const names = copilotPricingCatalog().models.map((m) => m.displayName)
+  expect(names.filter((name) => name.startsWith("MAI-Code-2"))).toEqual([])
 })
