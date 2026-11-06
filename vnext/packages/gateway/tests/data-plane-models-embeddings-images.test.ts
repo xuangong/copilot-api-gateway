@@ -249,6 +249,22 @@ for (const withFailingUpstream of [false, true]) {
   })
 }
 
+// Copilot catalogs decision models on `/v1/decisions` and `/v1/systemone`,
+// neither of which the gateway serves. Listing one invites a chat request that
+// every route rejects, so a model with no routable endpoint is not listed.
+test('GET /v1/models omits Copilot decision models the gateway cannot route', async () => {
+  initRepo(stubRepo([stubUpstream()]))
+  const decision = (id: string, path: string): Model => ({ ...stubModel(id, 'decisions'), supported_endpoints: [path] })
+  installFetch(async () => Response.json({
+    object: 'list',
+    data: [stubModel('gpt-4o'), copilotImageModel, decision('gpt-6-luna-decisions', '/v1/decisions'), decision('microsoft-decision-1', '/v1/systemone')],
+  } satisfies ModelsResponse))
+
+  const res = await buildApp(modelsRouter, { copilot: { copilotToken: 'tkn', accountType: 'individual' } }).request('/v1/models')
+  expect(res.status).toBe(200)
+  expect((await modelIds(res)).sort()).toEqual(['gpt-4o', 'gpt-image-2.5-flare'])
+})
+
 const imageUsageResponseBody = JSON.stringify({
   data: [{ url: 'https://image.test/generated.png' }],
   usage: {

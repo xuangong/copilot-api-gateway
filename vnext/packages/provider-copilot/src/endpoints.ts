@@ -32,6 +32,11 @@ export function copilotModelEndpoints(model: Model): ModelEndpoints {
   if (capType === "embeddings" || capType === "embedding") {
     return { embeddings: {} }
   }
+  // Decision models answer typed questions on `/v1/decisions` or
+  // `/v1/systemone`, neither of which the gateway serves. The declared type,
+  // not the path list, marks them: a catalog that omits the path would
+  // otherwise land them in the chat_completions inference below.
+  if (capType === "decisions") return {}
 
   const id = model.id.toLowerCase()
   const family = (model.capabilities?.family ?? "").toLowerCase()

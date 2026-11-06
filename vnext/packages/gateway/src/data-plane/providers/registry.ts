@@ -338,10 +338,17 @@ export async function listRoutingBindings(
   }
   const project = (models: ModelsResponse, kind: UpstreamKind, provider: LlmModelProvider) => {
     const listed = kind === "copilot" ? catalogWithCopilotVariants(models) : models
-    return new RoutingProjection(listed.data.map(model => ({
+    const entries = listed.data.map(model => ({
       publicId: kind === "copilot" ? model.variant_family ?? copilotPublicModelId(model.id) : model.id,
       model: modelToBindingModel(model as Model, kind, provider),
-    })), models)
+    }))
+    // Copilot's catalog also carries models no route can serve (its decision
+    // models); listing them only invites requests every route rejects. Custom
+    // rows stay even without an endpoint: the operator configured them, and the
+    // upstream editor shows them as unbound.
+    return new RoutingProjection(kind === "copilot"
+      ? entries.filter(entry => Object.keys(entry.model.endpoints).length > 0)
+      : entries, models)
   }
   const addGroup = (id: string, kind: UpstreamKind, projection: RoutingProjection,
     enabledFlags: ReadonlySet<string>, disabled: readonly string[], provider: Group["provider"]) => {
