@@ -22,6 +22,7 @@ const effort = z.enum(["low", "medium", "high", "xhigh", "max"])
 const claudeSettings = z.strictObject({
   model, smallModel: model, opusModel: model, sonnetModel: model, haikuModel: model,
   effort: effort.nullable().optional().default(null), context1m: z.boolean().optional().default(false),
+  disableArtifact: z.boolean().optional().default(false),
 })
 const codexSettings = z.strictObject({ model })
 const platform = z.enum(["posix", "windows"])
@@ -50,6 +51,10 @@ export interface ClaudeArtifact {
       ANTHROPIC_CUSTOM_HEADERS?: string
     }
     effortLevel?: ClaudeEffort
+    // Claude Code reads `enableArtifact` from v2.1.242 and the deprecated
+    // `disableArtifact` before that, so the opt-out always writes both.
+    enableArtifact?: false
+    disableArtifact?: true
   }
 }
 export interface CodexArtifact {
@@ -126,7 +131,8 @@ export function buildSetupArtifact(selection: SetupSelection, gatewayKey: string
   if (selected.effort !== null) headers.push("x-copilot-reasoning-effort: " + selected.effort)
   if (headers.length) env.ANTHROPIC_CUSTOM_HEADERS = headers.join("\n")
   return { version: SETUP_VERSION, client: selection.client, platform: selection.platform,
-    artifact: { kind: "claude-settings", settings: { env, ...(selected.effort === null ? {} : { effortLevel: selected.effort }) } } }
+    artifact: { kind: "claude-settings", settings: { env, ...(selected.effort === null ? {} : { effortLevel: selected.effort }),
+      ...(selected.disableArtifact ? { enableArtifact: false, disableArtifact: true } as const : {}) } } }
 }
 
 export function redactArtifact(artifact: SetupArtifact): SetupArtifact {
@@ -138,6 +144,7 @@ export function touchedKeys(artifact: SetupArtifact): SetupTouchedKey[] {
   if (artifact.kind === "claude-settings") return [
     ...Object.keys(artifact.settings.env).map(key => ({ target: "claude-settings" as const, key: "/env/" + key })),
     ...(artifact.settings.effortLevel === undefined ? [] : [{ target: "claude-settings" as const, key: "/effortLevel" }]),
+    ...(artifact.settings.disableArtifact === undefined ? [] : ["/enableArtifact", "/disableArtifact"].map(key => ({ target: "claude-settings" as const, key }))),
   ]
   return [
     ...(artifact.config.model === undefined ? [] : [{ target: "codex-config" as const, key: "/model" }]),

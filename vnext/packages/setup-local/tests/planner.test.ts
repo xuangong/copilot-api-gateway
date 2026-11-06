@@ -102,3 +102,26 @@ test("digest and snapshot conflicts are rejected before planning", async () => {
     }
   } finally { fixture.cleanup() }
 })
+
+test("Claude Artifact opt-out writes both keys and leaves every other setting alone", async () => {
+  const fixture = temporaryHome()
+  try {
+    mkdirSync(join(fixture.home, ".claude"))
+    writeFileSync(join(fixture.home, ".claude/settings.json"), JSON.stringify({ env: { KEEP: "private" }, effortLevel: "low", nested: { keep: true } }))
+    const item = await envelope("claude")
+    if (item.artifact.kind !== "claude-settings") throw new Error("fixture")
+    item.artifact.settings.enableArtifact = false
+    item.artifact.settings.disableArtifact = true
+    const { artifactDigest: _digest, ...body } = item
+    item.artifactDigest = await sha256(canonicalJson(body))
+    const result = await planSetup({ artifact: item, currentFiles: readCurrentFiles(fixture.home, "claude"), installation: { allowedHome: fixture.home, bunExecutable: process.execPath, runnerBytes: new Uint8Array([1]) } })
+    expect(JSON.parse(decode(result.files[0]?.bytes ?? new Uint8Array()))).toMatchObject({
+      env: { KEEP: "private", ANTHROPIC_AUTH_TOKEN: credential }, effortLevel: "low", nested: { keep: true }, enableArtifact: false, disableArtifact: true,
+    })
+    const changes = JSON.parse(result.redactedDiff.split("\n").slice(1).join("\n")) as { target: string; key: string; before: unknown; after: unknown }[]
+    expect(changes.filter(change => change.key.endsWith("Artifact"))).toEqual([
+      { target: "claude-settings", key: "/enableArtifact", before: "[UNSET]", after: false },
+      { target: "claude-settings", key: "/disableArtifact", before: "[UNSET]", after: true },
+    ])
+  } finally { fixture.cleanup() }
+})

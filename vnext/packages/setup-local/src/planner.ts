@@ -34,6 +34,7 @@ export async function planSetup(input: { artifact: Envelope; currentFiles: Curre
   const touchedKeys: SetupPlan["touchedKeys"] = envelope.artifact.kind === "claude-settings" ? [
     ...Object.keys(envelope.artifact.settings.env).map(key => ({ target: "claude-settings" as const, key: "/env/" + key })),
     ...(envelope.artifact.settings.effortLevel === undefined ? [] : [{ target: "claude-settings" as const, key: "/effortLevel" }]),
+    ...(envelope.artifact.settings.disableArtifact === undefined ? [] : ["/enableArtifact", "/disableArtifact"].map(key => ({ target: "claude-settings" as const, key }))),
   ] : [
     ...(envelope.artifact.config.model === undefined ? [] : [{ target: "codex-config" as const, key: "/model" }]),
     { target: "codex-config", key: "/model_provider" },

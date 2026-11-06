@@ -95,6 +95,7 @@ export function ConfigurationPanel({ keyRow, catalog, catalogLoading }: Props) {
   const [claudeSmall, setClaudeSmall] = useState<string>("")
   const [claudeTiers, setClaudeTiers] = useState<ClaudeTierSelections>({})
   const [claudeFormat, setClaudeFormat] = useState<ClaudeFormat>("shell")
+  const [claudeDisableArtifact, setClaudeDisableArtifact] = useState(false)
   const [codexModel, setCodexModel] = useState<string>("")
   const [geminiModel, setGeminiModel] = useState<string>("")
   const [copiedTag, setCopiedTag] = useState<string | null>(null)
@@ -261,6 +262,10 @@ export function ConfigurationPanel({ keyRow, catalog, catalogLoading }: Props) {
                   )
                 })}
               </div>
+              <label className="flex items-center gap-2 mb-3 text-xs text-themed-dim w-fit">
+                <input type="checkbox" checked={claudeDisableArtifact} onChange={(event) => setClaudeDisableArtifact(event.target.checked)} />
+                {t("dash.claudeDisableArtifact")}
+              </label>
               <div className="flex items-center gap-1 bg-surface-800 rounded-lg p-0.5 mb-3 w-fit">
                 <button
                   type="button"
@@ -308,7 +313,7 @@ export function ConfigurationPanel({ keyRow, catalog, catalogLoading }: Props) {
                     {t("dash.mergeIntoSettings")}
                   </p>
                   {(() => {
-                    const txt = claudeCodeSettingsSnippet(claudeBig, claudeSmall, baseUrl, keyValue, catalog.mappedModelIds, selectedClaudeTiers)
+                    const txt = claudeCodeSettingsSnippet(claudeBig, claudeSmall, baseUrl, keyValue, catalog.mappedModelIds, selectedClaudeTiers, { disableArtifact: claudeDisableArtifact })
                     return (
                       <CodeBlock
                         language="json"
@@ -414,6 +419,7 @@ export function ConfigurationPanel({ keyRow, catalog, catalogLoading }: Props) {
               settings={tab === "codex" ? { model: codexModel || null } : {
                 model: claudeBig || null, smallModel: claudeSmall || null,
                 opusModel: selectedClaudeTiers.opus || null, sonnetModel: selectedClaudeTiers.sonnet || null, haikuModel: selectedClaudeTiers.haiku || null,
+                disableArtifact: claudeDisableArtifact,
               }} />
           ) : null}
 

@@ -103,6 +103,17 @@ test("Claude leaves effort unset and preserves opaque model identities", async (
     ANTHROPIC_DEFAULT_OPUS_MODEL: "opus", ANTHROPIC_CUSTOM_HEADERS: "anthropic-beta: context-1m-2025-08-07\nx-copilot-reasoning-effort: high" } })
 })
 
+test("the Claude Artifact opt-out reaches the preview and the exchanged artifact", async () => {
+  const chosen = { client: "claude", platform: "posix", settings: { disableArtifact: true } }
+  const preview = await request(previewPath, chosen)
+  expect(preview.status).toBe(200)
+  const value = await preview.json() as { redactedArtifact: { settings: Record<string, unknown> }; touchedKeys: { key: string }[] }
+  expect(value.redactedArtifact.settings).toMatchObject({ enableArtifact: false, disableArtifact: true })
+  expect(value.touchedKeys.map(entry => entry.key)).toEqual(expect.arrayContaining(["/enableArtifact", "/disableArtifact"]))
+  const response = await exchange((await mint(chosen)).leaseToken)
+  expect(await response.json()).toMatchObject({ artifact: { kind: "claude-settings", settings: { enableArtifact: false, disableArtifact: true } } })
+})
+
 test("only real enabled sessions can preview, including current admin and ownerless permission", async () => {
   for (const credential of [key, "legacy_setup_user_key", "ses_unknown"]) {
     expect((await request(previewPath, selection, { authorization: `Bearer ${credential}` })).status).toBe(401)

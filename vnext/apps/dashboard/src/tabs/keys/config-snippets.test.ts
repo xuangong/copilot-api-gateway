@@ -115,3 +115,15 @@ test("confirmed ingress enables Codex WebSockets and TOML strings round-trip", (
   expect(config.model_providers.copilot_gateway.base_url).toBe(origin + "/")
   expect(config.model_providers.copilot_gateway.supports_websockets).toBe(true)
 })
+
+// Both keys: Claude Code reads `enableArtifact` from v2.1.242 and the
+// deprecated `disableArtifact` before that.
+test("the Claude settings snippet carries the Artifact opt-out only when selected", () => {
+  const optedOut = JSON.parse(claudeCodeSettingsSnippet(
+    "claude-sonnet-4.6", "claude-haiku-4.5", "http://gateway", "test-key", [], {}, { disableArtifact: true },
+  )) as Record<string, unknown>
+  expect(optedOut).toMatchObject({ enableArtifact: false, disableArtifact: true })
+  const baseline = JSON.parse(claudeCodeSettingsSnippet("claude-sonnet-4.6", "claude-haiku-4.5", "http://gateway", "test-key")) as Record<string, unknown>
+  expect(baseline.enableArtifact).toBeUndefined()
+  expect(baseline.disableArtifact).toBeUndefined()
+})

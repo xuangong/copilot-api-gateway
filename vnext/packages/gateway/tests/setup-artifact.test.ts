@@ -22,7 +22,7 @@ test("unset Claude optional values never create defaults, custom headers, or mod
     ANTHROPIC_BASE_URL: "https://example.invalid", ANTHROPIC_AUTH_TOKEN: "sk_fixture", ANTHROPIC_MODEL: "claude-mapped-xhigh-1m",
   } } })
   expect(canonicalSettings(setupSelectionSchema.parse({ client: "claude", platform: "posix", settings: {} })))
-    .toBe('{"context1m":false,"effort":null,"haikuModel":null,"model":null,"opusModel":null,"smallModel":null,"sonnetModel":null}')
+    .toBe('{"context1m":false,"disableArtifact":false,"effort":null,"haikuModel":null,"model":null,"opusModel":null,"smallModel":null,"sonnetModel":null}')
   expect(touchedKeys(result.artifact)).toEqual([
     { target: "claude-settings", key: "/env/ANTHROPIC_BASE_URL" },
     { target: "claude-settings", key: "/env/ANTHROPIC_AUTH_TOKEN" },
@@ -37,7 +37,26 @@ test("strict selection accepts boundary UTF-8 models without changing quotes, ne
   for (const invalid of ["", "\0", "\ud800", "\udc00", model + "x"]) {
     expect(setupSelectionSchema.safeParse({ client: "codex", platform: "posix", settings: { model: invalid } }).success).toBe(false)
   }
-  for (const invalid of [{ command: "write" }, { model: ["a"] }, { effort: "high" }]) {
+  for (const invalid of [{ command: "write" }, { model: ["a"] }, { effort: "high" }, { disableArtifact: true }]) {
     expect(setupSelectionSchema.safeParse({ client: "codex", platform: "posix", settings: invalid }).success).toBe(false)
   }
+})
+
+// Claude Code honours `enableArtifact: false` from v2.1.242 and still reads the
+// deprecated `disableArtifact: true` on older releases, so the opt-out writes
+// both. Its Artifact tools are unavailable to API users, and Copilot's Gemini 4
+// Argon rejects the `ArtifactData` tool definition outright.
+test("the Claude Artifact opt-out writes both settings keys and reports them as touched", () => {
+  const selection = setupSelectionSchema.parse({ client: "claude", platform: "posix", settings: { disableArtifact: true } })
+  const result = buildSetupArtifact(selection, "sk_fixture", "https://example.invalid", false)
+  expect(result.artifact).toEqual({ kind: "claude-settings", settings: {
+    env: { ANTHROPIC_BASE_URL: "https://example.invalid", ANTHROPIC_AUTH_TOKEN: "sk_fixture" },
+    enableArtifact: false, disableArtifact: true,
+  } })
+  expect(touchedKeys(result.artifact)).toEqual([
+    { target: "claude-settings", key: "/env/ANTHROPIC_BASE_URL" },
+    { target: "claude-settings", key: "/env/ANTHROPIC_AUTH_TOKEN" },
+    { target: "claude-settings", key: "/enableArtifact" },
+    { target: "claude-settings", key: "/disableArtifact" },
+  ])
 })

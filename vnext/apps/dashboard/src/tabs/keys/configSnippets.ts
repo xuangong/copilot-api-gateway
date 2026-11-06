@@ -73,7 +73,12 @@ export function claudeCodeShellSnippet(big: string, small: string, baseUrl: stri
   return lines.join("\n")
 }
 
-export function claudeCodeSettingsSnippet(big: string, small: string, baseUrl: string, key: string, mappedModelIds: readonly string[] = [], tiers: ClaudeTierSelections = {}): string {
+export interface ClaudeSettingsOptions {
+  /** Claude Code reads `enableArtifact` from v2.1.242 and the deprecated `disableArtifact` before that. */
+  disableArtifact?: boolean
+}
+
+export function claudeCodeSettingsSnippet(big: string, small: string, baseUrl: string, key: string, mappedModelIds: readonly string[] = [], tiers: ClaudeTierSelections = {}, options: ClaudeSettingsOptions = {}): string {
   const b = decomposeClaudeId(big, mappedModelIds)
   const s = decomposeClaudeId(small, mappedModelIds)
   const env: Record<string, string> = {
@@ -89,9 +94,10 @@ export function claudeCodeSettingsSnippet(big: string, small: string, baseUrl: s
   if (headerParts.length > 0) env.ANTHROPIC_CUSTOM_HEADERS = headerParts.join("\n")
   // effortLevel overrides Claude Code's built-in default of "high" for 4.7+
   // models. Fall back to "medium" when the composite id carries no effort.
-  const snippet: { env: Record<string, string>; effortLevel?: string } = { env }
+  const snippet: { env: Record<string, string>; effortLevel?: string; enableArtifact?: false; disableArtifact?: true } = { env }
   const effortLevel = b.effort || (b.baseId.startsWith("claude-") ? "medium" : undefined)
   if (effortLevel) snippet.effortLevel = effortLevel
+  if (options.disableArtifact) Object.assign(snippet, { enableArtifact: false, disableArtifact: true })
   return JSON.stringify(snippet, null, 2)
 }
 

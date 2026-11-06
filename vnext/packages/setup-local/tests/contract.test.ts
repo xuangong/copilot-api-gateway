@@ -39,3 +39,20 @@ for (const field of ["client", "platform", "effortLevel", "ANTHROPIC_CUSTOM_HEAD
     } finally { fixture.cleanup() }
   })
 }
+
+async function claudeWith(settings: Record<string, unknown>) {
+  const item = await fixtureEnvelope("claude")
+  const body = { version: item.version, client: item.client, platform: item.platform, artifact: { ...item.artifact, settings: { ...(item.artifact as { settings: object }).settings, ...settings } } }
+  return { ...body, artifactDigest: await sha256(canonicalJson(body)) }
+}
+
+// Claude Code reads `enableArtifact: false` from v2.1.242 and the deprecated
+// `disableArtifact: true` before that, so the opt-out is only ever the pair.
+test("accepts the Claude Artifact opt-out only as the complete pair", async () => {
+  const accepted = await validateEnvelope(await claudeWith({ enableArtifact: false, disableArtifact: true }))
+  expect(accepted.artifact).toMatchObject({ settings: { enableArtifact: false, disableArtifact: true } })
+  for (const settings of [{ enableArtifact: false }, { disableArtifact: true }, { enableArtifact: true, disableArtifact: true },
+    { enableArtifact: false, disableArtifact: false }, { enableArtifact: "false", disableArtifact: true }]) {
+    await expect(validateEnvelope(await claudeWith(settings))).rejects.toThrow(/artifact/i)
+  }
+})

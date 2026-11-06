@@ -4,7 +4,7 @@ import type { SetupEffort, SetupPlatform, SetupPreview, SetupSelection } from ".
 import { useT } from "../../state/i18n"
 import { SetupRequestGate, setupScope, staticSetupCommand, bindMintedLease } from "./setup-state"
 import type { IssuedSetupLease } from "./setup-state"
-interface Props { keyId: string; client: "claude" | "codex"; origin: string; settings: { model: string | null; smallModel?: string | null; opusModel?: string | null; sonnetModel?: string | null; haikuModel?: string | null } }
+interface Props { keyId: string; client: "claude" | "codex"; origin: string; settings: { model: string | null; smallModel?: string | null; opusModel?: string | null; sonnetModel?: string | null; haikuModel?: string | null; disableArtifact?: boolean } }
 export function SetupPanel({ keyId, client, origin, settings }: Props) {
   const t = useT()
   const [platform, setPlatform] = useState<SetupPlatform>("posix")
@@ -18,7 +18,7 @@ export function SetupPanel({ keyId, client, origin, settings }: Props) {
   const [now, setNow] = useState(Date.now())
   const gate = useRef(new SetupRequestGate())
   const selection: SetupSelection = client === "codex" ? { client, platform, settings: { model: settings.model } } : {
-    client, platform, settings: { model: settings.model, smallModel: settings.smallModel ?? null, opusModel: settings.opusModel ?? null, sonnetModel: settings.sonnetModel ?? null, haikuModel: settings.haikuModel ?? null, effort: effort || null, context1m },
+    client, platform, settings: { model: settings.model, smallModel: settings.smallModel ?? null, opusModel: settings.opusModel ?? null, sonnetModel: settings.sonnetModel ?? null, haikuModel: settings.haikuModel ?? null, effort: effort || null, context1m, disableArtifact: settings.disableArtifact ?? false },
   }
   const scope = setupScope(keyId, selection)
   const current = preview?.scope === scope ? preview.value : null

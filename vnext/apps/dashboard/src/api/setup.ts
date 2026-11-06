@@ -2,7 +2,7 @@ import { api } from "./client"
 export type SetupPlatform = "posix" | "windows"
 export type SetupEffort = "low" | "medium" | "high" | "xhigh" | "max"
 export type SetupSelection = { client: "claude"; platform: SetupPlatform; settings: {
-  model: string | null; smallModel: string | null; opusModel: string | null; sonnetModel: string | null; haikuModel: string | null; effort: SetupEffort | null; context1m: boolean
+  model: string | null; smallModel: string | null; opusModel: string | null; sonnetModel: string | null; haikuModel: string | null; effort: SetupEffort | null; context1m: boolean; disableArtifact: boolean
 } } | { client: "codex"; platform: SetupPlatform; settings: { model: string | null } }
 export interface SetupPreview { version: 1; client: SetupSelection["client"]; platform: SetupPlatform; configurationRevision: number; artifactDigest: string; redactedArtifact: unknown; touchedKeys: { target: string; key: string }[] }
 export interface SetupLease { leaseId: string; leaseToken: string; expiresAt: string; artifactDigest: string }

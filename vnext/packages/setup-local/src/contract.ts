@@ -2,7 +2,9 @@ export type Client = "claude" | "codex"
 export type Platform = "posix" | "windows"
 export type Target = "claude-settings" | "codex-config" | "codex-token" | "codex-runner"
 export type Effort = "low" | "medium" | "high" | "xhigh" | "max"
-export interface ClaudeArtifact { kind: "claude-settings"; settings: { env: Record<string, string>; effortLevel?: Effort } }
+// Claude Code reads `enableArtifact` from v2.1.242 and the deprecated
+// `disableArtifact` before that, so the Artifact opt-out is always the pair.
+export interface ClaudeArtifact { kind: "claude-settings"; settings: { env: Record<string, string>; effortLevel?: Effort; enableArtifact?: false; disableArtifact?: true } }
 export interface CodexArtifact {
   kind: "codex-config"
   config: { model?: string; model_provider: "copilot_gateway"; model_providers: { copilot_gateway: {
@@ -56,7 +58,8 @@ export async function validateEnvelope(input: unknown, expectedOrigin?: string):
     keys(artifact, ["kind", "settings"])
     if (artifact.kind !== "claude-settings") fail("artifact", "Invalid client artifact")
     const settings = record(artifact.settings)
-    keys(settings, ["env"], ["effortLevel"])
+    keys(settings, ["env"], ["effortLevel", "enableArtifact", "disableArtifact"])
+    if (("enableArtifact" in settings || "disableArtifact" in settings) && (settings.enableArtifact !== false || settings.disableArtifact !== true)) fail("artifact", "Invalid Artifact opt-out")
     const env = record(settings.env)
     keys(env, ["ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN"], [...modelKeys, "ANTHROPIC_CUSTOM_HEADERS"])
     origin = originUrl(env.ANTHROPIC_BASE_URL)
