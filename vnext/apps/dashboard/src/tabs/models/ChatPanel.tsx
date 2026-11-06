@@ -9,6 +9,7 @@ import {
 import { getImages, pruneImages, putImage } from "./image-store"
 import { domToParts, type Part, partsToText } from "./parts"
 import { toAnthropicContent, toChatHistory, toGeminiParts, toOpenAIContent } from "./payload"
+import { replayTurn, type AssistantOutput } from "./assistant-output"
 import { isImageRejection, type VisionSupport } from "./vision"
 import { ImageParamsBar } from "./ImageParamsBar"
 import { downloadImage, imageFilename } from "./download"
@@ -74,6 +75,8 @@ interface Message {
    * on history persisted before turns recorded this.
    */
   model?: string
+  /** The reply in its own wire shape, replayed on the next turn; see `replayTurn`. */
+  output?: AssistantOutput
 }
 
 /** A message as the protocol serializers see it. */
@@ -315,6 +318,8 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
   function toAnthropicMessages(history: Message[]): Array<Record<string, unknown>> {
     const out: Array<Record<string, unknown>> = []
     for (const turn of toChatHistory(history)) {
+      const replay = replayTurn(turn, "anthropic")
+      if (replay) { out.push(replay); continue }
       const content = toAnthropicContent(turn.parts, turn.role)
       if (typeof content === "string" && !content) continue
       out.push({ role: turn.role, content })
@@ -672,6 +677,14 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
     })
   }
 
+  function setLastOutput(output: AssistantOutput) {
+    setMessages((prev) => {
+      const last = prev[prev.length - 1]
+      if (!last || last.role !== "assistant") return prev
+      return [...prev.slice(0, -1), { ...last, output }]
+    })
+  }
+
   function setLastUsage(usage: StreamUsage) {
     setMessages((prev) => {
       const last = prev[prev.length - 1]
@@ -764,6 +777,8 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
     const oaiMessages: Array<Record<string, unknown>> = []
     oaiMessages.push({ role: "system", content: composeSystemPrompt(systemPrompt) })
     for (const turn of toChatHistory(history)) {
+      const replay = replayTurn(turn, "openai")
+      if (replay) { oaiMessages.push(replay); continue }
       const content = toOpenAIContent(turn.parts, turn.role)
       if (typeof content === "string" && !content) continue
       oaiMessages.push({ role: turn.role, content })
@@ -792,6 +807,7 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
         await new Promise<void>((r) => setTimeout(r, 0))
       } else if (ch.type === "web_search") applyWebSearchProgress(ch.progress)
       else if (ch.type === "citations") applyCitations(ch.citations)
+      else if (ch.type === "output") setLastOutput(ch.output)
       else setLastUsage(ch.usage)
     }
   }
@@ -812,10 +828,14 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
     // A hosted search ends the turn with `pause_turn` and no answer text: the
     // gateway ran the search, and the client owns the decision to continue.
     // Replay the assistant blocks verbatim until the model actually answers.
+    // Continuations extend the same assistant turn, so the reply kept for
+    // replay is every paused block followed by the final ones.
+    const continued: unknown[] = []
     for (let turn = 0; turn < MAX_PAUSE_TURNS; turn++) {
-      const paused = await streamAnthropicTurn(body, signal, observation)
+      const paused = await streamAnthropicTurn(body, signal, observation, continued)
       if (!paused) return
       anMessages.push({ role: "assistant", content: paused })
+      continued.push(...paused)
     }
     throw new Error(t("dash.playground.continuationLimit"))
   }
@@ -825,6 +845,7 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
     body: Record<string, unknown>,
     signal: AbortSignal,
     observation: BrowserPerformance,
+    continued: readonly unknown[],
   ): Promise<unknown[] | null> {
     observation.beginResponse("messages")
     const resp = await fetch("/v1/messages", {
@@ -847,6 +868,7 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
       else if (ch.type === "web_search") applyWebSearchProgress(ch.progress)
       else if (ch.type === "citations") applyCitations(ch.citations)
       else if (ch.type === "pause_turn") return ch.content
+      else if (ch.type === "output" && ch.output.protocol === "anthropic") setLastOutput({ protocol: "anthropic", content: [...continued, ...ch.output.content] })
     }
     return null
   }
@@ -855,6 +877,8 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
     observation.beginResponse("gemini")
     const contents: Array<Record<string, unknown>> = []
     for (const turn of toChatHistory(history)) {
+      const replay = replayTurn(turn, "gemini")
+      if (replay) { contents.push(replay); continue }
       const parts = toGeminiParts(turn.parts, turn.role)
       if (parts.length === 0) continue
       contents.push({ role: turn.role === "assistant" ? "model" : "user", parts })
@@ -886,6 +910,7 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
       } else if (ch.type === "usage") setLastUsage(ch.usage)
       else if (ch.type === "web_search") applyWebSearchProgress(ch.progress)
       else if (ch.type === "citations") applyCitations(ch.citations)
+      else if (ch.type === "output") setLastOutput(ch.output)
     }
   }
 

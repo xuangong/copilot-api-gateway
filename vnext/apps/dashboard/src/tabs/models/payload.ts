@@ -7,6 +7,7 @@
  */
 
 import { type Part, splitDataUrl } from "./parts"
+import type { AssistantOutput } from "./assistant-output"
 
 type Block = Record<string, unknown>
 
@@ -70,11 +71,14 @@ interface HistoryMessage {
   role: Turn
   text: string
   parts?: Part[]
+  output?: AssistantOutput
 }
 
 export interface ChatTurn {
   role: Turn
   parts: Part[]
+  /** The reply in its own wire shape; see `replayTurn`. */
+  output?: AssistantOutput
 }
 
 /**
@@ -97,7 +101,7 @@ export function toChatHistory(messages: HistoryMessage[]): ChatTurn[] {
     if (m.role === "assistant") {
       carried.push(...parts.filter((p) => p.type === "image"))
       const rest = parts.filter((p) => p.type !== "image")
-      if (rest.length > 0) out.push({ role: "assistant", parts: rest })
+      if (rest.length > 0 || m.output) out.push({ role: "assistant", parts: rest, ...(m.output ? { output: m.output } : {}) })
       continue
     }
     const merged = [...carried, ...parts]

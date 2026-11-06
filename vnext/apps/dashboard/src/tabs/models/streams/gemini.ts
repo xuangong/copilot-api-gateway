@@ -1,4 +1,5 @@
 import { toCitations, type StreamChunk, type StreamUsage } from "./openai"
+import { geminiReply } from "../assistant-output"
 
 export type { StreamChunk, StreamUsage }
 
@@ -15,6 +16,7 @@ export async function* parseGeminiStream(
   const decoder = new TextDecoder()
   let buf = ""
   let lastUsage: StreamUsage | null = null
+  const parts: Record<string, unknown>[] = []
   try {
     while (true) {
       const { value, done } = await reader.read()
@@ -24,14 +26,14 @@ export async function* parseGeminiStream(
       while ((nl = buf.indexOf("\n")) !== -1) {
         const raw = buf.slice(0, nl).replace(/\r$/, "")
         buf = buf.slice(nl + 1)
-        for (const out of parseLine(raw, observe)) {
+        for (const out of parseLine(raw, observe, parts)) {
           if (out.type === "usage") lastUsage = out.usage
           else yield out
         }
       }
     }
     const tail = buf.replace(/\r$/, "")
-    for (const out of parseLine(tail, observe)) {
+    for (const out of parseLine(tail, observe, parts)) {
       if (out.type === "usage") lastUsage = out.usage
       else yield out
     }
@@ -39,9 +41,11 @@ export async function* parseGeminiStream(
     reader.releaseLock()
   }
   if (lastUsage) yield { type: "usage", usage: lastUsage }
+  const output = geminiReply(parts)
+  if (output) yield { type: "output", output }
 }
 
-function parseLine(raw: string, observe?: (event: unknown) => void): StreamChunk[] {
+function parseLine(raw: string, observe?: (event: unknown) => void, collected?: Record<string, unknown>[]): StreamChunk[] {
   if (!raw.startsWith("data:")) return []
   const payload = raw.slice(5).trim()
   if (!payload) return []
@@ -70,6 +74,7 @@ function parseLine(raw: string, observe?: (event: unknown) => void): StreamChunk
   const parts = obj.candidates?.[0]?.content?.parts
   let text = ""
   if (Array.isArray(parts)) {
+    collected?.push(...parts.filter((p) => p !== null && typeof p === "object"))
     for (const p of parts) {
       if (typeof p?.text === "string" && p.thought !== true) text += p.text
     }

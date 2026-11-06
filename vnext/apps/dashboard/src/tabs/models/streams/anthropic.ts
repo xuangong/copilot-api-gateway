@@ -174,6 +174,10 @@ export async function* parseAnthropicStream(
             yield { type: "usage", usage: { input_tokens: inputTokens, output_tokens: outputTokens } }
           }
           if (stopReason === "pause_turn") yield { type: "pause_turn", content: replayable(blocks) }
+          else {
+            const content = replayable(blocks)
+            if (content.length > 0) yield { type: "output", output: { protocol: "anthropic", content } }
+          }
           return
         }
       }
@@ -190,12 +194,13 @@ export async function* parseAnthropicStream(
 /**
  * Blocks safe to send back as an assistant turn. A `thinking` block that never
  * received a delta is empty and unsigned, which the upstream rejects; the same
- * goes for an empty `text` block.
+ * goes for an empty `text` block. A signed block with empty text stays: that
+ * is how a reply with omitted thinking display hands its reasoning back.
  */
 function replayable(blocks: unknown[]): unknown[] {
   return blocks.filter((b) => {
-    const block = b as { type?: string; text?: string; thinking?: string }
-    if (block.type === "thinking") return Boolean(block.thinking)
+    const block = b as { type?: string; text?: string; thinking?: string; signature?: string }
+    if (block.type === "thinking") return Boolean(block.thinking) || Boolean(block.signature)
     if (block.type === "text") return Boolean(block.text)
     return true
   })

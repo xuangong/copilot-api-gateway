@@ -1,3 +1,5 @@
+import { ChatCompletionsReply, type AssistantOutput } from "../assistant-output"
+
 export interface StreamUsage {
   input_tokens: number
   output_tokens: number
@@ -20,6 +22,8 @@ export type StreamChunk =
   | { type: "usage"; usage: StreamUsage }
   | { type: "web_search"; progress: WebSearchProgress }
   | { type: "citations"; citations: Citation[] }
+  /** The finished reply in its own wire shape, for the next turn to replay. */
+  | { type: "output"; output: AssistantOutput }
 
 export async function* parseOpenAIStream(
   body: ReadableStream<Uint8Array>,
@@ -27,9 +31,11 @@ export async function* parseOpenAIStream(
 ): AsyncGenerator<StreamChunk, void, void> {
   const reader = body.getReader()
   const decoder = new TextDecoder()
+  const reply = new ChatCompletionsReply()
   let buf = ""
+  let finished = false
   try {
-    while (true) {
+    while (!finished) {
       const { value, done } = await reader.read()
       if (done) break
       buf += decoder.decode(value, { stream: true })
@@ -37,14 +43,17 @@ export async function* parseOpenAIStream(
       while ((nl = buf.indexOf("\n")) !== -1) {
         const raw = buf.slice(0, nl).replace(/\r$/, "")
         buf = buf.slice(nl + 1)
-        const parsed = parseLine(raw, observe)
-        if (parsed === "DONE") return
+        const parsed = parseLine(raw, observe, reply)
+        if (parsed === "DONE") { finished = true; break }
         yield* parsed
       }
     }
-    const tail = buf.replace(/\r$/, "")
-    const parsed = parseLine(tail, observe)
-    if (parsed !== "DONE") yield* parsed
+    if (!finished) {
+      const parsed = parseLine(buf.replace(/\r$/, ""), observe, reply)
+      if (parsed !== "DONE") yield* parsed
+    }
+    const output = reply.output()
+    if (output) yield { type: "output", output }
   } finally {
     reader.releaseLock()
   }
@@ -74,7 +83,7 @@ export function toCitations(
  * attaches `annotations` to the same delta as the content it cites — so a line
  * yields a list rather than a single chunk.
  */
-function parseLine(raw: string, observe?: (event: unknown) => void): StreamChunk[] | "DONE" {
+function parseLine(raw: string, observe?: (event: unknown) => void, reply?: ChatCompletionsReply): StreamChunk[] | "DONE" {
   if (!raw.startsWith("data:")) return []
   const payload = raw.slice(5).trim()
   if (!payload) return []
@@ -99,7 +108,9 @@ function parseLine(raw: string, observe?: (event: unknown) => void): StreamChunk
   if (obj.error) throw new Error(obj.error.message ?? "OpenAI stream error")
 
   const out: StreamChunk[] = []
-  const delta = obj.choices?.[0]?.delta?.content
+  const choiceDelta = obj.choices?.[0]?.delta
+  if (choiceDelta) reply?.add(choiceDelta as Record<string, unknown>)
+  const delta = choiceDelta?.content
   if (typeof delta === "string" && delta.length) out.push({ type: "delta", text: delta })
 
   // Sources arrive on the spec channel `delta.annotations[].url_citation`.

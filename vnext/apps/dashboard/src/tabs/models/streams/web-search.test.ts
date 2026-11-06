@@ -19,11 +19,13 @@ const sse = (lines: string[]): ReadableStream<Uint8Array> => {
   })
 }
 
+// The trailing `output` chunk (the reply kept for replay) is covered by
+// assistant-output.test.ts; these only pin what the reader surfaces live.
 const drain = async <T extends StreamChunk | AnthropicChunk>(
   gen: AsyncGenerator<T, void, void>,
 ): Promise<T[]> => {
   const out: T[] = []
-  for await (const c of gen) out.push(c)
+  for await (const c of gen) if (c.type !== "output") out.push(c)
   return out
 }
 
