@@ -58,7 +58,8 @@ test("each upstream uses its configured prefix for discovery and all native infe
       seen.push(url)
       expect(init.redirect).toBe("manual")
       expect(new Headers(init.headers).get("authorization")).toBe("Bearer test-private-token")
-      expect(new Headers(init.headers).get("X-Llm-Api-Version")).toBe("2026-09-22")
+      expect(new Headers(init.headers).get("X-Llm-Api-Version")).toBe("2026-10-21")
+      expect(new Headers(init.headers).get("anthropic-version")).toBe(url.endsWith("/v1/messages") ? "2023-06-01" : null)
       expect(new Headers(init.headers).get("X-ClientFeature")).toBe("LlmApiProxy")
       expect(new Headers(init.headers).get("X-ClientScenario")).toBe("Code")
       expect(new Headers(init.headers).get("X-ClientType")).toBe("Copilot")
@@ -67,7 +68,7 @@ test("each upstream uses its configured prefix for discovery and all native infe
     })
     await provider.getModels()
     for (const endpoint of ["messages", "responses", "chat_completions"] as const) {
-      await provider.fetch(request({ endpoint, headers: new Headers({ "X-Llm-Api-Version": "invalid-client-version" }),
+      await provider.fetch(request({ endpoint, headers: new Headers({ "X-Llm-Api-Version": "invalid-client-version", "anthropic-version": "2026-10-21" }),
         payload: { model: "fixture", input: "hello", messages: [{ role: "user", content: "hello" }] } }))
     }
     const prefix = baseUrl.replace(/\/+$/, "")

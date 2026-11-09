@@ -5,5 +5,5 @@ export const LOKI_HEADERS = {
   "X-ClientFeature": "LlmApiProxy",
   "X-ClientScenario": "Code",
   "X-HostPlatform": "Windows",
-  "X-Llm-Api-Version": "2026-09-22",
+  "X-Llm-Api-Version": "2026-10-21",
 } as const

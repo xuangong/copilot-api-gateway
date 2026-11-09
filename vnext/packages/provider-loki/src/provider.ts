@@ -75,6 +75,8 @@ export class LokiProvider implements LlmModelProvider {
     req.signal?.throwIfAborted()
     const fetcher = resolveExecutionFetcher(this.fetcher, this.executionFetcher, req)
     const signals = [req.signal, req.timeout ? AbortSignal.timeout(req.timeout) : undefined].filter((signal): signal is AbortSignal => signal !== undefined)
+    // Keep Anthropic's version independent of Loki's: 2026-10-21 rejects sampling
+    // parameters that this gateway preserves. See docs/en/api/migration-2026-10-21 on platform.claude.com.
     const response = await fetcher(`${this.baseUrl}${LOKI_PATHS[req.endpoint]}`, {
       method: "POST", redirect: "manual", signal: signals.length ? AbortSignal.any(signals) : undefined,
       headers: { ...LOKI_HEADERS, authorization: `Bearer ${credential.accessToken}`, "content-type": "application/json",

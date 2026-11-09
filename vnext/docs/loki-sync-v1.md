@@ -19,6 +19,20 @@ Configuration backups retain the endpoint but continue stripping sync authority.
 
 This contract connects the standalone Windows assistant to vNext. It grants authority to synchronize one upstream; it grants no inference or management access. No token or secret is placed in a URL.
 
+## Loki request versions
+
+Discovery and inference send `X-Llm-Api-Version: 2026-10-21`, matching the
+default in `loki_pi`. This selects Loki's API contract.
+
+Messages inference separately sends `anthropic-version: 2023-06-01`. The
+gateway preserves sampling parameters; Anthropic API version `2026-10-21`
+rejects `temperature`, `top_p`, and `top_k`, even at their default values.
+Keep the Anthropic version pinned until the payload contract is migrated and
+verified against Loki. See Anthropic's
+[migration guide](https://platform.claude.com/docs/en/api/migration-2026-10-21).
+Caller headers do not override either version. Other Loki endpoints do not
+receive `anthropic-version`.
+
 ## Pairing document
 
 ```json
