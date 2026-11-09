@@ -236,3 +236,38 @@ test("pricing uses the injected catalog without network calls and follows replac
   expect(provider.getPricingForModelKey("messages-model")).toBeNull()
   expect(calls).toBe(0)
 })
+
+test("Messages egress normalizes effort markers without changing caller history or other endpoints", async () => {
+  const { row } = fixture()
+  let sent: Record<string, unknown> = {}
+  const provider = new LokiProvider(row, async () => row, async (_url, init) => {
+    sent = JSON.parse(String(init.body)) as Record<string, unknown>
+    return new Response("ok")
+  })
+  provider.setModelCatalog(normalizeLokiModels({ data: [
+    { id: "claude-opus-5.5", supported_endpoints: ["/v1/messages", "/chat/completions"] },
+  ] }))
+  const payload = {
+    model: "claude-opus-5.5", max_tokens: 128000, thinking: { type: "adaptive" },
+    output_config: { effort: "medium" },
+    messages: [
+      { role: "user", content: "Continue" },
+      { role: "system", content: [], output_config: { effort: "xhigh" } },
+      { role: "assistant", content: [{ type: "thinking", thinking: "Preserve", signature: "opaque-signature" }] },
+      { role: "system", content: [{ type: "text", text: "Current instruction" }], output_config: { effort: "medium" } },
+    ],
+    tools: [{ name: "example", input_schema: { type: "object", properties: {} } }],
+  }
+  const original = structuredClone(payload)
+  await provider.fetch(request({ payload }))
+  expect(sent.messages).toEqual([
+    { role: "user", content: "Continue" },
+    { role: "assistant", content: [{ type: "thinking", thinking: "Preserve", signature: "opaque-signature" }] },
+    { role: "system", content: [{ type: "text", text: "Current instruction" }] },
+  ])
+  expect(sent.output_config).toEqual({ effort: "medium" })
+  expect(sent.tools).toEqual(original.tools)
+  expect(payload).toEqual(original)
+  await provider.fetch(request({ endpoint: "chat_completions", payload }))
+  expect(sent).toEqual(original)
+})

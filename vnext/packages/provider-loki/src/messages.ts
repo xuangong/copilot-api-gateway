@@ -1,5 +1,34 @@
-/** Normalize the Claude 5.5 thinking shapes verified against Loki's endpoint. */
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === "object" && !Array.isArray(value)
+
+function normalizeMessageConfig(payload: Record<string, unknown>): void {
+  if (!Array.isArray(payload.messages)) return
+  const messages: unknown[] = []
+  for (const raw of payload.messages) {
+    if (!isRecord(raw)) {
+      messages.push(raw)
+      continue
+    }
+    // Clone before editing: the provider only shallow-copies the caller payload.
+    const message = { ...raw }
+    if ("output_config" in message) {
+      if (isRecord(message.output_config)) {
+        const top = isRecord(payload.output_config) ? payload.output_config : {}
+        payload.output_config = { ...top, ...message.output_config }
+      }
+      delete message.output_config
+    }
+    // Loki can report safety-check 400/422 errors for these effort markers.
+    // Lift their config first so the latest marker still determines effort.
+    if (message.role === "system" && Array.isArray(message.content) && message.content.length === 0) continue
+    messages.push(message)
+  }
+  payload.messages = messages
+}
+
+/** Normalize request shapes verified against Loki's Messages endpoint. */
 export function normalizeLokiMessages(payload: Record<string, unknown>): void {
+  normalizeMessageConfig(payload)
   delete payload.context_management
   delete payload.mcp_servers
   const thinking = payload.thinking
