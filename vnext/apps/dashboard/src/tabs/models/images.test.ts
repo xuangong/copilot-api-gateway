@@ -198,6 +198,25 @@ describe("playgroundMode", () => {
   it("falls back to chat when the upstream publishes no type", () => {
     expect(playgroundMode({}, true)).toBe("chat")
   })
+
+  // Non-chat models get their own test surface instead of a chat box that
+  // every route would reject.
+  it("reports embedding for a model the upstream types as embeddings", () => {
+    expect(playgroundMode({ type: "embeddings" }, true)).toBe("embedding")
+    expect(playgroundMode({ type: "embedding" }, true)).toBe("embedding")
+  })
+
+  it("reports decision for a model the upstream types as decisions", () => {
+    expect(playgroundMode({ type: "decisions" }, true)).toBe("decision")
+  })
+
+  it("falls back to the advertised endpoints when the type is generic", () => {
+    expect(playgroundMode({ type: "text" }, true, ["/v1/embeddings"])).toBe("embedding")
+    expect(playgroundMode({}, true, ["/v1/decisions"])).toBe("decision")
+    expect(playgroundMode({}, true, ["/v1/systemone"])).toBe("decision")
+    expect(playgroundMode({}, true, ["/v1/images/generations", "/v1/images/edits"])).toBe("image")
+    expect(playgroundMode({ type: "text" }, true, ["/v1/chat/completions", "/v1/embeddings"])).toBe("chat")
+  })
 })
 
 describe("buildImageContext", () => {

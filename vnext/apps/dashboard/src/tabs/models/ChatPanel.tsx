@@ -142,9 +142,10 @@ interface Props {
    * `image` swaps the three chat protocols for the /v1/images endpoints.
    * Undefined while the model list is still loading — sending in that window
    * would have to guess, and guessing wrong routes an image model at the chat
-   * endpoints.
+   * endpoints. Embedding and decision models never reach this panel; they
+   * have panels of their own.
    */
-  mode: PlaygroundMode | undefined
+  mode: Extract<PlaygroundMode, "chat" | "image"> | undefined
   imageParams: ImageParams
   onImageParamsChange: (next: ImageParams) => void
 }

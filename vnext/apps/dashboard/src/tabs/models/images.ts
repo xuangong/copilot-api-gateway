@@ -145,22 +145,42 @@ export function imagesErrorMessage(raw: string): string {
 }
 
 /** `undefined` means "not known yet" — see `playgroundMode`. */
-export type PlaygroundMode = "chat" | "image"
+export type PlaygroundMode = "chat" | "image" | "embedding" | "decision"
+
+const DECISION_PATHS = new Set(["/v1/decisions", "/v1/systemone", "/decisions", "/systemone"])
+const IMAGE_PATHS = new Set(["/v1/images/generations", "/v1/images/edits"])
 
 /**
- * Which endpoints the selected model uses.
+ * Which test surface the selected model needs. Only chat models fit a chat
+ * box: an image model takes a prompt and returns bytes, an embedding model
+ * returns vectors, and a decision model answers typed questions with
+ * probabilities, so each gets a panel of its own.
  *
  * Deliberately `undefined` until the model list has loaded and the model is in
  * it. Defaulting to `chat` in that window sent an image model down the chat
  * path on the first send after a reload, and the upstream answered "No messages
  * upstream available for model: gpt-image-2".
+ *
+ * The upstream's declared type decides; a generic or missing type falls back to
+ * the advertised endpoints, which only count when they name nothing else.
  */
 export function playgroundMode(
   capabilities: { type?: string } | undefined,
   modelsLoaded: boolean,
+  supportedEndpoints?: readonly string[],
 ): PlaygroundMode | undefined {
   if (!modelsLoaded || !capabilities) return undefined
-  return capabilities.type === "image" ? "image" : "chat"
+  const type = capabilities.type?.toLowerCase()
+  if (type === "image" || type === "images") return "image"
+  if (type === "embedding" || type === "embeddings") return "embedding"
+  if (type === "decision" || type === "decisions") return "decision"
+  const paths = (supportedEndpoints ?? []).filter((path) => !path.startsWith("ws:"))
+  if (paths.length > 0) {
+    if (paths.every((path) => path === "/v1/embeddings" || path === "/embeddings")) return "embedding"
+    if (paths.every((path) => DECISION_PATHS.has(path))) return "decision"
+    if (paths.every((path) => IMAGE_PATHS.has(path))) return "image"
+  }
+  return "chat"
 }
 
 /** The subset of a chat message this module needs. */

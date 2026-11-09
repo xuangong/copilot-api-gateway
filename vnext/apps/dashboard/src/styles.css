@@ -1135,3 +1135,110 @@ select option {
   cursor: pointer;
 }
 .pg-chart-tip-link:hover { text-decoration: underline; }
+
+/* ===== Decision & embedding test panels ===== */
+.pg-form {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 16px;
+  display: flex; flex-direction: column; gap: 16px;
+}
+.pg-label {
+  display: flex; align-items: baseline; gap: 8px;
+  font-size: 12px; font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 2px;
+}
+.pg-label-hint { font-weight: 400; color: var(--text-dim); }
+/* Compact fields; the element selector keeps these above the global input rules. */
+input.pg-field,
+textarea.pg-field {
+  padding: 6px 10px;
+  font-size: 13px;
+  border-radius: 8px;
+}
+input.pg-field-sans,
+textarea.pg-field-sans { font-family: "Outfit", system-ui, sans-serif; }
+textarea.pg-field { resize: vertical; line-height: 1.5; }
+.pg-card {
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 12px;
+  background: var(--input-bg);
+}
+.pg-card.is-invalid { border-color: var(--danger-edge); }
+.pg-mini-btn {
+  font-size: 12px;
+  padding: 3px 9px;
+  border-radius: 6px;
+  border: 1px solid var(--input-border);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+.pg-mini-btn:hover:not(:disabled) { color: var(--text-primary); border-color: rgba(139, 92, 246, 0.4); }
+.pg-mini-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.pg-mini-btn.is-active { color: #8b5cf6; border-color: rgba(139, 92, 246, 0.4); background: rgba(139, 92, 246, 0.08); }
+.pg-warn {
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  background: rgba(245, 158, 11, 0.08);
+  color: var(--warn);
+  font-size: 12px;
+}
+.pg-prob {
+  display: grid;
+  grid-template-columns: minmax(80px, 180px) 1fr 52px;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+}
+.pg-prob-label { color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pg-prob-label.is-selected { color: var(--text-primary); font-weight: 600; }
+.pg-prob-value { font-family: "IBM Plex Mono", monospace; color: var(--text-secondary); text-align: right; }
+.pg-bar { height: 8px; border-radius: 4px; background: rgba(127, 127, 127, 0.2); overflow: hidden; }
+.pg-bar-fill { display: block; height: 100%; border-radius: 4px; background: rgba(139, 92, 246, 0.35); }
+.pg-bar-fill.is-selected { background: linear-gradient(90deg, #8b5cf6, #06b6d4); }
+.pg-raw {
+  max-height: 320px;
+  overflow: auto;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background: var(--surface-800);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 11px;
+  white-space: pre;
+}
+.pg-matrix { border-collapse: collapse; font-size: 12px; font-family: "IBM Plex Mono", monospace; }
+.pg-matrix th, .pg-matrix td {
+  padding: 4px 8px;
+  border: 1px solid var(--border-color);
+  text-align: center;
+  white-space: nowrap;
+}
+.pg-matrix th { font-weight: 500; color: var(--text-dim); }
+.pg-matrix td.is-self { color: var(--text-dim); }
+.pg-matrix .pg-matrix-row {
+  text-align: left;
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: "Outfit", system-ui, sans-serif;
+  color: var(--text-secondary);
+}
+.pg-matrix td.is-nearest { font-weight: 700; outline: 2px solid #8b5cf6; outline-offset: -2px; }
+.pg-vectors td { text-align: right; }
+.pg-vectors td.pg-preview { text-align: left; white-space: normal; min-width: 240px; font-size: 11px; color: var(--text-secondary); }
+/* Model list: how a non-chat model is tested. */
+.pg-kind {
+  flex-shrink: 0;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 500;
+  background: rgba(6, 182, 212, 0.1);
+  color: #06b6d4;
+}

@@ -4,8 +4,10 @@ import { Select, type SelectOption } from "../../components/Select"
 import { listKeys, type ApiKeyDetail } from "../../api/keys"
 import { listPlaygroundModels, type PlaygroundModel } from "../../api/models"
 import { ChatPanel } from "./ChatPanel"
+import { DecisionPanel } from "./DecisionPanel"
+import { EmbeddingPanel } from "./EmbeddingPanel"
 import { visionSupport } from "./vision"
-import { DEFAULT_IMAGE_PARAMS, playgroundMode, type ImageParams } from "./images"
+import { DEFAULT_IMAGE_PARAMS, playgroundMode, type ImageParams, type PlaygroundMode } from "./images"
 import { formatTokens } from "./tokens"
 import { playgroundModelOptions } from "./model-options"
 
@@ -206,9 +208,9 @@ export function ModelsTab() {
 
   const selectedKey = keys.find((k) => k.id === selectedKeyId)
   const selectedModel = models?.find((m) => m.id === selectedModelId)
-  // Image models take a prompt and return bytes — no chat protocol applies.
-  // Undefined until the list has loaded; ChatPanel refuses to send until then.
-  const mode = playgroundMode(selectedModel?.capabilities, selectedModel !== undefined)
+  // Each kind of model gets the test surface its endpoints need. Undefined
+  // until the list has loaded; ChatPanel refuses to send until then.
+  const mode = playgroundMode(selectedModel?.capabilities, selectedModel !== undefined, selectedModel?.supported_endpoints)
 
   const modelList = (
     <ModelList
@@ -296,7 +298,13 @@ export function ModelsTab() {
 
         <div className="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
           {selectedModelId && selectedKey ? (
-            <ChatPanel modelId={selectedModelId} apiKey={selectedKey.key} systemPrompt={systemPrompt} webSearchEnabled={webSearchEnabled} vision={visionSupport(selectedModel?._mapped_to ?? selectedModelId, selectedModel?.capabilities?.supports)} contextWindow={selectedModel?.capabilities?.limits?.max_context_window_tokens} modelOptions={modelOptions} onPickModel={pickModel} mode={mode} imageParams={imageParams} onImageParamsChange={setImageParams} />
+            mode === "decision" ? (
+              <DecisionPanel modelId={selectedModelId} apiKey={selectedKey.key} supportedEndpoints={selectedModel?.supported_endpoints} />
+            ) : mode === "embedding" ? (
+              <EmbeddingPanel modelId={selectedModelId} apiKey={selectedKey.key} />
+            ) : (
+              <ChatPanel modelId={selectedModelId} apiKey={selectedKey.key} systemPrompt={systemPrompt} webSearchEnabled={webSearchEnabled} vision={visionSupport(selectedModel?._mapped_to ?? selectedModelId, selectedModel?.capabilities?.supports)} contextWindow={selectedModel?.capabilities?.limits?.max_context_window_tokens} modelOptions={modelOptions} onPickModel={pickModel} mode={mode} imageParams={imageParams} onImageParamsChange={setImageParams} />
+            )
           ) : (
             <div className="flex items-center justify-center h-full text-themed-dim text-sm">
               {t("dash.playground.selectModel")}
@@ -350,6 +358,20 @@ function MappedModelBadge({ target }: { target: string }) {
   )
 }
 
+const KIND_LABELS: Partial<Record<PlaygroundMode, string>> = {
+  image: "dash.playground.kindImage",
+  embedding: "dash.playground.kindEmbedding",
+  decision: "dash.playground.kindDecision",
+}
+
+/** Marks models that are not tested in a chat box, so picking one is no surprise. */
+function ModelKindBadge({ model }: { model: PlaygroundModel }) {
+  const t = useT()
+  const mode = playgroundMode(model.capabilities, true, model.supported_endpoints)
+  const key = mode ? KIND_LABELS[mode] : undefined
+  return key ? <span className="pg-kind">{t(key)}</span> : null
+}
+
 export function ModelList({
   grouped, modelsError, models, search, onSearch, selectedModelId, onPick, openGroups, onToggleGroup,
 }: ListProps) {
@@ -392,6 +414,7 @@ export function ModelList({
                 >
                   <div className="pg-model-item-name flex items-center gap-1.5">
                     <span className="min-w-0 truncate" title={m.id}>{m.name ?? m.id}</span>
+                    <ModelKindBadge model={m} />
                     {m._mapped_to && <MappedModelBadge target={m._mapped_to} />}
                   </div>
                   {m._mapped_to && (

@@ -22,6 +22,8 @@ export interface PlaygroundModel {
     /** `chat`, `embeddings`, `image`, … — drives which endpoints apply. */
     type?: string
   }
+  /** Gateway paths that serve the model, e.g. `/v1/systemone` for a System One decision model. */
+  supported_endpoints?: string[]
   [extra: string]: unknown
 }
 
