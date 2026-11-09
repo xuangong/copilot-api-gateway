@@ -22,12 +22,15 @@ import type { ChatPayload } from '@vibe-llm/protocols/chat'
 import type { ResponsesPayload } from '@vibe-llm/protocols/responses'
 
 import { projectResponsesTextFormat } from '../shared/responses-text-format.ts'
-import { projectResponsesTools } from '../shared/responses-tools.ts'
+import { prepareResponsesTools, type ResponsesToolMapping } from '../shared/responses-namespace-tools'
 import { projectChatToolOutput, type ChatToolImagePart, type ResponsesToolOutput } from '../shared/responses-tool-output.ts'
 import { agentMessageContent } from '../shared/responses-via/agent-message.ts'
 import { customToolParameters, wrapCustomInput } from '../shared/responses-via/custom-tool-wrap.ts'
 
-export interface ResponsesToChatRequestResult { target: ChatPayload }
+export interface ResponsesToChatRequestResult {
+  toolMapping: ResponsesToolMapping
+  target: ChatPayload
+}
 
 interface ResponsesInputMessage {
   type: 'message'
@@ -59,15 +62,20 @@ function partsToChat(parts: Array<{ type: string; text?: string; image_url?: str
   return out
 }
 
-function translateInput(items: ResponsesInputItem[]): ChatMessage[] {
+function translateInput(items: ResponsesInputItem[], inputBoundaries: ReadonlySet<number>): ChatMessage[] {
   const out: ChatMessage[] = []
   const pendingImages: ChatToolImagePart[] = []
+  let lastBoundary: ChatMessage | undefined
   const flushImages = () => {
     if (pendingImages.length === 0) return
     out.push({ role: 'user', content: [...pendingImages] })
     pendingImages.length = 0
   }
   for (const [index, item] of items.entries()) {
+    if (inputBoundaries.has(index)) {
+      flushImages()
+      lastBoundary = out[out.length - 1]
+    }
     if (item.type !== 'function_call_output' && item.type !== 'custom_tool_call_output') flushImages()
     if (item.type === 'agent_message') {
       const content = agentMessageContent(item, `input[${index}]`, 'chat').map((part) =>
@@ -108,7 +116,7 @@ function translateInput(items: ResponsesInputItem[]): ChatMessage[] {
         id: item.call_id, type: 'function',
         function: { name: item.name, arguments: item.type === 'custom_tool_call' ? wrapCustomInput(item.input ?? '') : item.arguments ?? '{}' },
       }
-      if (prev && prev.role === 'assistant') {
+      if (prev && prev !== lastBoundary && prev.role === 'assistant') {
         const a = prev as ChatMsgAssistant
         if (!a.tool_calls) a.tool_calls = []
         a.tool_calls.push(tc)
@@ -154,9 +162,10 @@ function translateToolChoice(choice: ResponsesPayload['tool_choice']): ChatPaylo
   return undefined
 }
 
-export function translateResponsesToChat(payload: ResponsesPayload): ResponsesToChatRequestResult {
+export function translateResponsesToChat(source: ResponsesPayload): ResponsesToChatRequestResult {
+  const { payload, mapping: toolMapping, inputBoundaries } = prepareResponsesTools(source)
   const responseFormat = projectResponsesTextFormat(payload, 'chat')
-  const selected = projectResponsesTools(payload)
+  const selected = { tools: payload.tools, choice: payload.tool_choice }
   const messages: ChatMessage[] = []
   if (typeof payload.instructions === 'string' && payload.instructions.length > 0) {
     messages.push({ role: 'system', content: payload.instructions })
@@ -168,7 +177,7 @@ export function translateResponsesToChat(payload: ResponsesPayload): ResponsesTo
     if (payload.input.length > 0) messages.push({ role: 'user', content: payload.input })
   } else {
     const inputArr = (payload.input ?? []) as unknown as ResponsesInputItem[]
-    messages.push(...translateInput(inputArr))
+    messages.push(...translateInput(inputArr, inputBoundaries))
   }
 
   const target: Record<string, unknown> = {
@@ -187,5 +196,5 @@ export function translateResponsesToChat(payload: ResponsesPayload): ResponsesTo
   const tc = translateToolChoice(selected.choice)
   if (tc !== undefined) target.tool_choice = tc
 
-  return { target: target as unknown as ChatPayload }
+  return { target: target as unknown as ChatPayload, toolMapping }
 }

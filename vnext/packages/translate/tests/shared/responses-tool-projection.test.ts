@@ -74,13 +74,14 @@ for (const [kind, translate] of [
       })).toThrow(TranslatorValidationError)
     })
 
-    test.each(["additional_tools", "tool_search_output"])("rejects unexpanded historical %s declarations", type => {
-      expect(() => run({ input: [{ type, tools: declarations }] })).toThrow(/historical tool inventories/)
+    test.each(["additional_tools", "tool_search_output"])("expands historical %s declarations", type => {
+      const target = run({ input: [{ type, tools: declarations }] })
+      expect(target.tools).toHaveLength(3)
     })
 
-    test("rejects namespace declarations and historical calls without identity mapping", () => {
-      expect(() => run({ tools: [{ type: "function", name: "first", namespace: "ns" }] })).toThrow(TranslatorValidationError)
-      expect(() => run({ input: [{ type: "function_call", name: "first", call_id: "c", namespace: "ns", arguments: "{}" }] })).toThrow(TranslatorValidationError)
+    test("rejects malformed namespace declarations and historical identities", () => {
+      expect(() => run({ tools: [{ type: "function", name: "first", namespace: "" }] })).toThrow(TranslatorValidationError)
+      expect(() => run({ input: [{ type: "function_call", name: "first", call_id: "c", namespace: "", arguments: "{}" }] })).toThrow(TranslatorValidationError)
     })
 
     test("projects flat custom declaration, choice and historical call through one string input", () => {
@@ -103,10 +104,10 @@ for (const [kind, translate] of [
       expect(selected.tools).toHaveLength(1)
     })
 
-    test("rejects constrained custom format and malformed or namespaced historical calls", () => {
+    test("rejects constrained custom format and malformed historical calls", () => {
       expect(() => run({ tools: [{ type: "custom", name: "script", format: { type: "grammar", syntax: "lark", definition: "start: /./" } }] })).toThrow(TranslatorValidationError)
       expect(() => run({ input: [{ type: "custom_tool_call", name: "script", call_id: "c", input: 12 }] })).toThrow(TranslatorValidationError)
-      expect(() => run({ input: [{ type: "custom_tool_call", name: "script", call_id: "c", input: "x", namespace: "ns" }] })).toThrow(TranslatorValidationError)
+      expect(() => run({ input: [{ type: "custom_tool_call", name: "script", call_id: "c", input: "x", namespace: 1 }] })).toThrow(TranslatorValidationError)
     })
 
     test.each(["function_call_output", "custom_tool_call_output"])("preserves structured %s IDs, empty text and status semantics", type => {

@@ -1,3 +1,4 @@
+import type { ResponsesToolMapping } from "@vibe-llm/translate/shared/responses-namespace-tools"
 /**
  * Pairwise translator registry.
  *
@@ -112,6 +113,8 @@ export interface TranslateContext {
    */
   sourcePayload?: Record<string, unknown>
   customToolNames?: readonly string[]
+  /** Filled by Responses request translation; owned by one traversal only. */
+  responsesToolMapping?: ResponsesToolMapping
 }
 
 /**
@@ -206,7 +209,11 @@ const PAIR_RESPONSES_TO_MESSAGES: PairTranslator<
   AwaitedRet<typeof translateMessagesToResponsesBody>,
   Arg0<typeof translateMessagesToResponsesBody>
 > = {
-  translateRequest: (payload) => translateResponsesToMessages(payload).target,
+  translateRequest: (payload, ctx) => {
+    const result = translateResponsesToMessages(payload)
+    ctx.responsesToolMapping = result.toolMapping
+    return result.target
+  },
   translateEvents: (events, ctx) => translateMessagesToResponsesEvents(events, { customToolNames: ctx.customToolNames }),
   translateBody: (body, ctx) => translateMessagesToResponsesBody(body, { customToolNames: ctx.customToolNames }),
 }
@@ -271,8 +278,12 @@ const PAIR_RESPONSES_TO_CHAT: PairTranslator<
   AwaitedRet<typeof translateChatToResponsesBody>,
   Arg0<typeof translateChatToResponsesBody>
 > = {
-  translateRequest: (payload) => translateResponsesToChat(payload).target,
-  translateEvents: (events, ctx) => translateChatToResponsesEvents(events, { customToolNames: ctx.customToolNames }),
+  translateRequest: (payload, ctx) => {
+    const result = translateResponsesToChat(payload)
+    ctx.responsesToolMapping = result.toolMapping
+    return result.target
+  },
+  translateEvents: (events, ctx) => translateChatToResponsesEvents(events, { customToolNames: ctx.customToolNames, deferToolCalls: (ctx.responsesToolMapping?.targetToSource.size ?? 0) > 0 }),
   translateBody: (body, ctx) =>
     translateChatToResponsesBody(
       body,

@@ -58,7 +58,7 @@ interface ToolCallState { outputIndex: number; itemId: string; id: string; name:
 
 export async function* translateChatToResponsesEvents(
   events: AsyncIterable<unknown>,
-  options: { customToolNames?: readonly string[] } = {},
+  options: { customToolNames?: readonly string[]; deferToolCalls?: boolean } = {},
 ): AsyncGenerator<unknown, void, unknown> {
   let id = ''
   let model = ''
@@ -169,7 +169,8 @@ export async function* translateChatToResponsesEvents(
         }
         if (tc.id) state.id = tc.id
         if (tc.function?.name) state.name += tc.function.name
-        if (!state.opened && !options.customToolNames?.length) {
+        // Names can arrive in fragments; mapped identities must wait for the full name.
+        if (!state.opened && !options.customToolNames?.length && !options.deferToolCalls) {
           state.opened = true
           yield { type: 'response.output_item.added', output_index: state.outputIndex,
             item: { type: 'function_call', id: state.itemId, call_id: state.id, name: state.name, arguments: '', status: 'in_progress' } }

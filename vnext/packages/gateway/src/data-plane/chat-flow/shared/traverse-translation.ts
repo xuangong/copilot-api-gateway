@@ -22,6 +22,7 @@ import type { DumpAccumulator } from "../../../shared/dump/accumulator.ts"
  * "hub-events → hub-JSON → translateBody" path described in spec §3.7.
  */
 import { TranslatorValidationError } from '@vibe-llm/translate/errors'
+import { restoreResponsesToolBody, restoreResponsesToolEvents } from "@vibe-llm/translate/shared/responses-namespace-tools"
 import { selectedCustomToolNames } from '@vibe-llm/translate/shared/responses-tools'
 import type { ResponsesPayload } from '@vibe-llm/protocols/responses'
 import {
@@ -32,7 +33,7 @@ import {
   type LlmExecuteResult,
 } from '@vibe-llm/protocols/common'
 import { type ProtocolFrame } from '@vibe-core/result'
-import type { PairTranslator } from '../../dispatch/translator-registry.ts'
+import type { PairTranslator, TranslateContext } from '../../dispatch/translator-registry.ts'
 import type { TelemetryRequestContext } from './telemetry-ctx.ts'
 import { performanceTargetFromProtocol } from './respond-telemetry.ts'
 
@@ -72,15 +73,16 @@ export async function traverseTranslation<HubFrame, SourceFrame>(
   let hubPayload: Record<string, unknown>
   let sourceSnapshot = args.sourcePayload
   let customToolNames: readonly string[] = []
+  const requestContext: TranslateContext = {
+    signal: args.signal ?? new AbortController().signal,
+    fallbackMaxOutputTokens: args.fallbackMaxOutputTokens,
+    model: args.model,
+  }
   try {
-    hubPayload = (await args.translator.translateRequest(args.sourcePayload, {
-      signal: args.signal ?? new AbortController().signal,
-      fallbackMaxOutputTokens: args.fallbackMaxOutputTokens,
-      model: args.model,
-    })) as Record<string, unknown>
+    hubPayload = (await args.translator.translateRequest(args.sourcePayload, requestContext)) as Record<string, unknown>
     hubPayload = selectedTierRequest(args.sourceProtocol, args.hubProtocol, args.sourcePayload, hubPayload)
     if (args.sourceProtocol === 'responses' && (args.hubProtocol === 'chat_completions' || args.hubProtocol === 'messages')) {
-      customToolNames = selectedCustomToolNames(args.sourcePayload as unknown as ResponsesPayload)
+      customToolNames = requestContext.responsesToolMapping?.customToolNames ?? selectedCustomToolNames(args.sourcePayload as unknown as ResponsesPayload)
       // Reverse translation only needs these request-side envelope fields. Keep
       // their values stable if an inner interceptor mutates the source object.
       sourceSnapshot = Object.fromEntries(
@@ -182,24 +184,26 @@ export async function traverseTranslation<HubFrame, SourceFrame>(
     // `instructions`, `metadata`, `tool_choice`, `tools` which the upstream
     // Chat-Completions response never carries.
     translateBody: async (hubJson, ctx) =>
-      selectedTierBody(args.sourceProtocol, echoText(await args.translator.translateBody(hubJson, {
+      selectedTierBody(args.sourceProtocol, echoText(restoreResponsesToolBody(await args.translator.translateBody(hubJson, {
         signal: ctx?.signal ?? new AbortController().signal,
         fallbackMaxOutputTokens: ctx?.fallbackMaxOutputTokens,
         model: ctx?.model,
         sourcePayload: sourceSnapshot,
         customToolNames,
-      })), executionTier),
+        responsesToolMapping: requestContext.responsesToolMapping,
+      }), requestContext.responsesToolMapping)), executionTier),
     // translateEvents: respond.ts streaming branch unwraps hub frames, runs
     // these through the translator, then re-wraps as source frames before SSE
     // encoding. The translator function here consumes BARE hub events (not
     // ProtocolFrame envelopes) and yields BARE source events.
-    translateEvents: (events, ctx) => echoEventText(args.translator.translateEvents(events, {
+    translateEvents: (events, ctx) => echoEventText(restoreResponsesToolEvents(args.translator.translateEvents(events, {
       signal: ctx?.signal ?? new AbortController().signal,
       fallbackMaxOutputTokens: ctx?.fallbackMaxOutputTokens,
       model: ctx?.model,
       sourcePayload: sourceSnapshot,
       customToolNames,
-    })),
+      responsesToolMapping: requestContext.responsesToolMapping,
+    }), requestContext.responsesToolMapping)),
     resolveModelIdentity,
   }
   return innerEvents.__interceptorReplaced

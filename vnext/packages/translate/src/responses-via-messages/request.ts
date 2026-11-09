@@ -17,7 +17,7 @@ import {
 } from '../shared/cache-breakpoints.ts'
 
 import { projectResponsesTextFormat, responsesOutputConfig } from '../shared/responses-text-format.ts'
-import { projectResponsesTools } from '../shared/responses-tools.ts'
+import { prepareResponsesTools, type ResponsesToolMapping } from '../shared/responses-namespace-tools'
 import { projectMessagesToolOutput, type ResponsesToolOutput } from '../shared/responses-tool-output.ts'
 import { messagesReasoningFromEffort } from '../shared/messages-reasoning-effort.ts'
 import { agentMessageContent } from '../shared/responses-via/agent-message.ts'
@@ -114,9 +114,9 @@ function parseToolArgs(args: string | undefined): Record<string, unknown> {
   }
 }
 
-function appendAssistantBlock(messages: MessageLike[], block: ContentBlockLike): void {
+function appendAssistantBlock(messages: MessageLike[], block: ContentBlockLike, separateFrom?: MessageLike): void {
   const last = messages[messages.length - 1]
-  if (last?.role === 'assistant' && Array.isArray(last.content)) {
+  if (last?.role === 'assistant' && last !== separateFrom && Array.isArray(last.content)) {
     last.content.push(block)
     return
   }
@@ -137,27 +137,32 @@ interface TranslatedInput {
   systemParts: string[]
 }
 
-function translateInput(input: ResponsesPayload['input']): TranslatedInput {
+function translateInput(input: ResponsesPayload['input'], inputBoundaries: ReadonlySet<number>): TranslatedInput {
   if (typeof input === 'string') {
     return { messages: [{ role: 'user', content: input }], systemParts: [] }
   }
   const messages: MessageLike[] = []
   const systemParts: string[] = []
-  let lastAgentDelivery: MessageLike | undefined
+  let lastUserBoundary: MessageLike | undefined
+  let lastAssistantBoundary: MessageLike | undefined
   for (const [index, raw] of (input as Array<{ type: string }>).entries()) {
+    if (inputBoundaries.has(index)) {
+      lastAssistantBoundary = messages[messages.length - 1]
+      lastUserBoundary = lastAssistantBoundary
+    }
     const item = raw as unknown as ResponsesMessageItem | ResponsesFunctionCallItem | ResponsesFunctionCallOutputItem | { type: 'agent_message' } | { type: 'reasoning'; summary?: Array<{ text?: string }>; encrypted_content?: string }
     switch (item.type) {
       case "reasoning": {
         if (item.encrypted_content !== undefined) appendAssistantBlock(messages, item.summary?.length
           ? { type: "thinking", thinking: item.summary.map(part => part.text ?? "").join(""), signature: item.encrypted_content }
-          : { type: "redacted_thinking", data: item.encrypted_content })
+          : { type: "redacted_thinking", data: item.encrypted_content }, lastAssistantBoundary)
         break
       }
       case 'agent_message': {
         const blocks = translateUserContent(agentMessageContent(raw, `input[${index}]`, 'messages'))
         const delivery: MessageLike = { role: 'user', content: blocks }
         messages.push(delivery)
-        lastAgentDelivery = delivery
+        lastUserBoundary = delivery
         break
       }
       case 'message': {
@@ -185,7 +190,7 @@ function translateInput(input: ResponsesPayload['input']): TranslatedInput {
           id: fc.call_id,
           name: fc.name,
           input: fc.type === 'custom_tool_call' ? { input: fc.input } : parseToolArgs(fc.arguments),
-        } as unknown as ContentBlockLike)
+        } as unknown as ContentBlockLike, lastAssistantBoundary)
         break
       }
       case 'function_call_output':
@@ -196,7 +201,7 @@ function translateInput(input: ResponsesPayload['input']): TranslatedInput {
           tool_use_id: fco.call_id,
           content: projectMessagesToolOutput(fco),
           ...(fco.type === 'function_call_output' && fco.status === 'incomplete' ? { is_error: true } : {}),
-        } as unknown as ContentBlockLike, lastAgentDelivery)
+        } as unknown as ContentBlockLike, lastUserBoundary)
         break
       }
     }
@@ -247,14 +252,16 @@ function translateToolChoice(choice: ResponsesPayload['tool_choice']): MessagesT
 }
 
 export interface ResponsesToMessagesRequestResult {
+  toolMapping: ResponsesToolMapping
   target: MessagesPayload
 }
 
-export function translateResponsesToMessages(payload: ResponsesPayload): ResponsesToMessagesRequestResult {
+export function translateResponsesToMessages(source: ResponsesPayload): ResponsesToMessagesRequestResult {
+  const { payload, mapping: toolMapping, inputBoundaries } = prepareResponsesTools(source)
   const outputConfig = responsesOutputConfig(payload)
   const format = projectResponsesTextFormat(payload, 'messages')
-  const selected = projectResponsesTools(payload)
-  const { messages, systemParts } = translateInput(payload.input)
+  const selected = { tools: payload.tools, choice: payload.tool_choice }
+  const { messages, systemParts } = translateInput(payload.input, inputBoundaries)
 
   const systemPieces = [payload.instructions, ...systemParts].filter(
     (p): p is string => Boolean(p),
@@ -291,5 +298,5 @@ export function translateResponsesToMessages(payload: ResponsesPayload): Respons
   if (payload.top_p != null) target.top_p = payload.top_p
   if (tool_choice) target.tool_choice = tool_choice
 
-  return { target: target as unknown as MessagesPayload }
+  return { target: target as unknown as MessagesPayload, toolMapping }
 }
