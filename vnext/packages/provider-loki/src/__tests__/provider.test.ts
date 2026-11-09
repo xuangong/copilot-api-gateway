@@ -60,6 +60,7 @@ test("each upstream uses its configured prefix for discovery and all native infe
       expect(new Headers(init.headers).get("authorization")).toBe("Bearer test-private-token")
       expect(new Headers(init.headers).get("X-Llm-Api-Version")).toBe("2026-10-21")
       expect(new Headers(init.headers).get("anthropic-version")).toBe(url.endsWith("/v1/messages") ? "2023-06-01" : null)
+      expect(new Headers(init.headers).get("anthropic-beta")).toBe(url.endsWith("/v1/messages") ? "thinking-display-updates-2026-08-18" : null)
       expect(new Headers(init.headers).get("X-ClientFeature")).toBe("LlmApiProxy")
       expect(new Headers(init.headers).get("X-ClientScenario")).toBe("Code")
       expect(new Headers(init.headers).get("X-ClientType")).toBe("Copilot")
@@ -69,7 +70,7 @@ test("each upstream uses its configured prefix for discovery and all native infe
     await provider.getModels()
     for (const endpoint of ["messages", "responses", "chat_completions"] as const) {
       await provider.fetch(request({ endpoint, headers: new Headers({ "X-Llm-Api-Version": "invalid-client-version", "anthropic-version": "2026-10-21" }),
-        payload: { model: "fixture", input: "hello", messages: [{ role: "user", content: "hello" }] } }))
+        payload: { model: "fixture", input: "hello", messages: [{ role: "user", content: "hello" }], thinking: { type: "adaptive", display: "updates" } } }))
     }
     const prefix = baseUrl.replace(/\/+$/, "")
     expect(seen).toEqual([`${prefix}/models`, `${prefix}/v1/messages`, `${prefix}/responses`, `${prefix}/chat/completions`])
@@ -190,6 +191,10 @@ test("Responses and Chat Completions derive conversation IDs from the first user
 })
 
 for (const scenario of [
+  { model: "claude-opus-5.5", thinking: { type: "adaptive", display: "updates" }, temperature: undefined,
+    expected: { type: "adaptive", display: "updates" }, beta: "thinking-display-updates-2026-08-18" },
+  { model: "claude-opus-5.5", thinking: { type: "enabled", budget_tokens: 2048, display: "updates" }, temperature: undefined,
+    expected: { type: "adaptive", display: "updates" }, beta: "thinking-display-updates-2026-08-18" },
   { model: "claude-haiku-5.5", thinking: { type: "enabled", budget_tokens: 1024 }, temperature: 1,
     expected: { type: "adaptive", display: "summarized" } },
   { model: "claude-opus-5.5", thinking: { type: "enabled", budget_tokens: 2048, display: "omitted" }, temperature: 1,
@@ -202,10 +207,12 @@ for (const scenario of [
   { model: "claude-haiku-4.5", thinking: { type: "enabled", budget_tokens: 1024 }, temperature: undefined,
     expected: { type: "enabled", budget_tokens: 1024 } },
 ]) {
-  test(`Loki accepts ${scenario.model} ${scenario.thinking.type} thinking without changing search tools or caller payload`, async () => {
+  test(`Loki accepts ${scenario.model} ${scenario.thinking.type} thinking (${scenario.thinking.display ?? "default"}) without changing search tools or caller payload`, async () => {
     const { row } = fixture()
     let sent: Record<string, unknown> = {}
+    let sentHeaders = new Headers()
     const provider = new LokiProvider(row, async () => row, async (_url, init) => {
+      sentHeaders = new Headers(init.headers)
       sent = JSON.parse(String(init.body)) as Record<string, unknown>
       return new Response("ok")
     })
@@ -214,8 +221,9 @@ for (const scenario of [
       thinking: scenario.thinking, temperature: scenario.temperature, output_config: { effort: "low" },
       tools: [{ name: "web_search", input_schema: { type: "object", properties: { query: { type: "string" } } } }] }
     const before = JSON.stringify(payload)
-    await provider.fetch(request({ payload }))
+    await provider.fetch(request({ payload, headers: new Headers({ "anthropic-beta": "unknown-client-beta" }) }))
     expect(sent.thinking).toEqual(scenario.expected)
+    expect(sentHeaders.get("anthropic-beta")).toBe(scenario.beta ?? null)
     expect(sent.temperature).toBe(scenario.temperature)
     expect(sent.tools).toEqual(payload.tools)
     expect(sent.output_config).toEqual({ effort: "low" })

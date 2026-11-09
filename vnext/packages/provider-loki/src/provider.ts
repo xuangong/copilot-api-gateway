@@ -9,7 +9,7 @@ import { isLokiEndpoint, lokiModelEndpoints, LOKI_PATHS, normalizeLokiModels } f
 import { lokiModelPricing } from "./pricing"
 import { readLokiState } from "./state"
 import { LOKI_CONVERSATION_HEADERS, lokiConversationId } from "./conversation"
-import { normalizeLokiMessages } from "./messages"
+import { lokiMessagesBetaHeader, normalizeLokiMessages } from "./messages"
 import { lokiRequestShape } from "./diagnostics"
 
 export class LokiProvider implements LlmModelProvider {
@@ -70,6 +70,7 @@ export class LokiProvider implements LlmModelProvider {
     const payload = { ...req.payload } as Record<string, unknown>
     if (typeof payload.model !== "string" || !Object.hasOwn(lokiModelEndpoints(this.models.get(payload.model)), req.endpoint)) throw new Error("loki_endpoint_unavailable")
     if (req.endpoint === "messages") normalizeLokiMessages(payload)
+    const anthropicBeta = req.endpoint === "messages" ? lokiMessagesBetaHeader(payload) : undefined
     const conversationId = await lokiConversationId(req, this.expected.id)
     const credential = await this.credential(true)
     req.signal?.throwIfAborted()
@@ -81,7 +82,8 @@ export class LokiProvider implements LlmModelProvider {
       method: "POST", redirect: "manual", signal: signals.length ? AbortSignal.any(signals) : undefined,
       headers: { ...LOKI_HEADERS, authorization: `Bearer ${credential.accessToken}`, "content-type": "application/json",
         "X-ConversationId": conversationId,
-        ...(req.endpoint === "messages" ? { "anthropic-version": "2023-06-01" } : {}) }, body: JSON.stringify(payload),
+        ...(req.endpoint === "messages" ? { "anthropic-version": "2023-06-01" } : {}),
+        ...(anthropicBeta ? { "anthropic-beta": anthropicBeta } : {}) }, body: JSON.stringify(payload),
     })
     if (response.status >= 300 && response.status < 400) {
       await response.body?.cancel()

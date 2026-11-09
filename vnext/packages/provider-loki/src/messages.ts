@@ -1,6 +1,15 @@
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value)
 
+export function lokiMessagesBetaHeader(payload: Record<string, unknown>): string | undefined {
+  const thinking = payload.thinking
+  // This display mode needs its beta even on Loki. Derive only the required
+  // feature from the normalized body instead of forwarding arbitrary betas.
+  // https://platform.claude.com/docs/en/build-with-claude/thinking#controlling-thinking-display
+  return isRecord(thinking) && (thinking.type === "adaptive" || thinking.type === "enabled") && thinking.display === "updates"
+    ? "thinking-display-updates-2026-08-18" : undefined
+}
+
 function normalizeMessageConfig(payload: Record<string, unknown>): void {
   if (!Array.isArray(payload.messages)) return
   const messages: unknown[] = []
