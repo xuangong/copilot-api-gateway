@@ -463,14 +463,18 @@ export async function listUpstreamModels(
   // Map binding.model.endpoints (internal EndpointKey) → SDK-facing path tokens
   // so dashboard filters that look at `supported_endpoints` (`/v1/messages`,
   // `/responses`, `/v1/chat/completions`, `/v1/embeddings`) keep working.
-  const ENDPOINT_PATHS: Record<string, string> = {
-    messages: '/v1/messages',
-    messages_count_tokens: '/v1/messages/count_tokens',
-    responses: '/responses',
-    chat_completions: '/v1/chat/completions',
-    embeddings: '/v1/embeddings',
-    images_generations: '/v1/images/generations',
-    images_edits: '/v1/images/edits',
+  const ENDPOINT_PATHS: Record<string, readonly string[]> = {
+    messages: ['/v1/messages'],
+    messages_count_tokens: ['/v1/messages/count_tokens'],
+    responses: ['/responses'],
+    chat_completions: ['/v1/chat/completions'],
+    embeddings: ['/v1/embeddings'],
+    images_generations: ['/v1/images/generations'],
+    images_edits: ['/v1/images/edits'],
+    // The gateway translates between the two decision dialects, so either
+    // ingress serves any decision model. Copilot rows keep their raw path list
+    // (the model's own dialect) through the `raw` spread below.
+    decision: ['/v1/decisions', '/v1/systemone'],
   }
   const dedupe = opts.dedupe !== false
   for (const binding of bindings) {
@@ -494,8 +498,7 @@ export async function listUpstreamModels(
       _provider: binding.kind,
     }
     const supportedEndpoints = Object.keys(binding.model.endpoints ?? {})
-      .map((k) => ENDPOINT_PATHS[k])
-      .filter((v): v is string => Boolean(v))
+      .flatMap((k) => ENDPOINT_PATHS[k] ?? [])
     if (binding.model.raw) {
       // Root parity (src/providers/registry.ts:listUpstreamModels): spread the
       // upstream model JSON verbatim so vendor fields (`capabilities.family`,

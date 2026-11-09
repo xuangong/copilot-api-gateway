@@ -19,6 +19,7 @@ import type {
 import type { ProtocolFrame } from '@vibe-core/result'
 import type { ResponsesCompactionResult, ResponsesResult, ResponsesStreamEvent } from '@vibe-llm/protocols/responses'
 import type {
+  DecisionProtocol,
   EndpointKey,
   ModelPricing,
   ResponsesStreamInterceptor,
@@ -127,6 +128,13 @@ export interface LlmModelProvider extends UpstreamAdapter {
   getOpaqueCompatibilityForModel?(model: Readonly<BindingModel>): OpaqueCompatibilityDeclaration | undefined
   /** Seed instance-local model resolution from the shared successful catalog. */
   setModelCatalog?(models: ProviderModelsResponse): void
+  /**
+   * Wire dialect a decision model speaks. The dialect belongs to the provider's
+   * catalog, never to the caller: the gateway serializes a `decision` request
+   * into it before `fetch`, translating when the caller used the other one.
+   * Undefined means the provider cannot name one, so the model is not served.
+   */
+  decisionProtocol?(modelKey: string): DecisionProtocol | undefined
   readonly kind: UpstreamKind
   readonly supportedEndpoints: readonly EndpointKey[]
   getPricingForModelKey(modelKey: string): ModelPricing | null

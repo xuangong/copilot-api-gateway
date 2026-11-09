@@ -38,7 +38,7 @@ export type { CustomProviderConfig } from './config.ts'
 
 const DEFAULT_ENDPOINTS: readonly EndpointKey[] = ['chat_completions', 'embeddings']
 
-const CUSTOM_PATHS: Record<EndpointKey, string> = {
+const CUSTOM_PATHS: Partial<Record<EndpointKey, string>> = {
   chat_completions: '/chat/completions',
   responses: '/responses',
   messages: '/messages',

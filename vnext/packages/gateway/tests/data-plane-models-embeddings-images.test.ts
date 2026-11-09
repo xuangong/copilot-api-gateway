@@ -15,6 +15,7 @@ import type { Model, ModelsResponse } from '@vibe-llm/provider-copilot'
 import { modelsRouter, type DataPlaneAuthCtx } from '../src/data-plane/models/routes.ts'
 import { embeddingsRouter } from '../src/data-plane/embeddings/routes.ts'
 import { imagesRouter } from '../src/data-plane/images/routes.ts'
+import { ollamaRouter } from '../src/data-plane/ollama/routes.ts'
 
 const stubModel = (id: string, type = 'text'): Model => ({
   id,
@@ -249,20 +250,58 @@ for (const withFailingUpstream of [false, true]) {
   })
 }
 
-// Copilot catalogs decision models on `/v1/decisions` and `/v1/systemone`,
-// neither of which the gateway serves. Listing one invites a chat request that
-// every route rejects, so a model with no routable endpoint is not listed.
-test('GET /v1/models omits Copilot decision models the gateway cannot route', async () => {
-  initRepo(stubRepo([stubUpstream()]))
-  const decision = (id: string, path: string): Model => ({ ...stubModel(id, 'decisions'), supported_endpoints: [path] })
-  installFetch(async () => Response.json({
-    object: 'list',
-    data: [stubModel('gpt-4o'), copilotImageModel, decision('gpt-6-luna-decisions', '/v1/decisions'), decision('microsoft-decision-1', '/v1/systemone')],
-  } satisfies ModelsResponse))
+// Copilot catalogs decision models on `/v1/decisions` (gpt-6-luna-decisions)
+// and `/v1/systemone` (microsoft-decision-1). The decision routes serve both,
+// so the general catalog lists them with the path each one advertises. Chat
+// catalogs (Claude Code, Gemini, Ollama) leave them out: no chat protocol can
+// reach a decision model. A decision entry with no known dialect stays hidden.
+const decisionModel = (id: string, paths?: string[]): Model =>
+  ({ ...stubModel(id, 'decisions'), ...(paths ? { supported_endpoints: paths } : {}) })
+const installDecisionCatalog = () => installFetch(async () => Response.json({
+  object: 'list',
+  data: [stubModel('gpt-4o'), decisionModel('gpt-6-luna-decisions', ['/v1/decisions']),
+    decisionModel('microsoft-decision-1', ['/v1/systemone']), decisionModel('microsoft-decision-2')],
+} satisfies ModelsResponse))
+const COPILOT_REQUEST_AUTH: DataPlaneAuthCtx = { copilot: { copilotToken: 'tkn', accountType: 'individual' } }
 
-  const res = await buildApp(modelsRouter, { copilot: { copilotToken: 'tkn', accountType: 'individual' } }).request('/v1/models')
+test('GET /v1/models lists Copilot decision models with the path each one serves', async () => {
+  initRepo(stubRepo([stubUpstream()]))
+  installDecisionCatalog()
+  const res = await buildApp(modelsRouter, COPILOT_REQUEST_AUTH).request('/v1/models')
   expect(res.status).toBe(200)
-  expect((await modelIds(res)).sort()).toEqual(['gpt-4o', 'gpt-image-2.5-flare'])
+  const body = await res.json() as { data: Array<{ id: string; supported_endpoints?: string[] }> }
+  expect(body.data.map(m => [m.id, m.supported_endpoints])).toEqual([
+    ['gpt-4o', ['/v1/chat/completions', '/v1/messages/count_tokens']],
+    ['gpt-6-luna-decisions', ['/v1/decisions']],
+    ['microsoft-decision-1', ['/v1/systemone']],
+  ])
+})
+
+test('chat-only catalogs leave decision models out', async () => {
+  initRepo(stubRepo([stubUpstream()]))
+  installDecisionCatalog()
+  const app = buildApp(modelsRouter, COPILOT_REQUEST_AUTH)
+  const claudeCode = await app.request('/v1/models', { headers: { 'user-agent': 'claude-code/2.1.247' } })
+  expect(((await claudeCode.json()) as { data: Array<{ id: string }> }).data.map(m => m.id)).toEqual(['gpt-4o'])
+  const gemini = await app.request('/v1beta/models')
+  expect(((await gemini.json()) as { models: Array<{ baseModelId: string }> }).models.map(m => m.baseModelId)).toEqual(['gpt-4o'])
+  const ollama = await buildApp(ollamaRouter, { ...COPILOT_REQUEST_AUTH, apiKeyId: 'key-1' as never }).request('/api/tags')
+  expect(((await ollama.json()) as { models: Array<{ name: string }> }).models.map(m => m.name)).toEqual(['gpt-4o'])
+})
+
+// Both official TypeSafe SDKs parse `/v1/models` as
+// `{ models: [{ name, description, release_date }] }` and identify themselves
+// as `typesafe-sdk/<version>`; every other caller keeps the OpenAI shape.
+test('GET /v1/models answers TypeSafe SDKs in their own catalog shape', async () => {
+  initRepo(stubRepo([stubUpstream()]))
+  installDecisionCatalog()
+  const res = await buildApp(modelsRouter, COPILOT_REQUEST_AUTH)
+    .request('/v1/models', { headers: { 'user-agent': 'typesafe-sdk/0.7.5' } })
+  expect(await res.json()).toEqual({ models: [
+    { name: 'gpt-4o', description: 'gpt-4o', release_date: '1970-01-01' },
+    { name: 'gpt-6-luna-decisions', description: 'gpt-6-luna-decisions', release_date: '1970-01-01' },
+    { name: 'microsoft-decision-1', description: 'microsoft-decision-1', release_date: '1970-01-01' },
+  ] })
 })
 
 const imageUsageResponseBody = JSON.stringify({

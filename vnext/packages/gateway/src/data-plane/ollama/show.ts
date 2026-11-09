@@ -19,10 +19,11 @@ import type { DataPlaneAuthCtx, OpenAIShapedModel } from '../models/routes.ts'
 
 const EPOCH = '1970-01-01T00:00:00Z'
 
-function modelType(m: OpenAIShapedModel): 'chat' | 'embedding' | 'image' {
+function modelType(m: OpenAIShapedModel): 'chat' | 'embedding' | 'image' | 'decision' {
   const t = m.capabilities?.type?.toLowerCase()
   if (t === 'embedding' || t === 'embeddings') return 'embedding'
   if (t === 'image' || t === 'images') return 'image'
+  if (t === 'decision' || t === 'decisions') return 'decision'
   return 'chat'
 }
 
@@ -32,11 +33,12 @@ function modelType(m: OpenAIShapedModel): 'chat' | 'embedding' | 'image' {
  * AnythingLLM's `ollamaAIModels` helper (server/utils/helpers/customModels.js)
  * does no filtering at all and feeds both the LLM dropdown and the Embedder
  * dropdown from this one response. Serving chat-only would leave the Ollama
- * embedder with nothing to select. Image models are excluded because no Ollama
- * surface can reach them.
+ * embedder with nothing to select. Image and decision models are excluded
+ * because no Ollama surface can reach them.
  */
 export function isOllamaListable(m: OpenAIShapedModel): boolean {
-  return modelType(m) !== 'image'
+  const type = modelType(m)
+  return type !== 'image' && type !== 'decision'
 }
 
 export interface OllamaTag {

@@ -438,38 +438,3 @@ test("a non-mai-code MAI model is untouched by the fallback", () => {
   expect(result.chat_completions).toBeDefined()
   expect(result.responses).toBeUndefined()
 })
-
-// ─── decision models ─────────────────────────────────────────────────
-//
-// Copilot catalogs `type: "decisions"` models that answer typed questions on
-// `/v1/decisions` (gpt-6-luna-decisions) or `/v1/systemone`
-// (microsoft-decision-1). The gateway serves neither path, so such a model must
-// carry no endpoint at all — count_tokens included — or it is listed as a chat
-// model that every route then rejects.
-
-const decisionModel = (id: string, supported_endpoints?: string[]): Model => createModel({
-  id,
-  capabilities: {
-    type: "decisions",
-    family: id,
-    object: "model.capability",
-    limits: {},
-    supports: {},
-    tokenizer: "",
-  },
-  ...(supported_endpoints ? { supported_endpoints } : {}),
-})
-
-test("gpt-6-luna-decisions on /v1/decisions carries no endpoint", () => {
-  expect(copilotModelEndpoints(decisionModel("gpt-6-luna-decisions", ["/v1/decisions"]))).toEqual({})
-})
-
-test("microsoft-decision-1 on /v1/systemone carries no endpoint", () => {
-  expect(copilotModelEndpoints(decisionModel("microsoft-decision-1", ["/v1/systemone"]))).toEqual({})
-})
-
-// The declared type is the authority: a catalog that omits the path must not
-// drop the model into the chat_completions inference.
-test("a decision model listed without supported_endpoints carries no endpoint", () => {
-  expect(copilotModelEndpoints(decisionModel("microsoft-decision-2"))).toEqual({})
-})

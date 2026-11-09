@@ -80,7 +80,7 @@ export interface BeginUpstreamAttempt {
 
 const SAFE_OPERATIONS = new Set([
   "chat.completions", "responses.create", "messages.create", "embeddings.create",
-  "images.generate", "images.edit", "responses.compact", "count_tokens", "search",
+  "images.generate", "images.edit", "responses.compact", "count_tokens", "search", "decisions.create",
 ])
 const SAFE_MEDIA_TYPES = new Set([
   "application/json", "application/octet-stream", "text/event-stream", "text/plain",

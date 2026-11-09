@@ -15,7 +15,7 @@
  * Hardcoded workaround: `claude-*` always carries `messages`, for the older
  * catalogs that route the Anthropic native path without advertising it.
  */
-import type { ModelEndpoints } from "@vibe-llm/protocols/common"
+import type { DecisionProtocol, ModelEndpoints } from "@vibe-llm/protocols/common"
 import type { Model } from "./models"
 
 /** Copilot wire path → gateway endpoint kind. */
@@ -27,16 +27,36 @@ const ENDPOINT_BY_PATH: Record<string, keyof ModelEndpoints> = {
   "/v1/images/edits": "images_edits",
 }
 
+/**
+ * Copilot names each decision model's dialect through the path it advertises:
+ * `/v1/systemone` speaks System One and `/v1/decisions` speaks OpenAI
+ * Decisions. The two are exclusive per model (the other path answers 400
+ * `no_available_model_endpoints`), so the advertised path is the only
+ * authority. No path, an unknown one, or both dialects at once leave nothing
+ * safe to call, and the model is not served.
+ */
+const DECISION_PROTOCOL_BY_PATH: Record<string, DecisionProtocol> = {
+  "/systemone": "typesafe-systemone",
+  "/v1/systemone": "typesafe-systemone",
+  "/decisions": "openai-decisions",
+  "/v1/decisions": "openai-decisions",
+}
+
+export function copilotDecisionProtocol(model: Model): DecisionProtocol | undefined {
+  if (model.capabilities?.type?.toLowerCase() !== "decisions") return undefined
+  const protocols = new Set((model.supported_endpoints ?? []).flatMap(path => DECISION_PROTOCOL_BY_PATH[path] ?? []))
+  return protocols.size === 1 ? [...protocols][0] : undefined
+}
+
 export function copilotModelEndpoints(model: Model): ModelEndpoints {
   const capType = model.capabilities?.type?.toLowerCase()
   if (capType === "embeddings" || capType === "embedding") {
     return { embeddings: {} }
   }
-  // Decision models answer typed questions on `/v1/decisions` or
-  // `/v1/systemone`, neither of which the gateway serves. The declared type,
-  // not the path list, marks them: a catalog that omits the path would
-  // otherwise land them in the chat_completions inference below.
-  if (capType === "decisions") return {}
+  // The declared type, not the path list, marks a decision model: a catalog
+  // that omits the path would otherwise land it in the chat_completions
+  // inference below.
+  if (capType === "decisions") return copilotDecisionProtocol(model) ? { decision: {} } : {}
 
   const id = model.id.toLowerCase()
   const family = (model.capabilities?.family ?? "").toLowerCase()

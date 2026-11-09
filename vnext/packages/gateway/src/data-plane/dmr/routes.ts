@@ -18,7 +18,8 @@
 import { Hono, type Handler } from 'hono'
 import type { Env } from '../../app.ts'
 import { listUpstreamModels } from '../providers/registry.ts'
-import { isChatModel, type DataPlaneAuthCtx, type OpenAIShapedModel } from '../models/routes.ts'
+import type { DataPlaneAuthCtx, OpenAIShapedModel } from '../models/routes.ts'
+import { isChatModel } from '../models/model-types.ts'
 import { isDmrCompatEnabled } from './config.ts'
 
 type Vars = { auth: DataPlaneAuthCtx }

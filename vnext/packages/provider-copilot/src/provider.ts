@@ -19,7 +19,9 @@ import { defaultsForUpstream } from '@vibe-llm/protocols/flags'
 import { callCopilotAPI, type PreparedCopilotCall } from './forward'
 import { getModels, type ModelsResponse } from './models'
 import { pricingForCopilotModelKey } from './pricing'
-import type { EndpointKey, ModelPricing } from '@vibe-llm/protocols/common'
+import type { DecisionProtocol, EndpointKey, ModelPricing } from '@vibe-llm/protocols/common'
+import { DEFAULT_DECISION_PATHS } from '@vibe-llm/protocols/decision'
+import { copilotDecisionProtocol } from './endpoints'
 import type { CopilotInterceptor, Invocation, RequestContext, ResponsesStreamInterceptor } from "@vibe-llm/protocols/common"
 import { runInterceptors } from "@vibe-core/service"
 import type {
@@ -87,6 +89,8 @@ const COPILOT_SUPPORTED: readonly EndpointKey[] = [
   'embeddings',
   'images_generations',
   'images_edits',
+  // Path chosen per model from its dialect; see `copilotDecisionProtocol`.
+  'decision',
 ]
 
 export class CopilotProvider implements LlmModelProvider {
@@ -140,6 +144,23 @@ export class CopilotProvider implements LlmModelProvider {
 
   setModelCatalog(models: ModelsResponse): void { this.modelCatalog = structuredClone(models) }
 
+  decisionProtocol(modelKey: string): DecisionProtocol | undefined {
+    const model = this.modelCatalog?.data.find(entry => entry.id === modelKey)
+    return model ? copilotDecisionProtocol(model) : undefined
+  }
+
+  private pathFor(req: ProviderRequest): string {
+    if (req.endpoint !== 'decision') {
+      const path = COPILOT_PATHS[req.endpoint]
+      if (!path) throw new Error(`CopilotProvider does not support endpoint: ${req.endpoint}`)
+      return path
+    }
+    const model = (req.payload as { model?: unknown } | null)?.model
+    const protocol = typeof model === 'string' ? this.decisionProtocol(model) : undefined
+    if (!protocol) throw new Error(`Copilot model ${String(model)} does not serve decisions`)
+    return DEFAULT_DECISION_PATHS[protocol]
+  }
+
   private async prepare(): Promise<void> {
     if (this.prepareSession) {
       const session = await this.prepareSession()
@@ -191,9 +212,8 @@ export class CopilotProvider implements LlmModelProvider {
       req.signal?.throwIfAborted()
     }
     await guard()
+    const path = this.pathFor(req)
     await this.prepare()
-    const path = COPILOT_PATHS[req.endpoint]
-    if (!path) throw new Error(`CopilotProvider does not support endpoint: ${req.endpoint}`)
 
     // Headers→Record at chain boundary; Invocation.headers is Record.
     const headerRecord: Record<string, string> = {}

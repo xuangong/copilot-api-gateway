@@ -24,6 +24,7 @@ import { isCodexUserAgent } from '../codex/catalog.ts'
 import { loadCodexCatalog } from '../codex/models.ts'
 import { currentResponsesWebSocketIngress } from '../../shared/ingress-capability.ts'
 import { collapseModelCatalog, withKeyModelAliases } from './key-model-catalog.ts'
+import { isChatModel } from './model-types.ts'
 
 async function listAvailableModels(opts: ListUpstreamModelsOptions, format?: 'gemini') {
   let incomplete = false
@@ -52,6 +53,20 @@ const CREATED_AT_UNKNOWN = '1970-01-01T00:00:00Z'
 
 const isClaudeCodeUserAgent = (userAgent: string | undefined): boolean =>
   userAgent?.startsWith('claude-code/') ?? false
+
+// Both official TypeSafe SDKs (`typesafe-sdk`, `@typesafe-ai/sdk`) parse
+// `/v1/models` as `{ models: [{ name, description, release_date }] }` with all
+// three required, and identify themselves as `typesafe-sdk/<version>`.
+// `release_date` must be `YYYY-MM-DD`; vNext rows carry no release date, so
+// every model gets the epoch, the same sentinel the Claude Code catalog uses.
+// Reference: copilot-gateway `data-plane/models/http.ts` (`toTypeSafeCatalog`).
+// https://github.com/typesafe-ai/typesafe-sdk/blob/main/src/_schemas/models.py
+const isTypeSafeUserAgent = (userAgent: string | undefined): boolean =>
+  userAgent?.startsWith('typesafe-sdk/') ?? false
+
+function toTypeSafeCatalog(models: readonly OpenAIShapedModel[]) {
+  return { models: models.map(m => ({ name: m.id, description: m.name ?? m.id, release_date: CREATED_AT_UNKNOWN.slice(0, 10) })) }
+}
 
 interface ClaudeCodeModel {
   id: string
@@ -200,6 +215,7 @@ async function handleModelsRequest(c: {
     )
   }
   if (isClaudeCodeUserAgent(ua)) return c.json(toClaudeCodeCatalog(result.models.data))
+  if (isTypeSafeUserAgent(ua)) return c.json(toTypeSafeCatalog(result.models.data))
   if (isCodexUserAgent(ua)) return c.json(await loadCodexCatalog(ua, result.models.data, currentResponsesWebSocketIngress() !== null))
   return c.json(result.models)
 }
@@ -259,15 +275,6 @@ function toGeminiShape(m: OpenAIShapedModel): GeminiModelShape {
     topP: 0.95,
     topK: 40,
   }
-}
-
-export function isChatModel(m: OpenAIShapedModel): boolean {
-  const capType = m.capabilities?.type?.toLowerCase()
-  // Gemini surface skips embeddings/images. Copilot rows come back with
-  // type='chat'; generic providers may omit the field, so treat missing
-  // type as chat too (mirrors listUpstreamModels' default).
-  if (!capType) return true
-  return capType !== 'embedding' && capType !== 'embeddings' && capType !== 'image' && capType !== 'images'
 }
 
 function geminiError(status: 404 | 502, message: string): Response {

@@ -22,7 +22,7 @@
  * `enumerateAddressableModelIds` (vNext has no prefix-addressable-alternate
  * concept in the data plane), so we drive off the same `listUpstreamModels`
  * data OpenAI-shaped `/v1/models` already consumes. Non-chat rows (embeddings,
- * images) are filtered out here — Codex only speaks chat/responses.
+ * images, decisions) are filtered out here — Codex only speaks chat/responses.
  */
 import {
   resolveCodexCatalog,
@@ -31,6 +31,7 @@ import {
   type CodexCatalogCapabilities,
 } from './catalog.ts'
 import { synthesizeCatalogEntry, type CodexSynthesizeModel } from './synthesize.ts'
+import { isChatModel } from '../models/model-types.ts'
 
 interface VNextModelRow extends CodexSynthesizeModel {
   _mapped_to?: string
@@ -40,17 +41,6 @@ interface VNextModelRow extends CodexSynthesizeModel {
       max_context_window_tokens?: number
     }
   }
-}
-
-const isChatRow = (m: VNextModelRow): boolean => {
-  const capType = m.capabilities?.type?.toLowerCase()
-  if (!capType) return true
-  return (
-    capType !== 'embedding'
-    && capType !== 'embeddings'
-    && capType !== 'image'
-    && capType !== 'images'
-  )
 }
 
 /**
@@ -79,7 +69,7 @@ export const assembleCodexCatalog = (
 
   const out: CatalogModel[] = []
   for (const row of models) {
-    if (!isChatRow(row)) continue
+    if (!isChatModel(row)) continue
     // Aliases keep their request id while inheriting the target's client capabilities.
     out.push(synthesizeCatalogEntry(row, matchCatalog(row._mapped_to ?? row.id), capabilities, ingressWebSocket))
   }

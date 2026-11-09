@@ -5,6 +5,8 @@
   "type": "module",
   "exports": {
     "./common": "./src/common/index.ts",
+    "./json": "./src/common/json.ts",
+    "./decision": "./src/decision/index.ts",
     "./flags": "./src/flags/index.ts",
     "./messages": "./src/messages/index.ts",
     "./chat": "./src/chat/index.ts",

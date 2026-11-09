@@ -6,7 +6,7 @@ export { boundedUtf8 } from "./bounded-utf8.ts"
 
 export type UpstreamOperation =
   | "chat.completions" | "responses.create" | "responses.compact" | "messages.create"
-  | "count_tokens" | "embeddings.create" | "images.generate" | "images.edit" | "search"
+  | "count_tokens" | "embeddings.create" | "images.generate" | "images.edit" | "search" | "decisions.create"
 
 interface OperationScope {
   upstreamId: string
@@ -25,6 +25,7 @@ export function operationForProviderRequest(
     case "images_generations": return "images.generate"
     case "images_edits": return "images.edit"
     case "alpha_search": return "search"
+    case "decision": return "decisions.create"
     default: return null
   }
 }

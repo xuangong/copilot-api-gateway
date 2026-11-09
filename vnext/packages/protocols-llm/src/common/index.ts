@@ -15,6 +15,7 @@ export type EndpointKey =
   | 'images_generations'
   | 'images_edits'
   | 'alpha_search'
+  | 'decision'
 
 export const ALL_ENDPOINT_KEYS = [
   'chat_completions',
@@ -25,17 +26,31 @@ export const ALL_ENDPOINT_KEYS = [
   'images_generations',
   'images_edits',
   'alpha_search',
+  'decision',
 ] as const satisfies readonly EndpointKey[]
 
-export type ModelKind = 'chat' | 'embedding' | 'image'
+export type ModelKind = 'chat' | 'embedding' | 'image' | 'decision'
 
-export const ALL_MODEL_KINDS = ['chat', 'embedding', 'image'] as const satisfies readonly ModelKind[]
+export const ALL_MODEL_KINDS = ['chat', 'embedding', 'image', 'decision'] as const satisfies readonly ModelKind[]
 
 export const ENDPOINTS_BY_MODEL_KIND: Record<ModelKind, readonly EndpointKey[]> = {
   chat: ['chat_completions', 'responses', 'messages', 'messages_count_tokens', 'alpha_search'],
   embedding: ['embeddings'],
   image: ['images_generations', 'images_edits'],
+  decision: ['decision'],
 }
+
+/**
+ * Wire dialect of a decision model, which answers typed questions with
+ * probabilities instead of generating text. One `decision` endpoint covers
+ * both: the dialect belongs to each model, and the gateway translates between
+ * them, so either ingress reaches any decision model.
+ *   - `typesafe-systemone`: TypeSafe's `POST /v1/systemone` (`state` plus a
+ *     name-keyed `questions` map), spoken by Copilot's microsoft-decision-1.
+ *   - `openai-decisions`: OpenAI's `POST /v1/decisions` (`input` plus a
+ *     `questions` array), spoken by Copilot's gpt-6-luna-decisions.
+ */
+export type DecisionProtocol = 'typesafe-systemone' | 'openai-decisions'
 
 export function endpointCompatibleWithKind(endpoint: EndpointKey, kind: ModelKind): boolean {
   return ENDPOINTS_BY_MODEL_KIND[kind].includes(endpoint)

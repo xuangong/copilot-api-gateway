@@ -11,6 +11,7 @@ import type { Env } from '../app.ts'
 import { modelsRouter, type DataPlaneAuthCtx } from './models/routes.ts'
 import { embeddingsRouter } from './embeddings/routes.ts'
 import { imagesRouter } from './images/routes.ts'
+import { decisionRouter } from './decision/routes.ts'
 import { ollamaRouter } from './ollama/routes.ts'
 import { messagesHandler } from './chat-flow/messages/http.ts'
 import { chatCompletionsHandler } from './chat-flow/chat-completions/http.ts'
@@ -34,6 +35,7 @@ dataPlane.use('*', async (c, next) => {
 dataPlane.route('/', modelsRouter)
 dataPlane.route('/', embeddingsRouter)
 dataPlane.route('/', imagesRouter)
+dataPlane.route('/', decisionRouter)
 // Ollama-compatible `/api/*` surface. Mounted on dataPlane (not app) so it
 // inherits the auth bridge above. `/api/` is shared with the control plane
 // (`/api/keys`, `/api/upstreams`, …) and this router is matched first, so it

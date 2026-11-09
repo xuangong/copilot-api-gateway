@@ -16,17 +16,20 @@ export interface ModelEndpoints {
   images_generations?: Record<string, never>
   images_edits?: Record<string, never>
   alpha_search?: Record<string, never>
+  decision?: Record<string, never>
 }
 
 /**
  * Derive ModelKind from a ModelEndpoints map.
  *   only `embeddings` → 'embedding'
  *   only `images_*`   → 'image'
+ *   only `decision`   → 'decision'
  *   anything else (incl. mixed, empty) → 'chat'
  */
 export function kindForEndpoints(e: ModelEndpoints): ModelKind {
   const keys = Object.keys(e) as Array<keyof ModelEndpoints>
   if (keys.length === 1 && keys[0] === 'embeddings') return 'embedding'
+  if (keys.length === 1 && keys[0] === 'decision') return 'decision'
   if (keys.length > 0 && keys.every((k) => k === 'images_generations' || k === 'images_edits')) {
     return 'image'
   }

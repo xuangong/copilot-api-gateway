@@ -26,6 +26,7 @@ const KIND_BY_ENDPOINT: Record<string, VariantKind | null> = {
   embeddings: null,
   images_generations: null,
   images_edits: null,
+  decision: null,
 }
 
 /**
