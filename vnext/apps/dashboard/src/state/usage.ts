@@ -25,6 +25,7 @@ import {
   buildRoutedModelDistribution,
   filterUsageRows,
 } from "./usage-model-dimensions"
+import { buildUsageChartSeries, chartGrouping, type ModelKind } from "./usage-chart"
 
 export type UsageRange = "today" | "week" | "28d" | "month"
 export type UsageMetric = "tokens" | "requests"
@@ -39,7 +40,7 @@ export interface UsageSummary {
 }
 
 export interface DistributionRow {
-  /** Stable identity, distinct from the display label for legacy-name collisions. */
+  /** Stable identity, distinct from the display label when names collide. */
   id: string
   label: string
   requests: number
@@ -58,7 +59,7 @@ export interface UsageFilters {
   client: string
   /** Routed model. */
   model: string
-  /** null is all incoming models; an empty string is a legacy record. */
+  /** null is all incoming models. */
   incomingModel: string | null
 }
 
@@ -279,6 +280,9 @@ export function useUsage(isAdmin: boolean) {
   const [periodOffset, setPeriodOffset] = useState(restored?.periodOffset ?? 0)
   const [endDate, setEndDate] = useState<string | null>(restored?.endDate ?? null)
   const [metric, setMetric] = useState<UsageMetric>("tokens")
+  // Shared by the trend chart and the model distribution table, so the two
+  // always count a row under the same model.
+  const [modelKind, setModelKind] = useState<ModelKind>("routed")
   const [filters, setFilters] = useState<UsageFilters>({ user: "", key: "", client: "", model: "", incomingModel: null })
   const [data, setData] = useState<UsageRow[]>([])
   const [participantRows, setParticipantRows] = useState<ParticipantRow[]>([])
@@ -427,7 +431,7 @@ export function useUsage(isAdmin: boolean) {
         ? buildRoutedModelDistribution(filtered, t("dash.unknown"))
         : [],
       byIncomingModel: filters.incomingModel === null
-        ? buildIncomingModelDistribution(filtered, t("dash.legacyUnknown"), t("dash.unknown"))
+        ? buildIncomingModelDistribution(filtered, t("dash.unknown"))
         : [],
       byKey: !filters.key
         ? buildDistribution(filtered, (r) => r.keyId, (r) => keyNameMap.get(r.keyId) ?? r.keyId.slice(0, 8))
@@ -448,72 +452,31 @@ export function useUsage(isAdmin: boolean) {
     }
   }, [filtered, data, filters, isAdmin, participants, t])
 
-  // Chart series: group by the first un-filtered dimension (user > key > client > model).
-  // When the metric is tokens, also emit a separate "Cache" line (dashed) showing cache traffic.
+  // One line per person until an admin picks one, then one per model (see
+  // usage-chart.ts). Per-person token lines get a dashed "Cache" line for the
+  // cache traffic inside them; per-model lines carry their own cache in the
+  // tooltip instead, because a cache total across models adds up nothing.
+  // Worked out before the memo so the per-user chart is not rebuilt when the
+  // routed/incoming switch — which only concerns per-model lines — changes.
+  const grouping = chartGrouping(isAdmin, filters.user)
+  const chartModelKind: ModelKind = grouping === "model" ? modelKind : "routed"
   const chart = useMemo(() => {
     const ops = zoneOps(mode)
     const { keys, labels, isDaily } = buildTimeBuckets(range, periodOffset, new Date(), endDate, mode)
-    const keyNameMap = new Map<string, string>()
-    for (const r of data) keyNameMap.set(r.keyId, r.keyName ?? r.keyId.slice(0, 8))
-
-    const allDims: Array<"user" | "key" | "client" | "model"> = []
-    if (isAdmin && !filters.user) allDims.push("user")
-    if (!filters.key) allDims.push("key")
-    if (!filters.client) allDims.push("client")
-    if (!filters.model) allDims.push("model")
-    const groupBy = allDims[0] ?? "total"
-
-    const seriesNames = new Map<string, string>()
-    const agg = new Map<string, Map<string, number>>()
-    // Cost rides alongside the plotted value rather than replacing it: the line
-    // still draws tokens (or requests), but the tooltip reads out what that
-    // bucket cost, which is the number nobody can infer from the y-axis.
-    const costAgg = new Map<string, Map<string, number>>()
-    const cacheAgg = new Map<string, number>()
-    for (const k of keys) { agg.set(k, new Map()); costAgg.set(k, new Map()); cacheAgg.set(k, 0) }
-
-    for (const r of filtered) {
-      const bucket = utcHourToBucketKey(r.hour, isDaily, ops)
-      if (!agg.has(bucket)) continue
-      let seriesKey: string
-      if (groupBy === "user") {
-        const who = usageAttribution(participants, r.keyId)
-        seriesKey = who.id
-        seriesNames.set(seriesKey, who.label)
-      } else if (groupBy === "key") {
-        seriesKey = r.keyId
-        seriesNames.set(r.keyId, keyNameMap.get(r.keyId) ?? r.keyId.slice(0, 8))
-      } else if (groupBy === "client") {
-        seriesKey = r.client || "unknown"
-        seriesNames.set(seriesKey, seriesKey)
-      } else if (groupBy === "model") {
-        seriesKey = r.model || "unknown"
-        seriesNames.set(seriesKey, seriesKey)
-      } else {
-        seriesKey = "total"
-        seriesNames.set("total", "Total")
-      }
-      const m = agg.get(bucket)!
-      const cache = (r.cacheReadTokens ?? 0) + (r.cacheCreationTokens ?? 0)
-      const value = metric === "requests" ? (r.requests ?? 0) : (r.inputTokens ?? 0) + (r.outputTokens ?? 0) + cache
-      m.set(seriesKey, (m.get(seriesKey) ?? 0) + value)
-      const cm = costAgg.get(bucket)!
-      const cost = r.cost && typeof r.cost.totalUSD === "number" ? r.cost.totalUSD : 0
-      cm.set(seriesKey, (cm.get(seriesKey) ?? 0) + cost)
-      if (metric === "tokens") cacheAgg.set(bucket, (cacheAgg.get(bucket) ?? 0) + cache)
-    }
-
-    const seriesList = [...seriesNames.keys()]
-    const series = seriesList.map((sk) => ({
-      label: seriesNames.get(sk) ?? sk,
-      data: keys.map((k) => agg.get(k)?.get(sk) ?? 0),
-      cost: keys.map((k) => costAgg.get(k)?.get(sk) ?? 0),
-    }))
-    const cacheData = keys.map((k) => cacheAgg.get(k) ?? 0)
-    const cacheHasData = metric === "tokens" && cacheData.some((v) => v > 0)
-
-    return { labels, series, cacheData: cacheHasData ? cacheData : null, bucketKeys: keys, isDaily }
-  }, [filtered, data, range, periodOffset, endDate, metric, filters, isAdmin, participants, mode])
+    const series = buildUsageChartSeries({
+      rows: filtered,
+      bucketKeys: keys,
+      bucketOf: (r) => utcHourToBucketKey(r.hour, isDaily, ops),
+      grouping,
+      modelKind: chartModelKind,
+      metric,
+      person: (r) => usageAttribution(participants, r.keyId),
+      unknownLabel: t("dash.unknown"),
+    })
+    const cacheData = keys.map((_, i) => series.reduce((sum, s) => sum + (s.cache[i] ?? 0), 0))
+    const cacheHasData = grouping === "user" && metric === "tokens" && cacheData.some((v) => v > 0)
+    return { labels, series, grouping, cacheData: cacheHasData ? cacheData : null, bucketKeys: keys, isDaily }
+  }, [filtered, range, periodOffset, endDate, metric, grouping, participants, mode, chartModelKind, t])
 
   // One square per closing day, each holding that day's trailing 28-day totals.
   // Built from its own wider fetch, filtered the same way as the window rows.
@@ -619,6 +582,7 @@ export function useUsage(isAdmin: boolean) {
     periodOffset,
     endDate,
     metric,
+    modelKind,
     filters,
     data,
     loading,
@@ -631,6 +595,7 @@ export function useUsage(isAdmin: boolean) {
     reload,
     refresh,
     setMetric,
+    setModelKind,
     switchRange,
     chooseEndDate,
     shiftPeriod,

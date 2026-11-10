@@ -44,26 +44,20 @@ describe("incoming model select values", () => {
       expect(decodeIncomingModelOption(incomingModelOptionValue(model))).toBe(model)
     }
     expect(decodeIncomingModelOption("all")).toBeNull()
-    expect(decodeIncomingModelOption("legacy")).toBe("")
+    expect(decodeIncomingModelOption("legacy")).toBeNull()
   })
 
   test("maps incoming filter state to its matching select option", () => {
     expect(incomingModelFilterValue(null)).toBe("all")
-    expect(incomingModelFilterValue("")).toBe("legacy")
+    expect(incomingModelFilterValue("")).toBe("model:")
     expect(incomingModelFilterValue("all")).toBe("model:all")
     expect(incomingModelFilterValue("legacy")).toBe("model:legacy")
     expect(incomingModelFilterValue("model:caller-alias")).toBe("model:model:caller-alias")
   })
 
-  test("lists legacy once and omits its duplicate encoded model option", () => {
-    expect(
-      incomingModelSelectOptions(["caller-b", "", "caller-a", "caller-a"], {
-        all: "All",
-        legacy: "Legacy",
-      }),
-    ).toEqual([
+  test("lists each incoming model once, with no legacy option", () => {
+    expect(incomingModelSelectOptions(["caller-b", "", "caller-a", "caller-a"], { all: "All" })).toEqual([
       { value: "all", label: "All" },
-      { value: "legacy", label: "Legacy" },
       { value: "model:caller-a", label: "caller-a" },
       { value: "model:caller-b", label: "caller-b" },
     ])
@@ -89,7 +83,7 @@ describe("filterUsageRows", () => {
     expect(filterUsageRows(rows, allFilters, participants)).toEqual(rows)
   })
 
-  test("selects legacy unknown incoming model only", () => {
+  test("matches an empty incoming model exactly", () => {
     expect(filterUsageRows(rows, { ...allFilters, incomingModel: "" }, participants)).toEqual([rows[2] as UsageRow])
   })
 
@@ -138,20 +132,21 @@ describe("model distributions", () => {
     ]))
   })
 
-  test("keeps legacy and a real matching label in separate incoming groups", () => {
+  test("keeps an unrecorded model and a real model named like the fallback apart", () => {
     const distribution = buildIncomingModelDistribution([
-      row({ incomingModel: "", model: "legacy-target", requests: 2 }),
-      row({ incomingModel: "Legacy / Unknown", model: "named-target", requests: 3 }),
-    ], "Legacy / Unknown", "Unknown")
+      row({ incomingModel: "", model: "target", requests: 2 }),
+      row({ incomingModel: "Unknown", model: "named-target", requests: 3 }),
+    ], "Unknown")
 
     expect(distribution).toMatchObject([
-      { label: "Legacy / Unknown", requests: 2, routedModels: ["legacy-target"] },
-      { label: "Legacy / Unknown", requests: 3, routedModels: ["named-target"] },
+      { label: "Unknown", requests: 2, routedModels: ["target"] },
+      { label: "Unknown", requests: 3, routedModels: ["named-target"] },
     ])
+    expect(new Set(distribution.map((value) => value.id)).size).toBe(2)
   })
 
-  test("incoming distribution preserves legacy rows and lists each routed model once", () => {
-    const distribution = buildIncomingModelDistribution(rows, "Legacy / Unknown", "Unknown")
+  test("incoming distribution lists each routed model once", () => {
+    const distribution = buildIncomingModelDistribution(rows, "Unknown")
     expect(distribution).toMatchObject([
       {
         label: "alias-a",
@@ -163,7 +158,7 @@ describe("model distributions", () => {
         routedModels: ["target", "target-other"],
       },
       {
-        label: "Legacy / Unknown",
+        label: "Unknown",
         requests: 4,
         input: 40,
         output: 20,
@@ -188,7 +183,7 @@ describe("model distributions", () => {
     const summary = summarizeUsageRows(rows)
     for (const distribution of [
       buildRoutedModelDistribution(rows, "Unknown"),
-      buildIncomingModelDistribution(rows, "Legacy / Unknown", "Unknown"),
+      buildIncomingModelDistribution(rows, "Unknown"),
     ]) {
       expect(summarizeUsageRows(distribution)).toEqual(summary)
     }

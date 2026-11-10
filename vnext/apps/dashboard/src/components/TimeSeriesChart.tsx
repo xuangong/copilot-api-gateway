@@ -43,6 +43,13 @@ export interface ChartDataset {
    * Cache line is a slice of another series' tokens, not a separate bill).
    */
   costData?: number[]
+  /** Starts hidden; clicking its legend entry shows it. */
+  hidden?: boolean
+  /**
+   * Cache tokens per bucket, aligned with `data` and already inside it. Named
+   * in the tooltip so a token count can be read as fresh versus cached.
+   */
+  cacheData?: number[]
 }
 
 export interface ChartPointLink {
@@ -69,6 +76,10 @@ interface Props {
   pointLink?: ChartPointLink
   /** Caption for the summed-cost footer row. Passed in so it can be localised. */
   totalCostLabel?: string
+  /** List tooltip rows from the largest value down. */
+  sortTooltip?: boolean
+  /** Tooltip note for a row's cache tokens, e.g. "incl. 1,234 cache". Localised by the caller. */
+  formatCache?: (tokens: number) => string
 }
 
 function isDarkTheme(): boolean {
@@ -111,7 +122,7 @@ function hexToRgba(hex: string, alpha: number): string {
  * Chart.js-backed time-series chart. Bundled — no CDN.
  * Dark-mode aware via `theme-changed` window event.
  */
-export function TimeSeriesChart({ labels, datasets, height = 300, unitLabel = "", yTickFormat, pointLink, totalCostLabel = "Total cost" }: Props) {
+export function TimeSeriesChart({ labels, datasets, height = 300, unitLabel = "", yTickFormat, pointLink, totalCostLabel = "Total cost", sortTooltip = false, formatCache }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const chartRef = useRef<Chart | null>(null)
   const tooltipRef = useRef<HTMLDivElement | null>(null)
@@ -124,6 +135,18 @@ export function TimeSeriesChart({ labels, datasets, height = 300, unitLabel = ""
   // dataset type.
   const costRef = useRef<Array<number[] | null>>([])
   costRef.current = datasets.map((d) => d.costData ?? null)
+  const cacheRef = useRef<Array<number[] | null>>([])
+  cacheRef.current = datasets.map((d) => d.cacheData ?? null)
+  // Through a ref for the same reason as pointLink: callers pass a fresh
+  // function every render, and the chart must not rebuild for it.
+  const formatCacheRef = useRef(formatCache)
+  formatCacheRef.current = formatCache
+  // Legend choices by line name. The chart is rebuilt whenever its data
+  // changes — every auto-refresh — and a model the user switched on or off
+  // should stay that way rather than snap back to the default. A choice, once
+  // made, outlives the default: a model switched back on stays on even after
+  // it drops out of the top few.
+  const legendChoices = useRef(new Map<string, boolean>())
   // Only whether there is a link, never which one. Callers build pointLink as a
   // fresh object literal every render — it closes over the data — so depending
   // on its identity would tear the chart down and replay its animation on any
@@ -159,6 +182,7 @@ export function TimeSeriesChart({ labels, datasets, height = 300, unitLabel = ""
       pointRadius: 0,
       pointHoverRadius: 4,
       tension: 0.25,
+      hidden: legendChoices.current.get(d.label) ?? d.hidden ?? false,
     }))
 
     chartRef.current = new Chart(canvas, {
@@ -172,15 +196,33 @@ export function TimeSeriesChart({ labels, datasets, height = 300, unitLabel = ""
           legend: {
             display: true,
             labels: { color: tickC, font: { family: "Outfit, sans-serif", size: 11 } },
+            onClick: (_event, item, legend) => {
+              const index = item.datasetIndex
+              if (index === undefined) return
+              const chart = legend.chart
+              const hide = chart.isDatasetVisible(index)
+              if (hide) chart.hide(index)
+              else chart.show(index)
+              legendChoices.current.set(String(chart.data.datasets[index]?.label ?? ""), hide)
+            },
           },
           tooltip: hasPointLink
-            ? { enabled: false, external: (ctx) => renderLinkTooltip(ctx, tooltipRef.current, unitLabel, linkRef, hideTimer, overTip, costRef, totalCostLabel) }
+            ? { enabled: false, external: (ctx) => renderLinkTooltip(ctx, tooltipRef.current, unitLabel, linkRef, hideTimer, overTip, costRef, totalCostLabel, { cacheRef, formatCacheRef, sort: sortTooltip }) }
             : {
+                ...(sortTooltip ? { itemSort: (a, b) => Number(b.parsed.y) - Number(a.parsed.y) } : {}),
                 callbacks: {
+                  // Same bottom line as the linked tooltip, hidden lines included.
+                  footer: (items) => {
+                    const index = items[0]?.dataIndex
+                    if (index === undefined || !totalCostLabel) return ""
+                    const total = bucketTotalCost(costRef.current, index)
+                    return total > 0 ? `${totalCostLabel}: ${formatTooltipCost(total)}` : ""
+                  },
                   label: (c) => {
                     const cost = costRef.current[c.datasetIndex]?.[c.dataIndex]
+                    const cache = cacheRef.current[c.datasetIndex]?.[c.dataIndex]
                     const suffix = typeof cost === "number" && cost > 0 ? `  ·  ${formatTooltipCost(cost)}` : ""
-                    return `${c.dataset.label}: ${Number(c.parsed.y).toLocaleString()}${unitLabel}${suffix}`
+                    return `${c.dataset.label}: ${tooltipValueText(Number(c.parsed.y), unitLabel, cache, formatCacheRef.current)}${suffix}`
                   },
                 },
               },
@@ -204,7 +246,7 @@ export function TimeSeriesChart({ labels, datasets, height = 300, unitLabel = ""
         chartRef.current = null
       }
     }
-  }, [labels, datasets, height, unitLabel, yTickFormat, themeTick, hasPointLink, totalCostLabel])
+  }, [labels, datasets, height, unitLabel, yTickFormat, themeTick, hasPointLink, totalCostLabel, sortTooltip])
 
   useEffect(() => {
     const handler = () => setThemeTick((n) => n + 1)
@@ -298,6 +340,8 @@ export interface TooltipRow {
   color: string
   /** USD for this bucket, when the series has a cost of its own. */
   cost?: number
+  /** Cache tokens inside `value`, when the series reports them. */
+  cache?: number
 }
 
 /**
@@ -312,16 +356,31 @@ export function visibleTooltipRows(rows: TooltipRow[]): TooltipRow[] {
 }
 
 /**
- * What the whole bucket cost.
- *
- * Summed over every row, not just the ones visibleTooltipRows keeps: a row is
- * hidden for having no tokens, which is a statement about the y-axis, and a
- * total that quietly drops money because of it would not add up. Rows without a
- * cost — the Cache line — contribute nothing rather than being counted twice,
- * since their spend is already inside the series above them.
+ * What the whole bucket cost, from every series' cost data rather than the
+ * tooltip's rows. The tooltip lists only visible lines — models past the top
+ * few start hidden, and the legend can hide any line — and drops rows with no
+ * tokens, but money adds up across all of them, so the bottom line must too.
+ * Series without cost data — the Cache line — contribute nothing rather than
+ * being counted twice, since their spend is already inside the other series.
  */
-export function tooltipTotalCost(rows: TooltipRow[]): number {
-  return rows.reduce((sum, r) => sum + (typeof r.cost === "number" ? r.cost : 0), 0)
+export function bucketTotalCost(costs: ReadonlyArray<readonly number[] | null>, index: number): number {
+  return costs.reduce((sum, c) => sum + (c?.[index] ?? 0), 0)
+}
+
+/** Largest value first; the input is left as it was. */
+export function sortTooltipRows(rows: TooltipRow[]): TooltipRow[] {
+  return [...rows].sort((a, b) => b.value - a.value)
+}
+
+/** A row's value as the tooltip shows it, with its cache share when there is one to name. */
+export function tooltipValueText(
+  value: number,
+  unitLabel: string,
+  cache: number | undefined,
+  formatCache?: (tokens: number) => string,
+): string {
+  const note = formatCache && typeof cache === "number" && cache > 0 ? ` (${formatCache(cache)})` : ""
+  return `${value.toLocaleString()}${unitLabel}${note}`
 }
 
 function hideTooltip(el: HTMLDivElement | null) {
@@ -338,6 +397,11 @@ function renderLinkTooltip(
   overTip: { current: boolean },
   costRef: { current: Array<number[] | null> },
   totalCostLabel: string,
+  extras: {
+    cacheRef: { current: Array<number[] | null> }
+    formatCacheRef: { current: ((tokens: number) => string) | undefined }
+    sort: boolean
+  },
 ) {
   if (!el || !linkRef.current) return
   const { chart, tooltip } = ctx
@@ -365,27 +429,30 @@ function renderLinkTooltip(
   const title = tooltip.title[0] ?? ""
   const allRows: TooltipRow[] = tooltip.dataPoints.map((p) => {
     const cost = costRef.current[p.datasetIndex]?.[p.dataIndex]
+    const cache = extras.cacheRef.current[p.datasetIndex]?.[p.dataIndex]
     return {
       label: String(p.dataset.label ?? ""),
       value: Number(p.parsed.y),
       color: String(p.dataset.borderColor ?? ""),
       ...(typeof cost === "number" ? { cost } : {}),
+      ...(typeof cache === "number" ? { cache } : {}),
     }
   })
-  const rows = visibleTooltipRows(allRows)
+  const rows = visibleTooltipRows(extras.sort ? sortTooltipRows(allRows) : allRows)
     .map((r) => {
       const costHtml =
         typeof r.cost === "number" && r.cost > 0
           ? `<span class="pg-chart-tip-cost">${escapeHtml(formatTooltipCost(r.cost))}</span>`
           : ""
-      return `<div class="pg-chart-tip-row"><span class="pg-chart-tip-dot" style="background:${escapeHtml(r.color)}"></span>${escapeHtml(r.label)}<b>${r.value.toLocaleString()}${escapeHtml(unitLabel)}${costHtml}</b></div>`
+      const valueText = tooltipValueText(r.value, unitLabel, r.cache, extras.formatCacheRef.current)
+      return `<div class="pg-chart-tip-row"><span class="pg-chart-tip-dot" style="background:${escapeHtml(r.color)}"></span>${escapeHtml(r.label)}<b>${escapeHtml(valueText)}${costHtml}</b></div>`
     })
     .join("")
   // Shown whenever the bucket cost anything, even when one series is the whole
   // of it: a reader who scans for the bottom line should find one in the same
   // place every time, and a total that only appears past two series is a total
   // you have to go looking for.
-  const total = tooltipTotalCost(allRows)
+  const total = bucketTotalCost(costRef.current, index)
   const totalHtml =
     total > 0
       ? `<div class="pg-chart-tip-total">${escapeHtml(totalCostLabel)}<b>${escapeHtml(formatTooltipCost(total))}</b></div>`

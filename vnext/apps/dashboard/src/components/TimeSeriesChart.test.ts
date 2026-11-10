@@ -114,38 +114,17 @@ describe("formatTooltipCost", () => {
   })
 })
 
-describe("tooltipTotalCost", () => {
-  test("adds up the per-series costs", async () => {
-    const { tooltipTotalCost } = await import("./TimeSeriesChart")
-    expect(
-      tooltipTotalCost([
-        { label: "a", value: 10, color: "#1", cost: 1.5 },
-        { label: "b", value: 20, color: "#2", cost: 2.25 },
-      ]),
-    ).toBeCloseTo(3.75, 10)
+describe("bucketTotalCost", () => {
+  // Per-model lines past the top few start hidden, and the legend can hide any
+  // line; the tooltip only lists visible ones. Money still adds up across
+  // models, so the bottom line must not lose the hidden ones.
+  test("includes series the tooltip does not show", async () => {
+    const { bucketTotalCost } = await import("./TimeSeriesChart")
+    expect(bucketTotalCost([[1, 2], [0.5, 0.25], [0, 4]], 1)).toBeCloseTo(6.25, 10)
   })
 
-  // The Cache line carries no cost of its own — its spend is already inside the
-  // series above it, so counting it would bill the bucket twice.
-  test("ignores a row with no cost", async () => {
-    const { tooltipTotalCost } = await import("./TimeSeriesChart")
-    expect(
-      tooltipTotalCost([
-        { label: "Xian Zhang", value: 10, color: "#1", cost: 4 },
-        { label: "Cache", value: 9, color: "#2" },
-      ]),
-    ).toBe(4)
-  })
-
-  // A row hidden for having no tokens is a statement about the y-axis, not
-  // about money. Totalling only the visible rows could drop real spend.
-  test("counts a zero-token row that still cost something", async () => {
-    const { tooltipTotalCost } = await import("./TimeSeriesChart")
-    expect(tooltipTotalCost([{ label: "a", value: 0, color: "#1", cost: 0.5 }])).toBe(0.5)
-  })
-
-  test("is zero when nothing carries a cost", async () => {
-    const { tooltipTotalCost } = await import("./TimeSeriesChart")
-    expect(tooltipTotalCost([{ label: "a", value: 3, color: "#1" }])).toBe(0)
+  test("skips series without cost data, such as the Cache line", async () => {
+    const { bucketTotalCost } = await import("./TimeSeriesChart")
+    expect(bucketTotalCost([[3], null], 0)).toBe(3)
   })
 })

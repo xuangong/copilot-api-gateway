@@ -72,10 +72,7 @@ export function UsageFiltersBar({ isAdmin, filters, dimensions, onChange, onClea
           value={incomingModelFilterValue(filters.incomingModel)}
           ariaLabel={t("dash.incomingModel")}
           onChange={(value) => onChange({ incomingModel: decodeIncomingModelOption(value) })}
-          options={incomingModelSelectOptions(dimensions.incomingModels, {
-            all: t("dash.all"),
-            legacy: t("dash.legacy"),
-          })}
+          options={incomingModelSelectOptions(dimensions.incomingModels, { all: t("dash.all") })}
         />
       </FilterField>
       {/* Usage is recorded per key only, so a shared key's traffic counts in

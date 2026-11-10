@@ -2,7 +2,6 @@ import type { UsageRow } from "../api/usage"
 import { rowMatchesUser, type ParticipantIndex } from "../tabs/usage/participants"
 
 export const ALL_INCOMING_MODEL_OPTION = "all"
-export const LEGACY_INCOMING_MODEL_OPTION = "legacy"
 const INCOMING_MODEL_VALUE_PREFIX = "model:"
 
 export function incomingModelOptionValue(model: string): string {
@@ -10,14 +9,10 @@ export function incomingModelOptionValue(model: string): string {
 }
 
 export function incomingModelFilterValue(model: string | null): string {
-  if (model === null) return ALL_INCOMING_MODEL_OPTION
-  if (model === "") return LEGACY_INCOMING_MODEL_OPTION
-  return incomingModelOptionValue(model)
+  return model === null ? ALL_INCOMING_MODEL_OPTION : incomingModelOptionValue(model)
 }
 
 export function decodeIncomingModelOption(value: string): string | null {
-  if (value === ALL_INCOMING_MODEL_OPTION) return null
-  if (value === LEGACY_INCOMING_MODEL_OPTION) return ""
   return value.startsWith(INCOMING_MODEL_VALUE_PREFIX)
     ? value.slice(INCOMING_MODEL_VALUE_PREFIX.length)
     : null
@@ -25,11 +20,10 @@ export function decodeIncomingModelOption(value: string): string | null {
 
 export function incomingModelSelectOptions(
   models: readonly string[],
-  labels: { all: string; legacy: string },
+  labels: { all: string },
 ): Array<{ value: string; label: string }> {
   return [
     { value: ALL_INCOMING_MODEL_OPTION, label: labels.all },
-    { value: LEGACY_INCOMING_MODEL_OPTION, label: labels.legacy },
     ...[...new Set(models)].filter((model) => model !== "").sort().map((model) => ({ value: incomingModelOptionValue(model), label: model })),
   ]
 }
@@ -54,12 +48,12 @@ export interface UsageModelFilters {
   key: string
   client: string
   model: string
-  /** null is all incoming models; an empty string is a legacy record. */
+  /** null is all incoming models. */
   incomingModel: string | null
 }
 
 export interface ModelDistributionRow {
-  /** Stable identity; can differ from label when a real model matches the legacy label. */
+  /** Stable identity; can differ from label when a real model matches the unknown label. */
   id: string
   label: string
   requests: number
@@ -184,14 +178,14 @@ export function buildRoutedModelDistribution(rows: UsageRow[], unknownLabel: str
 
 export function buildIncomingModelDistribution(
   rows: UsageRow[],
-  legacyLabel: string,
-  unknownRoutedModelLabel: string,
+  unknownLabel: string,
 ): ModelDistributionRow[] {
   return distributeBy(
     rows,
     (row) => row.incomingModel,
-    (row, key) => key === "" ? legacyLabel : row.incomingModel,
+    // Empty only when no model was recorded at all (see adaptUsageRow).
+    (row, key) => key === "" ? unknownLabel : row.incomingModel,
     true,
-    unknownRoutedModelLabel,
+    unknownLabel,
   )
 }

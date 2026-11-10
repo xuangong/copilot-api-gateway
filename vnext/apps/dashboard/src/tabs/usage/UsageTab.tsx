@@ -39,7 +39,6 @@ export function UsageTab() {
   // joins are siblings: the row is hovered in one and the days light up in the
   // other.
   const [forecastRun, setForecastRun] = useState<number | null>(null)
-  const [modelDistribution, setModelDistribution] = useState<"routed" | "incoming">("routed")
   const RANGE_OPTIONS: Array<{ id: UsageRange; label: string }> = [
     { id: "today", label: t("dash.day") },
     { id: "week", label: t("dash.week") },
@@ -50,6 +49,10 @@ export function UsageTab() {
     { id: "tokens", label: t("dash.metricTokens") },
     { id: "requests", label: t("dash.metricRequests") },
   ]
+  const MODEL_KIND_OPTIONS: Array<{ id: "routed" | "incoming"; label: string }> = [
+    { id: "routed", label: t("dash.routedModel") },
+    { id: "incoming", label: t("dash.incomingModel") },
+  ]
   // The local option names the zone it means. "Local" on its own is the thing
   // this switch exists to remove: a boundary the page will not say out loud.
   const TZ_OPTIONS: Array<{ id: TimeZoneMode; label: string }> = [
@@ -59,11 +62,20 @@ export function UsageTab() {
   const isDark = typeof document !== "undefined" && document.documentElement.getAttribute("data-theme") !== "light"
   const palette = paletteFor(isDark ? "dark" : "light")
   const chartDatasets = useMemo<ChartDataset[]>(() => {
+    // Per-model lines are ordered by usage, which shifts between refreshes and
+    // between tokens and requests; colouring by that rank would swap two
+    // models' colours under the reader. Colour by name instead.
+    const colorSlot = usage.chart.grouping === "model"
+      ? new Map([...usage.chart.series].map((s) => s.id).sort().map((id, i) => [id, i] as const))
+      : null
     const series: ChartDataset[] = usage.chart.series.map((s, i) => ({
       label: s.label,
       data: s.data,
-      color: palette[i % palette.length] ?? "#888888",
+      color: palette[(colorSlot?.get(s.id) ?? i) % palette.length] ?? "#888888",
       costData: s.cost,
+      // Per-model lines cross one another, and filled areas would bury the
+      // lower ones; each line names its own cache in the tooltip instead.
+      ...(usage.chart.grouping === "model" ? { fill: false, hidden: s.hidden, cacheData: s.cache } : {}),
     }))
     if (usage.chart.cacheData) {
       series.push({
@@ -250,6 +262,22 @@ export function UsageTab() {
           />
         </div>
 
+        <div className="flex items-center justify-between gap-3 flex-wrap mt-2">
+          <p className="text-[11px] text-themed-dim">
+            {usage.chart.grouping === "user"
+              ? t("dash.chartLinesByUser")
+              : t(usage.modelKind === "routed" ? "dash.chartLinesByRoutedModel" : "dash.chartLinesByIncomingModel")}
+          </p>
+          {usage.chart.grouping === "model" ? (
+            <SegmentedGroup
+              options={MODEL_KIND_OPTIONS}
+              value={usage.modelKind}
+              onChange={usage.setModelKind}
+              ariaLabel={t("dash.modelDistributionToggle")}
+            />
+          ) : null}
+        </div>
+
         <div className="mt-2">
           <TimeSeriesChart
             labels={usage.chart.labels}
@@ -257,6 +285,8 @@ export function UsageTab() {
             unitLabel={unitLabel}
             height={320}
             totalCostLabel={t("dash.tooltipTotalCost")}
+            sortTooltip={usage.chart.grouping === "model"}
+            formatCache={(n) => t("dash.tooltipCacheShare", { n: n.toLocaleString() })}
             {...(dayLink ? { pointLink: dayLink } : {})}
           />
         </div>
@@ -272,19 +302,16 @@ export function UsageTab() {
       <div className="flex items-center justify-between mt-5">
         <span className="text-xs font-medium text-themed-dim uppercase tracking-widest">{t("dash.modelDistribution")}</span>
         <SegmentedGroup
-          options={[
-            { id: "routed", label: t("dash.routedModel") },
-            { id: "incoming", label: t("dash.incomingModel") },
-          ]}
-          value={modelDistribution}
-          onChange={setModelDistribution}
+          options={MODEL_KIND_OPTIONS}
+          value={usage.modelKind}
+          onChange={usage.setModelKind}
           ariaLabel={t("dash.modelDistributionToggle")}
         />
       </div>
       <UsageDistributionTable
-        title={modelDistribution === "routed" ? t("dash.byRoutedModel") : t("dash.byIncomingModel")}
-        rows={modelDistribution === "routed" ? usage.distributions.byRoutedModel : usage.distributions.byIncomingModel}
-        showRoutedModels={modelDistribution === "incoming"}
+        title={usage.modelKind === "routed" ? t("dash.byRoutedModel") : t("dash.byIncomingModel")}
+        rows={usage.modelKind === "routed" ? usage.distributions.byRoutedModel : usage.distributions.byIncomingModel}
+        showRoutedModels={usage.modelKind === "incoming"}
       />
       {isAdmin ? <UsageDistributionTable title={t("dash.byUser")} rows={usage.distributions.byUser} /> : null}
       <UsageDistributionTable title={t("dash.byKey")} rows={usage.distributions.byKey} />
@@ -356,7 +383,7 @@ function FilterHint({
   if (filters.model) selected.push(t("dash.filterRoutedModel", { value: filters.model }))
   else remaining.push(t("dash.routedModel"))
   if (filters.incomingModel !== null) {
-    selected.push(t("dash.filterIncomingModel", { value: filters.incomingModel || t("dash.legacyUnknown") }))
+    selected.push(t("dash.filterIncomingModel", { value: filters.incomingModel || t("dash.unknown") }))
   } else {
     remaining.push(t("dash.incomingModel"))
   }

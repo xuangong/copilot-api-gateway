@@ -11,7 +11,7 @@ export interface UsageRow {
   keyName?: string
   ownerId?: string
   ownerName?: string
-  /** Logical model requested before a key mapping; empty for legacy records. */
+  /** Logical model requested before a key mapping; the routed model on records that predate the field (see adaptUsageRow). */
   incomingModel: string
   model?: string
   client?: string
@@ -64,7 +64,9 @@ export function adaptUsageRow(r: ServerUsageRow): UsageRow {
     keyName: r.keyName,
     ownerId: r.ownerId,
     ownerName: r.ownerName,
-    incomingModel: r.incomingModel ?? "",
+    // Empty only on records from before the column existed, when key model
+    // mappings did not exist either: the model asked for was the one served.
+    incomingModel: r.incomingModel || r.model || "",
     model: r.model,
     client: r.client,
     requests: r.requests ?? 0,
