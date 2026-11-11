@@ -3,7 +3,6 @@ import { useMemo } from "react"
 import { AuthProvider, useAuth } from "./state/auth"
 import { ToastProvider, ToastHost } from "./state/toast"
 import { useHashTab } from "./state/router"
-import { PlaceholderTab } from "./components/PlaceholderTab"
 import { UpstreamsTab } from "./tabs/upstreams/UpstreamsTab"
 import { ProxiesTab } from "./tabs/proxies/ProxiesTab"
 import { KeysTab } from "./tabs/keys/KeysTab"
@@ -15,6 +14,7 @@ import { UsageTab } from "./tabs/usage/UsageTab"
 import { ModelsTab } from "./tabs/models/ModelsTab"
 import { PricingTab } from "./tabs/pricing/PricingTab"
 import { useT } from "./state/i18n"
+import { EmptyState } from "./ui/empty-state"
 import { AppShell } from "./shell/AppShell"
 import { allowedTabIds, buildNavGroups, DEFAULT_TAB } from "./shell/navigation"
 
@@ -28,10 +28,10 @@ function Shell() {
   const offNavTitles = useMemo(() => ({ "agent-remote": t("dash.remote.title"), settings: t("dash.settings") }), [t])
 
   if (loading) {
-    return <div className="min-h-screen flex items-center justify-center text-themed-dim">Loading…</div>
+    return <div className="flex min-h-screen items-center justify-center text-fg-subtle">Loading…</div>
   }
   if (error) {
-    return <div className="min-h-screen flex items-center justify-center text-accent-red text-sm">{error}</div>
+    return <div role="alert" className="flex min-h-screen items-center justify-center text-sm text-danger">{error}</div>
   }
   if (!session) return null
 
@@ -67,7 +67,7 @@ function TabBody({ tab }: { tab: string }) {
     case "settings":
       return <SettingsTab />
     default:
-      return <PlaceholderTab title="Unknown tab" />
+      return <EmptyState title="Unknown tab" />
   }
 }
 

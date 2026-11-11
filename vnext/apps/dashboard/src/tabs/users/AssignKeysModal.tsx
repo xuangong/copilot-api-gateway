@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { Modal } from "../../components/Modal"
+import { Check } from "lucide-react"
 import { useT } from "../../state/i18n"
 import { useToast } from "../../state/toast"
 import {
@@ -8,10 +8,14 @@ import {
   unassignKeyFromUser,
   type KeyAssignmentInfo,
 } from "../../api/users"
+import { Button } from "../../ui/button"
+import { cn } from "../../ui/cn"
+import { Dialog } from "../../ui/dialog"
 
 interface Props {
   userId: string
   userName: string
+  /** Called on every close (Esc, overlay click, Done); the caller reloads users. */
   onClose: () => void
 }
 
@@ -41,6 +45,7 @@ export function AssignKeysModal({ userId, userName, onClose }: Props) {
   }, [userId, toast])
 
   const toggle = async (k: KeyAssignmentInfo) => {
+    if (pending[k.id]) return
     setPending((p) => ({ ...p, [k.id]: true }))
     try {
       if (k.assigned) {
@@ -60,49 +65,67 @@ export function AssignKeysModal({ userId, userName, onClose }: Props) {
   }
 
   const assignedCount = keys.filter((k) => k.assigned).length
+  const showList = !loading && keys.length > 0
 
   return (
-    <Modal open onClose={onClose} title={t("dash.assignKeysToTitle", { name: userName })} size="sm">
+    <Dialog
+      open
+      onOpenChange={(next) => {
+        if (!next) onClose()
+      }}
+      title={t("dash.assignKeysToTitle", { name: userName })}
+      className="max-w-sm"
+      footer={
+        showList ? (
+          <div className="flex flex-1 items-center justify-between gap-3">
+            <span className="text-xs text-fg-muted tabular-nums">
+              <span className="font-mono font-medium text-brand-text">{assignedCount}</span> / {keys.length} {t("dash.assignedSuffix")}
+            </span>
+            <Button variant="primary" size="sm" onClick={onClose}>
+              {t("dash.doneBtn")}
+            </Button>
+          </div>
+        ) : undefined
+      }
+    >
       {loading ? (
-        <div className="text-center py-6 text-themed-dim text-xs">{t("dash.loadingShort")}</div>
+        <div className="text-center py-6 text-fg-muted text-xs">{t("dash.loadingShort")}</div>
       ) : keys.length === 0 ? (
-        <div className="text-center py-6 text-themed-dim text-xs">{t("dash.noKeysAvailableShort")}</div>
+        <div className="text-center py-6 text-fg-muted text-xs">{t("dash.noKeysAvailableShort")}</div>
       ) : (
-        <>
-          <div className="max-h-64 overflow-y-auto" style={{ scrollbarWidth: "none" }}>
-            {keys.map((k) => (
+        <div className="max-h-64 overflow-y-auto" style={{ scrollbarWidth: "none" }}>
+          {keys.map((k) => {
+            const busy = !!pending[k.id]
+            return (
+              // aria-disabled rather than disabled: a disabled button drops focus, which would
+              // throw keyboard users out of the list mid-toggle.
               <button
                 key={k.id}
+                type="button"
+                role="checkbox"
+                aria-checked={k.assigned}
+                aria-disabled={busy || undefined}
                 onClick={() => toggle(k)}
-                disabled={!!pending[k.id]}
-                className={`flex items-center gap-3 py-2.5 px-1 w-full text-left cursor-pointer select-none transition-colors duration-100 rounded-md ${
-                  k.assigned ? "hover:bg-accent-violet/5" : "hover:bg-white/3"
-                }`}
+                className={cn(
+                  "flex items-center gap-3 py-2.5 px-1 w-full text-left cursor-pointer select-none transition-colors duration-100 rounded-md hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-text",
+                  busy && "cursor-default opacity-50",
+                )}
               >
                 <span
-                  className={`w-[18px] h-[18px] rounded-full shrink-0 flex items-center justify-center transition-all duration-150 ${
-                    k.assigned ? "bg-brand" : ""
-                  }`}
-                  style={!k.assigned ? { border: "2px solid var(--surface-600)" } : undefined}
+                  aria-hidden="true"
+                  className={cn(
+                    "size-[18px] rounded-full shrink-0 flex items-center justify-center transition-colors duration-150",
+                    k.assigned ? "bg-brand text-brand-fg" : "border-2 border-control",
+                  )}
                 >
-                  {k.assigned ? <span className="text-white text-[10px]">✓</span> : null}
+                  {k.assigned ? <Check className="size-3" strokeWidth={3} /> : null}
                 </span>
-                <span className={`text-[13px] ${k.assigned ? "text-themed font-medium" : "text-themed-dim"}`}>
-                  {k.name}
-                </span>
+                <span className={cn("text-[13px]", k.assigned ? "text-fg font-medium" : "text-fg-muted")}>{k.name}</span>
               </button>
-            ))}
-          </div>
-          <div className="mt-4 flex items-center justify-between">
-            <span className="text-[11px] text-themed-dim">
-              <span className="text-accent-violet font-mono font-medium">{assignedCount}</span> / {keys.length} {t("dash.assignedSuffix")}
-            </span>
-            <button onClick={onClose} className="btn-primary text-xs">
-              {t("dash.doneBtn")}
-            </button>
-          </div>
-        </>
+            )
+          })}
+        </div>
       )}
-    </Modal>
+    </Dialog>
   )
 }

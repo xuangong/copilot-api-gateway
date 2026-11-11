@@ -42,8 +42,9 @@ const css = await Bun.file(`${out}/dashboard.css`).text()
 // A source scan that matches nothing still yields a valid stylesheet (preflight,
 // theme, the hand-written classes) with every utility missing — a silent,
 // ship-shaped failure. A byte threshold would not catch it reliably now that
-// styles.css alone is large, so check for a utility only the sources produce.
-if (!css.includes(".text-accent-violet")) throw new Error("dashboard.css lacks utilities from the dashboard sources — the @source scan matched nothing")
+// styles.css alone is large, so check for utilities only the sources produce:
+// the semantic-token classes exist in the output only when a source uses them.
+if (![".bg-brand", ".text-fg-subtle"].every(utility => css.includes(utility))) throw new Error("dashboard.css lacks utilities from the dashboard sources — the @source scan matched nothing")
 await Bun.write(`${out}/dashboard.css.txt`, css)
 
 console.log("[build-dashboard] wrote", `${out}/dashboard.js`, "and dashboard.css")

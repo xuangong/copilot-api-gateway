@@ -48,7 +48,7 @@ export function ProxyChainEditor({ value, onChange, allowCreate = false }: Props
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [toast])
 
   const options = [
     { id: DIRECT_CONNECT_ID, label: t("dash.proxyDirectConnect") },

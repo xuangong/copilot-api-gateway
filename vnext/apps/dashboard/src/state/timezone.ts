@@ -148,7 +148,7 @@ export function localOffsetLabel(now: Date = new Date()): string {
  */
 export function localZoneLabel(now: Date = new Date()): string {
   const offset = localOffsetLabel(now)
-  let name = ""
+  let name: string
   try {
     name = Intl.DateTimeFormat().resolvedOptions().timeZone ?? ""
   } catch {

@@ -5,8 +5,11 @@
  * （表示"以字段为准"，URL 框转为显示推导结果）；改 URL 框会存下原文，
  * 能解析就顺带覆盖字段。校验规则全部来自 proxy-form-config.ts。
  */
+import type { Ref } from 'react'
 import { useT } from '../../state/i18n'
 import type { ProxyConfig, Ss2022Method, SsMethod } from '@vibe-core/proxy/proxy-config'
+import { Select } from '../../ui/select'
+import { Field } from '../upstreams/form/Field'
 import {
   DEFAULT_PORTS,
   FORM_KINDS,
@@ -18,9 +21,6 @@ import {
   formKindOf,
   parseProxyUriSafe,
 } from './proxy-form-config'
-
-const INPUT_CLS =
-  'w-full bg-surface-800 border border-surface-600 rounded-sm px-2 py-1 text-xs font-mono'
 
 /** select 的取值必须落回联合类型，所以枚举在这里各留一份运行时数组。 */
 const SS_METHODS: readonly SsMethod[] = ['aes-128-gcm', 'aes-256-gcm', 'chacha20-ietf-poly1305']
@@ -36,33 +36,73 @@ const SS2022_METHODS: readonly Ss2022Method[] = [
  */
 const orUndefined = (v: string): string | undefined => (v === '' ? undefined : v)
 
-function Field(props: {
+/**
+ * 一个带可见标签的文本框。标签用 htmlFor 关联；校验错误（i18n 键）用
+ * aria-invalid + aria-describedby 挂到输入框上。全局 input 规则的 font-family
+ * 是 inherit，所以等宽字体加在外层 div 上。
+ */
+function TextField(props: {
   label: string
   value: string
   error?: string
   placeholder?: string
+  inputRef?: Ref<HTMLInputElement>
   onChange: (v: string) => void
 }) {
   const t = useT()
   return (
-    <label className="block">
-      <span className="block text-[11px] text-themed-dim mb-0.5">{props.label}</span>
-      <input
-        className={INPUT_CLS}
-        value={props.value}
-        placeholder={props.placeholder}
-        onChange={(e) => props.onChange(e.target.value)}
-      />
-      {props.error ? (
-        <span className="block text-[11px] text-accent-red mt-0.5">{t(props.error)}</span>
-      ) : null}
-    </label>
+    <Field label={props.label} error={props.error ? t(props.error) : undefined}>
+      {({ id, describedBy }) => (
+        <div className="font-mono">
+          <input
+            ref={props.inputRef}
+            id={id}
+            type="text"
+            value={props.value}
+            placeholder={props.placeholder}
+            aria-invalid={props.error ? true : undefined}
+            aria-describedby={describedBy}
+            autoComplete="off"
+            spellCheck={false}
+            onChange={(e) => props.onChange(e.target.value)}
+          />
+        </div>
+      )}
+    </Field>
+  )
+}
+
+/** 选项就是取值本身（协议名、加密方法都不翻译）。 */
+function ChoiceField<T extends string>(props: {
+  label: string
+  value: T
+  choices: readonly T[]
+  onChange: (v: T) => void
+}) {
+  return (
+    <Field label={props.label} labelledBy>
+      {({ labelId }) => (
+        <Select
+          value={props.value}
+          labelledBy={labelId}
+          options={props.choices.map((c) => ({ value: c, label: c }))}
+          onChange={(v) => {
+            // find() 把 string 收窄回联合类型；理论上 select 不会给出别的值，
+            // 但守卫比断言便宜，也顺带保住了枚举改动时的类型检查。
+            const c = props.choices.find((x) => x === v)
+            if (c) props.onChange(c)
+          }}
+        />
+      )}
+    </Field>
   )
 }
 
 export function ProxyForm(props: {
   draft: ProxyDraft
   onChange: (next: ProxyDraft) => void
+  /** 名称输入框；面板打开时父组件把焦点移到这里。 */
+  nameRef?: Ref<HTMLInputElement>
 }) {
   const t = useT()
   const { draft, onChange } = props
@@ -97,44 +137,27 @@ export function ProxyForm(props: {
   }
 
   return (
-    <div className="space-y-2">
-      <div className="grid grid-cols-2 gap-2">
-        <Field
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 gap-3">
+        <TextField
           label={t('dash.proxyNameLabel')}
           value={draft.name}
           error={issues.name}
+          inputRef={props.nameRef}
           onChange={(v) => onChange({ ...draft, name: v, url: null })}
         />
-        <label className="block">
-          <span className="block text-[11px] text-themed-dim mb-0.5">
-            {t('dash.proxyKindLabel')}
-          </span>
-          <select
-            className={INPUT_CLS}
-            value={kind}
-            onChange={(e) => {
-              // find() 把 string 收窄回 FormKind；理论上 select 不会给出别的值，
-              // 但守卫比断言便宜，也顺带保住了 FORM_KINDS 改动时的类型检查。
-              const k = FORM_KINDS.find((x) => x === e.target.value)
-              if (k) setKind(k)
-            }}
-          >
-            {FORM_KINDS.map((k) => (
-              <option key={k} value={k}>{k}</option>
-            ))}
-          </select>
-        </label>
+        <ChoiceField label={t('dash.proxyKindLabel')} value={kind} choices={FORM_KINDS} onChange={setKind} />
       </div>
 
-      <div className="grid grid-cols-2 gap-2">
-        <Field
+      <div className="grid grid-cols-2 gap-3">
+        <TextField
           label={t('dash.proxyHostLabel')}
           value={draft.config.host}
           error={issues.config.host}
           placeholder="node1.example.com"
           onChange={(v) => setConfig({ ...draft.config, host: v })}
         />
-        <Field
+        <TextField
           label={t('dash.proxyPortLabel')}
           value={draft.config.port ? String(draft.config.port) : ''}
           error={issues.config.port}
@@ -145,7 +168,7 @@ export function ProxyForm(props: {
 
       <KindFields config={draft.config} issues={issues.config} setConfig={setConfig} />
 
-      <Field
+      <TextField
         label={t('dash.proxyDialTimeoutLabel')}
         value={draft.dialTimeoutSeconds}
         error={issues.dialTimeout}
@@ -153,14 +176,16 @@ export function ProxyForm(props: {
         onChange={(v) => onChange({ ...draft, dialTimeoutSeconds: v })}
       />
 
-      <Field
-        label={t('dash.proxyUrlLabel')}
-        value={draftUrl(draft)}
-        error={issues.url}
-        placeholder="trojan://password@host:443"
-        onChange={setUrl}
-      />
-      <p className="text-[11px] text-themed-dim">{t('dash.proxyUrlSyncHint')}</p>
+      <div>
+        <TextField
+          label={t('dash.proxyUrlLabel')}
+          value={draftUrl(draft)}
+          error={issues.url}
+          placeholder="trojan://password@host:443"
+          onChange={setUrl}
+        />
+        <p className="mt-1 text-xs text-fg-subtle">{t('dash.proxyUrlSyncHint')}</p>
+      </div>
     </div>
   )
 }
@@ -183,13 +208,13 @@ function KindFields(props: {
   case 'http':
   case 'socks5':
     return (
-      <div className="grid grid-cols-2 gap-2">
-        <Field
+      <div className="grid grid-cols-2 gap-3">
+        <TextField
           label={t('dash.proxyUsernameLabel')}
           value={config.username ?? ''}
           onChange={(v) => setConfig({ ...config, username: orUndefined(v) })}
         />
-        <Field
+        <TextField
           label={t('dash.proxyPasswordLabel')}
           value={config.password ?? ''}
           onChange={(v) => setConfig({ ...config, password: orUndefined(v) })}
@@ -198,25 +223,14 @@ function KindFields(props: {
     )
   case 'ss':
     return (
-      <div className="grid grid-cols-2 gap-2">
-        <label className="block">
-          <span className="block text-[11px] text-themed-dim mb-0.5">
-            {t('dash.proxyMethodLabel')}
-          </span>
-          <select
-            className={INPUT_CLS}
-            value={config.method}
-            onChange={(e) => {
-              const m = SS_METHODS.find((x) => x === e.target.value)
-              if (m) setConfig({ ...config, method: m })
-            }}
-          >
-            {SS_METHODS.map((m) => (
-              <option key={m} value={m}>{m}</option>
-            ))}
-          </select>
-        </label>
-        <Field
+      <div className="grid grid-cols-2 gap-3">
+        <ChoiceField
+          label={t('dash.proxyMethodLabel')}
+          value={config.method}
+          choices={SS_METHODS}
+          onChange={(m) => setConfig({ ...config, method: m })}
+        />
+        <TextField
           label={t('dash.proxyPasswordLabel')}
           value={config.password}
           error={issues.password}
@@ -226,25 +240,14 @@ function KindFields(props: {
     )
   case 'ss2022':
     return (
-      <div className="grid grid-cols-2 gap-2">
-        <label className="block">
-          <span className="block text-[11px] text-themed-dim mb-0.5">
-            {t('dash.proxyMethodLabel')}
-          </span>
-          <select
-            className={INPUT_CLS}
-            value={config.method}
-            onChange={(e) => {
-              const m = SS2022_METHODS.find((x) => x === e.target.value)
-              if (m) setConfig({ ...config, method: m })
-            }}
-          >
-            {SS2022_METHODS.map((m) => (
-              <option key={m} value={m}>{m}</option>
-            ))}
-          </select>
-        </label>
-        <Field
+      <div className="grid grid-cols-2 gap-3">
+        <ChoiceField
+          label={t('dash.proxyMethodLabel')}
+          value={config.method}
+          choices={SS2022_METHODS}
+          onChange={(m) => setConfig({ ...config, method: m })}
+        />
+        <TextField
           label={t('dash.proxyPskLabel')}
           value={config.passwordBase64}
           error={issues.passwordBase64}
@@ -254,14 +257,14 @@ function KindFields(props: {
     )
   case 'trojan':
     return (
-      <div className="grid grid-cols-2 gap-2">
-        <Field
+      <div className="grid grid-cols-2 gap-3">
+        <TextField
           label={t('dash.proxyPasswordLabel')}
           value={config.password}
           error={issues.password}
           onChange={(v) => setConfig({ ...config, password: v })}
         />
-        <Field
+        <TextField
           label={t('dash.proxySniLabel')}
           value={config.sni ?? ''}
           onChange={(v) => setConfig({ ...config, sni: orUndefined(v) })}
@@ -270,7 +273,7 @@ function KindFields(props: {
     )
   case 'vless-tcp':
     return (
-      <Field
+      <TextField
         label={t('dash.proxyUuidLabel')}
         value={config.uuid}
         error={issues.uuid}
@@ -279,21 +282,21 @@ function KindFields(props: {
     )
   case 'vless-ws':
     return (
-      <div className="grid grid-cols-3 gap-2">
-        <Field
+      <div className="grid grid-cols-3 gap-3">
+        <TextField
           label={t('dash.proxyUuidLabel')}
           value={config.uuid}
           error={issues.uuid}
           onChange={(v) => setConfig({ ...config, uuid: v })}
         />
-        <Field
+        <TextField
           label={t('dash.proxyWsPathLabel')}
           value={config.path}
           error={issues.path}
           placeholder="/"
           onChange={(v) => setConfig({ ...config, path: v })}
         />
-        <Field
+        <TextField
           label={t('dash.proxyWsHostLabel')}
           value={config.wsHost ?? ''}
           onChange={(v) => setConfig({ ...config, wsHost: orUndefined(v) })}
@@ -302,26 +305,26 @@ function KindFields(props: {
     )
   case 'reality':
     return (
-      <div className="grid grid-cols-2 gap-2">
-        <Field
+      <div className="grid grid-cols-2 gap-3">
+        <TextField
           label={t('dash.proxyUuidLabel')}
           value={config.uuid}
           error={issues.uuid}
           onChange={(v) => setConfig({ ...config, uuid: v })}
         />
-        <Field
+        <TextField
           label={t('dash.proxyPublicKeyLabel')}
           value={config.publicKey}
           error={issues.publicKey}
           onChange={(v) => setConfig({ ...config, publicKey: v })}
         />
-        <Field
+        <TextField
           label={t('dash.proxyServerNameLabel')}
           value={config.serverName}
           error={issues.serverName}
           onChange={(v) => setConfig({ ...config, serverName: v })}
         />
-        <Field
+        <TextField
           label={t('dash.proxyShortIdLabel')}
           value={config.shortId ?? ''}
           onChange={(v) => setConfig({ ...config, shortId: orUndefined(v) })}

@@ -2,13 +2,8 @@
 @source "./**/*.{ts,tsx}";
 @source "../../../packages/gateway/src/shared/edge/ui-pages/dashboard-app/page.ts";
 
-/* Tailwind 3 values that v4 changed, pinned so the upgrade moves nothing.
-   - Line heights: v3 gave each text size a fixed rem line height; v4's are
-     ratios, so a shared class that overrides font-size (e.g. .btn-ghost at
-     13px) would shrink with them.
-   - Palette: v4 redrew the default colours in oklch. These are the v3 hex
-     values of the default-palette colours the dashboard uses, plus the two
-     the base layer below refers to. */
+/* Tailwind 3 line heights, pinned so the v4 upgrade moves nothing: v3 gave
+   each text size a fixed rem line height; v4's are ratios. */
 @theme {
   --text-xs--line-height: 1rem;
   --text-sm--line-height: 1.25rem;
@@ -18,40 +13,6 @@
   --text-2xl--line-height: 2rem;
   --text-3xl--line-height: 2.25rem;
   --text-4xl--line-height: 2.5rem;
-
-  --color-amber-200: #fde68a;
-  --color-amber-400: #fbbf24;
-  --color-amber-500: #f59e0b;
-  --color-amber-900: #78350f;
-  --color-blue-300: #93c5fd;
-  --color-blue-900: #1e3a8a;
-  --color-emerald-400: #34d399;
-  --color-emerald-600: #059669;
-  --color-fuchsia-200: #f5d0fe;
-  --color-fuchsia-400: #e879f9;
-  --color-fuchsia-500: #d946ef;
-  --color-fuchsia-900: #701a75;
-  --color-gray-200: #e5e7eb;
-  --color-gray-400: #9ca3af;
-  --color-green-400: #4ade80;
-  --color-purple-300: #d8b4fe;
-  --color-purple-900: #581c87;
-  --color-red-300: #fca5a5;
-  --color-red-400: #f87171;
-  --color-red-500: #ef4444;
-  --color-red-600: #dc2626;
-  --color-sky-200: #bae6fd;
-  --color-sky-400: #38bdf8;
-  --color-sky-500: #0ea5e9;
-  --color-sky-900: #0c4a6e;
-  --color-slate-200: #e2e8f0;
-  --color-slate-400: #94a3b8;
-  --color-slate-500: #64748b;
-  --color-slate-900: #0f172a;
-  --color-violet-200: #ddd6fe;
-  --color-violet-400: #a78bfa;
-  --color-violet-500: #8b5cf6;
-  --color-violet-900: #4c1d95;
 }
 
 @theme inline {
@@ -80,20 +41,6 @@
   --color-success-text: var(--success-text);
   --color-warn-text: var(--warn-text);
   --color-danger-text: var(--danger-text);
-
-  /* Legacy names the pages still use; they now follow the new palette. */
-  --color-surface-900: var(--surface-900);
-  --color-surface-800: var(--surface-800);
-  --color-surface-700: var(--surface-700);
-  --color-surface-600: var(--surface-600);
-  --color-surface-500: var(--surface-500);
-  --color-accent-violet: var(--brand-text);
-  --color-accent-violetDim: var(--brand-hover);
-  --color-accent-violetGlow: color-mix(in oklab, var(--brand-text) 15%, transparent);
-  --color-accent-cyan: var(--info);
-  --color-accent-teal: var(--success);
-  --color-accent-amber: var(--warn);
-  --color-accent-red: var(--danger);
 }
 
 /* Base defaults: the default border colour and placeholder colour follow the
@@ -137,7 +84,6 @@
   --surface-800: #fafafa;
   --surface-700: #f2f2f2;
   --surface-600: #e0e0e0;
-  --surface-500: #c4c4c4;
   --text-primary: #0a0a0a;
   --text-secondary: #525252;
   /* #737373 rather than a lighter grey: dim text must still reach 4.5:1 on white. */
@@ -160,15 +106,6 @@
   --success-text: #065f46;
   --warn-text: #92400e;
   --danger-text: #b91c1c;
-  --danger-wash: color-mix(in oklab, var(--danger) 10%, transparent);
-  --danger-edge: color-mix(in oklab, var(--danger) 35%, transparent);
-  /* Retired effects, kept defined so any remaining reference renders flat. */
-  --glass-bg: var(--surface-900);
-  --glass-bg2: var(--surface-800);
-  --glass-border: var(--border-color);
-  --glow-color: transparent;
-  --glow-border: var(--border-color);
-  --card-shadow: none;
 }
 
 [data-theme="dark"] {
@@ -177,7 +114,6 @@
   --surface-800: #111111;
   --surface-700: #1a1a1a;
   --surface-600: #262626;
-  --surface-500: #333333;
   --text-primary: #ededed;
   --text-secondary: #a1a1a1;
   --text-dim: #8f8f8f;
@@ -197,14 +133,6 @@
   --success-text: var(--success);
   --warn-text: var(--warn);
   --danger-text: var(--danger);
-  --danger-wash: color-mix(in oklab, var(--danger) 12%, transparent);
-  --danger-edge: color-mix(in oklab, var(--danger) 40%, transparent);
-  --glass-bg: var(--surface-900);
-  --glass-bg2: var(--surface-800);
-  --glass-border: var(--border-color);
-  --glow-color: transparent;
-  --glow-border: var(--border-color);
-  --card-shadow: none;
 }
 
 body {
@@ -215,35 +143,6 @@ body {
   font-variant-numeric: tabular-nums;
   -webkit-font-smoothing: antialiased;
 }
-
-.glass-card {
-  background: var(--surface-900);
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-}
-
-.glow-primary { box-shadow: none; }
-.glow-border { border: 1px solid var(--border-color); }
-
-@keyframes fadeSlideUp {
-  from { opacity: 0; transform: translateY(4px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-.animate-in {
-  animation: fadeSlideUp 0.2s ease-out forwards;
-  opacity: 0;
-}
-.delay-1 { animation-delay: 0.03s; }
-.delay-2 { animation-delay: 0.06s; }
-.delay-3 { animation-delay: 0.09s; }
-.delay-4 { animation-delay: 0.12s; }
-.delay-5 { animation-delay: 0.15s; }
-@media (prefers-reduced-motion: reduce) {
-  .animate-in { animation: none; opacity: 1; }
-}
-
-.hover-lift { transition: border-color 0.15s ease; }
-.hover-lift:hover { border-color: var(--surface-500); }
 
 /* Inputs. Layering: unlayered CSS beats every utility in v4, so only rules
    that already beat single-class utilities in v3 — specificity (0,1,1) and
@@ -298,39 +197,6 @@ select option {
   color: var(--text-primary);
 }
 
-/* Buttons */
-.btn-primary {
-  background: var(--brand);
-  color: var(--brand-foreground);
-  font-weight: 500;
-  padding: 7px 14px;
-  border-radius: 6px;
-  border: none;
-  cursor: pointer;
-  transition: background-color 0.15s ease;
-  font-family: inherit;
-  font-size: 13px;
-}
-.btn-primary:hover { background: var(--brand-hover); }
-.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
-
-.btn-ghost {
-  background: var(--surface-900);
-  color: var(--text-primary);
-  font-weight: 500;
-  padding: 6px 12px;
-  border-radius: 6px;
-  border: 1px solid var(--control-border);
-  cursor: pointer;
-  transition: background-color 0.15s ease;
-  font-family: inherit;
-  font-size: 13px;
-}
-.btn-ghost:hover { background: var(--surface-700); }
-.btn-ghost:disabled { opacity: 0.5; cursor: not-allowed; }
-
-.btn-primary:focus-visible,
-.btn-ghost:focus-visible,
 .theme-toggle:focus-visible {
   /* A solid outline, not the translucent --ring halo: a focus indicator needs 3:1. */
   outline: 2px solid var(--brand-text);
@@ -351,14 +217,6 @@ select option {
   justify-content: center;
 }
 .theme-toggle:hover { background: var(--surface-700); color: var(--text-primary); }
-
-.text-themed { color: var(--text-primary); }
-.text-themed-secondary { color: var(--text-secondary); }
-.text-themed-dim { color: var(--text-dim); }
-.border-themed { border-color: var(--border-color); }
-
-.scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
-.scrollbar-hide::-webkit-scrollbar { display: none; }
 
 /* ===== Playground / chat =================================================== */
 

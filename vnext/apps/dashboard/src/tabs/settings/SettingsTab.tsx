@@ -2,6 +2,11 @@ import { useRef, useState } from "react"
 import { useAuth } from "../../state/auth"
 import { useToast } from "../../state/toast"
 import { useT } from "../../state/i18n"
+import { Download, Loader2 } from "lucide-react"
+import { Button } from "../../ui/button"
+import { Card, SectionHeading } from "../../ui/card"
+import { PageHeader } from "../../ui/page-header"
+import { SegmentedControl } from "../../ui/segmented-control"
 
 interface ImportPreview {
   mode: "merge" | "replace"
@@ -127,38 +132,33 @@ export function SettingsTab() {
   }
 
   return (
-    <>
-      <div className="glass-card p-4 sm:p-6 mb-6 animate-in">
-        <h3 className="text-themed font-semibold mb-1">{t("dash.exportDataTitle")}</h3>
-        <p className="text-sm text-themed-secondary mb-4">
+    <div>
+      <PageHeader title={t("dash.settings")} />
+
+      <Card className="mb-4">
+        <SectionHeading className="mb-1">{t("dash.exportDataTitle")}</SectionHeading>
+        <p className="mb-4 text-[13px] text-fg-muted">
           {t("dash.exportDataDesc")}
           {!isAdmin && " " + t("dash.adminOnlyParen")}
         </p>
-        <button onClick={onExport} className="btn-primary" disabled={exporting || !isAdmin}>
+        <Button variant="primary" size="sm" onClick={onExport} disabled={exporting || !isAdmin}>
           {exporting ? (
-            <span className="flex items-center gap-2">
-              <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" fill="none" opacity="0.25" />
-                <path fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" opacity="0.75" />
-              </svg>
+            <>
+              <Loader2 className="animate-spin" aria-hidden="true" />
               {t("dash.exportingLabel")}
-            </span>
+            </>
           ) : (
-            <span className="flex items-center gap-2">
-              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                <polyline points="7 10 12 15 17 10" />
-                <line x1="12" y1="15" x2="12" y2="3" />
-              </svg>
+            <>
+              <Download aria-hidden="true" />
               {t("dash.exportJsonBtn")}
-            </span>
+            </>
           )}
-        </button>
-      </div>
+        </Button>
+      </Card>
 
-      <div className="glass-card p-4 sm:p-6 mb-6 animate-in">
-        <h3 className="text-themed font-semibold mb-1">{t("dash.importDataTitle")}</h3>
-        <p className="text-sm text-themed-secondary mb-4">
+      <Card className="mb-4">
+        <SectionHeading className="mb-1">{t("dash.importDataTitle")}</SectionHeading>
+        <p className="mb-4 text-[13px] text-fg-muted">
           {t("dash.importDataDesc")}
           {!isAdmin && " " + t("dash.adminOnlyParen")}
         </p>
@@ -173,17 +173,18 @@ export function SettingsTab() {
             e.target.value = ""
           }}
         />
-        <button
+        <Button
+          variant="secondary"
+          size="sm"
           onClick={() => fileRef.current?.click()}
-          className="btn-secondary"
           disabled={importing || !isAdmin}
         >
           {t("dash.importChooseFile")}
-        </button>
+        </Button>
 
         {preview ? (
-          <div className="mt-4 rounded-sm border border-themed p-3 text-sm space-y-3">
-            <div className="text-themed">
+          <div className="mt-4 space-y-3 rounded-md border border-border bg-panel p-3 text-[13px]">
+            <div className="text-fg">
               {t("dash.importPreviewSummary", {
                 version: String(preview.parsed.version),
                 apiKeys: String(preview.parsed.apiKeys),
@@ -192,40 +193,27 @@ export function SettingsTab() {
                 redacted: String(preview.parsed.redactedCount),
               })}
             </div>
-            <div className="flex items-center gap-4">
-              <label className="flex items-center gap-1 cursor-pointer">
-                <input
-                  type="radio"
-                  checked={preview.mode === "merge"}
-                  onChange={() => setPreview({ ...preview, mode: "merge" })}
-                />
-                <span>{t("dash.importModeMerge")}</span>
-              </label>
-              <label className="flex items-center gap-1 cursor-pointer">
-                <input
-                  type="radio"
-                  checked={preview.mode === "replace"}
-                  onChange={() => setPreview({ ...preview, mode: "replace" })}
-                />
-                <span className="text-red-500">{t("dash.importModeReplace")}</span>
-              </label>
-            </div>
+            <SegmentedControl
+              ariaLabel={t("dash.importModeAria")}
+              value={preview.mode}
+              onChange={(mode) => setPreview({ ...preview, mode })}
+              options={[
+                { value: "merge", label: t("dash.importModeMerge") },
+                { value: "replace", label: <span className="text-danger">{t("dash.importModeReplace")}</span> },
+              ]}
+            />
             <div className="flex items-center gap-2">
-              <button
-                onClick={onConfirmImport}
-                className="btn-primary"
-                disabled={importing}
-              >
+              <Button variant="primary" size="sm" onClick={onConfirmImport} disabled={importing}>
                 {importing ? t("dash.importingLabel") : t("dash.importConfirm")}
-              </button>
-              <button onClick={() => setPreview(null)} className="btn-secondary" disabled={importing}>
+              </Button>
+              <Button variant="secondary" size="sm" onClick={() => setPreview(null)} disabled={importing}>
                 {t("dash.importCancel")}
-              </button>
+              </Button>
             </div>
           </div>
         ) : null}
-      </div>
-    </>
+      </Card>
+    </div>
   )
 }
 

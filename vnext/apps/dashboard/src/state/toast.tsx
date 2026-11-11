@@ -43,27 +43,38 @@ export function useToast(): ToastApi {
   return v
 }
 
+const TONES: Record<ToastKind, string> = {
+  error: "border-danger/40 bg-background text-danger-text",
+  success: "border-success/40 bg-background text-success-text",
+  info: "border-border bg-panel text-fg",
+}
+
+/**
+ * Toasts stack top-right above dialogs (z-[60]); ui/dialog ignores clicks inside
+ * data-toast-host. The host is one polite live region, so each toast is read
+ * once as it arrives (aria-atomic=false: not the whole stack again). Error
+ * toasts deliberately carry no role=alert, which would announce them twice.
+ */
 export function ToastHost() {
   const { toasts, dismiss } = useToast()
   return (
-    <div data-toast-host="" className="pointer-events-auto fixed top-4 right-4 z-[60] flex flex-col gap-2">
-      {toasts.map((t) => {
-        const tone =
-          t.kind === "error"
-            ? "bg-red-600/90 border-red-400 text-white"
-            : t.kind === "success"
-              ? "bg-emerald-600/90 border-emerald-400 text-white"
-              : "bg-surface-800/95 border-surface-600 text-themed"
-        return (
-          <button
-            key={t.id}
-            onClick={() => dismiss(t.id)}
-            className={`px-4 py-2 rounded-sm border text-sm shadow-lg backdrop-blur-sm cursor-pointer text-left max-w-md ${tone}`}
-          >
-            {t.message}
-          </button>
-        )
-      })}
+    <div
+      data-toast-host=""
+      role="status"
+      aria-live="polite"
+      aria-atomic="false"
+      className="pointer-events-auto fixed top-4 right-4 z-[60] flex flex-col gap-2"
+    >
+      {toasts.map((t) => (
+        <button
+          key={t.id}
+          type="button"
+          onClick={() => dismiss(t.id)}
+          className={`max-w-md cursor-pointer rounded-md border px-4 py-2 text-left text-sm shadow-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-text ${TONES[t.kind]}`}
+        >
+          {t.message}
+        </button>
+      ))}
     </div>
   )
 }

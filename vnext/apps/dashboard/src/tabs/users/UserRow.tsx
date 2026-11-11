@@ -1,6 +1,8 @@
 import { formatQuotaChip, timeAgo, type AdminUser } from "../../api/users"
 import { useT } from "../../state/i18n"
 import type { QuotaState } from "../../state/users"
+import { Badge } from "../../ui/badge"
+import { Button } from "../../ui/button"
 
 interface Props {
   user: AdminUser
@@ -15,58 +17,57 @@ interface Props {
 export function UserRow({ user, busy, isSelf, quotas, onAssign, onToggle, onDelete }: Props) {
   const t = useT()
   return (
-    <div className="overflow-x-auto rounded-lg bg-surface-800/50 border border-white/4 scrollbar-thin">
-      <div className="flex items-center justify-between gap-3 p-4 whitespace-nowrap min-w-max">
+    <div className="overflow-x-auto rounded-md border border-border bg-panel">
+      <div className="flex items-center justify-between gap-3 p-3 whitespace-nowrap min-w-max">
         <div className="flex items-center gap-4">
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-sm font-medium text-themed">{user.name}</span>
+              <span className="text-sm font-medium text-fg">{user.name}</span>
               {user.disabled ? (
-                <span className="px-1.5 py-0.5 rounded-sm text-[10px] bg-accent-red/10 text-accent-red uppercase">{t("dash.disabledBadge")}</span>
+                <Badge tone="danger" className="uppercase">
+                  {t("dash.disabledBadge")}
+                </Badge>
               ) : null}
             </div>
             <div className="flex items-center gap-3 mt-0.5">
-              {user.email ? <span className="text-xs text-accent-violet">{user.email}</span> : null}
+              {user.email ? <span className="text-xs text-brand-text">{user.email}</span> : null}
               {(user.githubAccounts ?? []).map((gh) => {
                 const q = quotas[gh.id]
                 return (
                   <span key={gh.id} className="inline-flex items-center gap-1">
-                    <span className="text-xs text-themed-dim">@{gh.login}</span>
-                    <span
-                      className={`text-[10px] px-1.5 py-0.5 rounded-sm ${
-                        q?.error ? "bg-accent-red/10 text-accent-red" : "bg-accent-violet/10 text-accent-violet"
-                      }`}
-                      title={q?.error || t("dash.copilotQuotaLabel")}
-                    >
-                      {formatQuotaChip(q)}
+                    <span className="text-xs text-fg-muted">@{gh.login}</span>
+                    <span className="cursor-default tabular-nums" title={q?.error || t("dash.copilotQuotaLabel")}>
+                      <Badge tone={q?.error ? "danger" : "brand"}>{formatQuotaChip(q)}</Badge>
                     </span>
                   </span>
                 )
               })}
-              <span className="text-xs text-themed-dim">{user.keyCount} {t("dash.ownLabel")}</span>
+              <span className="text-xs text-fg-muted">{user.keyCount} {t("dash.ownLabel")}</span>
               {user.sharedKeyCount > 0 ? (
-                <span className="text-xs text-accent-violet">{user.sharedKeyCount} {t("dash.sharedShort")}</span>
+                <span className="text-xs text-brand-text">{user.sharedKeyCount} {t("dash.sharedShort")}</span>
               ) : null}
-              <span className="text-xs text-themed-dim">{t("dash.joinedLabel")} {timeAgo(user.createdAt)}</span>
+              <span className="text-xs text-fg-muted">{t("dash.joinedLabel")} {timeAgo(user.createdAt)}</span>
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1">
           {!isSelf ? (
-            <button onClick={onAssign} disabled={busy} className="btn-ghost text-xs">
+            <Button variant="ghost" size="sm" onClick={onAssign} disabled={busy}>
               {t("dash.assignKeysBtn")}
-            </button>
+            </Button>
           ) : null}
-          <button onClick={onToggle} disabled={busy} className="btn-ghost text-xs">
+          <Button variant="ghost" size="sm" onClick={onToggle} disabled={busy}>
             {user.disabled ? t("dash.enableLabel") : t("dash.disableLabel")}
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={onDelete}
             disabled={busy}
-            className="btn-ghost text-xs text-accent-red hover:bg-accent-red/10"
+            className="text-danger hover:bg-danger/10 hover:text-danger"
           >
             {t("dash.deleteLabel")}
-          </button>
+          </Button>
         </div>
       </div>
     </div>

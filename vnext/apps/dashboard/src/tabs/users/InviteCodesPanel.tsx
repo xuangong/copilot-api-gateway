@@ -1,7 +1,11 @@
-import { useState } from "react"
+import { useId, useState } from "react"
 import { useT } from "../../state/i18n"
 import { useToast } from "../../state/toast"
 import { timeAgo, type InviteCode } from "../../api/users"
+import { Badge } from "../../ui/badge"
+import { Button } from "../../ui/button"
+import { Card, SectionHeading } from "../../ui/card"
+import { EmptyState } from "../../ui/empty-state"
 
 interface Props {
   invites: InviteCode[]
@@ -14,6 +18,7 @@ interface Props {
 export function InviteCodesPanel({ invites, loading, creating, onCreate, onDelete }: Props) {
   const { push: toast } = useToast()
   const t = useT()
+  const headingId = useId()
   const [name, setName] = useState("")
   const [copiedId, setCopiedId] = useState<string | null>(null)
 
@@ -33,72 +38,80 @@ export function InviteCodesPanel({ invites, loading, creating, onCreate, onDelet
   }
 
   return (
-    <div className="glass-card p-4 sm:p-6 mb-8 animate-in">
-      <h3 className="text-themed font-medium mb-4">{t("dash.inviteCodesTitle")}</h3>
-      <div className="flex flex-col sm:flex-row gap-3 mb-4">
-        <input
-          type="text"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") submit()
-          }}
-          placeholder={t("dash.inviteeNamePlaceholder")}
-          className="flex-1 px-3 py-2 rounded-sm bg-surface-800/60 border border-white/6 text-themed text-sm"
-        />
-        <button
-          onClick={submit}
-          disabled={creating || !name.trim()}
-          className="btn-primary text-sm"
-        >
+    <Card aria-labelledby={headingId} className="mb-4">
+      <SectionHeading id={headingId} className="mb-3">
+        {t("dash.inviteCodesTitle")}
+      </SectionHeading>
+      <div className="flex flex-col sm:flex-row gap-2 mb-4">
+        <div className="min-w-0 flex-1">
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") submit()
+            }}
+            placeholder={t("dash.inviteeNamePlaceholder")}
+            aria-label={t("dash.inviteeNamePlaceholder")}
+            className="text-sm"
+          />
+        </div>
+        <Button variant="primary" onClick={submit} disabled={creating || !name.trim()}>
           {creating ? t("dash.creatingInviteShort") : t("dash.createInviteBtn")}
-        </button>
+        </Button>
       </div>
 
-      {loading && invites.length === 0 ? (
-        <p className="text-sm text-themed-dim">{t("dash.loadingShort")}</p>
-      ) : null}
-      {!loading && invites.length === 0 ? (
-        <p className="text-sm text-themed-dim italic">{t("dash.noInviteCodesYet")}</p>
-      ) : null}
+      {loading && invites.length === 0 ? <p className="text-sm text-fg-muted">{t("dash.loadingShort")}</p> : null}
+      {!loading && invites.length === 0 ? <EmptyState title={t("dash.noInviteCodesYet")} /> : null}
 
-      <div className="space-y-2">
-        {invites.map((inv) => {
-          const used = !!inv.usedAt
-          return (
-            <div
-              key={inv.id}
-              className="flex items-center gap-3 p-3 rounded-lg bg-surface-800/50 border border-white/4 overflow-x-auto whitespace-nowrap"
-            >
-              <div className="flex items-center gap-3 min-w-0">
-                <span className="text-sm font-medium text-themed shrink-0">{inv.name}</span>
-                {used ? (
-                  <span className="px-2 py-0.5 rounded-sm text-xs bg-accent-violet/10 text-accent-violet shrink-0">
-                    {t("dash.usedLabel")}
-                  </span>
-                ) : (
-                  <button
-                    onClick={() => copy(inv.code, inv.id)}
-                    className="px-2 py-0.5 rounded-sm text-xs font-mono bg-accent-violet/10 text-accent-violet shrink-0 cursor-pointer"
-                    title={t("dash.clickToCopy")}
+      {/* Announces the copy confirmation; the code button's own text change is not read out. */}
+      <span aria-live="polite" className="sr-only">
+        {copiedId ? t("dash.copiedShort") : ""}
+      </span>
+
+      {invites.length > 0 ? (
+        <div className="space-y-2">
+          {invites.map((inv) => {
+            const used = !!inv.usedAt
+            return (
+              <div
+                key={inv.id}
+                className="flex items-center gap-3 p-3 rounded-md bg-panel border border-border overflow-x-auto whitespace-nowrap"
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <span className="text-sm font-medium text-fg shrink-0">{inv.name}</span>
+                  {used ? (
+                    <Badge tone="brand" className="shrink-0">
+                      {t("dash.usedLabel")}
+                    </Badge>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => copy(inv.code, inv.id)}
+                      className="shrink-0 cursor-pointer rounded border border-brand-text/30 bg-brand-text/10 px-1.5 font-mono text-xs leading-5 text-brand-text transition-colors hover:bg-brand-text/15 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-text"
+                      title={t("dash.clickToCopy")}
+                    >
+                      {copiedId === inv.id ? t("dash.copiedShort") : inv.code}
+                    </button>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 ml-auto shrink-0">
+                  <span className="text-xs text-fg-muted">{timeAgo(inv.createdAt)}</span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => onDelete(inv.id)}
+                    aria-label={t("dash.deleteInviteAria", { name: inv.name })}
+                    className="text-danger hover:bg-danger/10 hover:text-danger"
                   >
-                    {copiedId === inv.id ? t("dash.copiedShort") : inv.code}
-                  </button>
-                )}
+                    {t("dash.deleteLabel")}
+                  </Button>
+                </div>
               </div>
-              <div className="flex items-center gap-3 ml-auto shrink-0">
-                <span className="text-xs text-themed-dim">{timeAgo(inv.createdAt)}</span>
-                <button
-                  onClick={() => onDelete(inv.id)}
-                  className="text-xs text-themed-dim hover:text-accent-red! transition-colors"
-                >
-                  {t("dash.deleteLabel")}
-                </button>
-              </div>
-            </div>
-          )
-        })}
-      </div>
-    </div>
+            )
+          })}
+        </div>
+      ) : null}
+    </Card>
   )
 }

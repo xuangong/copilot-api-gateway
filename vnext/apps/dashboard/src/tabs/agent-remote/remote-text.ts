@@ -4,6 +4,7 @@ export const remoteText = {
   "dash.remote.title": "Agent Hosts",
   "dash.remote.hint": "Your machines and Hosts shared with you.",
   "dash.remote.open": "Open controller",
+  "dash.remote.openHostAria": "Open controller for {name}",
   "dash.remote.refresh": "Refresh",
   "dash.remote.loading": "Loading Hosts…",
   "dash.remote.empty": "No Hosts yet. Open the controller to pair your first machine.",
@@ -32,8 +33,11 @@ export const remoteText = {
 
 export function useRemoteText() {
   const t = useT()
-  return (key: keyof typeof remoteText) => {
-    const result = t(key)
-    return result === key ? remoteText[key] : result
+  return (key: keyof typeof remoteText, vars?: Record<string, string | number>) => {
+    const result = t(key, vars)
+    if (result !== key) return result
+    let text: string = remoteText[key]
+    for (const [name, value] of Object.entries(vars ?? {})) text = text.replaceAll(`{${name}}`, String(value))
+    return text
   }
 }

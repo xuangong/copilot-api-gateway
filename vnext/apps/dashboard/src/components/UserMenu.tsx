@@ -1,13 +1,16 @@
 import { ChevronsUpDown, Lock, LogOut, Settings, Share2 } from "lucide-react"
-import { useEffect, useState } from "react"
+import { type RefObject, useEffect, useId, useRef, useState } from "react"
 import { api, ApiError } from "../api/client"
 import { useAuth } from "../state/auth"
 import { useToast } from "../state/toast"
 import { useT } from "../state/i18n"
+import { Badge } from "../ui/badge"
+import { Button } from "../ui/button"
 import { cn } from "../ui/cn"
+import { Dialog } from "../ui/dialog"
+import { EmptyState } from "../ui/empty-state"
 import { Tooltip } from "../ui/tooltip"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "../ui/dropdown-menu"
-import { Modal } from "./Modal"
 
 interface SharedGrant {
   viewerId: string
@@ -29,6 +32,15 @@ export function UserMenu({ onNavigate, canNavigateSettings, compact = false }: P
   const [sharingOpen, setSharingOpen] = useState(false)
   const [pwdOpen, setPwdOpen] = useState(false)
   const [failedAvatar, setFailedAvatar] = useState<string | null>(null)
+  // The dialogs have no Radix trigger, so they hand focus back to the menu
+  // trigger themselves. While one is opening, the menu must not also pull
+  // focus back to the trigger (it would fight the dialog's focus trap).
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const openingDialog = useRef(false)
+  const openDialog = (open: (v: boolean) => void) => {
+    openingDialog.current = true
+    open(true)
+  }
 
   if (!session) return null
   const initial = (session.userName || session.email || "?")[0]?.toUpperCase() ?? "?"
@@ -42,6 +54,7 @@ export function UserMenu({ onNavigate, canNavigateSettings, compact = false }: P
   // aria-expanded because the Tooltip trigger overrides data-state.
   const trigger = (
     <DropdownMenuTrigger
+      ref={triggerRef}
       aria-label={compact ? t("dash.nav.account") : undefined}
       className={cn(
         "flex w-full items-center gap-2.5 rounded-md p-1.5 text-left transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-text aria-expanded:bg-muted",
@@ -57,7 +70,7 @@ export function UserMenu({ onNavigate, canNavigateSettings, compact = false }: P
           onError={() => setFailedAvatar(session.avatarUrl ?? null)}
         />
       ) : (
-        <span aria-hidden="true" className="flex size-7 shrink-0 items-center justify-center rounded-full bg-accent-violet/15 text-xs font-medium text-accent-violet">
+        <span aria-hidden="true" className="flex size-7 shrink-0 items-center justify-center rounded-full bg-brand-text/10 text-xs font-medium text-brand-text">
           {initial}
         </span>
       )}
@@ -79,14 +92,21 @@ export function UserMenu({ onNavigate, canNavigateSettings, compact = false }: P
     <>
       <DropdownMenu>
         {compact ? <Tooltip content={displayName || t("dash.nav.account")}>{trigger}</Tooltip> : trigger}
-        <DropdownMenuContent side="top" align="start">
+        <DropdownMenuContent
+          side="top"
+          align="start"
+          onCloseAutoFocus={(event) => {
+            if (openingDialog.current) event.preventDefault()
+            openingDialog.current = false
+          }}
+        >
           <DropdownMenuLabel>
             <div className="truncate text-[13px] font-medium text-fg">{session.userName || ""}</div>
             <div className="truncate text-xs text-fg-subtle">{session.email || ""}</div>
             {isAdmin ? (
-              <span className="mt-1 inline-block rounded px-1.5 py-0.5 text-[11px] font-medium uppercase bg-accent-violet/10 text-accent-violet">
+              <Badge tone="brand" className="mt-1 font-medium uppercase">
                 {t("dash.adminLabel")}
-              </span>
+              </Badge>
             ) : null}
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
@@ -97,13 +117,13 @@ export function UserMenu({ onNavigate, canNavigateSettings, compact = false }: P
             </DropdownMenuItem>
           ) : null}
           {isUser ? (
-            <DropdownMenuItem onSelect={() => setSharingOpen(true)}>
+            <DropdownMenuItem onSelect={() => openDialog(setSharingOpen)}>
               <Share2 aria-hidden="true" />
               {t("dash.mySharingLabel")}
             </DropdownMenuItem>
           ) : null}
           {hasPassword ? (
-            <DropdownMenuItem onSelect={() => setPwdOpen(true)}>
+            <DropdownMenuItem onSelect={() => openDialog(setPwdOpen)}>
               <Lock aria-hidden="true" />
               {t("dash.changePasswordMenu")}
             </DropdownMenuItem>
@@ -115,14 +135,35 @@ export function UserMenu({ onNavigate, canNavigateSettings, compact = false }: P
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <MySharingModal open={sharingOpen} onClose={() => setSharingOpen(false)} />
-      <ChangePasswordModal open={pwdOpen} onClose={() => setPwdOpen(false)} />
+      <MySharingModal open={sharingOpen} onClose={() => setSharingOpen(false)} returnFocusTo={triggerRef} />
+      <ChangePasswordModal open={pwdOpen} onClose={() => setPwdOpen(false)} returnFocusTo={triggerRef} />
     </>
   )
 }
 
-function MySharingModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+
+interface DialogProps {
+  open: boolean
+  onClose: () => void
+  /** The menu trigger: focus goes back to it on close. */
+  returnFocusTo: RefObject<HTMLElement | null>
+}
+
+/** Radix returns focus to its own trigger; these dialogs open from a menu item, so return it to the menu trigger. */
+function focusReturner(target: RefObject<HTMLElement | null>) {
+  return (event: Event) => {
+    const el = target.current
+    if (!el?.isConnected) return
+    event.preventDefault()
+    el.focus()
+  }
+}
+
+const labelCls = "mb-1 block text-xs font-medium text-fg-muted"
+
+function MySharingModal({ open, onClose, returnFocusTo }: DialogProps) {
   const t = useT()
+  const errId = useId()
   const [email, setEmail] = useState("")
   const [list, setList] = useState<SharedGrant[]>([])
   const [err, setErr] = useState("")
@@ -180,59 +221,87 @@ function MySharingModal({ open, onClose }: { open: boolean; onClose: () => void 
   }
 
   return (
-    <Modal open={open} onClose={onClose} title={t("dash.sharedObservabilityTitle")} size="md">
-      <p className="text-themed-dim text-xs mb-3">{t("dash.sharedObsDescLong")}</p>
-      <div className="flex gap-2 mb-2">
-        <input
-          type="email"
-          value={email}
-          onChange={(e) => {
-            setEmail(e.target.value)
-            setErr("")
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault()
-              add()
-            }
-          }}
-          placeholder={t("dash.shareEmailPlaceholder")}
-          className="flex-1 text-xs! py-1.5! px-3! rounded-lg!"
-          disabled={busy}
-        />
-        <button className="btn-primary text-xs! py-1.5! px-4!" onClick={add} disabled={busy}>
-          {t("dash.shareBtnShort")}
-        </button>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) onClose()
+      }}
+      onCloseAutoFocus={focusReturner(returnFocusTo)}
+      title={t("dash.sharedObservabilityTitle")}
+      description={t("dash.sharedObsDescLong")}
+      className="max-w-md"
+    >
+      <div className="space-y-2">
+        <div className="flex items-center gap-2">
+          <div className="min-w-0 flex-1">
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => {
+                setEmail(e.target.value)
+                setErr("")
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault()
+                  add()
+                }
+              }}
+              aria-label={t("dash.shareEmailPlaceholderLong")}
+              aria-invalid={err ? true : undefined}
+              aria-describedby={err ? errId : undefined}
+              placeholder={t("dash.shareEmailPlaceholder")}
+              disabled={busy}
+            />
+          </div>
+          <Button variant="primary" size="sm" onClick={add} disabled={busy}>
+            {t("dash.shareBtnShort")}
+          </Button>
+        </div>
+        {err ? (
+          <p id={errId} role="alert" className="text-xs text-danger">
+            {err}
+          </p>
+        ) : null}
       </div>
-      {err ? <div className="text-xs text-accent-red mb-2">{err}</div> : null}
-      <div className="border-t border-white/5 pt-3 mt-2 max-h-[300px] overflow-y-auto">
+      <div className="max-h-[300px] overflow-y-auto border-t border-border pt-3">
         {list.length === 0 ? (
-          <div className="text-themed-dim text-xs text-center py-4">{t("dash.notSharedYet")}</div>
+          <EmptyState title={t("dash.notSharedYet")} />
         ) : (
-          list.map((g) => (
-            <div key={g.viewerId} className="flex items-center justify-between py-2 border-b border-white/5 last:border-0">
-              <div className="min-w-0 flex-1">
-                <div className="text-sm text-themed truncate">{g.viewerName || g.viewerEmail}</div>
-                <div className="text-[11px] text-themed-dim truncate">{g.viewerEmail}</div>
-                <div className="text-[10px] text-themed-dim">{t("dash.grantedAtLabel", { date: g.grantedAt })}</div>
-              </div>
-              <button
-                className="btn-ghost text-xs! text-accent-red hover:bg-accent-red/10"
-                onClick={() => revoke(g.viewerId)}
-              >
-                {t("dash.revokeBtn")}
-              </button>
-            </div>
-          ))
+          <ul>
+            {list.map((g) => (
+              <li key={g.viewerId} className="flex items-center justify-between gap-2 border-b border-border py-2 last:border-0">
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm text-fg">{g.viewerName || g.viewerEmail}</div>
+                  <div className="truncate text-xs text-fg-subtle">{g.viewerEmail}</div>
+                  <div className="text-xs text-fg-subtle">{t("dash.grantedAtLabel", { date: g.grantedAt })}</div>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="shrink-0 text-danger-text hover:bg-danger/10 hover:text-danger-text"
+                  aria-label={t("dash.revokeShareAria", { name: g.viewerName || g.viewerEmail })}
+                  onClick={() => revoke(g.viewerId)}
+                >
+                  {t("dash.revokeBtn")}
+                </Button>
+              </li>
+            ))}
+          </ul>
         )}
       </div>
-    </Modal>
+    </Dialog>
   )
 }
 
-function ChangePasswordModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+function ChangePasswordModal({ open, onClose, returnFocusTo }: DialogProps) {
   const { push } = useToast()
   const t = useT()
+  const id = useId()
+  const oldId = `${id}-old`
+  const newId = `${id}-new`
+  const confirmId = `${id}-confirm`
+  const errId = `${id}-err`
   const [oldPwd, setOldPwd] = useState("")
   const [newPwd, setNewPwd] = useState("")
   const [confirmPwd, setConfirmPwd] = useState("")
@@ -286,58 +355,68 @@ function ChangePasswordModal({ open, onClose }: { open: boolean; onClose: () => 
     }
   }
 
+  // The error is about the form as a whole, so every field points at it.
+  const describedBy = err ? errId : undefined
+
   return (
-    <Modal
+    <Dialog
       open={open}
-      onClose={onClose}
+      onOpenChange={(next) => {
+        if (!next) onClose()
+      }}
+      onCloseAutoFocus={focusReturner(returnFocusTo)}
       title={t("dash.changePasswordModalTitle")}
-      size="sm"
+      className="max-w-sm"
       footer={
         <>
-          <button type="button" onClick={onClose} className="btn-ghost text-xs" disabled={busy}>
+          <Button variant="ghost" size="md" onClick={onClose} disabled={busy}>
             {t("dash.cancelBtn")}
-          </button>
-          <button
-            type="button"
-            onClick={submit}
-            className="btn-primary text-xs! py-1.5! px-3!"
-            disabled={busy || !oldPwd || !newPwd || !confirmPwd}
-          >
+          </Button>
+          <Button variant="primary" size="md" onClick={submit} disabled={busy || !oldPwd || !newPwd || !confirmPwd}>
             {busy ? t("dash.savingShort") : t("dash.changeBtn")}
-          </button>
+          </Button>
         </>
       }
     >
       <div className="space-y-3">
         <div>
-          <label className="text-xs text-themed-dim block mb-1">{t("dash.currentPasswordLabel")}</label>
+          <label htmlFor={oldId} className={labelCls}>
+            {t("dash.currentPasswordLabel")}
+          </label>
           <input
+            id={oldId}
             type="password"
             value={oldPwd}
             onChange={(e) => {
               setOldPwd(e.target.value)
               setErr("")
             }}
-            className="text-xs! py-1.5! px-3! w-full rounded-lg!"
+            aria-describedby={describedBy}
             disabled={busy}
           />
         </div>
         <div>
-          <label className="text-xs text-themed-dim block mb-1">{t("dash.newPasswordLabel")}</label>
+          <label htmlFor={newId} className={labelCls}>
+            {t("dash.newPasswordLabel")}
+          </label>
           <input
+            id={newId}
             type="password"
             value={newPwd}
             onChange={(e) => {
               setNewPwd(e.target.value)
               setErr("")
             }}
-            className="text-xs! py-1.5! px-3! w-full rounded-lg!"
+            aria-describedby={describedBy}
             disabled={busy}
           />
         </div>
         <div>
-          <label className="text-xs text-themed-dim block mb-1">{t("dash.confirmNewPasswordLabel")}</label>
+          <label htmlFor={confirmId} className={labelCls}>
+            {t("dash.confirmNewPasswordLabel")}
+          </label>
           <input
+            id={confirmId}
             type="password"
             value={confirmPwd}
             onChange={(e) => {
@@ -350,12 +429,16 @@ function ChangePasswordModal({ open, onClose }: { open: boolean; onClose: () => 
                 submit()
               }
             }}
-            className="text-xs! py-1.5! px-3! w-full rounded-lg!"
+            aria-describedby={describedBy}
             disabled={busy}
           />
         </div>
-        {err ? <p className="text-xs text-accent-red">{err}</p> : null}
+        {err ? (
+          <p id={errId} role="alert" className="text-xs text-danger">
+            {err}
+          </p>
+        ) : null}
       </div>
-    </Modal>
+    </Dialog>
   )
 }

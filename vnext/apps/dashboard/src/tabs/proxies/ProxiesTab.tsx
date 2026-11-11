@@ -14,6 +14,11 @@ import {
   type ProxyBackoffRow,
   type ProxyTestAnchor,
 } from "../../api/proxies"
+import { Button } from "../../ui/button"
+import { EmptyState } from "../../ui/empty-state"
+import { Notice } from "../../ui/notice"
+import { PageHeader } from "../../ui/page-header"
+import { Select } from "../../ui/select"
 import { ProxyForm } from "./ProxyForm"
 import { initialProxyTestState, reduceProxyTestState } from "./proxy-test-state"
 import {
@@ -57,6 +62,8 @@ export function ProxiesTab() {
   const [anchor, setAnchor] = useState<ProxyTestAnchor>("ipify")
   const [testState, dispatchTest] = useReducer(reduceProxyTestState, initialProxyTestState)
   const testRevision = useRef(0)
+  const nameRef = useRef<HTMLInputElement>(null)
+  const formOpen = creating || editingId !== null
   const { pending: testing, result: testResult } = testState
   const invalidateTest = () => {
     dispatchTest({ type: "invalidate", revision: ++testRevision.current })
@@ -75,6 +82,11 @@ export function ProxiesTab() {
   useEffect(() => {
     void reload()
   }, [reload])
+
+  // The panel opens above the list, often far from the row's Edit button; move focus into it.
+  useEffect(() => {
+    if (formOpen) nameRef.current?.focus()
+  }, [formOpen, editingId])
 
   const startEdit = (p: ProxyRecord) => {
     setEditingId(p.id)
@@ -162,147 +174,138 @@ export function ProxiesTab() {
     epochSeconds == null ? "—" : new Date(epochSeconds * 1000).toLocaleString()
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between gap-2">
-        <div className="text-sm text-themed-dim">{t("dash.proxiesHint")}</div>
-        <button
-          onClick={() => {
-            setCreating(true)
-            setEditingId(null)
-            setDraft(EMPTY_DRAFT)
-            invalidateTest()
-          }}
-          className="btn-primary text-xs! py-1! px-3! shrink-0"
-        >
-          {t("dash.proxyNewNode")}
-        </button>
-      </div>
+    <div>
+      <PageHeader
+        title={t("dash.proxies")}
+        description={t("dash.proxiesHint")}
+        actions={
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => {
+              setCreating(true)
+              setEditingId(null)
+              setDraft(EMPTY_DRAFT)
+              invalidateTest()
+            }}
+          >
+            {t("dash.proxyNewNode")}
+          </Button>
+        }
+      />
 
-      {creating || editingId ? (
-        <div className="bg-surface-900 border border-surface-600 rounded-lg p-3 space-y-2">
-          <ProxyForm draft={draft} onChange={(next) => { invalidateTest(); setDraft(next) }} />
+      <div className="space-y-3">
+        {formOpen ? (
+          <div className="space-y-3 rounded-lg border border-border bg-panel p-4">
+            <ProxyForm draft={draft} nameRef={nameRef} onChange={(next) => { invalidateTest(); setDraft(next) }} />
 
-          <div className="flex gap-2 items-center flex-wrap">
-            <button
-              onClick={submit}
-              disabled={!draftIsValid(draft)}
-              className="btn-primary text-xs! py-1! px-3! disabled:opacity-40"
-            >
-              {t("dash.save")}
-            </button>
-            <button
-              onClick={runTest}
-              disabled={testing || !draftIsTestable(draft)}
-              className="btn-ghost text-xs! py-1! px-3! disabled:opacity-40"
-            >
-              {testing ? t("dash.proxyTestRunning") : t("dash.proxyTestBtn")}
-            </button>
-            <select
-              value={anchor}
-              onChange={(e) => {
-                // find() 把 string 收窄回 ProxyTestAnchor —— 守卫而非断言。
-                const a = ANCHORS.find((x) => x === e.target.value)
-                if (a) { invalidateTest(); setAnchor(a) }
-              }}
-              title={t("dash.proxyAnchorLabel")}
-              className="bg-surface-800 border border-surface-600 rounded-sm px-2 py-1 text-xs"
-            >
-              {ANCHORS.map((a) => (
-                <option key={a} value={a}>{a}</option>
-              ))}
-            </select>
-            <button onClick={closeForm} className="btn-ghost text-xs! py-1! px-3!">
-              {t("dash.closeBtn")}
-            </button>
-          </div>
-
-          {testResult ? (
-            <div
-              className={`text-xs font-mono break-all ${
-                testResult.ok ? "text-themed" : "text-accent-red"
-              }`}
-            >
-              {testResult.ok
-                ? t("dash.proxyTestOk", { ip: testResult.egressIp })
-                : t("dash.proxyTestFail", { err: testResult.error })}
-            </div>
-          ) : null}
-        </div>
-      ) : null}
-
-      {rows.length === 0 ? (
-        <div className="text-xs text-themed-dim italic">{t("dash.proxiesEmpty")}</div>
-      ) : null}
-
-      <div className="space-y-2">
-        {rows.map((p) => {
-          const mine = backoffs.filter((b) => b.proxyId === p.id)
-          return (
-            <div key={p.id} className="bg-surface-900 border border-surface-600 rounded-lg p-3">
-              <div className="flex items-center gap-2 flex-wrap">
-                <div className="min-w-0 flex-1">
-                  <div className="font-medium text-themed truncate">{p.name}</div>
-                  <button
-                    onClick={() => setRevealed((r) => ({ ...r, [p.id]: !r[p.id] }))}
-                    className="text-xs text-themed-dim font-mono truncate hover:text-themed text-left w-full"
-                    title={t("dash.proxyRevealTip")}
-                  >
-                    {revealed[p.id] ? p.url : maskUrl(p.url)}
-                  </button>
-                </div>
-                <span className="text-xs text-themed-dim shrink-0">
-                  {p.dialTimeoutSeconds == null
-                    ? t("dash.proxyDialTimeoutDefault")
-                    : `${p.dialTimeoutSeconds}s`}
-                </span>
-                {mine.length > 0 ? (
-                  <button
-                    onClick={() => setExpanded((x) => ({ ...x, [p.id]: !x[p.id] }))}
-                    className="btn-ghost text-xs! py-1! px-2!"
-                  >
-                    {t("dash.proxyBackoffCount", { n: mine.length })}
-                  </button>
-                ) : null}
-                <button onClick={() => startEdit(p)} className="btn-ghost text-xs! py-1! px-2!">
-                  {t("dash.edit")}
-                </button>
-                <button
-                  onClick={() => remove(p)}
-                  className="text-accent-red hover:opacity-70 text-xs px-2 py-1"
-                >
-                  {t("dash.delete")}
-                </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button variant="primary" size="sm" onClick={submit} disabled={!draftIsValid(draft)}>
+                {t("dash.save")}
+              </Button>
+              <Button variant="secondary" size="sm" onClick={runTest} disabled={testing || !draftIsTestable(draft)}>
+                {testing ? t("dash.proxyTestRunning") : t("dash.proxyTestBtn")}
+              </Button>
+              <div className="w-36" title={t("dash.proxyAnchorLabel")}>
+                <Select
+                  size="sm"
+                  value={anchor}
+                  ariaLabel={t("dash.proxyAnchorLabel")}
+                  options={ANCHORS.map((a) => ({ value: a, label: a }))}
+                  onChange={(v) => {
+                    // find() 把 string 收窄回 ProxyTestAnchor —— 守卫而非断言。
+                    const a = ANCHORS.find((x) => x === v)
+                    if (a) { invalidateTest(); setAnchor(a) }
+                  }}
+                />
               </div>
+              <Button variant="ghost" size="sm" onClick={closeForm}>
+                {t("dash.closeBtn")}
+              </Button>
+            </div>
 
-              {expanded[p.id] ? (
-                <div className="mt-3 border-t border-surface-600 pt-2 space-y-1.5">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="text-xs text-themed-dim">{t("dash.proxyBackoffTitle")}</div>
+            {testResult ? (
+              <Notice tone={testResult.ok ? "success" : "danger"} className="break-all font-mono text-xs">
+                {testResult.ok
+                  ? t("dash.proxyTestOk", { ip: testResult.egressIp })
+                  : t("dash.proxyTestFail", { err: testResult.error })}
+              </Notice>
+            ) : null}
+          </div>
+        ) : null}
+
+        {rows.length === 0 ? <EmptyState title={t("dash.proxiesEmpty")} /> : null}
+
+        <div className="space-y-2">
+          {rows.map((p) => {
+            const mine = backoffs.filter((b) => b.proxyId === p.id)
+            const isRevealed = !!revealed[p.id]
+            const isExpanded = !!expanded[p.id]
+            return (
+              <div key={p.id} className="rounded-lg border border-border bg-background p-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-medium text-fg">{p.name}</div>
                     <button
-                      onClick={() => resetOne(p.id)}
-                      className="btn-ghost text-xs! py-1! px-2!"
+                      type="button"
+                      onClick={() => setRevealed((r) => ({ ...r, [p.id]: !r[p.id] }))}
+                      aria-pressed={isRevealed}
+                      className="block w-full cursor-pointer truncate rounded-sm text-left font-mono text-xs text-fg-muted hover:text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-text"
+                      title={t("dash.proxyRevealTip")}
                     >
-                      {t("dash.proxyBackoffReset")}
+                      {isRevealed ? p.url : maskUrl(p.url)}
                     </button>
                   </div>
-                  {mine.map((b) => (
-                    <div key={b.upstreamId} className="text-xs space-y-0.5">
-                      <div className="font-mono text-themed">{b.upstreamId}</div>
-                      <div className="text-themed-dim">
-                        {t("dash.proxyBackoffFails", { n: b.failCount })} ·{" "}
-                        {t("dash.proxyBackoffUntil", { at: fmt(b.expiresAt) })}
-                      </div>
-                      {/* `lastError` carries a `[stage]` prefix from the dialer — render it raw. */}
-                      {b.lastError ? (
-                        <div className="text-accent-red font-mono break-all">{b.lastError}</div>
-                      ) : null}
-                    </div>
-                  ))}
+                  <span className="shrink-0 text-xs text-fg-muted">
+                    {p.dialTimeoutSeconds == null
+                      ? t("dash.proxyDialTimeoutDefault")
+                      : `${p.dialTimeoutSeconds}s`}
+                  </span>
+                  {mine.length > 0 ? (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      aria-expanded={isExpanded}
+                      onClick={() => setExpanded((x) => ({ ...x, [p.id]: !x[p.id] }))}
+                    >
+                      {t("dash.proxyBackoffCount", { n: mine.length })}
+                    </Button>
+                  ) : null}
+                  <Button variant="ghost" size="sm" onClick={() => startEdit(p)}>
+                    {t("dash.edit")}
+                  </Button>
+                  <Button variant="ghost" size="sm" className="text-danger hover:text-danger" onClick={() => remove(p)}>
+                    {t("dash.delete")}
+                  </Button>
                 </div>
-              ) : null}
-            </div>
-          )
-        })}
+
+                {isExpanded ? (
+                  <div className="mt-3 space-y-1.5 border-t border-border pt-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="text-xs text-fg-muted">{t("dash.proxyBackoffTitle")}</div>
+                      <Button variant="secondary" size="sm" onClick={() => resetOne(p.id)}>
+                        {t("dash.proxyBackoffReset")}
+                      </Button>
+                    </div>
+                    {mine.map((b) => (
+                      <div key={b.upstreamId} className="space-y-0.5 text-xs">
+                        <div className="font-mono text-fg">{b.upstreamId}</div>
+                        <div className="text-fg-muted">
+                          {t("dash.proxyBackoffFails", { n: b.failCount })} ·{" "}
+                          {t("dash.proxyBackoffUntil", { at: fmt(b.expiresAt) })}
+                        </div>
+                        {/* `lastError` carries a `[stage]` prefix from the dialer — render it raw. */}
+                        {b.lastError ? (
+                          <div className="break-all font-mono text-danger">{b.lastError}</div>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            )
+          })}
+        </div>
       </div>
     </div>
   )
