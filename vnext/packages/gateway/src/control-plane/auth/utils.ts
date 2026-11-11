@@ -76,12 +76,21 @@ export function escapeHtml(value: string): string {
 // `message` reaches here from OAuth callback query params and raw upstream
 // response bodies, so it is attacker-influenced and must be escaped.
 export function errorPage(message: string): string {
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Error</title><style>body{font-family:system-ui,sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;background:#f5f5f5}
-.card{background:#fff;border-radius:12px;padding:2rem;max-width:400px;box-shadow:0 2px 8px rgba(0,0,0,.1);text-align:center}
-h2{color:#d32f2f;margin:0 0 1rem}p{color:#666;margin:0 0 1.5rem}
-a{display:inline-block;padding:.5rem 1.5rem;background:#1a73e8;color:#fff;border-radius:6px;text-decoration:none}</style></head>
-<body><div class="card"><h2>Error</h2><p>${escapeHtml(message)}</p><a href="/">Back to Login</a></div></body></html>`
+  // Colours mirror the dashboard tokens (apps/dashboard/src/styles.css); the
+  // saved theme is applied before paint, falling back to the system setting.
+  return `<!DOCTYPE html><html lang="en" data-theme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Error</title><meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&display=swap" rel="stylesheet">
+<script>(function(){var t=null;try{t=localStorage.getItem('theme')}catch(e){}if(!t)t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';document.documentElement.setAttribute('data-theme',t)})()</script>
+<style>:root,[data-theme=light]{color-scheme:light;--bg:#fafafa;--panel:#fff;--border:#ebebeb;--fg:#0a0a0a;--fg-muted:#525252;--danger-text:#b91c1c;--brand:#7c3aed;--brand-hover:#6d28d9;--brand-text:#7c3aed}
+[data-theme=dark]{color-scheme:dark;--bg:#0a0a0a;--panel:#111;--border:#262626;--fg:#ededed;--fg-muted:#a1a1a1;--danger-text:#f87171;--brand:#7c3aed;--brand-hover:#6d28d9;--brand-text:#a78bfa}
+body{font-family:Geist,ui-sans-serif,system-ui,sans-serif;font-size:14px;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;padding:1rem;box-sizing:border-box;background:var(--bg);color:var(--fg);-webkit-font-smoothing:antialiased}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:2rem;max-width:400px;width:100%;box-sizing:border-box;text-align:center}
+h2{color:var(--danger-text);font-size:18px;font-weight:600;margin:0 0 .75rem}p{color:var(--fg-muted);line-height:1.5;margin:0 0 1.5rem;overflow-wrap:anywhere}
+a{display:inline-block;padding:.5rem 1.25rem;background:var(--brand);color:#fff;border-radius:6px;font-weight:500;text-decoration:none;transition:background-color .15s}
+a:hover{background:var(--brand-hover)}a:focus-visible{outline:2px solid var(--brand-text);outline-offset:2px}</style></head>
+<body><div class="card" role="main"><h2>Error</h2><p>${escapeHtml(message)}</p><a href="/">Back to Login</a></div></body></html>`
 }
 
 export async function detectAccountType(

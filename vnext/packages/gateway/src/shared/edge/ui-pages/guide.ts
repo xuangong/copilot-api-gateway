@@ -65,6 +65,7 @@ const ICON_EDIT = `<path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-
 export function GuidePage(): string {
   return Layout({
     title: "Getting Started",
+    description: "Getting started with Copilot Gateway: register, connect GitHub Copilot, create an API key and configure Claude Code, Codex CLI or Gemini CLI.",
     children: `
       <div class="min-h-screen" x-data="{}">
         <!-- Header -->

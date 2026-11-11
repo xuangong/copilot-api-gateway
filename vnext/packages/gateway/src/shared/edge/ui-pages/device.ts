@@ -4,6 +4,7 @@ import { Layout } from "./layout"
 export function DevicePage(): string {
   return Layout({
     title: "Device Login",
+    description: "Authorize a desktop app to use your Copilot Gateway account.",
     children: `
       <div class="min-h-screen flex items-center justify-center p-4" role="main">
         <div class="fixed top-4 right-4 flex items-center gap-2 z-50" x-data>
@@ -18,7 +19,6 @@ export function DevicePage(): string {
           </button>
         </div>
         <script>document.getElementById('__lang_btn').textContent = window.__lang === 'zh' ? 'EN' : '中';</script>
-        <div class="fixed top-0 left-1/2 -translate-x-1/2 w-[600px] h-[400px] rounded-full pointer-events-none"></div>
 
         <div class="w-full max-w-md" x-data="deviceApp()">
           <!-- Checking session -->

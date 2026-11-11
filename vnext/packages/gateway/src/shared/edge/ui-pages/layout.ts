@@ -4,13 +4,25 @@
 // as aliases of those tokens so the page markup barely changes.
 import { renderI18nScript } from "./i18n"
 
-export function Layout({ title, children }: { title: string; children: string }): string {
+const DEFAULT_DESCRIPTION =
+  "Copilot Gateway puts one API key in front of Claude, GPT and Gemini models for Claude Code, Codex CLI and Gemini CLI."
+
+export function Layout({
+  title,
+  description = DEFAULT_DESCRIPTION,
+  children,
+}: {
+  title: string
+  description?: string
+  children: string
+}): string {
   return `<!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>${title} — Copilot Gateway</title>
+  <meta name="description" content="${description}" />
   <link rel="icon" type="image/png" href="/favicon.png" />
   <script src="/cdn/tailwind.js"></script>
   <script defer src="/cdn/alpine.js"></script>
@@ -327,6 +339,8 @@ export function Layout({ title, children }: { title: string; children: string })
     .text-themed-dim { color: var(--text-dim); }
 
     .border-themed { border-color: var(--border-color); }
+    /* CDN Tailwind does not generate variants for these plain classes. */
+    .hover\\:text-themed-secondary:hover { color: var(--text-secondary); }
 
     /* Links inside running text (incl. x-html i18n strings) need more than colour */
     :where(p, li) a[href] {
