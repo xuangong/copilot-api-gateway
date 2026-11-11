@@ -26,6 +26,12 @@ async function fixture(run: (repo: Repo, db: Database, calls: { sql: string; bin
   const db = new Database(join(dir, "fixture.sqlite"))
   try {
     initSqlite(db)
+    // The 1001-key setup is ~7000 single-row autocommits. With the default
+    // rollback journal each one fsyncs and creates/deletes a journal file,
+    // which took 8-50s on a busy machine (vs ~0.2s here). These tests assert
+    // query results and bind budgets, not durability.
+    db.run("PRAGMA synchronous = OFF")
+    db.run("PRAGMA journal_mode = MEMORY")
     const calls: { sql: string; binds: unknown[] }[] = []
     const executor: SqlExecutor = {
       async all<T>(sql: string, binds: unknown[]): Promise<T[]> { calls.push({ sql, binds }); return db.query(sql).all(...binds as SQLQueryBindings[]) as T[] },

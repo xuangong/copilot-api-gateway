@@ -37,6 +37,13 @@ function sqlFixture() {
   return { db: sqliteBoundary(sqlite), sqlite }
 }
 const referenceRoot = process.env.REFERENCE_SOURCE_ROOT ?? "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-07-reference-stage-measurement/reference-source"
+// The reference sources are transpiled on first import, which can take several
+// seconds on a busy machine. Load them while this file loads (not timed per
+// test) instead of inside whichever test happens to import them first.
+await Promise.all([
+  "packages/provider-custom/src/provider.ts", "packages/gateway/src/repo/upstream-codecs.ts", "packages/gateway/src/repo/models-cache-contract.ts",
+  "packages/gateway/src/repo/sql.ts", "packages/gateway/src/data-plane/providers/models-cache.ts", "packages/provider-custom/src/fetch.ts",
+].map(path => import(realpathSync(join(referenceRoot, path)))))
 const seed = { referenceRoot, baseUrl: "http://127.0.0.1:49999", apiKey: "isolated-key", fixtureSecret: "fixture-secret", dump: true, model: "bench-chat-success" }
 
 test("seed uses R integer user identity, server secret and structured Chat capabilities", async () => {
@@ -75,8 +82,10 @@ test("seed dump-disabled control uses NULL and rejects nonlocal or credentialed 
 })
 
 test("real R migrations preserve the bootstrap admin while fixture seed and physical readback satisfy ownership triggers", async () => {
-  const root = process.env.REFERENCE_SOURCE_ROOT ?? "/Volumes/Projects/copilot-gateway"
-  const migrations = join(root, "packages/gateway/migrations")
+  // Migrations must come from the same pinned reference snapshot as the
+  // SqlRepo/models-cache sources imported below; the live reference checkout
+  // keeps moving (0096 dropped users.upstream_ids) and no longer matches them.
+  const migrations = join(referenceRoot, "packages/gateway/migrations")
   const names = readdirSync(migrations).filter(name => name.endsWith(".sql")).sort()
   expect(names.length).toBeGreaterThanOrEqual(85)
   const sqlite = new Database(":memory:")
