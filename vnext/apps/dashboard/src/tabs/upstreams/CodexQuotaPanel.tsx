@@ -2,6 +2,9 @@ import { useEffect, useState } from "react"
 import { getCodexQuota } from "../../api/upstreams"
 import { useT } from "../../state/i18n"
 import { CodexQuotaReader, type QuotaReadState } from "./codex-quota-read"
+import { Button } from "../../ui/button"
+import { Meter, meterTone } from "../../ui/meter"
+import { Notice } from "../../ui/notice"
 
 export function CodexQuotaPanel({ upstreamId }: { upstreamId: string }) {
   // Keying the child by identity prevents even a single render of another
@@ -21,26 +24,34 @@ function QuotaPanel({ upstreamId }: { upstreamId: string }) {
   const unknown = t("dash.codexQuotaUnknown")
   const percent = (value: number | undefined) => value === undefined ? unknown : `${value}%`
   const date = (value: string | number) => new Date(value).toLocaleString()
+  // The bar sits beside the number; the number stays the readable value.
+  const bar = (value: number | undefined) => value === undefined
+    ? null
+    : <Meter percent={value} tone={meterTone(value)} className="ml-1.5 inline-block w-16 align-middle" />
   return (
-    <section data-testid="codex-quota-panel" data-upstream-id={upstreamId} className="mt-3 border-t border-themed pt-3 text-xs space-y-2" aria-label={t("dash.codexQuotaTitle")}>
+    <section data-testid="codex-quota-panel" data-upstream-id={upstreamId} className="mt-3 border-t border-border pt-3 text-xs text-fg space-y-2" aria-label={t("dash.codexQuotaTitle")}>
       <div className="flex items-center justify-between gap-2">
-        <h4 className="font-medium text-themed">{t("dash.codexQuotaTitle")}</h4>
-        <button type="button" data-testid="codex-quota-reload" className="btn-ghost text-xs" disabled={state.status === "loading"}
-          onClick={() => setRevision(value => value + 1)}>{t("dash.codexQuotaReload")}</button>
+        <h4 className="text-xs font-medium text-fg-muted">{t("dash.codexQuotaTitle")}</h4>
+        <Button variant="ghost" size="sm" data-testid="codex-quota-reload" disabled={state.status === "loading"}
+          onClick={() => setRevision(value => value + 1)}>{t("dash.codexQuotaReload")}</Button>
       </div>
-      <p className="text-themed-dim">{t("dash.codexQuotaHint")}</p>
+      <p className="text-fg-subtle">{t("dash.codexQuotaHint")}</p>
       <div data-testid="codex-quota-status" aria-live="polite">
         {state.status === "loading" ? <p>{t("dash.loadingShort")}</p> : null}
-        {state.status === "error" ? <p role="alert" className="text-accent-red">{t("dash.codexQuotaFailed")}</p> : null}
+        {state.status === "error" ? <Notice tone="danger" role="alert" className="text-xs">{t("dash.codexQuotaFailed")}</Notice> : null}
         {state.status === "ready" && state.result.quota === null ? <p>{t("dash.codexQuotaMissing")}</p> : null}
       </div>
       {state.status === "ready" && state.result.quota ? Object.entries(state.result.quota).map(([key, observation]) => (
-        <div key={key} data-testid="codex-quota-bucket" data-active-limit={key} data-freshness={observation.freshness} className="rounded-sm border border-themed p-2 space-y-1">
-          <div className="font-medium text-themed">{key} · {t(observation.freshness === "stale" ? "dash.codexQuotaStale" : "dash.codexQuotaFresh")}</div>
-          <div>{t("dash.codexQuotaPrimary")}: {percent(observation.data.primary_used_percent)} · {t("dash.codexQuotaSecondary")}: {percent(observation.data.secondary_used_percent)}</div>
+        <div key={key} data-testid="codex-quota-bucket" data-active-limit={key} data-freshness={observation.freshness} className="rounded-md border border-border bg-background p-2 space-y-1">
+          <div className="font-medium text-fg">{key} · {t(observation.freshness === "stale" ? "dash.codexQuotaStale" : "dash.codexQuotaFresh")}</div>
+          <div>
+            {t("dash.codexQuotaPrimary")}: {percent(observation.data.primary_used_percent)}{bar(observation.data.primary_used_percent)}
+            {" · "}
+            {t("dash.codexQuotaSecondary")}: {percent(observation.data.secondary_used_percent)}{bar(observation.data.secondary_used_percent)}
+          </div>
           <div>{t("dash.codexQuotaCredits")}: {observation.data.credits_balance ?? unknown}</div>
-          <div className="text-themed-dim">{t("dash.codexQuotaObserved", { at: date(observation.observedAt) })}</div>
-          <div className="text-themed-dim">{t("dash.codexQuotaReceived", { at: date(observation.fetchedAt), until: date(observation.freshUntil) })}</div>
+          <div className="text-fg-muted">{t("dash.codexQuotaObserved", { at: date(observation.observedAt) })}</div>
+          <div className="text-fg-muted">{t("dash.codexQuotaReceived", { at: date(observation.fetchedAt), until: date(observation.freshUntil) })}</div>
           {observation.data.primary_reset_after_at ? <div>{t("dash.codexQuotaPrimaryReset", { at: date(observation.data.primary_reset_after_at) })}</div> : null}
           {observation.data.secondary_reset_after_at ? <div>{t("dash.codexQuotaSecondaryReset", { at: date(observation.data.secondary_reset_after_at) })}</div> : null}
         </div>

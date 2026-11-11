@@ -24,13 +24,15 @@ interface Props {
   labelledBy?: string
   /** Used only when there is no visible label. */
   ariaLabel?: string
+  /** Id of a hint or error that describes the trigger. */
+  describedBy?: string
   placeholder?: string
   disabled?: boolean
   size?: "sm" | "md"
   className?: string
 }
 
-export function Select({ value, options, onChange, labelledBy, ariaLabel, placeholder, disabled = false, size = "md", className }: Props) {
+export function Select({ value, options, onChange, labelledBy, ariaLabel, describedBy, placeholder, disabled = false, size = "md", className }: Props) {
   const valueId = useId()
   const current = options.find((o) => o.value === value)
   // A value missing from the options (e.g. a deleted key) still shows as itself.
@@ -40,6 +42,7 @@ export function Select({ value, options, onChange, labelledBy, ariaLabel, placeh
       <RadixSelect.Trigger
         aria-labelledby={labelledBy ? `${labelledBy} ${valueId}` : undefined}
         aria-label={labelledBy ? undefined : ariaLabel}
+        aria-describedby={describedBy}
         className={cn(
           "inline-flex w-full min-w-0 items-center justify-between gap-2 rounded-md border border-input bg-background px-2.5 text-left text-[13px] text-fg transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-text disabled:cursor-not-allowed disabled:opacity-50",
           size === "sm" ? "h-7" : "h-8",

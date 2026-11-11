@@ -1,36 +1,18 @@
 import { useState } from "react"
 import type { UpstreamRecord } from "../../api/types"
+import { Badge } from "../../ui/badge"
 
 type Provider = UpstreamRecord["provider"]
 
-const RING: Record<Provider, string> = {
-  copilot: "ring-violet-400/40",
-  azure: "ring-sky-400/40",
-  custom: "ring-fuchsia-400/40",
-  sdf: "ring-amber-400/40",
-  codex: "ring-slate-400/40",
-  "claude-code": "ring-slate-400/40",
-  loki: "ring-slate-400/40",
-}
-
-const BADGE_BG: Record<Provider, string> = {
-  copilot: "bg-violet-500 text-white",
-  azure: "bg-sky-500 text-white",
-  custom: "bg-fuchsia-500 text-white",
-  sdf: "bg-amber-500 text-white",
-  codex: "bg-slate-500 text-white",
-  "claude-code": "bg-slate-500 text-white",
-  loki: "bg-slate-500 text-white",
-}
-
-const FRAME_FALLBACK: Record<Provider, string> = {
-  copilot: "bg-violet-900/40 text-violet-200",
-  azure: "bg-sky-900/40 text-sky-200",
-  custom: "bg-fuchsia-900/40 text-fuchsia-200",
-  sdf: "bg-amber-900/40 text-amber-200",
-  codex: "bg-slate-900/40 text-slate-200",
-  "claude-code": "bg-slate-900/40 text-slate-200",
-  loki: "bg-slate-900/40 text-slate-200",
+// Copilot and Codex are the first-party providers; everything else is neutral.
+const BADGE_TONE: Record<Provider, "brand" | "neutral"> = {
+  copilot: "brand",
+  azure: "neutral",
+  custom: "neutral",
+  sdf: "neutral",
+  codex: "brand",
+  "claude-code": "neutral",
+  loki: "neutral",
 }
 
 const LETTER: Record<Provider, string> = {
@@ -69,7 +51,7 @@ export function ProviderAvatar({ provider, avatarUrl, title }: Props) {
 
   return (
     <div className="relative shrink-0" title={title ?? FULL_LABEL[provider]}>
-      <div className={`w-10 h-10 rounded-lg ring-1 ${RING[provider]} overflow-hidden bg-surface-800 flex items-center justify-center`}>
+      <div className="w-10 h-10 rounded-lg ring-1 ring-border overflow-hidden bg-muted flex items-center justify-center">
         {showImage ? (
           <img
             src={avatarUrl}
@@ -79,15 +61,16 @@ export function ProviderAvatar({ provider, avatarUrl, title }: Props) {
             onError={() => setFailedUrl(avatarUrl)}
           />
         ) : (
-          <span className={`w-full h-full flex items-center justify-center text-sm font-semibold ${FRAME_FALLBACK[provider]}`}>
+          <span className="w-full h-full flex items-center justify-center text-sm font-semibold bg-muted text-fg-muted">
             {LETTER[provider]}
           </span>
         )}
       </div>
-      <span
-        className={`absolute -bottom-1.5 -right-2 text-[10px] font-semibold uppercase tracking-wide leading-none px-1.5 py-0.5 rounded-md shadow-sm ring-1 ring-black/20 ${BADGE_BG[provider]}`}
-      >
-        {FULL_LABEL[provider]}
+      {/* The opaque backing keeps the translucent badge readable over the avatar image. */}
+      <span className="absolute -bottom-1.5 -right-2 rounded bg-panel shadow-sm">
+        <Badge tone={BADGE_TONE[provider]} className="font-semibold uppercase tracking-wide leading-4">
+          {FULL_LABEL[provider]}
+        </Badge>
       </span>
     </div>
   )

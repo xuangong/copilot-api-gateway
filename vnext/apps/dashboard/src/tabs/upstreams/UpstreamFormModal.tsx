@@ -3,241 +3,28 @@ import { useT } from "../../state/i18n"
 import { useToast } from "../../state/toast"
 import { useAuth } from "../../state/auth"
 import * as api from "../../api/upstreams"
-import type { UpstreamRecord } from "../../api/types"
 import { findPreset } from "./vendorPresets"
-import { formatModelsText, parseModelsText } from "./model-text"
 import { CatalogRequestGate, catalogDraftIdentity } from "./catalog-request-gate"
-import { isFreshCredential } from "./duplicate-draft"
-import type { PortableUpstreamDraft } from "./duplicate-draft"
 import { CodexImportPanel } from "./CodexImportPanel"
-
-type Provider = UpstreamRecord["provider"]
+import { buildCreateConfig, buildEditConfig, buildInitial } from "./upstream-form-state"
+import type { FormState, Provider, UpstreamFormMode } from "./upstream-form-state"
+import { Field, FormHeading } from "./form/Field"
+import { CustomFields, CustomModelFields } from "./form/CustomFields"
+import { AzureFields } from "./form/AzureFields"
+import { SdfFields } from "./form/SdfFields"
+import { ServedEndpointsField } from "./form/ServedEndpointsField"
+import { DisabledModelsSection } from "./form/DisabledModelsSection"
+import { FeatureFlagsSection } from "./form/FeatureFlagsSection"
+import { X } from "lucide-react"
+import { Button } from "../../ui/button"
+import { Notice } from "../../ui/notice"
 
 interface Props {
-  mode:
-    | { kind: "create"; provider: "azure" | "custom" | "sdf" | "codex"; presetId?: string; draft?: PortableUpstreamDraft }
-    | { kind: "edit"; row: UpstreamRecord }
+  mode: UpstreamFormMode
   flagCatalog: api.FlagCatalog | null
   ensureFlagCatalog: () => Promise<api.FlagCatalog>
   onClose: () => void
   onSaved: () => void
-}
-
-interface FormState {
-  name: string
-  baseUrl: string
-  apiKey: string
-  endpoint: string
-  azureApiKey: string
-  deployment: string
-  apiVersion: string
-  endpoints: string[]
-  authStyle: string
-  pathOverrides: Record<string, string>
-  modelsEndpoint: string
-  modelsText: string
-  azureDeployments: string
-  azureDeploymentsError: string
-  flagOverrides: Record<string, boolean>
-  copilotLogin: string
-  substrateToken: string
-  sdfExperience: string
-  sdfAgent: string
-  sdfInferenceStep: string
-  sdfTrafficType: string
-  sdfServiceTier: string
-  sdfPassportEnabled: boolean
-  sdfPassportApiBase: string
-}
-
-// Mirrors the provider-side defaults. The form always sends these explicitly
-// so the card shows exactly what goes on the wire rather than "(default)".
-const SDF_DEFAULTS = {
-  experience: "BizChat",
-  agent: "Societas",
-  inferenceStep: "GenerateResponse",
-  trafficType: "Production",
-  serviceTier: "default",
-  passportApiBase: "https://sdf.passport.microsoft.net",
-}
-
-const SDF_EXPERIENCES = ["BizChat", "WXPOAgents", "AppCopilots", "Cowork", "Scout", "WorkIQ"]
-const SDF_SERVICE_TIERS = ["async", "async-express", "flex", "default", "priority"]
-const SDF_TRAFFIC_TYPES = ["Production", "Test"]
-
-const EMPTY: FormState = {
-  name: "",
-  baseUrl: "",
-  apiKey: "",
-  endpoint: "",
-  azureApiKey: "",
-  deployment: "",
-  apiVersion: "2024-08-01-preview",
-  endpoints: ["chat_completions", "embeddings"],
-  authStyle: "bearer",
-  pathOverrides: {},
-  modelsEndpoint: "",
-  modelsText: "",
-  azureDeployments: "",
-  azureDeploymentsError: "",
-  flagOverrides: {},
-  copilotLogin: "",
-  substrateToken: "",
-  sdfExperience: SDF_DEFAULTS.experience,
-  sdfAgent: SDF_DEFAULTS.agent,
-  sdfInferenceStep: SDF_DEFAULTS.inferenceStep,
-  sdfTrafficType: SDF_DEFAULTS.trafficType,
-  sdfServiceTier: SDF_DEFAULTS.serviceTier,
-  sdfPassportEnabled: true,
-  sdfPassportApiBase: SDF_DEFAULTS.passportApiBase,
-}
-
-// Azure has no `/alpha/search` surface, so it gets one fewer checkbox.
-const CUSTOM_SERVED_ENDPOINTS = [
-  "chat_completions",
-  "responses",
-  "messages",
-  "messages_count_tokens",
-  "embeddings",
-  "images_generations",
-  "images_edits",
-  "alpha_search",
-] as const
-const AZURE_SERVED_ENDPOINTS = CUSTOM_SERVED_ENDPOINTS.filter((ep) => ep !== "alpha_search")
-
-// The 7 override-able endpoint keys and their provider-side defaults.
-// messages_count_tokens is absent on purpose — it derives from messages.
-const PATH_OVERRIDE_KEYS = [
-  ["chat_completions", "/chat/completions"],
-  ["responses", "/responses"],
-  ["messages", "/messages"],
-  ["embeddings", "/embeddings"],
-  ["images_generations", "/images/generations"],
-  ["images_edits", "/images/edits"],
-  ["alpha_search", "/alpha/search"],
-] as const
-
-function buildInitial(mode: Props["mode"]): { provider: Provider; form: FormState } {
-  if (mode.kind === "create" && !mode.draft) {
-    const preset = mode.provider === "custom" ? findPreset(mode.presetId) : undefined
-    if (preset) {
-      return {
-        provider: mode.provider,
-        form: {
-          ...EMPTY,
-          name: preset.name,
-          baseUrl: preset.baseUrl,
-          endpoints: [...preset.endpoints],
-          pathOverrides: { ...preset.pathOverrides },
-          modelsEndpoint: preset.modelsEndpoint,
-          modelsText: preset.modelsText,
-          flagOverrides: { ...preset.flagOverrides },
-        },
-      }
-    }
-    return {
-      provider: mode.provider,
-      form: {
-        ...EMPTY,
-        endpoints:
-          mode.provider === "azure"
-            ? ["chat_completions"]
-            : mode.provider === "sdf"
-              ? ["images_generations", "images_edits"]
-              : ["chat_completions", "embeddings"],
-      },
-    }
-  }
-  const u = mode.kind === "edit" ? mode.row : mode.draft
-  if (!u) throw new Error("Duplicate draft required")
-  const cfg = u.config as UpstreamRecord["config"]
-  const sdf = cfg as {
-    taxonomy?: { experience?: string; agent?: string; inferenceStep?: string; trafficType?: string }
-    cos?: { serviceTier?: string }
-    passport?: { enabled?: boolean; apiBase?: string }
-  }
-  const modelsText = formatModelsText(cfg.models)
-  const azureDepsText =
-    (Array.isArray((cfg as { deployments?: { name: string; model?: string }[] }).deployments)
-      ? (cfg as { deployments: { name: string; model?: string }[] }).deployments
-      : [])
-      .map((d) => `${d.name}${d.model ? ` = ${d.model}` : ""}`)
-      .join("\n")
-  return {
-    provider: u.provider,
-    form: {
-      name: u.name,
-      baseUrl: u.provider === "custom" ? cfg.baseUrl ?? "" : "",
-      apiKey: "",
-      endpoint: u.provider === "azure" ? cfg.endpoint ?? "" : "",
-      azureApiKey: "",
-      deployment: u.provider === "azure" ? cfg.deployment ?? "" : "",
-      apiVersion: u.provider === "azure" ? cfg.apiVersion ?? "2024-08-01-preview" : "2024-08-01-preview",
-      endpoints: Array.isArray(cfg.endpoints)
-        ? [...cfg.endpoints]
-        : u.provider === "custom"
-          ? ["chat_completions", "embeddings"]
-          : u.provider === "sdf"
-            ? ["images_generations", "images_edits"]
-            : ["chat_completions"],
-      authStyle:
-        u.provider === "custom" && typeof (cfg as { authStyle?: string }).authStyle === "string"
-          ? (cfg as { authStyle: string }).authStyle
-          : "bearer",
-      pathOverrides:
-        u.provider === "custom" && (cfg as { pathOverrides?: Record<string, string> }).pathOverrides
-          ? { ...(cfg as { pathOverrides: Record<string, string> }).pathOverrides }
-          : {},
-      modelsEndpoint:
-        u.provider === "custom" ? (cfg as { modelsEndpoint?: string }).modelsEndpoint ?? "" : "",
-      modelsText,
-      azureDeployments: azureDepsText,
-      azureDeploymentsError: "",
-      flagOverrides: { ...(u.flagOverrides ?? {}) },
-      copilotLogin: u.provider === "copilot" ? cfg.user?.login ?? "" : "",
-      substrateToken: "",
-      sdfExperience: sdf.taxonomy?.experience ?? SDF_DEFAULTS.experience,
-      sdfAgent: sdf.taxonomy?.agent ?? SDF_DEFAULTS.agent,
-      sdfInferenceStep: sdf.taxonomy?.inferenceStep ?? SDF_DEFAULTS.inferenceStep,
-      sdfTrafficType: sdf.taxonomy?.trafficType ?? SDF_DEFAULTS.trafficType,
-      sdfServiceTier: sdf.cos?.serviceTier ?? SDF_DEFAULTS.serviceTier,
-      sdfPassportEnabled: sdf.passport?.enabled ?? true,
-      sdfPassportApiBase: sdf.passport?.apiBase ?? SDF_DEFAULTS.passportApiBase,
-    },
-  }
-}
-
-/**
- * The PATCH merge is shallow at the top level, so these sub-objects have to be
- * sent whole on every save — a partial `taxonomy` would replace, not merge.
- */
-function sdfTuning(form: FormState) {
-  return {
-    taxonomy: {
-      experience: form.sdfExperience,
-      agent: form.sdfAgent.trim() || SDF_DEFAULTS.agent,
-      inferenceStep: form.sdfInferenceStep.trim() || SDF_DEFAULTS.inferenceStep,
-      trafficType: form.sdfTrafficType,
-    },
-    cos: { serviceTier: form.sdfServiceTier },
-    passport: {
-      enabled: form.sdfPassportEnabled,
-      apiBase: form.sdfPassportApiBase.trim() || SDF_DEFAULTS.passportApiBase,
-    },
-  }
-}
-
-function parseAzureDeployments(txt: string): { name: string; model: string }[] | undefined {
-  if (!txt.trim()) return undefined
-  return txt
-    .split(/\r?\n/)
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .map((line) => {
-      const eqAt = line.indexOf("=")
-      if (eqAt === -1) return { name: line, model: line }
-      return { name: line.slice(0, eqAt).trim(), model: line.slice(eqAt + 1).trim() }
-    })
 }
 
 export function UpstreamFormModal({ mode, flagCatalog, ensureFlagCatalog, onClose, onSaved }: Props) {
@@ -256,7 +43,7 @@ export function UpstreamFormModal({ mode, flagCatalog, ensureFlagCatalog, onClos
   const [catalogError, setCatalogError] = useState<string | null>(null)
   const [catalogLoading, setCatalogLoading] = useState(false)
   const [catalogRefreshing, setCatalogRefreshing] = useState(false)
-  const headingRef = useRef<HTMLDivElement>(null)
+  const headingRef = useRef<HTMLHeadingElement>(null)
   const catalogGate = useRef(new CatalogRequestGate())
   const modeRef = useRef(mode)
   const catalogIdRef = useRef(editingId)
@@ -268,7 +55,6 @@ export function UpstreamFormModal({ mode, flagCatalog, ensureFlagCatalog, onClos
   const [disabledIds, setDisabledIds] = useState<string[]>(
     mode.kind === "edit" ? [...(mode.row.disabledPublicModelIds ?? [])] : [...(mode.draft?.disabledPublicModelIds ?? [])],
   )
-  const [extraIdInput, setExtraIdInput] = useState("")
 
   useEffect(() => {
     ensureFlagCatalog().catch((e) => toast(e instanceof Error ? e.message : String(e), "error"))
@@ -396,51 +182,12 @@ export function UpstreamFormModal({ mode, flagCatalog, ensureFlagCatalog, onClos
 
       let config: Record<string, unknown>
       if (!editingId) {
-        if (provider === "custom") {
-          const needsKey = form.authStyle !== "none"
-          if (!form.baseUrl.trim() || (needsKey && !isFreshCredential(form.apiKey))) {
-            toast(t("dash.errBaseUrlApiKeyRequired"), "error")
-            return
-          }
-          config = {
-            name: form.name.trim(),
-            baseUrl: form.baseUrl.trim(),
-            endpoints: form.endpoints,
-            authStyle: form.authStyle,
-            pathOverrides: form.pathOverrides,
-          }
-          if (isFreshCredential(form.apiKey)) (config as { apiKey: string }).apiKey = form.apiKey.trim()
-          if (form.modelsEndpoint.trim()) {
-            (config as { modelsEndpoint: string }).modelsEndpoint = form.modelsEndpoint.trim()
-          }
-          const models = parseModelsText(form.modelsText)
-          if (models) (config as { models: unknown }).models = models
-        } else if (provider === "sdf") {
-          if (!isFreshCredential(form.substrateToken)) {
-            toast(t("dash.errSubstrateTokenRequired"), "error")
-            return
-          }
-          config = {
-            name: form.name.trim(),
-            substrateToken: form.substrateToken.trim(),
-            ...sdfTuning(form),
-          }
-        } else {
-          if (!form.endpoint.trim() || !isFreshCredential(form.azureApiKey) || !form.deployment.trim()) {
-            toast(t("dash.errEndpointApiKeyDeploymentRequired"), "error")
-            return
-          }
-          config = {
-            name: form.name.trim(),
-            endpoint: form.endpoint.trim(),
-            apiKey: form.azureApiKey.trim(),
-            deployment: form.deployment.trim(),
-            apiVersion: form.apiVersion.trim() || "2024-08-01-preview",
-            endpoints: form.endpoints,
-          }
-          const deps = parseAzureDeployments(form.azureDeployments)
-          if (deps) (config as { deployments: unknown }).deployments = deps
+        const built = buildCreateConfig(provider, form)
+        if ("errorKey" in built) {
+          toast(t(built.errorKey), "error")
+          return
         }
+        config = built.config
         await api.createUpstream({
           provider,
           name: form.name.trim(),
@@ -455,34 +202,7 @@ export function UpstreamFormModal({ mode, flagCatalog, ensureFlagCatalog, onClos
         })
         toast(t("dash.toastCreated"), "success")
       } else {
-        config = { name: form.name.trim() }
-        if (provider === "custom") {
-          if (form.baseUrl.trim()) (config as { baseUrl: string }).baseUrl = form.baseUrl.trim()
-          if (form.apiKey.trim()) (config as { apiKey: string }).apiKey = form.apiKey.trim()
-          ;(config as { endpoints: string[] }).endpoints = form.endpoints
-          ;(config as { authStyle: string }).authStyle = form.authStyle
-          // Top-level merge is shallow, so this replaces rather than merges —
-          // an empty object is how the user clears every override.
-          ;(config as { pathOverrides: Record<string, string> }).pathOverrides = form.pathOverrides
-          // Blank normalizes back to undefined upstream, which is how the user
-          // reverts to probing `${baseUrl}/models`.
-          ;(config as { modelsEndpoint: string }).modelsEndpoint = form.modelsEndpoint.trim()
-          const models = parseModelsText(form.modelsText)
-          ;(config as { models: unknown }).models = models ?? []
-        } else if (provider === "sdf") {
-          if (form.substrateToken.trim()) {
-            (config as { substrateToken: string }).substrateToken = form.substrateToken.trim()
-          }
-          Object.assign(config, sdfTuning(form))
-        } else {
-          if (form.endpoint.trim()) (config as { endpoint: string }).endpoint = form.endpoint.trim()
-          if (form.azureApiKey.trim()) (config as { apiKey: string }).apiKey = form.azureApiKey.trim()
-          if (form.deployment.trim()) (config as { deployment: string }).deployment = form.deployment.trim()
-          if (form.apiVersion.trim()) (config as { apiVersion: string }).apiVersion = form.apiVersion.trim()
-          ;(config as { endpoints: string[] }).endpoints = form.endpoints
-          const deps = parseAzureDeployments(form.azureDeployments)
-          ;(config as { deployments: unknown }).deployments = deps ?? []
-        }
+        config = buildEditConfig(provider, form)
         await api.patchUpstream(editingId, {
           name: form.name.trim(),
           config,
@@ -506,221 +226,49 @@ export function UpstreamFormModal({ mode, flagCatalog, ensureFlagCatalog, onClos
   )
 
   return (
-    <div
-      className="rounded-lg p-4 sm:p-5 mt-2"
-      style={{ background: "var(--surface-800)", border: "1px solid var(--border-color)" }}
-    >
-      <div className="flex items-center justify-between mb-3">
-        <div ref={headingRef} className="text-themed font-semibold text-sm" tabIndex={mode.kind === "create" && mode.draft ? -1 : undefined}>{title}</div>
-        <button
-          onClick={onClose}
-          className="text-themed-dim hover:text-themed text-xs"
-          aria-label={t("dash.closeBtn")}
-        >
-          ×
-        </button>
+    <div className="mt-2 rounded-lg border border-border bg-panel p-4 sm:p-5">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <FormHeading ref={headingRef} className="text-sm font-semibold text-fg" tabIndex={mode.kind === "create" && mode.draft ? -1 : undefined}>{title}</FormHeading>
+        <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label={t("dash.closeBtn")}>
+          <X aria-hidden="true" />
+        </Button>
       </div>
       <div className="space-y-3">
         {mode.kind === "create" && mode.draft ? (
-          <p className="text-xs text-themed-dim">{t("dash.duplicateCredentialsHint")}</p>
+          <Notice tone="info" className="text-xs">{t("dash.duplicateCredentialsHint")}</Notice>
         ) : null}
         {preset?.noteKey ? (
-          <p
-            className="text-xs text-themed rounded-sm p-2"
-            style={{ background: "var(--surface-700)", border: "1px solid var(--border-color)" }}
-          >
-            {t(preset.noteKey)}
-          </p>
+          <Notice tone="info" className="text-xs text-fg">{t(preset.noteKey)}</Notice>
         ) : null}
         <Field label={t("dash.nameLabel")}>
-          <input
-            value={form.name}
-            onChange={(e) => update("name", e.target.value)}
-            placeholder={t("dash.namePlaceholderUpstream")}
-            className={inputCls}
-          />
+          {({ id }) => (
+            <input
+              id={id}
+              type="text"
+              value={form.name}
+              onChange={(e) => update("name", e.target.value)}
+              placeholder={t("dash.namePlaceholderUpstream")}
+            />
+          )}
         </Field>
 
         {provider === "custom" ? (
-          <>
-            <Field label={t("dash.baseUrlLabel")}>
-              <input
-                value={form.baseUrl}
-                onChange={(e) => update("baseUrl", e.target.value)}
-                onBlur={(e) => update("baseUrl", e.target.value.trim().replace(/\/+$/, ""))}
-                placeholder="https://api.deepseek.com/v1"
-                className={inputCls}
-              />
-            </Field>
-            <Field label={t("dash.apiKeyLabel")}>
-              <input
-                value={form.apiKey}
-                onChange={(e) => update("apiKey", e.target.value)}
-                type="password"
-                placeholder={editing ? t("dash.leaveBlankToKeep") : "sk-..."}
-                className={inputCls}
-              />
-            </Field>
-            <Field label={t("dash.authStyleLabel")}>
-              <select
-                value={form.authStyle}
-                onChange={(e) => update("authStyle", e.target.value)}
-                className={inputCls}
-              >
-                <option value="bearer">{t("dash.authStyleBearer")}</option>
-                <option value="anthropic">{t("dash.authStyleAnthropic")}</option>
-                <option value="none">{t("dash.authStyleNone")}</option>
-              </select>
-              <span className="text-xs text-themed-dim block mt-1">{t("dash.authStyleHint")}</span>
-            </Field>
-          </>
+          <CustomFields form={form} update={update} editing={editing} />
         ) : null}
 
         {provider === "azure" ? (
-          <>
-            <Field label={t("dash.endpointLabel")}>
-              <input
-                value={form.endpoint}
-                onChange={(e) => update("endpoint", e.target.value)}
-                onBlur={(e) => update("endpoint", e.target.value.trim().replace(/\/+$/, ""))}
-                placeholder="https://x.openai.azure.com"
-                className={inputCls}
-              />
-            </Field>
-            <Field label={t("dash.apiKeyLabel")}>
-              <input
-                value={form.azureApiKey}
-                onChange={(e) => update("azureApiKey", e.target.value)}
-                type="password"
-                placeholder={editing ? t("dash.leaveBlankToKeep") : ""}
-                className={inputCls}
-              />
-            </Field>
-            <Field label={t("dash.defaultDeploymentLabel")}>
-              <input
-                value={form.deployment}
-                onChange={(e) => update("deployment", e.target.value)}
-                placeholder="gpt-4o"
-                className={inputCls}
-              />
-            </Field>
-            <Field label={t("dash.apiVersionLabel")}>
-              <input value={form.apiVersion} onChange={(e) => update("apiVersion", e.target.value)} className={inputCls} />
-            </Field>
-            <Field label={t("dash.additionalDeploymentsLabel")}>
-              <textarea
-                value={form.azureDeployments}
-                onChange={(e) => update("azureDeployments", e.target.value)}
-                onBlur={validateAzureDeployments}
-                rows={3}
-                placeholder={"gpt-4o = gpt-4o\ntext-embed = text-embedding-3-small"}
-                className={`${inputCls} font-mono text-xs ${form.azureDeploymentsError ? "border-red-500" : ""}`}
-              />
-              {form.azureDeploymentsError ? (
-                <span className="text-xs text-accent-red block mt-1">{form.azureDeploymentsError}</span>
-              ) : (
-                <span className="text-xs text-themed-dim block mt-1">
-                  {t("dash.additionalDeploymentsHint")}
-                </span>
-              )}
-            </Field>
-          </>
+          <AzureFields form={form} update={update} editing={editing} validateAzureDeployments={validateAzureDeployments} />
         ) : null}
 
         {provider === "sdf" ? (
-          <>
-            <Field label={t("dash.substrateTokenLabel")}>
-              <input
-                value={form.substrateToken}
-                onChange={(e) => update("substrateToken", e.target.value)}
-                type="password"
-                placeholder={editing ? t("dash.leaveBlankToKeep") : ""}
-                className={inputCls}
-              />
-            </Field>
-            <p className="text-xs text-themed-dim">{t("dash.substrateTokenHint")}</p>
-
-            <div className="border-t border-themed pt-3 mt-3 space-y-3">
-              <div>
-                <h4 className="text-xs font-medium text-themed-dim uppercase tracking-widest mb-1">
-                  {t("dash.sdfTaxonomyLabel")}
-                </h4>
-                <p className="text-xs text-themed-dim">{t("dash.sdfTaxonomyHint")}</p>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <Field label={t("dash.sdfExperienceLabel")}>
-                  <select
-                    value={form.sdfExperience}
-                    onChange={(e) => update("sdfExperience", e.target.value)}
-                    className={inputCls}
-                  >
-                    {SDF_EXPERIENCES.map((v) => (
-                      <option key={v} value={v}>{v}</option>
-                    ))}
-                  </select>
-                </Field>
-                <Field label={t("dash.sdfAgentLabel")}>
-                  <input
-                    value={form.sdfAgent}
-                    onChange={(e) => update("sdfAgent", e.target.value)}
-                    className={inputCls}
-                  />
-                </Field>
-                <Field label={t("dash.sdfInferenceStepLabel")}>
-                  <input
-                    value={form.sdfInferenceStep}
-                    onChange={(e) => update("sdfInferenceStep", e.target.value)}
-                    className={inputCls}
-                  />
-                </Field>
-                <Field label={t("dash.sdfTrafficTypeLabel")}>
-                  <select
-                    value={form.sdfTrafficType}
-                    onChange={(e) => update("sdfTrafficType", e.target.value)}
-                    className={inputCls}
-                  >
-                    {SDF_TRAFFIC_TYPES.map((v) => (
-                      <option key={v} value={v}>{v}</option>
-                    ))}
-                  </select>
-                </Field>
-                <Field label={t("dash.sdfServiceTierLabel")}>
-                  <select
-                    value={form.sdfServiceTier}
-                    onChange={(e) => update("sdfServiceTier", e.target.value)}
-                    className={inputCls}
-                  >
-                    {SDF_SERVICE_TIERS.map((v) => (
-                      <option key={v} value={v}>{v}</option>
-                    ))}
-                  </select>
-                </Field>
-                <Field label={t("dash.sdfPassportApiBaseLabel")}>
-                  <input
-                    value={form.sdfPassportApiBase}
-                    onChange={(e) => update("sdfPassportApiBase", e.target.value)}
-                    className={inputCls}
-                  />
-                </Field>
-              </div>
-              <label className="flex items-center gap-2 text-xs text-themed cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={form.sdfPassportEnabled}
-                  onChange={(e) => update("sdfPassportEnabled", e.target.checked)}
-                />
-                <span>{t("dash.sdfPassportEnabledLabel")}</span>
-              </label>
-              <p className="text-xs text-themed-dim">{t("dash.sdfPassportHint")}</p>
-            </div>
-          </>
+          <SdfFields form={form} update={update} editing={editing} />
         ) : null}
 
         {provider === "copilot" ? (
-          <div className="bg-surface-800 border border-surface-600 rounded-sm p-3 text-xs space-y-1">
-            <div className="text-themed-dim">{t("dash.githubLoginLabel")}</div>
-            <div className="text-themed font-mono">{form.copilotLogin || "(unknown)"}</div>
-            <div className="text-themed-dim mt-2">
+          <div className="space-y-1 rounded-md border border-border bg-muted px-3 py-2 text-xs">
+            <div className="text-fg-muted">{t("dash.githubLoginLabel")}</div>
+            <div className="font-mono text-fg">{form.copilotLogin || "(unknown)"}</div>
+            <div className="mt-2 text-fg-muted">
               {t("dash.copilotTokenHint")}
             </div>
           </div>
@@ -738,277 +286,46 @@ export function UpstreamFormModal({ mode, flagCatalog, ensureFlagCatalog, onClos
         ) : null}
 
         {(provider === "custom" || provider === "azure") ? (
-          <div className="border-t border-themed pt-3 mt-3">
-            <h4 className="text-xs font-medium text-themed-dim uppercase tracking-widest mb-2">{t("dash.servedEndpointsLabel")}</h4>
-            <p className="text-xs text-themed-dim mb-2">
-              {t("dash.servedEndpointsHint")}
-            </p>
-            <div className="flex flex-wrap gap-3 text-xs">
-              {(provider === "azure" ? AZURE_SERVED_ENDPOINTS : CUSTOM_SERVED_ENDPOINTS).map((ep) => (
-                <label key={ep} className="flex items-center gap-1 cursor-pointer text-themed">
-                  <input
-                    type="checkbox"
-                    checked={form.endpoints.includes(ep)}
-                    onChange={() => toggleEndpoint(ep)}
-                  />
-                  <span>{ep}</span>
-                </label>
-              ))}
-            </div>
-          </div>
+          <ServedEndpointsField provider={provider} form={form} toggleEndpoint={toggleEndpoint} />
         ) : null}
 
         {provider === "custom" ? (
-          <div className="border-t border-themed pt-3 mt-3">
-            <h4 className="text-xs font-medium text-themed-dim uppercase tracking-widest mb-2">
-              {t("dash.manualModelListLabel")}
-            </h4>
-            <p className="text-xs text-themed-dim mb-2">
-              {t("dash.manualModelListHint")}
-            </p>
-            <textarea
-              value={form.modelsText}
-              onChange={(e) => update("modelsText", e.target.value)}
-              rows={4}
-              placeholder={"deepseek-chat\ndeepseek-coder # DeepSeek Coder"}
-              className={`${inputCls} font-mono text-xs`}
-            />
-            <div className="mt-3">
-              <Field label={t("dash.modelsEndpointLabel")}>
-                <input
-                  value={form.modelsEndpoint}
-                  onChange={(e) => update("modelsEndpoint", e.target.value)}
-                  onBlur={(e) => update("modelsEndpoint", e.target.value.trim())}
-                  placeholder={form.baseUrl ? `${form.baseUrl}/models` : "https://api.example.com/v1/models"}
-                  className={`${inputCls} font-mono text-xs`}
-                />
-                <span className="text-xs text-themed-dim block mt-1">{t("dash.modelsEndpointHint")}</span>
-              </Field>
-            </div>
-          </div>
-        ) : null}
-
-        {provider === "custom" ? (
-          <details className="border-t border-themed pt-3 mt-3">
-            <summary className="text-xs font-medium text-themed-dim uppercase tracking-widest mb-2 cursor-pointer">
-              {t("dash.pathOverridesLabel")}
-            </summary>
-            <p className="text-xs text-themed-dim mb-2">{t("dash.pathOverridesHint")}</p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {PATH_OVERRIDE_KEYS.map(([key, fallback]) => (
-                <Field key={key} label={key}>
-                  <input
-                    value={form.pathOverrides[key] ?? ""}
-                    onChange={(e) => setPathOverride(key, e.target.value)}
-                    onBlur={(e) => setPathOverride(key, e.target.value.trim())}
-                    placeholder={fallback}
-                    className={`${inputCls} font-mono text-xs`}
-                  />
-                </Field>
-              ))}
-            </div>
-          </details>
+          <CustomModelFields form={form} update={update} setPathOverride={setPathOverride} />
         ) : null}
 
         {(provider === "custom" || provider === "azure") && (
-          <div className="border-t border-themed pt-3 mt-4">
-            <h4 className="text-xs font-medium text-themed-dim uppercase tracking-widest mb-2">
-              {t("dash.disabledModelsLabel")}
-            </h4>
-            <p className="text-xs text-themed-dim mb-2">{t("dash.disabledModelsHint")}</p>
-            {editing && (
-              <button
-                type="button"
-                className="btn-ghost text-xs mb-2"
-                disabled={catalogRefreshing || catalogDraftChanged}
-                onClick={() => { if (editingId) void loadCatalog(editingId, true) }}
-              >
-                {catalogRefreshing ? t("dash.disabledModelsLoading") : t("dash.refreshLabel")}
-              </button>
-            )}
-            {editing && catalogDraftChanged && (
-              <p className="text-xs text-themed-dim">{t("dash.modelsSaveBeforeRefresh")}</p>
-            )}
-            {editing && catalog === null && catalogLoading && !catalogError && (
-              <p className="text-xs text-themed-dim">{t("dash.disabledModelsLoading")}</p>
-            )}
-            {catalogError && <p className="text-xs text-accent-red">{catalogError}</p>}
-            {editing && catalog?.length === 0 && !catalogLoading && (
-              <p className="text-xs text-themed-dim">{t("dash.noCachedModels")}</p>
-            )}
-            {editing && catalog && (
-              <select
-                multiple
-                size={Math.min(8, Math.max(3, catalog.length))}
-                className="w-full text-sm font-mono"
-                value={disabledIds}
-                onChange={(e) => {
-                  const selected = Array.from(e.target.selectedOptions).map((o) => o.value)
-                  const ids = new Set(catalog.map((m) => m.id))
-                  const stale = disabledIds.filter((id) => !ids.has(id))
-                  setDisabledIds([...new Set([...selected, ...stale])])
-                }}
-              >
-                {catalog.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.id}
-                    {m.name && m.name !== m.id ? ` — ${m.name}` : ""}
-                  </option>
-                ))}
-              </select>
-            )}
-            <div className="mt-2 flex gap-2">
-              <input
-                type="text"
-                className="flex-1 text-sm"
-                placeholder={t("dash.disabledModelsAddPlaceholder")}
-                value={extraIdInput}
-                onChange={(e) => setExtraIdInput(e.target.value)}
-              />
-              <button
-                type="button"
-                className="btn-ghost text-sm"
-                onClick={() => {
-                  const id = extraIdInput.trim()
-                  if (!id) return
-                  if (!disabledIds.includes(id)) setDisabledIds([...disabledIds, id])
-                  setExtraIdInput("")
-                }}
-              >
-                {t("dash.disabledModelsAdd")}
-              </button>
-            </div>
-            {disabledIds.length > 0 && (
-              <ul className="mt-2 flex flex-wrap gap-1">
-                {disabledIds.map((id) => (
-                  <li
-                    key={id}
-                    className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-sm"
-                    style={{ background: "var(--surface-700)" }}
-                  >
-                    <span className="font-mono">{id}</span>
-                    <button
-                      type="button"
-                      className="text-themed-dim hover:text-accent-red!"
-                      onClick={() => setDisabledIds(disabledIds.filter((x) => x !== id))}
-                    >
-                      ×
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
+          <DisabledModelsSection
+            editing={editing}
+            catalog={catalog}
+            catalogError={catalogError}
+            catalogLoading={catalogLoading}
+            catalogRefreshing={catalogRefreshing}
+            catalogDraftChanged={catalogDraftChanged}
+            onRefresh={() => { if (editingId) void loadCatalog(editingId, true) }}
+            disabledIds={disabledIds}
+            setDisabledIds={setDisabledIds}
+          />
         )}
 
         {flagCatalog?.catalog?.length ? (
-          <div className="border-t border-themed pt-3 mt-4">
-            <h4 className="text-xs font-medium text-themed-dim uppercase tracking-widest mb-2">{t("dash.featureFlagsLabel")}</h4>
-            <p className="text-xs text-themed-dim mb-3">{t("dash.featureFlagsHint")}</p>
-            {groupFlags(flagCatalog.catalog).map((group) => (
-              <div key={group.key} className="mb-4 last:mb-0">
-                <div className="text-[11px] font-semibold text-themed-dim uppercase tracking-wider mb-2">
-                  {t(group.labelKey)}
-                </div>
-                <div className="space-y-3">
-                  {group.flags.map((flag) => {
-                    const state = flagOverrideState(flag.id)
-                    return (
-                      <div key={flag.id} className="text-xs">
-                        <div className="text-themed font-medium">{flag.label}</div>
-                        <div className="text-themed-dim mb-1">{flag.description}</div>
-                        <div className="flex gap-3">
-                          <FlagRadio
-                            checked={state === "inherit"}
-                            onChange={() => setFlagOverride(flag.id, null)}
-                            label={t("dash.inheritLabel", { val: isFlagDefault(flag.id) ? t("dash.onLabel") : t("dash.offLabel") })}
-                            tone="dim"
-                          />
-                          <FlagRadio
-                            checked={state === "on"}
-                            onChange={() => setFlagOverride(flag.id, true)}
-                            label={t("dash.flagOn")}
-                            tone="teal"
-                          />
-                          <FlagRadio
-                            checked={state === "off"}
-                            onChange={() => setFlagOverride(flag.id, false)}
-                            label={t("dash.flagOff")}
-                            tone="red"
-                          />
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            ))}
-          </div>
+          <FeatureFlagsSection
+            catalog={flagCatalog.catalog}
+            flagOverrideState={flagOverrideState}
+            setFlagOverride={setFlagOverride}
+            isFlagDefault={isFlagDefault}
+          />
         ) : null}
       </div>
-      <div className="flex justify-end gap-2 mt-4 pt-3" style={{ borderTop: "1px solid var(--border-color)" }}>
-        <button onClick={onClose} className="btn-ghost text-sm">
+      <div className="mt-4 flex justify-end gap-2 border-t border-border pt-3">
+        <Button variant="ghost" size="sm" onClick={onClose}>
           {t("dash.cancel")}
-        </button>
+        </Button>
         {(provider !== "codex" || editing) ? (
-          <button onClick={submit} disabled={saving} className="btn-primary text-sm">
+          <Button variant="primary" size="sm" onClick={submit} disabled={saving}>
             {editing ? t("dash.save") : t("dash.createBtnLong")}
-          </button>
+          </Button>
         ) : null}
       </div>
     </div>
   )
-}
-
-const inputCls = "w-full mt-1 text-sm"
-
-function Field({ label, children }: { label: React.ReactNode; children: React.ReactNode }) {
-  return (
-    <label className="block">
-      <span className="text-xs text-themed-dim">{label}</span>
-      {children}
-    </label>
-  )
-}
-
-function FlagRadio({
-  checked,
-  onChange,
-  label,
-  tone,
-}: {
-  checked: boolean
-  onChange: () => void
-  label: string
-  tone: "dim" | "teal" | "red"
-}) {
-  const color = tone === "teal" ? "text-emerald-400" : tone === "red" ? "text-accent-red" : "text-themed-dim"
-  return (
-    <label className="flex items-center gap-1 cursor-pointer">
-      <input type="radio" checked={checked} onChange={onChange} />
-      <span className={color}>{label}</span>
-    </label>
-  )
-}
-
-interface FlagGroup {
-  key: string
-  labelKey: string
-  flags: api.FlagCatalog["catalog"]
-}
-
-function groupFlags(catalog: api.FlagCatalog["catalog"]): FlagGroup[] {
-  const vendor: typeof catalog = []
-  const transform: typeof catalog = []
-  const behavior: typeof catalog = []
-  for (const f of catalog) {
-    if (f.id.startsWith("vendor-")) vendor.push(f)
-    else if (f.id.startsWith("transform-")) transform.push(f)
-    else behavior.push(f)
-  }
-  const groups: FlagGroup[] = []
-  if (vendor.length) groups.push({ key: "vendor", labelKey: "dash.flagGroupVendor", flags: vendor })
-  if (behavior.length) groups.push({ key: "behavior", labelKey: "dash.flagGroupBehavior", flags: behavior })
-  if (transform.length) groups.push({ key: "transform", labelKey: "dash.flagGroupTransform", flags: transform })
-  return groups
 }

@@ -3,7 +3,11 @@ import { useT } from "../../state/i18n"
 import { useToast } from "../../state/toast"
 import * as api from "../../api/upstreams"
 import type { ProxyFallbackEntry } from "../../api/types"
+import { Button } from "../../ui/button"
+import { cn } from "../../ui/cn"
+import { Notice } from "../../ui/notice"
 import { CodexImportDraft } from "./codex-import-draft"
+import { FormHeading } from "./form/Field"
 
 interface Props {
   targetId: string | null
@@ -125,54 +129,54 @@ export function CodexImportPanel({ targetId, name, ownerId, flagOverrides, disab
   }
 
   return (
-    <div className="border-t border-themed pt-3 space-y-3">
+    <div className="space-y-3 border-t border-border pt-3">
       <div>
-        <h4 className="text-xs font-medium text-themed-dim uppercase tracking-widest">{t(targetId ? "dash.codexReimportTitle" : "dash.codexImportTitle")}</h4>
-        <p className="text-xs text-themed-dim mt-1">{t(targetId ? "dash.codexReimportHint" : "dash.codexImportHint")}</p>
+        <FormHeading offset={1} className="text-[13px] font-medium text-fg">{t(targetId ? "dash.codexReimportTitle" : "dash.codexImportTitle")}</FormHeading>
+        <p className="mt-1 text-xs text-fg-subtle">{t(targetId ? "dash.codexReimportHint" : "dash.codexImportHint")}</p>
       </div>
-      <label className="block text-xs text-themed-dim">
+      <label className="block text-xs font-medium text-fg-muted">
         {t("dash.codexDocumentLabel")}
         <textarea
           value={draft.current.document}
           onChange={event => replaceDocument(event.target.value)}
           rows={6}
-          className="w-full mt-1 text-xs font-mono"
+          className="mt-1 w-full font-mono text-xs font-normal"
           spellCheck={false}
           autoComplete="off"
         />
       </label>
-      <label className="block text-xs text-themed-dim">
+      <label className="block text-xs font-medium text-fg-muted">
         {t("dash.codexFileLabel")}
-        <input type="file" accept=".json,application/json" className="block mt-1 text-xs"
+        <input type="file" accept=".json,application/json" className="mt-1 block text-[13px] font-normal text-fg-muted"
           onChange={event => {
             const file = event.target.files?.[0]
             event.target.value = ""
             void selectFile(file)
           }} />
       </label>
-      <button type="button" onClick={() => { void preview() }} disabled={!draft.current.document.trim() || busy !== null} className="btn-ghost text-xs">
+      <Button variant="secondary" size="sm" onClick={() => { void preview() }} disabled={!draft.current.document.trim() || busy !== null}>
         {busy === "preview" ? t("dash.loadingShort") : t("dash.codexPreview")}
-      </button>
-      {error ? <p role="alert" className="text-xs text-accent-red">{error}</p> : null}
+      </Button>
+      {error ? <Notice tone="danger" className="text-xs">{error}</Notice> : null}
       {candidates ? (
         <div className="space-y-2" role="group" aria-label={t("dash.codexPreviewRows")}>
-          {candidates.length === 0 ? <p className="text-xs text-themed-dim">{t("dash.codexNoCandidates")}</p> : null}
+          {candidates.length === 0 ? <p className="text-xs text-fg-subtle">{t("dash.codexNoCandidates")}</p> : null}
           {candidates.map(row => (
-            <label key={row.sourceIndex} className={`block rounded-sm border p-3 text-xs ${row.importable ? "border-surface-600 text-themed" : "border-(--danger-edge) text-themed-dim"}`}>
+            <label key={row.sourceIndex} className={cn("block rounded-md border border-border p-3 text-xs", row.importable ? "text-fg" : "text-fg-subtle")}>
               <span className="flex items-center gap-2">
-                <input type="radio" name="codex-import-source" checked={selected === row.sourceIndex} disabled={!row.importable || busy !== null}
+                <input type="radio" name="codex-import-source" className="accent-brand" checked={selected === row.sourceIndex} disabled={!row.importable || busy !== null}
                   onChange={() => setSelected(row.sourceIndex)} />
                 <span className="font-medium">{row.name || row.email || row.chatgptAccountId || t("dash.codexUnnamedRow")}</span>
-                <span className="text-themed-dim">#{row.sourceIndex + 1}</span>
+                <span className="text-fg-subtle">#{row.sourceIndex + 1}</span>
               </span>
               {row.importable ? (
-                <span className="block mt-1 ml-6 text-themed-dim">
+                <span className="mt-1 ml-6 block text-fg-muted">
                   {row.chatgptAccountId} · {t(row.renewable ? "dash.codexRenewable" : "dash.codexAccessOnly")} · {row.expiresAt === null
                     ? t("dash.codexExpiryUnknown")
                     : t("dash.codexExpiresAt", { at: new Date(row.expiresAt).toLocaleString() })}
                 </span>
               ) : (
-                <span className="block mt-1 ml-6 text-accent-red">
+                <span className="mt-1 ml-6 block text-xs text-danger">
                   {t("dash.codexCannotImport")}: {row.issues.join("; ")}
                 </span>
               )}
@@ -181,10 +185,10 @@ export function CodexImportPanel({ targetId, name, ownerId, flagOverrides, disab
         </div>
       ) : null}
       {candidates ? (
-        <button type="button" className="btn-primary text-sm" disabled={selected === null || busy !== null}
+        <Button variant="primary" size="sm" disabled={selected === null || busy !== null}
           onClick={() => { void importSelected() }}>
           {busy === "import" ? t("dash.loadingShort") : t(targetId ? "dash.codexReimport" : "dash.codexImport")}
-        </button>
+        </Button>
       ) : null}
     </div>
   )

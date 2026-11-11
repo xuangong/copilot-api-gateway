@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
+import { cn } from "../../ui/cn"
 import { useAuth } from "../../state/auth"
 import { useT } from "../../state/i18n"
 import { useUpstreams } from "../../state/upstreams"
@@ -12,6 +13,21 @@ import type { PortableUpstreamDraft } from "./duplicate-draft"
 import type { UpstreamRecord } from "../../api/types"
 import { moveUpstream } from "../../state/reorder-upstreams"
 import { LokiPairingPanel } from "./LokiPairingPanel"
+import { FormHeadingLevel } from "./form/Field"
+import { ChevronDown, ChevronRight, RefreshCw } from "lucide-react"
+import { Badge } from "../../ui/badge"
+import { Button } from "../../ui/button"
+import { Card } from "../../ui/card"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "../../ui/dropdown-menu"
+import { EmptyState } from "../../ui/empty-state"
+import { PageHeader } from "../../ui/page-header"
 
 type CreateMode = {
   kind: "create"
@@ -40,27 +56,7 @@ export function UpstreamsTab() {
   const [deviceFlowOpen, setDeviceFlowOpen] = useState(false)
   const [createLoki, setCreateLoki] = useState(false)
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
-  const [presetMenuOpen, setPresetMenuOpen] = useState(false)
   const [drag, setDrag] = useState<DragPreview | null>(null)
-
-  // A menu that only closes by picking something strands the user on mobile,
-  // where the toggle can scroll out of reach.
-  useEffect(() => {
-    if (!presetMenuOpen) return
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setPresetMenuOpen(false)
-    }
-    const onPointer = (e: MouseEvent) => {
-      const el = e.target as HTMLElement | null
-      if (!el?.closest("[data-preset-menu]")) setPresetMenuOpen(false)
-    }
-    document.addEventListener("keydown", onKey)
-    document.addEventListener("mousedown", onPointer)
-    return () => {
-      document.removeEventListener("keydown", onKey)
-      document.removeEventListener("mousedown", onPointer)
-    }
-  }, [presetMenuOpen])
 
   useEffect(() => {
     if (!drag) return
@@ -73,7 +69,6 @@ export function UpstreamsTab() {
 
   const openCreate = (provider: "custom" | "azure" | "sdf" | "codex", presetId?: string) => {
     setEditingId(null)
-    setPresetMenuOpen(false)
     // Remount the form when the preset changes, otherwise `useMemo` on `mode`
     // keeps the previously seeded state.
     setCreateMode({ kind: "create", provider, presetId })
@@ -89,7 +84,6 @@ export function UpstreamsTab() {
     const draft = createPortableUpstreamDraft(row, t("dash.duplicateName", { name: row.name }))
     setEditingId(null)
     setProxyId(null)
-    setPresetMenuOpen(false)
     setCreateMode({ kind: "create", provider: draft.provider, draft, sourceId: row.id })
   }
 
@@ -137,73 +131,59 @@ export function UpstreamsTab() {
 
   return (
     <div>
-      <div className="glass-card p-4 sm:p-6 mb-8 animate-in">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
-          <div>
-            <h3 className="text-themed font-medium">{t("dash.managedUpstreams")}</h3>
-            <p className="text-xs text-themed-dim mt-1">
-              {t("dash.managedUpstreamsDesc")}
-            </p>
-          </div>
-          {/* The negative margin lets the strip scroll edge-to-edge inside the
-              card's p-4 padding instead of clipping mid-button. */}
-          <div className="flex flex-nowrap items-center gap-2 whitespace-nowrap overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0 sm:overflow-visible scrollbar-none [&::-webkit-scrollbar]:hidden [&>button]:shrink-0">
-            <button onClick={() => setDeviceFlowOpen(true)} className="btn-primary text-sm">{t("dash.addCopilot")}</button>
-            <button onClick={() => openCreate("codex")} className="btn-ghost text-sm">{t("dash.addCodexImport")}</button>
-            <button onClick={() => setCreateLoki(value => !value)} className="btn-ghost text-sm">{t("dash.addLoki")}</button>
-            <button
-              onClick={() => setPresetMenuOpen((v) => !v)}
-              className="btn-ghost text-sm"
-              data-preset-menu
-              aria-haspopup="menu"
-              aria-controls="preset-menu"
-              aria-expanded={presetMenuOpen}
+      <PageHeader
+        title={t("dash.managedUpstreams")}
+        description={t("dash.managedUpstreamsDesc")}
+        actions={
+          <>
+            <Button variant="primary" size="sm" onClick={() => setDeviceFlowOpen(true)}>{t("dash.addCopilot")}</Button>
+            <Button variant="secondary" size="sm" onClick={() => openCreate("codex")}>{t("dash.addCodexImport")}</Button>
+            <Button variant="secondary" size="sm" onClick={() => setCreateLoki(value => !value)} aria-expanded={createLoki}>{t("dash.addLoki")}</Button>
+            {/* Non-modal: like the old inline menu, a click elsewhere closes it and still acts. */}
+            <DropdownMenu modal={false}>
+              <DropdownMenuTrigger asChild>
+                <Button variant="secondary" size="sm">
+                  {t("dash.addCustom")}
+                  <ChevronDown aria-hidden="true" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start">
+                <DropdownMenuLabel className="text-xs font-medium text-fg-subtle">
+                  {t("dash.presetMenuTitle")}
+                </DropdownMenuLabel>
+                {VENDOR_PRESETS.map((p) => (
+                  <DropdownMenuItem key={p.id} className="text-fg" onSelect={() => openCreate("custom", p.id)}>
+                    {p.label}
+                  </DropdownMenuItem>
+                ))}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onSelect={() => openCreate("custom")}>
+                  {t("dash.addCustomBlank")}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <Button variant="secondary" size="sm" onClick={() => openCreate("azure")}>{t("dash.addAzure")}</Button>
+            <Button variant="secondary" size="sm" onClick={() => openCreate("sdf")}>{t("dash.addSdf")}</Button>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={store.reload}
+              disabled={store.loading}
+              title="Refresh"
+              aria-label={t("dash.refreshLabel")}
             >
-              {t("dash.addCustom")} ▾
-            </button>
-            <button onClick={() => openCreate("azure")} className="btn-ghost text-sm">{t("dash.addAzure")}</button>
-            <button onClick={() => openCreate("sdf")} className="btn-ghost text-sm">{t("dash.addSdf")}</button>
-            <button onClick={store.reload} disabled={store.loading} className="btn-ghost text-sm" title="Refresh">↻</button>
-          </div>
-        </div>
+              <RefreshCw aria-hidden="true" />
+            </Button>
+          </>
+        }
+      />
 
-        {/* Rendered outside the button strip: that strip scrolls horizontally on
-            mobile, which would clip an absolutely-positioned menu. */}
-        {presetMenuOpen ? (
-          <div
-            role="menu"
-            id="preset-menu"
-            data-preset-menu
-            className="rounded-lg py-1 mb-4"
-            style={{ background: "var(--surface-800)", border: "1px solid var(--border-color)" }}
-          >
-            <div className="px-3 py-1 text-[11px] uppercase tracking-wider text-themed-dim">
-              {t("dash.presetMenuTitle")}
-            </div>
-            {VENDOR_PRESETS.map((p) => (
-              <button
-                key={p.id}
-                role="menuitem"
-                onClick={() => openCreate("custom", p.id)}
-                className="block w-full text-left px-3 py-1.5 text-sm text-themed hover:bg-surface-700/60"
-              >
-                {p.label}
-              </button>
-            ))}
-            <div className="my-1 border-t border-themed" />
-            <button
-              role="menuitem"
-              onClick={() => openCreate("custom")}
-              className="block w-full text-left px-3 py-1.5 text-sm text-themed-dim hover:bg-surface-700/60"
-            >
-              {t("dash.addCustomBlank")}
-            </button>
-          </div>
-        ) : null}
-
-        {createLoki ? <Expand><LokiPairingPanel onChanged={store.reload} onClose={() => setCreateLoki(false)} /></Expand> : null}
+      <Card className="mb-4">
+        {/* Create panels sit straight under the page h1, so their titles are h2. */}
+        <FormHeadingLevel.Provider value={2}>
+        {createLoki ? <Expand className="mb-4"><LokiPairingPanel onChanged={store.reload} onClose={() => setCreateLoki(false)} /></Expand> : null}
         {createMode ? (
-          <Expand>
+          <Expand className="mb-4">
             <UpstreamFormModal
               key={createMode.sourceId ?? createMode.presetId ?? createMode.provider}
               mode={createMode}
@@ -217,13 +197,14 @@ export function UpstreamsTab() {
             />
           </Expand>
         ) : null}
+        </FormHeadingLevel.Provider>
 
         {store.loading && store.upstreams.length === 0 ? (
-          <p className="text-sm text-themed-dim">{t("dash.loadingShort")}</p>
+          <p className="text-sm text-fg-subtle">{t("dash.loadingShort")}</p>
         ) : null}
 
         {!store.loading && store.upstreams.length === 0 ? (
-          <p className="text-sm text-themed-dim italic">{t("dash.noManagedUpstreams")}</p>
+          <EmptyState title={t("dash.noManagedUpstreams")} />
         ) : null}
 
         <div className="space-y-4">
@@ -232,28 +213,29 @@ export function UpstreamsTab() {
             const isCollapsed = !!collapsed[groupKey]
             return (
               <div key={groupKey}>
-                <button
-                  type="button"
-                  onClick={() => setCollapsed((c) => ({ ...c, [groupKey]: !c[groupKey] }))}
-                  className="w-full flex items-center justify-between gap-2 px-2 py-1.5 text-left rounded-sm hover:bg-surface-700/40 transition-colors"
-                >
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className="text-xs text-themed-dim">{isCollapsed ? "▶" : "▼"}</span>
-                    <span className="text-sm font-medium text-themed truncate">{g.label}</span>
-                    {g.isMine ? (
-                      <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded-sm bg-accent-violet/20 text-accent-violet">
-                        {t("dash.youBadge")}
-                      </span>
-                    ) : (
-                      <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded-sm bg-surface-700 text-themed-dim">
-                        {t("dash.readOnlyBadge")}
-                      </span>
-                    )}
-                  </div>
-                  <span className="text-xs text-themed-dim shrink-0">
-                    {t("dash.upstreamCount", { n: g.rows.length })}
-                  </span>
-                </button>
+                <h2 className="text-sm font-medium text-fg">
+                  <button
+                    type="button"
+                    aria-expanded={!isCollapsed}
+                    onClick={() => setCollapsed((c) => ({ ...c, [groupKey]: !c[groupKey] }))}
+                    className="w-full flex items-center justify-between gap-2 px-2 py-1.5 text-left rounded-md hover:bg-muted transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-text"
+                  >
+                    <span className="flex items-center gap-2 min-w-0">
+                      {isCollapsed
+                        ? <ChevronRight className="size-4 shrink-0 text-fg-subtle" aria-hidden="true" />
+                        : <ChevronDown className="size-4 shrink-0 text-fg-subtle" aria-hidden="true" />}
+                      <span className="truncate">{g.label}</span>
+                      {g.isMine ? (
+                        <Badge tone="brand">{t("dash.youBadge")}</Badge>
+                      ) : (
+                        <Badge>{t("dash.readOnlyBadge")}</Badge>
+                      )}
+                    </span>
+                    <span className="text-xs font-normal text-fg-subtle tabular-nums shrink-0">
+                      {t("dash.upstreamCount", { n: g.rows.length })}
+                    </span>
+                  </button>
+                </h2>
 
                 {!isCollapsed ? (
                   <div className="space-y-2 mt-2">
@@ -337,7 +319,7 @@ export function UpstreamsTab() {
             )
           })}
         </div>
-      </div>
+      </Card>
 
       {deviceFlowOpen ? (
         <DeviceFlowModal
@@ -356,9 +338,9 @@ export function UpstreamsTab() {
 // trick so the panel can animate to its natural height. Mounted only while
 // open — keeping it mounted-but-collapsed made every row run the form's
 // catalog fetch on every render of the list.
-function Expand({ children }: { children: React.ReactNode }) {
+function Expand({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
-    <div className="grid transition-[grid-template-rows] duration-200 ease-out grid-rows-[1fr]">
+    <div className={cn("grid transition-[grid-template-rows] duration-200 ease-out grid-rows-[1fr]", className)}>
       <div className="overflow-hidden">{children}</div>
     </div>
   )

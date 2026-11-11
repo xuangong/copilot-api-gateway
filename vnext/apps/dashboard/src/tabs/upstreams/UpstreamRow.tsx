@@ -1,10 +1,37 @@
 import { CodexQuotaPanel } from "./CodexQuotaPanel"
-import { useState, type DragEvent, type KeyboardEvent } from "react"
+import { useId, useState, type DragEvent, type KeyboardEvent } from "react"
+import { ChevronDown, ChevronUp, GripVertical } from "lucide-react"
 import { ProviderAvatar } from "./KindChip"
 import { useT } from "../../state/i18n"
 import { useToast } from "../../state/toast"
 import type { UpstreamRecord } from "../../api/types"
 import * as api from "../../api/upstreams"
+import { Badge } from "../../ui/badge"
+import { Button } from "../../ui/button"
+import { cn } from "../../ui/cn"
+
+type HealthTone = "success" | "warn" | "danger"
+
+const HEALTH_TONE: Record<NonNullable<UpstreamRecord["credentialStatus"]>["health"], HealthTone> = {
+  active: "success",
+  access_rejected: "danger",
+  session_terminated: "danger",
+  refresh_failed: "danger",
+  credential_expired: "warn",
+}
+
+const LOKI_TONE: Record<NonNullable<UpstreamRecord["lokiStatus"]>["assistantStatus"], HealthTone> = {
+  authorized: "success",
+  waiting: "warn",
+  interaction_required: "warn",
+  failed: "danger",
+}
+
+const TONE_TEXT: Record<HealthTone, string> = {
+  success: "text-success",
+  warn: "text-warn",
+  danger: "text-danger",
+}
 
 interface Props {
   row: UpstreamRecord
@@ -66,6 +93,7 @@ export function UpstreamRow({
     ? ghUser.avatar_url || `https://avatars.githubusercontent.com/u/${ghUser.id}?v=4`
     : null
   const [expanded, setExpanded] = useState(false)
+  const nameId = useId()
   const { push: toast } = useToast()
   const t = useT()
   const modelList = models ?? []
@@ -109,56 +137,59 @@ export function UpstreamRow({
     credential_expired: "dash.codexHealthExpired",
   }[credential.health] : null
 
+  const lokiTone: HealthTone | null = u.provider === "loki" && u.lokiStatus
+    ? u.lokiStatus.tokenStatus === "expired" ? "danger" : LOKI_TONE[u.lokiStatus.assistantStatus]
+    : null
+
   return (
     <div
       onDragOver={onDragOver}
       onDrop={onDrop}
-      className={`bg-surface-900 rounded-lg p-3 sm:p-4 border transition-colors ${dragging ? "opacity-50" : ""} ${dropTarget ? "ring-2 ring-accent-violet" : ""} ${
-        editing
-          ? "border-accent-violet/60"
-          : expiredAt
-            ? "border-(--danger-edge)"
-            : "border-surface-600"
-      } ${locked ? "opacity-60" : ""}`}
+      className={cn(
+        "rounded-lg border bg-panel p-3 sm:p-4 transition-colors",
+        dragging && "opacity-50",
+        dropTarget && "ring-2 ring-brand-text",
+        editing ? "border-brand-text/60" : expiredAt ? "border-danger" : "border-border",
+      )}
     >
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
         <div className="flex items-center gap-3 min-w-0 flex-1">
           <ProviderAvatar provider={u.provider} avatarUrl={avatar} title={u.provider} />
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 min-w-0">
-              <span className="font-medium text-themed truncate">{u.name}</span>
+              <h3 id={nameId} className="text-[13px] font-medium text-fg truncate">{u.name}</h3>
               {expiredAt ? (
-                <span
-                  className="inline-flex items-center shrink-0 px-2 py-0.5 rounded-full text-[11px] leading-none bg-(--danger-wash) text-(--danger) border border-(--danger-edge)"
-                  title={t("dash.tokenExpiredTip", { at: expiredAt })}
-                >
-                  {t("dash.tokenExpiredBadge")}
+                <span className="inline-flex shrink-0 cursor-default" title={t("dash.tokenExpiredTip", { at: expiredAt })}>
+                  <Badge tone="danger">{t("dash.tokenExpiredBadge")}</Badge>
                 </span>
               ) : null}
             </div>
-            <div className="text-xs text-themed-dim font-mono truncate">
+            <div className="text-xs text-fg-subtle font-mono truncate">
               {ghUser?.login ? `@${ghUser.login}` : u.id}
             </div>
             {credential && credentialHealthKey ? (
-              <div className="text-xs text-themed-dim mt-1">
-                {t(credentialHealthKey)} · {t(credential.renewable ? "dash.codexRenewable" : "dash.codexAccessOnly")} · {credential.expiryKnown && credential.expiresAt !== null
+              <div className="text-xs text-fg-muted mt-1">
+                <span className={TONE_TEXT[HEALTH_TONE[credential.health]]}>{t(credentialHealthKey)}</span> · {t(credential.renewable ? "dash.codexRenewable" : "dash.codexAccessOnly")} · {credential.expiryKnown && credential.expiresAt !== null
                   ? t("dash.codexExpiresAt", { at: new Date(credential.expiresAt).toLocaleString() })
                   : t("dash.codexExpiryUnknown")}
               </div>
             ) : null}
-            {u.provider === "loki" && u.lokiStatus ? <div className="text-xs text-themed-dim mt-1">
-              {t(u.lokiStatus.tokenStatus === "expired" ? "dash.lokiExpired" : {
-                waiting: "dash.lokiWaiting", authorized: "dash.lokiAuthorized",
-                interaction_required: "dash.lokiInteractionRequired", failed: "dash.lokiFailed",
-              }[u.lokiStatus.assistantStatus])}
+            {u.provider === "loki" && u.lokiStatus ? <div className="text-xs text-fg-muted mt-1">
+              <span className={lokiTone ? TONE_TEXT[lokiTone] : undefined}>
+                {t(u.lokiStatus.tokenStatus === "expired" ? "dash.lokiExpired" : {
+                  waiting: "dash.lokiWaiting", authorized: "dash.lokiAuthorized",
+                  interaction_required: "dash.lokiInteractionRequired", failed: "dash.lokiFailed",
+                }[u.lokiStatus.assistantStatus])}
+              </span>
               {u.lokiStatus.expiresAt ? ` · ${t("dash.codexExpiresAt", { at: new Date(u.lokiStatus.expiresAt).toLocaleString() })}` : ""}
             </div> : null}
           </div>
         </div>
 
         <div className="flex items-center gap-1 flex-wrap shrink-0">
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="icon-sm"
             draggable={!locked}
             disabled={locked}
             onDragStart={onDragStart}
@@ -166,55 +197,89 @@ export function UpstreamRow({
             onKeyDown={onHandleKeyDown}
             aria-label={t("dash.reorderUpstreamHandle", { name: u.name })}
             title={t("dash.reorderUpstreamHandle", { name: u.name })}
-            className="btn-ghost text-xs px-2 py-1 cursor-grab enabled:active:cursor-grabbing! touch-none"
+            className="cursor-grab enabled:active:cursor-grabbing touch-none"
           >
-            ⠿
-          </button>
-          <button onClick={() => onReorder("up")} disabled={locked || index === 0} className="btn-ghost text-xs px-2 py-1" title={t("dash.moveUp")}>↑</button>
-          <button onClick={() => onReorder("down")} disabled={locked || index === total - 1} className="btn-ghost text-xs px-2 py-1" title={t("dash.moveDown")}>↓</button>
-          <label className={`flex items-center gap-1 text-xs text-themed-dim ml-1 select-none ${locked ? "cursor-not-allowed" : "cursor-pointer"}`}>
-            <input type="checkbox" checked={u.enabled} onChange={onToggleEnabled} disabled={locked} />
+            <GripVertical aria-hidden="true" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => onReorder("up")}
+            disabled={locked || index === 0}
+            title={t("dash.moveUp")}
+            aria-label={t("dash.moveUp")}
+          >
+            <ChevronUp aria-hidden="true" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => onReorder("down")}
+            disabled={locked || index === total - 1}
+            title={t("dash.moveDown")}
+            aria-label={t("dash.moveDown")}
+          >
+            <ChevronDown aria-hidden="true" />
+          </Button>
+          <label className={cn("ml-1 flex items-center gap-1 text-xs text-fg-muted select-none", locked || busy ? "cursor-not-allowed" : "cursor-pointer")}>
+            <input
+              type="checkbox"
+              role="switch"
+              checked={u.enabled}
+              onChange={onToggleEnabled}
+              disabled={locked || busy}
+              aria-describedby={nameId}
+              className="accent-brand"
+            />
             <span>{u.enabled ? t("dash.onLabel") : t("dash.offLabel")}</span>
           </label>
-          <button onClick={onEdit} disabled={locked || busy} className="btn-ghost text-xs px-2 py-1">{editing ? t("dash.closeBtn") : t("dash.edit")}</button>
+          <Button variant="ghost" size="sm" onClick={onEdit} disabled={locked || busy} aria-expanded={!!editing}>
+            {editing ? t("dash.closeBtn") : t("dash.edit")}
+          </Button>
           {u.provider === "custom" || u.provider === "azure" || u.provider === "sdf" ? (
-            <button
-              type="button"
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={onDuplicate}
               disabled={locked || busy}
-              className="btn-ghost text-xs px-2 py-1"
               aria-label={`${t("dash.duplicateUpstream")} ${u.name}`}
             >
               {t("dash.duplicateUpstream")}
-            </button>
+            </Button>
           ) : null}
-          <button onClick={onRefreshModels} disabled={locked || busy} className="btn-ghost text-xs px-2 py-1" title={t("dash.refetchModelsTip")}>
+          <Button variant="ghost" size="sm" onClick={onRefreshModels} disabled={locked || busy} title={t("dash.refetchModelsTip")}>
             {busy ? "…" : t("dash.refetchModelsLabel")}
-          </button>
+          </Button>
           {credential?.renewable ? (
-            <button type="button" onClick={onRefreshCredential} disabled={locked || busy} className="btn-ghost text-xs px-2 py-1">
+            <Button variant="ghost" size="sm" onClick={onRefreshCredential} disabled={locked || busy}>
               {t("dash.codexRefreshCredential")}
-            </button>
+            </Button>
           ) : null}
           {u.provider === "copilot" ? (
-            <button onClick={onReauth} disabled={locked} className="btn-ghost text-xs px-2 py-1 disabled:opacity-50" title={t("dash.reauthTip")}>{t("dash.reauthBtn")}</button>
+            <Button variant="ghost" size="sm" onClick={onReauth} disabled={locked} title={t("dash.reauthTip")}>
+              {t("dash.reauthBtn")}
+            </Button>
           ) : null}
           {showProxy ? (
-            <button
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={onToggleProxy}
-              className="btn-ghost text-xs px-2 py-1"
               title={t("dash.proxyChainTitle")}
+              aria-expanded={proxyOpen}
             >
               {proxyOpen ? t("dash.closeBtn") : t("dash.proxyBtn")}
-            </button>
+            </Button>
           ) : null}
-          <button
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={onDelete}
             disabled={locked || busy}
-            className="text-accent-red hover:text-red-300 text-xs px-2 py-1 disabled:opacity-50"
+            className="text-danger hover:text-danger"
           >
             {u.provider === "copilot" ? t("dash.signOutBtn") : t("dash.delete")}
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -222,15 +287,12 @@ export function UpstreamRow({
 
       <div className="mt-3 text-xs">
         <div className="flex items-center justify-between mb-1.5">
-          <div className="text-themed-dim">{t("dash.modelsServedHeader", { n: modelList.length })}</div>
+          <div className="text-fg-muted">{t("dash.modelsServedHeader", { n: modelList.length })}</div>
           <div className="flex items-center gap-1">
             {modelList.length > 8 ? (
-              <button
-                onClick={() => setExpanded((v) => !v)}
-                className="text-themed-dim hover:text-themed text-[11px] px-2 py-0.5 rounded-sm hover:bg-surface-700"
-              >
+              <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => setExpanded((v) => !v)}>
                 {expanded ? t("dash.collapseBtn") : t("dash.showAll", { n: modelList.length })}
-              </button>
+              </Button>
             ) : null}
           </div>
         </div>
@@ -238,9 +300,10 @@ export function UpstreamRow({
           {shown.map((m) => (
             <button
               key={m.id}
+              type="button"
               onClick={(e) => copy(e.shiftKey ? `${u.id}/${m.id}` : m.id)}
               title={`click: copy ${m.id}\nshift-click: copy pinned ${u.id}/${m.id}`}
-              className="px-2 py-0.5 bg-surface-700 hover:bg-surface-600 rounded-sm text-themed font-mono transition-colors"
+              className="rounded-md border border-control bg-background px-2 py-0.5 font-mono text-xs text-fg transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-text"
             >
               {m.id}
             </button>

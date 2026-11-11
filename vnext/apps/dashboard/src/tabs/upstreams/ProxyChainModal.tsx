@@ -12,6 +12,7 @@ import { useT } from "../../state/i18n"
 import { useToast } from "../../state/toast"
 import type { ProxyFallbackEntry } from "../../api/types"
 import { patchUpstream } from "../../api/upstreams"
+import { Button } from "../../ui/button"
 import { ProxyChainEditor } from "./ProxyChainEditor"
 
 interface Props {
@@ -43,15 +44,15 @@ export function ProxyChainModal({ upstreamId, initialChain, onSaved, onClose }: 
   }
 
   return (
-    <div className="bg-surface-900 border border-surface-600 rounded-lg p-3 sm:p-4 space-y-3">
+    <div className="space-y-3 rounded-lg border border-border bg-panel p-4">
       <ProxyChainEditor value={chain} onChange={setChain} allowCreate />
-      <div className="flex items-center gap-2 border-t border-surface-600 pt-2">
-        <button onClick={save} disabled={saving} className="btn-primary text-xs! py-1! px-3!">
+      <div className="flex items-center gap-2 border-t border-border pt-3">
+        <Button variant="primary" size="sm" onClick={save} disabled={saving}>
           {saving ? "…" : t("dash.save")}
-        </button>
-        <button onClick={onClose} className="btn-ghost text-xs! py-1! px-3!">
+        </Button>
+        <Button variant="ghost" size="sm" onClick={onClose}>
           {t("dash.closeBtn")}
-        </button>
+        </Button>
       </div>
     </div>
   )

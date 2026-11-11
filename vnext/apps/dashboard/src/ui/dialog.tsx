@@ -1,5 +1,5 @@
 import * as RadixDialog from "@radix-ui/react-dialog"
-import type { ReactNode } from "react"
+import { type ReactNode, useEffect, useState } from "react"
 import { cn } from "./cn"
 
 interface DialogProps {
@@ -17,6 +17,19 @@ interface DialogProps {
 
 /** A centred modal: Esc and a click outside close it, focus is trapped and returned (Radix). */
 export function Dialog({ open, onOpenChange, title, description, children, footer, className, onCloseAutoFocus }: DialogProps) {
+  // Callers usually unmount the whole dialog on close, which skips Radix's focus
+  // return. Remember what had focus when it first rendered (before Radix moves
+  // focus in) and give it back on unmount if focus was left on <body>.
+  const [opener] = useState(() => (typeof document === "undefined" ? null : (document.activeElement as HTMLElement | null)))
+  useEffect(
+    () => () => {
+      setTimeout(() => {
+        const active = document.activeElement
+        if (opener?.isConnected && (!active || active === document.body)) opener.focus()
+      }, 0)
+    },
+    [opener],
+  )
   return (
     <RadixDialog.Root open={open} onOpenChange={onOpenChange}>
       <RadixDialog.Portal>
@@ -24,6 +37,12 @@ export function Dialog({ open, onOpenChange, title, description, children, foote
         <RadixDialog.Content
           {...(description ? {} : { "aria-describedby": undefined })}
           onCloseAutoFocus={onCloseAutoFocus}
+          // Toasts sit above the overlay; dismissing one must not close the dialog
+          // (that would, for example, abort a device-flow login mid-poll).
+          onInteractOutside={(event) => {
+            const target = event.target
+            if (target instanceof Element && target.closest("[data-toast-host]")) event.preventDefault()
+          }}
           className={cn(
             "fixed top-1/2 left-1/2 z-50 flex max-h-[85vh] w-[calc(100vw-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 flex-col gap-4 overflow-y-auto rounded-xl border border-border bg-background p-5 shadow-lg focus:outline-none",
             className,

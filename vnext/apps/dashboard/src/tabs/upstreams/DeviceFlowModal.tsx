@@ -1,9 +1,13 @@
-import { useEffect, useRef, useState } from "react"
-import { Modal } from "../../components/Modal"
+import { useEffect, useId, useRef, useState } from "react"
+import { ArrowLeft, ChevronRight } from "lucide-react"
 import { useT } from "../../state/i18n"
 import { useToast } from "../../state/toast"
 import * as api from "../../api/upstreams"
 import type { ProxyFallbackEntry } from "../../api/types"
+import { Button } from "../../ui/button"
+import { CodeBlock } from "../../ui/code-block"
+import { Dialog } from "../../ui/dialog"
+import { Notice } from "../../ui/notice"
 import { ProxyChainEditor } from "./ProxyChainEditor"
 
 interface Props {
@@ -21,8 +25,19 @@ export function DeviceFlowModal({ onComplete, onClose }: Props) {
   // user's selection.
   const [chain, setChain] = useState<ProxyFallbackEntry[]>([])
 
+  // The parent mounts this only while open, so every close (Esc, a click
+  // outside, Cancel/Close, completion) goes through onClose, the parent
+  // unmounts it, and DeviceFlowStep's effect cleanup stops the polling.
+  // Radix returns focus to the opener ("+ Add Copilot" or a row's Re-auth).
   return (
-    <Modal open onClose={onClose} title={t("dash.connectCopilotTitle")} size="sm">
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose()
+      }}
+      title={t("dash.connectCopilotTitle")}
+      className="max-w-md"
+    >
       {step === "pick" ? (
         <HostPicker
           chain={chain}
@@ -45,9 +60,16 @@ export function DeviceFlowModal({ onComplete, onClose }: Props) {
           onBack={() => setStep("pick")}
         />
       )}
-    </Modal>
+    </Dialog>
   )
 }
+
+const hostCardCls =
+  "w-full rounded-lg border border-border p-3 text-left transition-colors hover:bg-muted cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-text"
+const detailsCls = "group rounded-lg border border-border p-2"
+const summaryCls =
+  "flex w-fit cursor-pointer list-none items-center gap-1 rounded-sm text-xs text-fg-muted select-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-text [&::-webkit-details-marker]:hidden"
+const chevronCls = "size-3.5 shrink-0 transition-transform group-open:rotate-90"
 
 function HostPicker({
   chain,
@@ -63,35 +85,30 @@ function HostPicker({
   const t = useT()
   return (
     <div className="space-y-3">
-      <p className="text-sm text-themed-dim">{t("dash.chooseHostSubtitle")}</p>
-      <button
-        onClick={() => onPick("github.com")}
-        className="w-full text-left rounded-sm border border-themed hover:border-accent-violet! bg-surface-800 hover:bg-surface-700 p-3 transition-colors"
-      >
-        <div className="font-medium text-themed">{t("dash.hostGithubDotCom")}</div>
-        <div className="text-xs text-themed-dim mt-0.5">{t("dash.hostGithubDotComDesc")}</div>
+      <p className="text-sm text-fg-subtle">{t("dash.chooseHostSubtitle")}</p>
+      <button type="button" onClick={() => onPick("github.com")} className={hostCardCls}>
+        <div className="font-medium text-fg">{t("dash.hostGithubDotCom")}</div>
+        <div className="mt-0.5 text-xs text-fg-subtle">{t("dash.hostGithubDotComDesc")}</div>
       </button>
-      <button
-        onClick={() => onPick("ghe")}
-        className="w-full text-left rounded-sm border border-themed hover:border-accent-violet! bg-surface-800 hover:bg-surface-700 p-3 transition-colors"
-      >
-        <div className="font-medium text-themed">{t("dash.hostGhe")}</div>
-        <div className="text-xs text-themed-dim mt-0.5">{t("dash.hostGheDesc")}</div>
+      <button type="button" onClick={() => onPick("ghe")} className={hostCardCls}>
+        <div className="font-medium text-fg">{t("dash.hostGhe")}</div>
+        <div className="mt-0.5 text-xs text-fg-subtle">{t("dash.hostGheDesc")}</div>
       </button>
-      <details className="rounded-sm border border-themed bg-surface-800/60 p-2">
-        <summary className="text-xs text-themed-dim cursor-pointer select-none">
+      <details className={detailsCls}>
+        <summary className={summaryCls}>
+          <ChevronRight className={chevronCls} aria-hidden="true" />
           {t("dash.egressProxyOptional")}
           {chain.length > 0 ? ` (${chain.length})` : null}
         </summary>
         <div className="mt-2 space-y-2">
-          <div className="text-xs text-themed-dim">{t("dash.egressProxyHint")}</div>
+          <div className="text-xs text-fg-subtle">{t("dash.egressProxyHint")}</div>
           <ProxyChainEditor value={chain} onChange={onChainChange} />
         </div>
       </details>
       <div className="flex justify-end pt-1">
-        <button onClick={onCancel} className="btn-ghost text-sm">
+        <Button variant="ghost" size="sm" onClick={onCancel}>
           {t("dash.cancel")}
-        </button>
+        </Button>
       </div>
     </div>
   )
@@ -179,38 +196,39 @@ function DeviceFlowStep({
   }, [])
 
   return (
-    <>
+    <div className="space-y-3">
       {starting && status === "starting" ? (
-        <p className="text-sm text-themed-dim">{t("dash.startingDeviceFlow")}</p>
+        <Notice role="status">{t("dash.startingDeviceFlow")}</Notice>
       ) : null}
       {flow && status === "waiting" ? (
         <div className="space-y-3">
           <div>
-            <div className="text-xs text-themed-dim mb-1">{t("dash.deviceFlowOneTimeCode")}</div>
-            <div className="text-2xl font-mono tracking-widest text-accent-violet bg-surface-800 rounded-sm p-3 text-center select-all">
+            <div className="mb-1 text-xs text-fg-subtle">{t("dash.deviceFlowOneTimeCode")}</div>
+            <div className="select-all rounded-lg bg-muted p-3 text-center font-mono text-2xl tabular-nums tracking-widest text-brand-text">
               {flow.user_code}
             </div>
           </div>
-          <div className="text-sm text-themed">
+          <div className="text-sm text-fg">
             {t("dash.openLabel")}{" "}
-            <a className="text-accent-violet underline" href={flow.verification_uri} target="_blank" rel="noreferrer">
+            <a className="text-brand-text underline" href={flow.verification_uri} target="_blank" rel="noreferrer">
               {flow.verification_uri}
             </a>{" "}
             {t("dash.andPasteCodeAbove")}
           </div>
-          <div className="text-xs text-themed-dim">{t("dash.waitingForAuth")}</div>
+          <Notice role="status">{t("dash.waitingForAuth")}</Notice>
         </div>
       ) : null}
-      {status === "error" ? <p className="text-sm text-accent-red">{t("dash.deviceFlowFailed")}</p> : null}
-      <div className="flex justify-between mt-4">
-        <button onClick={onBack} className="btn-ghost text-sm" disabled={status === "complete"}>
-          ← {t("common.back")}
-        </button>
-        <button onClick={onClose} className="btn-ghost text-sm">
+      {status === "error" ? <Notice tone="danger">{t("dash.deviceFlowFailed")}</Notice> : null}
+      <div className="flex justify-between pt-1">
+        <Button variant="ghost" size="sm" onClick={onBack} disabled={status === "complete"}>
+          <ArrowLeft aria-hidden="true" />
+          {t("common.back")}
+        </Button>
+        <Button variant="ghost" size="sm" onClick={onClose}>
           {status === "complete" ? t("dash.closeBtn") : t("dash.cancel")}
-        </button>
+        </Button>
       </div>
-    </>
+    </div>
   )
 }
 
@@ -230,6 +248,8 @@ function PasteTokenStep({
   const [host, setHost] = useState("")
   const [token, setToken] = useState("")
   const [pending, setPending] = useState(false)
+  const hostId = useId()
+  const tokenId = useId()
 
   const cmd = `bun run vnext/tools/extract-vscode-github-token.ts --host ${host || "your-company.ghe.com"}`
 
@@ -253,69 +273,71 @@ function PasteTokenStep({
 
   return (
     <div className="space-y-3">
-      <p className="text-sm text-themed-dim">{t("dash.pasteTokenSubtitle")}</p>
+      <p className="text-sm text-fg-subtle">{t("dash.pasteTokenSubtitle")}</p>
 
       <div>
-        <label className="text-xs text-themed-dim block mb-1">{t("dash.gheHostLabel")}</label>
+        <label htmlFor={hostId} className="mb-1 block text-xs text-fg-muted">{t("dash.gheHostLabel")}</label>
         <input
+          id={hostId}
+          type="text"
           value={host}
           onChange={(e) => setHost(e.target.value)}
           placeholder={t("dash.gheHostPlaceholder")}
-          className="w-full rounded-sm bg-surface-800 border border-themed px-2 py-1.5 text-sm text-themed"
           autoFocus
         />
       </div>
 
-      <details className="rounded-sm border border-themed bg-surface-800/60 p-2">
-        <summary className="text-xs text-themed-dim cursor-pointer select-none">{t("dash.pasteTokenHelp")}</summary>
+      <details className={detailsCls}>
+        <summary className={summaryCls}>
+          <ChevronRight className={chevronCls} aria-hidden="true" />
+          {t("dash.pasteTokenHelp")}
+        </summary>
         <div className="mt-2 space-y-2">
-          <div className="text-xs text-themed-dim">{t("dash.pasteTokenHelpSteps")}</div>
-          <div className="flex items-center gap-2">
-            <code className="flex-1 text-[11px] font-mono bg-surface-900 rounded-sm px-2 py-1.5 text-themed overflow-x-auto whitespace-nowrap">
-              {cmd}
-            </code>
-            <button
-              type="button"
-              onClick={() => {
-                navigator.clipboard.writeText(cmd).then(
-                  () => toast(t("dash.codeCopiedToClipboard"), "info"),
-                  () => {},
-                )
-              }}
-              className="btn-ghost text-xs"
-            >
-              copy
-            </button>
-          </div>
+          <div className="text-xs text-fg-subtle">{t("dash.pasteTokenHelpSteps")}</div>
+          <CodeBlock
+            language="bash"
+            text={cmd}
+            copyLabel="copy"
+            copied={false}
+            onCopy={() => {
+              navigator.clipboard.writeText(cmd).then(
+                () => toast(t("dash.codeCopiedToClipboard"), "info"),
+                () => {},
+              )
+            }}
+          />
         </div>
       </details>
 
       <div>
-        <label className="text-xs text-themed-dim block mb-1">{t("dash.pasteTokenLabel")}</label>
+        <label htmlFor={tokenId} className="mb-1 block text-xs text-fg-muted">{t("dash.pasteTokenLabel")}</label>
         <textarea
+          id={tokenId}
           value={token}
           onChange={(e) => setToken(e.target.value)}
           placeholder={t("dash.pasteTokenPlaceholder")}
           rows={3}
-          className="w-full rounded-sm bg-surface-800 border border-themed px-2 py-1.5 text-sm font-mono text-themed"
+          className="w-full font-mono"
         />
       </div>
 
-      <div className="flex justify-between mt-4">
-        <button onClick={onBack} className="btn-ghost text-sm" disabled={pending}>
-          ← {t("common.back")}
-        </button>
+      <div className="flex justify-between pt-1">
+        <Button variant="ghost" size="sm" onClick={onBack} disabled={pending}>
+          <ArrowLeft aria-hidden="true" />
+          {t("common.back")}
+        </Button>
         <div className="flex gap-2">
-          <button onClick={onClose} className="btn-ghost text-sm" disabled={pending}>
+          <Button variant="ghost" size="sm" onClick={onClose} disabled={pending}>
             {t("dash.cancel")}
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="primary"
+            size="sm"
             onClick={submit}
-            className="btn-primary text-sm"
             disabled={pending || !host.trim() || !token.trim()}
           >
             {pending ? t("dash.pasteTokenPending") : t("dash.pasteTokenBtn")}
-          </button>
+          </Button>
         </div>
       </div>
     </div>

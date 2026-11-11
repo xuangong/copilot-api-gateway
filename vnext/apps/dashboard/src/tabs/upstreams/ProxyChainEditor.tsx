@@ -1,8 +1,11 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useId, useRef, useState } from "react"
+import { ChevronDown, ChevronUp, X } from "lucide-react"
 import { useT } from "../../state/i18n"
 import { useToast } from "../../state/toast"
 import type { ProxyFallbackEntry } from "../../api/types"
 import { createProxy, listProxyOptions, type ProxyOption } from "../../api/proxies"
+import { Button } from "../../ui/button"
+import { Select } from "../../ui/select"
 import { DIRECT_CONNECT_ID, DIRECT_FETCH_ID } from "./proxy-constants"
 
 interface Props {
@@ -27,6 +30,7 @@ export function ProxyChainEditor({ value, onChange, allowCreate = false }: Props
   const [pool, setPool] = useState<ProxyOption[]>([])
   const [creating, setCreating] = useState(false)
   const [draft, setDraft] = useState({ name: "", url: "", dialTimeoutSeconds: "" })
+  const titleId = useId()
 
   // `value` in this render's closure goes stale across the `await` in
   // submitNewNode, so appends there read through a ref instead. The old
@@ -89,90 +93,109 @@ export function ProxyChainEditor({ value, onChange, allowCreate = false }: Props
 
   return (
     <div className="space-y-3">
-      <div className="text-sm font-medium text-themed">{t("dash.proxyChainTitle")}</div>
-      <div className="text-xs text-themed-dim">{t("dash.proxyChainHint")}</div>
+      <div>
+        <h4 id={titleId} className="text-[13px] font-medium text-fg">{t("dash.proxyChainTitle")}</h4>
+        <p className="mt-1 text-xs text-fg-subtle">{t("dash.proxyChainHint")}</p>
+      </div>
 
       {value.length === 0 ? (
-        <div className="text-xs text-themed-dim italic">{t("dash.proxyChainEmptyHint")}</div>
+        <p className="text-xs italic text-fg-subtle">{t("dash.proxyChainEmptyHint")}</p>
       ) : (
-        <div className="space-y-1.5">
+        <div role="group" aria-labelledby={titleId} className="space-y-1.5">
           {value.map((entry, i) => (
             <div key={`${entry.id}-${i}`} className="flex items-center gap-2">
-              <span className="text-xs text-themed-dim w-5 text-right">{i + 1}.</span>
-              <select
-                value={entry.id}
-                onChange={(e) => setAt(i, e.target.value)}
-                className="text-xs flex-1 min-w-0 py-1.5! px-2!"
-              >
-                {options.some((o) => o.id === entry.id) ? null : (
-                  <option value={entry.id}>{t("dash.proxyUnknownNode", { id: entry.id })}</option>
-                )}
-                {options.map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-              <button
+              <span className="w-5 text-right text-xs tabular-nums text-fg-subtle">{i + 1}.</span>
+              <div className="min-w-0 flex-1">
+                <Select
+                  size="sm"
+                  value={entry.id}
+                  onChange={(id) => setAt(i, id)}
+                  ariaLabel={t("dash.proxyHopAria", { n: i + 1 })}
+                  options={[
+                    ...(options.some((o) => o.id === entry.id)
+                      ? []
+                      : [{ value: entry.id, label: t("dash.proxyUnknownNode", { id: entry.id }) }]),
+                    ...options.map((o) => ({ value: o.id, label: o.label })),
+                  ]}
+                />
+              </div>
+              <Button
+                variant="ghost"
+                size="icon-sm"
                 onClick={() => move(i, -1)}
                 disabled={i === 0}
-                className="btn-ghost text-xs! py-1! px-2!"
+                title={t("dash.proxyHopMoveUpAria", { n: i + 1 })}
+                aria-label={t("dash.proxyHopMoveUpAria", { n: i + 1 })}
               >
-                ↑
-              </button>
-              <button
+                <ChevronUp aria-hidden="true" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-sm"
                 onClick={() => move(i, 1)}
                 disabled={i === value.length - 1}
-                className="btn-ghost text-xs! py-1! px-2!"
+                title={t("dash.proxyHopMoveDownAria", { n: i + 1 })}
+                aria-label={t("dash.proxyHopMoveDownAria", { n: i + 1 })}
               >
-                ↓
-              </button>
-              <button
+                <ChevronDown aria-hidden="true" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className="text-danger hover:text-danger"
                 onClick={() => removeAt(i)}
-                className="text-accent-red hover:opacity-70 text-xs px-2 py-1"
+                title={t("dash.proxyHopRemoveAria", { n: i + 1 })}
+                aria-label={t("dash.proxyHopRemoveAria", { n: i + 1 })}
               >
-                ✕
-              </button>
+                <X aria-hidden="true" />
+              </Button>
             </div>
           ))}
         </div>
       )}
 
-      <div className="flex items-center gap-2 flex-wrap">
-        <button onClick={addHop} className="btn-ghost text-xs! py-1! px-2!">
+      <div className="flex flex-wrap items-center gap-2">
+        <Button variant="secondary" size="sm" onClick={addHop}>
           {t("dash.proxyAddHop")}
-        </button>
+        </Button>
         {allowCreate ? (
-          <button onClick={() => setCreating((v) => !v)} className="btn-ghost text-xs! py-1! px-2!">
+          <Button variant="secondary" size="sm" aria-expanded={creating} onClick={() => setCreating((v) => !v)}>
             {t("dash.proxyNewNode")}
-          </button>
+          </Button>
         ) : null}
       </div>
 
       {allowCreate && creating ? (
-        <div className="space-y-2 border-t border-surface-600 pt-2">
+        <div className="space-y-2 border-t border-border pt-2">
           <input
+            type="text"
             value={draft.name}
             onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
             placeholder={t("dash.proxyNameLabel")}
-            className="w-full text-xs py-1.5! px-2!"
+            aria-label={t("dash.proxyNameLabel")}
           />
+          <div className="font-mono">
+            <input
+              type="text"
+              value={draft.url}
+              onChange={(e) => setDraft((d) => ({ ...d, url: e.target.value }))}
+              placeholder="trojan://password@host:443"
+              aria-label={t("dash.proxyNodeUrlAria")}
+              autoComplete="off"
+              spellCheck={false}
+            />
+          </div>
           <input
-            value={draft.url}
-            onChange={(e) => setDraft((d) => ({ ...d, url: e.target.value }))}
-            placeholder="trojan://password@host:443"
-            className="w-full text-xs font-mono py-1.5! px-2!"
-          />
-          <input
+            type="text"
             value={draft.dialTimeoutSeconds}
             onChange={(e) => setDraft((d) => ({ ...d, dialTimeoutSeconds: e.target.value }))}
             placeholder={t("dash.proxyDialTimeoutLabel")}
+            aria-label={t("dash.proxyDialTimeoutLabel")}
             inputMode="numeric"
-            className="w-full text-xs py-1.5! px-2!"
           />
-          <button onClick={submitNewNode} className="btn-primary text-xs! py-1! px-3!">
+          <Button variant="primary" size="sm" onClick={submitNewNode}>
             {t("dash.proxyCreateNodeBtn")}
-          </button>
+          </Button>
         </div>
       ) : null}
     </div>
