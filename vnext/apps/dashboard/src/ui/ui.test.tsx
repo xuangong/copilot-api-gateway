@@ -17,6 +17,7 @@ test("Button is a type=button by default so it never submits a form by accident"
 test("Button variants map to the semantic tokens", () => {
   expect(renderToStaticMarkup(<Button variant="primary">Go</Button>)).toContain("bg-brand")
   expect(renderToStaticMarkup(<Button variant="danger">Del</Button>)).toContain("bg-danger")
+  expect(renderToStaticMarkup(<Button size="icon-sm">R</Button>)).toContain("size-7")
 })
 
 test("Button asChild renders the child element instead of a button", () => {
@@ -38,4 +39,18 @@ test("an enabled Tooltip keeps the trigger's own name and adds no wrapper elemen
   )
   expect(html.startsWith("<a")).toBe(true)
   expect(html).toContain('aria-label="Usage"')
+})
+
+test("a controlled open Tooltip still renders its trigger unchanged", () => {
+  const html = renderToStaticMarkup(
+    <TooltipProvider>
+      <Tooltip content="Weighted" open onOpenChange={() => {}}>
+        <button type="button" aria-label="Total tokens">i</button>
+      </Tooltip>
+    </TooltipProvider>,
+  )
+  expect(html.startsWith("<button")).toBe(true)
+  expect(html).toContain('type="button"')
+  expect(html).toContain('aria-label="Total tokens"')
+  expect(html).toContain(">i</button>")
 })

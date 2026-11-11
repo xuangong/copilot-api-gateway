@@ -1,7 +1,10 @@
 import type { MetricDistribution, PerformanceMetricName } from "@vibe-llm/protocols/common"
+import { ChevronRight } from "lucide-react"
 import { formatPerformanceValue, summarizeDistribution } from "../../state/performance-data"
 import { performanceLabels } from "../../state/performance-labels"
 import { useT } from "../../state/i18n"
+import { Card } from "../../ui/card"
+import { TBody, Table, Td, Th } from "../../ui/table"
 
 const METRICS: PerformanceMetricName[] = [
   "overallTps", "firstTextMs", "ttftMs", "maxGapMs", "totalMs", "upstreamMs", "upstreamTtftMs", "upstreamTps", "generationMs",
@@ -11,32 +14,35 @@ const METRICS: PerformanceMetricName[] = [
 export function PerformanceDiagnostics({ metrics, legacyRequests }: { metrics: Partial<Record<PerformanceMetricName, MetricDistribution>>; legacyRequests: number }) {
   const t = useT()
   const labels = performanceLabels(t)
-  return <details className="border-t border-themed pt-4">
-    <summary className="text-sm text-themed-secondary cursor-pointer w-fit focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-4">{t("dash.perf.experience.diagnostics")}</summary>
-    <div className="mt-4 space-y-4">
-      <div className="text-xs text-themed-dim space-y-2 max-w-[75ch] leading-relaxed">
-        <p>{t("dash.perf.experience.samplesNote")}</p>
-        <p>{t("dash.perf.histogram")}</p><p>{t("dash.perf.rateNote")}</p>
-        <p>{t("dash.perf.upstreamTtftNote")}</p>
-        {legacyRequests > 0 && <p>{t("dash.perf.legacy", { count: legacyRequests.toLocaleString() })}</p>}
-      </div>
-      <div className="overflow-x-auto rounded-lg border border-themed" tabIndex={0} role="region" aria-label={t("dash.perf.experience.diagnostics")}>
-        <table className="w-full text-sm whitespace-nowrap">
+  return <Card>
+    <details className="group">
+      <summary className="inline-flex w-fit cursor-pointer list-none items-center gap-1.5 rounded-sm text-sm text-fg-muted hover:text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-text [&::-webkit-details-marker]:hidden">
+        <ChevronRight className="size-4 shrink-0 transition-transform group-open:rotate-90" aria-hidden="true" />
+        {t("dash.perf.experience.diagnostics")}
+      </summary>
+      <div className="mt-4 space-y-4">
+        <div className="text-xs text-fg-subtle space-y-2 max-w-[75ch] leading-relaxed">
+          <p>{t("dash.perf.experience.samplesNote")}</p>
+          <p>{t("dash.perf.histogram")}</p><p>{t("dash.perf.rateNote")}</p>
+          <p>{t("dash.perf.upstreamTtftNote")}</p>
+          {legacyRequests > 0 && <p>{t("dash.perf.legacy", { count: legacyRequests.toLocaleString() })}</p>}
+        </div>
+        <Table label={t("dash.perf.experience.diagnostics")} className="whitespace-nowrap">
           <caption className="sr-only">{t("dash.perf.experience.diagnostics")}</caption>
-          <thead className="bg-surface-800 text-xs text-themed-dim"><tr>
-            <th scope="col" className="px-4 py-3 text-left">{t("dash.perf.metric")}</th>
-            {[t("dash.perf.mean"), t("dash.perf.experience.p50"), t("dash.perf.experience.p95"), t("dash.perf.maximum"), t("dash.perf.samples")].map(label => <th scope="col" key={label} className="px-4 py-3 text-right font-medium">{label}</th>)}
+          <thead><tr>
+            <Th>{t("dash.perf.metric")}</Th>
+            {[t("dash.perf.mean"), t("dash.perf.experience.p50"), t("dash.perf.experience.p95"), t("dash.perf.maximum"), t("dash.perf.samples")].map(label => <Th numeric key={label}>{label}</Th>)}
           </tr></thead>
-          <tbody>{METRICS.map(metric => {
+          <TBody>{METRICS.map(metric => {
             const stats = summarizeDistribution(metrics[metric])
-            return <tr key={metric} className="border-t border-themed hover:bg-surface-800/50">
-              <th scope="row" className="px-4 py-3 text-left font-normal text-themed">{labels[metric]}</th>
-              {[stats.mean, stats.p50, stats.p95, stats.max].map((n, index) => <td key={index} className={"px-4 py-3 text-right tabular-nums text-xs " + (n === null ? "text-themed-dim" : "text-themed-secondary")}>{formatPerformanceValue(n, metric, t("dash.perf.unknown"))}</td>)}
-              <td className="px-4 py-3 text-right tabular-nums text-xs text-themed-dim">{stats.count.toLocaleString()}</td>
+            return <tr key={metric} className="hover:bg-muted">
+              <Th row>{labels[metric]}</Th>
+              {[stats.mean, stats.p50, stats.p95, stats.max].map((n, index) => <Td numeric key={index} className={"text-xs " + (n === null ? "text-fg-subtle" : "text-fg-muted")}>{formatPerformanceValue(n, metric, t("dash.perf.unknown"))}</Td>)}
+              <Td numeric className="text-xs text-fg-subtle">{stats.count.toLocaleString()}</Td>
             </tr>
-          })}</tbody>
-        </table>
+          })}</TBody>
+        </Table>
       </div>
-    </div>
-  </details>
+    </details>
+  </Card>
 }

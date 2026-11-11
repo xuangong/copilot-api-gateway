@@ -1,7 +1,11 @@
 import { useEffect, useState } from "react"
-import { Select } from "../../components/Select"
+import { RefreshCw } from "lucide-react"
 import { useT } from "../../state/i18n"
 import { AUTO_REFRESH_MINUTES, loadIntervalMs, saveIntervalMs, useAutoRefresh } from "../../state/auto-refresh"
+import { Button } from "../../ui/button"
+import { cn } from "../../ui/cn"
+import { Select } from "../../ui/select"
+import { Tooltip } from "../../ui/tooltip"
 
 interface Props {
   /** True while a fetch is in flight; the button spins and won't re-enter. */
@@ -13,8 +17,8 @@ interface Props {
 /**
  * The usage tab's freshness controls: refetch now, or on a cadence.
  *
- * Sits beside the "USAGE" heading rather than with the metric and range
- * pickers on the right. Those choose *what* is shown; this one is about
+ * Sits in the page header's actions rather than with the metric and range
+ * pickers in the toolbar. Those choose *what* is shown; this one is about
  * whether what's shown is still true — the same question the loading spinner
  * it replaces was answering, in the same spot.
  *
@@ -39,40 +43,34 @@ export function UsageRefresh({ loading, lastUpdated, onRefresh }: Props) {
 
   return (
     <div className="flex items-center gap-2">
-      <button
-        type="button"
-        onClick={onRefresh}
-        disabled={loading}
-        className="tip tip-start tip-below flex items-center justify-center w-7 h-7 rounded-md bg-surface-800 border border-white/10 text-themed-dim hover:text-accent-violet! hover:border-accent-violet/40 disabled:opacity-50 disabled:cursor-default transition-colors"
-        data-tip={t("dash.usage.refreshTip")}
-        aria-label={t("dash.usage.refreshTip")}
-      >
-        <svg
-          className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`}
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <path d="M21 12a9 9 0 1 1-2.64-6.36" />
-          <path d="M21 3v6h-6" />
-        </svg>
-      </button>
+      {/* The span is the trigger: a disabled button fires no pointer events
+          (and Button adds pointer-events-none), so the tip would never open
+          while a fetch is running. */}
+      <Tooltip content={t("dash.usage.refreshTip")} side="bottom">
+        <span className="inline-flex" tabIndex={-1}>
+          <Button
+            variant="secondary"
+            size="icon-sm"
+            onClick={onRefresh}
+            disabled={loading}
+            aria-label={t("dash.usage.refreshTip")}
+          >
+            <RefreshCw className={loading ? "animate-spin" : undefined} aria-hidden="true" />
+          </Button>
+        </span>
+      </Tooltip>
 
       <Select
-        className="w-[124px]"
+        size="sm"
+        className={cn("w-[124px]", auto && "border-brand-text text-brand-text")}
         value={String(Math.round(intervalMs / 60_000))}
         options={options}
         onChange={(v) => setIntervalMs(Number(v) * 60_000)}
-        buttonClassName={`w-full bg-surface-800 border rounded-md focus:outline-hidden flex items-center justify-between gap-2 text-left px-2.5 py-1.5 text-xs ${
-          auto ? "border-accent-violet/40 text-accent-violet" : "border-white/10 text-themed-secondary"
-        }`}
+        ariaLabel={t("dash.usage.autoRefreshLabel")}
       />
 
       {age ? (
-        <span className="text-[11px] text-themed-dim whitespace-nowrap">
+        <span className="text-xs text-fg-subtle whitespace-nowrap">
           {t(age.key, age.n === undefined ? undefined : { n: age.n })}
         </span>
       ) : null}

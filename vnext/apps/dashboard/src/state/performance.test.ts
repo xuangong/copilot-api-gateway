@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test"
 import type { PerformanceMetricsGroup } from "@vibe-llm/protocols/common"
-import { aggregateMetrics, completePerformanceOptions, countPerformanceOutcomes, DEFAULT_PERFORMANCE_FILTERS, filterPerformanceGroups, summarizeDistribution, togglePerformanceFilter } from "./performance-data"
+import { aggregateMetrics, completePerformanceOptions, countPerformanceOutcomes, DEFAULT_PERFORMANCE_FILTERS, filterPerformanceGroups, summarizeDistribution } from "./performance-data"
 
 const group = (patch: Partial<PerformanceMetricsGroup> = {}): PerformanceMetricsGroup => ({
   keyId: "key", incomingModel: "alias", model: "target", upstream: "up", sourceApi: "messages", targetApi: "responses",
@@ -37,9 +37,6 @@ test("defaults select success and stream; empty arrays mean all", () => {
   expect(DEFAULT_PERFORMANCE_FILTERS).toEqual({ outcome: ["success"], mode: ["stream"] })
   expect(filterPerformanceGroups(rows, DEFAULT_PERFORMANCE_FILTERS)).toEqual(rows.slice(0, 1))
   expect(filterPerformanceGroups(rows, { outcome: [], mode: [] })).toEqual(rows)
-  expect(togglePerformanceFilter(["success"], "error")).toEqual(["success", "error"])
-  expect(togglePerformanceFilter(["success", "error"], "success")).toEqual(["error"])
-  expect(togglePerformanceFilter(["success"], "success")).toEqual([])
 })
 
 test("ORs choices within dimensions and ANDs across dimensions, including response mode", () => {
@@ -70,5 +67,5 @@ test("selected stale options remain labeled and removable through empty refresh 
     { value: "key-2", label: "Another key" }, { value: "key-1", label: "Named key" },
   ])
   expect(completePerformanceOptions([], ["unknown"], { unknown: "Not collected" })).toEqual([{ value: "unknown", label: "Not collected" }])
-  expect(completePerformanceOptions([], togglePerformanceFilter(selected, "key-1"), remembered)).toEqual([])
+  expect(completePerformanceOptions([], [], remembered)).toEqual([])
 })

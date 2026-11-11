@@ -1,6 +1,7 @@
 import { useRef, useState } from "react"
 import { COST_ANCHOR_WINDOW, costShadeLevel, dayFillRatio, type RollingStripCell } from "../../state/usage-strip"
 import { useT } from "../../state/i18n"
+import { SectionHeading } from "../../ui/card"
 
 interface Props {
   cells: RollingStripCell[]
@@ -73,10 +74,10 @@ export function RollingStrip({ cells, selectedKey, highlightTail, isDark, onPick
   return (
     <div ref={wrapRef} className="ml-1 relative">
       <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
-        <span className="text-[10px] text-themed-dim uppercase tracking-widest">{t("dash.rollingTotal")}</span>
+        <SectionHeading>{t("dash.rollingTotal")}</SectionHeading>
         {/* Says out loud what a square means; without it the strip reads as a
             daily activity graph, which is a different number entirely. */}
-        <span className="text-[10px] text-themed-dim">{t("dash.rollingTotalHint")}</span>
+        <span className="text-xs text-fg-subtle">{t("dash.rollingTotalHint")}</span>
       </div>
       {/* Wraps rather than shrinks, and never goes wider than forty-five. Ninety
           squares in one row sounds like the best reading of the trend, but at
@@ -117,10 +118,10 @@ export function RollingStrip({ cells, selectedKey, highlightTail, isDark, onPick
                 tail > 0 && !lit ? "opacity-20 " : ""
               }${
                 lit
-                  ? "ring-1 ring-amber-400"
+                  ? "ring-1 ring-warn"
                   : c.endKey === selectedKey
-                    ? "ring-1 ring-white/70"
-                    : "hover:ring-1 hover:ring-white/40"
+                    ? "ring-1 ring-fg"
+                    : "hover:ring-1 hover:ring-fg-subtle"
               }`}
             />
           )
@@ -128,25 +129,24 @@ export function RollingStrip({ cells, selectedKey, highlightTail, isDark, onPick
       </div>
       {/* Floated over the square itself, and pointer-events-none so it can never
           steal the hover from the square it is describing. The background is a
-          solid token, not a translucent one: the surface colours are bare
-          var(--...) with no <alpha-value> placeholder, so bg-surface-900/95 and
-          friends emit a declaration the browser drops — leaving it see-through. */}
+          solid token, not a translucent one, so the squares never show
+          through it. */}
       {shown ? (
         <div
           style={{ left: hover!.cx, top: hover!.top - 6 }}
-          className="absolute -translate-x-1/2 -translate-y-full z-20 pointer-events-none whitespace-nowrap rounded-md bg-surface-700 border border-surface-500 px-2 py-1 shadow-lg"
+          className="absolute -translate-x-1/2 -translate-y-full z-20 pointer-events-none whitespace-nowrap rounded-md border border-border bg-background px-2 py-1 text-xs shadow-lg"
         >
-          <div className="text-[10px] text-themed-dim">{shown.label}</div>
-          <div className="text-[11px] text-themed font-medium">{money(shown.costUSD)}</div>
-          <div className="text-[10px] text-themed-secondary">{shown.tokens.toLocaleString()} tokens</div>
+          <div className="text-fg-subtle">{shown.label}</div>
+          <div className="text-fg font-medium tabular-nums">{money(shown.costUSD)}</div>
+          <div className="text-fg-muted tabular-nums">{shown.tokens.toLocaleString()} tokens</div>
           {/* The fill has no legend of its own — the square only shows a height,
               so the number behind it has to be readable somewhere. */}
-          <div className="text-[10px] text-themed-dim mt-0.5 pt-0.5 border-t border-surface-500">
+          <div className="text-fg-subtle tabular-nums mt-0.5 pt-0.5 border-t border-border">
             {`${t("dash.rollingThatDay")} ${money(shown.dayCostUSD)} · ${shown.dayTokens.toLocaleString()} tokens`}
           </div>
         </div>
       ) : null}
-      <div className="flex items-center justify-end gap-1 mt-1 text-[10px] text-themed-dim">
+      <div className="flex items-center justify-end gap-1 mt-1 text-xs text-fg-subtle">
         {/* The legend is what makes the scale absolute rather than decorative:
             it names the spend the darkest square stands for. */}
         <span>{t("dash.rollingLess")}</span>

@@ -77,6 +77,8 @@
   --color-success: var(--success);
   --color-warn: var(--warn);
   --color-danger: var(--danger);
+  --color-warn-text: var(--warn-text);
+  --color-danger-text: var(--danger-text);
 
   /* Legacy names the pages still use; they now follow the new palette. */
   --color-surface-900: var(--surface-900);
@@ -152,6 +154,9 @@
   --success: #047857;
   --warn: #b45309;
   --danger: #dc2626;
+  /* Darker text for warn/danger on their 10% tints, so it reaches 4.5:1. */
+  --warn-text: #92400e;
+  --danger-text: #b91c1c;
   --danger-wash: color-mix(in oklab, var(--danger) 10%, transparent);
   --danger-edge: color-mix(in oklab, var(--danger) 35%, transparent);
   /* Retired effects, kept defined so any remaining reference renders flat. */
@@ -186,6 +191,8 @@
   --success: #34d399;
   --warn: #fbbf24;
   --danger: #f87171;
+  --warn-text: var(--warn);
+  --danger-text: var(--danger);
   --danger-wash: color-mix(in oklab, var(--danger) 12%, transparent);
   --danger-edge: color-mix(in oklab, var(--danger) 40%, transparent);
   --glass-bg: var(--surface-900);
@@ -242,7 +249,8 @@ input[type="text"],
 input[type="password"],
 input[type="email"],
 input[type="number"],
-input[type="url"] {
+input[type="url"],
+input[type="date"] {
   background: var(--input-bg);
   border: 1px solid var(--input-border);
   border-radius: 6px;
@@ -254,6 +262,10 @@ input[type="url"] {
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
   outline: none;
   width: 100%;
+}
+/* A date input keeps its natural width instead of the text inputs' full width. */
+input[type="date"] {
+  width: auto;
 }
 @layer components {
   textarea,
@@ -594,7 +606,6 @@ select option {
 .tip-start::after { left: 0; transform: none; }
 /* Drawn below instead of above, for a control in a panel's top row where
    there is nothing overhead but the page header to cover. */
-.tip-below::after { bottom: auto; top: calc(100% + 7px); }
 /* The thread scrolls, so it clips: the topmost row has only its 24px of
    padding above it, and a tooltip drawn there would be cut in half. That row
    alone drops its tooltip below the control, where the gap to the next row
@@ -1186,11 +1197,11 @@ select option {
   min-width: 150px;
   padding: 8px 10px;
   border-radius: 8px;
-  border: 1px solid var(--control-border);
-  background: var(--surface-800);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
-  font-size: 11px;
-  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+  background: var(--surface-900);
+  box-shadow: 0 8px 24px color-mix(in oklab, black 20%, transparent);
+  font-size: 12px;
+  color: var(--text-primary);
   transition: opacity 0.12s ease;
 }
 .pg-chart-tip-title {
@@ -1215,7 +1226,7 @@ select option {
    hovered for still reads first. */
 .pg-chart-tip-cost {
   margin-left: 8px;
-  color: var(--text-secondary);
+  color: var(--text-dim);
   font-weight: 400;
 }
 /* The bottom line. Ruled off from the per-series rows so it does not read as
@@ -1251,7 +1262,7 @@ select option {
   border-top: 1px solid var(--border-color);
   background: transparent;
   text-align: left;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--brand-text);
   cursor: pointer;
 }

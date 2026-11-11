@@ -7,10 +7,6 @@ export type PerformanceFilters = Partial<Record<
 
 export const DEFAULT_PERFORMANCE_FILTERS: PerformanceFilters = { outcome: ["success"], mode: ["stream"] }
 
-export function togglePerformanceFilter(values: readonly string[], value: string): string[] {
-  return values.includes(value) ? values.filter(entry => entry !== value) : [...values, value]
-}
-
 export function completePerformanceOptions(
   options: Array<{ value: string; label: string }>, selected: readonly string[], rememberedLabels: Readonly<Record<string, string>> = {},
 ): Array<{ value: string; label: string }> {

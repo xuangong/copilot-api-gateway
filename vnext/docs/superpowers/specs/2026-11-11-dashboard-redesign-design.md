@@ -46,7 +46,7 @@
 
 **字体**
 
-- 界面文字用 Geist，数字、模型名和代码用 Geist Mono；数字一律等宽对齐（`tabular-nums`）。
+- 界面文字和数字用 Geist，数字一律等宽对齐（`tabular-nums`）；模型名、ID 和代码用 Geist Mono。（第二期第一组调整：等宽字体里带斜线的 0 和正文风格不一致，数字改用 Geist 加 tabular-nums。）
 - 正文 13–14px；小字统一为 12px，不再混用 10px、11px。
 - 替换 `page.ts` 中的 Outfit / IBM Plex Mono 字体引用和 `tailwind.config.ts` 的 `fontFamily`。
 

@@ -87,6 +87,13 @@ function isDarkTheme(): boolean {
   return document.documentElement.getAttribute("data-theme") === "dark"
 }
 
+/** The chart's font family, taken from the page's --font-sans / --font-mono so it follows the design system. */
+export function chartFont(read: (name: string) => string, kind: "sans" | "mono"): string {
+  const value = read(kind === "sans" ? "--font-sans" : "--font-mono").trim()
+  if (value) return value
+  return kind === "sans" ? "ui-sans-serif, system-ui, sans-serif" : "ui-monospace, monospace"
+}
+
 function cssVar(name: string): string {
   if (typeof document === "undefined") return ""
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim()
@@ -170,6 +177,10 @@ export function TimeSeriesChart({ labels, datasets, height = 300, unitLabel = ""
     const tickC = cssVar("--tick-color") || (dark ? "#9ca3af" : "#4b5563")
     const tickFmt = yTickFormat ?? defaultYTick
     const fillAlpha = dark ? 0.12 : 0.18
+    const css = getComputedStyle(document.documentElement)
+    const read = (n: string) => css.getPropertyValue(n)
+    const sans = chartFont(read, "sans")
+    const mono = chartFont(read, "mono")
 
     const cjDatasets: CJDataset<"line", number[]>[] = datasets.map((d) => ({
       label: d.label,
@@ -185,7 +196,7 @@ export function TimeSeriesChart({ labels, datasets, height = 300, unitLabel = ""
       hidden: legendChoices.current.get(d.label) ?? d.hidden ?? false,
     }))
 
-    chartRef.current = new Chart(canvas, {
+    const chart: Chart = new Chart(canvas, {
       type: "line",
       data: { labels, datasets: cjDatasets },
       options: {
@@ -195,7 +206,7 @@ export function TimeSeriesChart({ labels, datasets, height = 300, unitLabel = ""
         plugins: {
           legend: {
             display: true,
-            labels: { color: tickC, font: { family: "Geist, ui-sans-serif, system-ui, sans-serif", size: 11 } },
+            labels: { color: tickC, font: { family: sans, size: 12 } },
             onClick: (_event, item, legend) => {
               const index = item.datasetIndex
               if (index === undefined) return
@@ -229,18 +240,28 @@ export function TimeSeriesChart({ labels, datasets, height = 300, unitLabel = ""
         },
         scales: {
           x: {
-            ticks: { color: tickC, font: { family: "Geist, ui-sans-serif, system-ui, sans-serif", size: 10 } },
+            ticks: { color: tickC, font: { family: sans, size: 12 } },
             grid: { display: false },
           },
           y: {
-            ticks: { color: tickC, font: { family: "Geist Mono, ui-monospace, SFMono-Regular, monospace", size: 10 }, callback: (v) => tickFmt(Number(v)) },
+            ticks: { color: tickC, font: { family: mono, size: 12 }, callback: (v) => tickFmt(Number(v)) },
             grid: { color: gridC },
           },
         },
       },
     })
+    chartRef.current = chart
+
+    // Canvas text is measured and painted once, so a chart drawn before the web
+    // fonts load keeps the fallback face. Redraw once they are ready — unless
+    // this chart has been destroyed by an unmount or a rebuild in the meantime.
+    let destroyed = false
+    document.fonts?.ready.then(() => {
+      if (!destroyed) chart.update()
+    })
 
     return () => {
+      destroyed = true
       if (chartRef.current) {
         chartRef.current.destroy()
         chartRef.current = null

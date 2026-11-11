@@ -2,6 +2,8 @@ import { useMemo, useState } from "react"
 import type { DistributionRow } from "../../state/usage"
 import { paletteFor } from "../../components/TimeSeriesChart"
 import { useT } from "../../state/i18n"
+import { Card, SectionHeading } from "../../ui/card"
+import { TBody, Table, Td, Th } from "../../ui/table"
 
 interface Props {
   title: string
@@ -40,10 +42,11 @@ export function UsageDistributionTable({ title, rows, showRoutedModels = false, 
   const hoveredIdx = hoveredRow ? rows.indexOf(hoveredRow) : -1
 
   return (
-    <div className="glass-card p-4 sm:p-6 mt-5 animate-in delay-1">
-      <span className="text-xs font-medium text-themed-dim uppercase tracking-widest mb-4 block">
+    <Card className="mt-5">
+      {/* h3: these cards sit under the page's distribution heading (h2). */}
+      <SectionHeading as="h3" className="mb-4">
         {title}
-      </span>
+      </SectionHeading>
 
       <div className="space-y-3 mb-6" onMouseLeave={() => setHovered(null)}>
         <StackedBar label="Requests" rows={rows} pct={reqPct} palette={palette} hovered={hovered} onHover={setHovered} />
@@ -52,7 +55,7 @@ export function UsageDistributionTable({ title, rows, showRoutedModels = false, 
 
         <div className="h-5 flex items-center">
           {hoveredRow ? (
-            <p className="text-xs text-themed-secondary font-mono">
+            <p className="text-xs text-fg-muted tabular-nums">
               {hoveredRow.label}
               {"  —  "}
               {reqPct[hoveredIdx]}% reqs · {inPct[hoveredIdx]}% in · {outPct[hoveredIdx]}% out
@@ -70,62 +73,59 @@ export function UsageDistributionTable({ title, rows, showRoutedModels = false, 
               style={{ opacity: hovered && hovered !== r.id ? 0.35 : 1 }}
             >
               <span className="w-2 h-2 rounded-full shrink-0" style={{ background: palette[i % palette.length] }} />
-              <span className="text-[11px] text-themed-secondary">{r.label}</span>
+              <span className="text-xs text-fg-muted">{r.label}</span>
             </div>
           ))}
         </div>
       </div>
 
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm whitespace-nowrap" aria-label={ariaLabel ?? title}>
-          <thead>
-            <tr className="border-b" style={{ borderColor: "var(--border-color)" }}>
-              <Th align="left">{title}</Th>
-              {showRoutedModels ? <Th align="left">{t("dash.routedModels")}</Th> : null}
-              <Th>{t("dash.requests")}</Th>
-              <Th>{t("dash.input")}</Th>
-              <Th>{t("dash.output")}</Th>
-              <Th>{t("dash.cacheRead")}</Th>
-              <Th>{t("dash.cacheCreation")}</Th>
-              <Th>{t("dash.totalTokens")}</Th>
-              <Th className="pr-0">{t("dash.cost")}</Th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r, i) => {
-              const isHover = hovered === r.id
-              const someoneElse = hovered && hovered !== r.id
-              return (
-                <tr
-                  key={r.id}
-                  onMouseEnter={() => setHovered(r.id)}
-                  onMouseLeave={() => setHovered(null)}
-                  className={`transition-all duration-150 cursor-pointer border-b ${
-                    isHover ? "bg-surface-700/50" : someoneElse ? "opacity-40" : ""
-                  }`}
-                  style={{ borderColor: "var(--border-color)" }}
-                >
-                  <td className="py-2.5 pr-4 text-left">
-                    <span className="inline-flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full shrink-0" style={{ background: palette[i % palette.length] }} />
-                      <span className="text-xs text-themed">{r.label}</span>
-                    </span>
-                  </td>
-                  {showRoutedModels ? <td className="py-2.5 pr-4 text-left text-xs text-themed-secondary">{r.routedModels?.join(", ") ?? "—"}</td> : null}
-                  <Td>{fmt(r.requests)}</Td>
-                  <Td>{fmt(r.input)}</Td>
-                  <Td>{fmt(r.output)}</Td>
-                  <Td>{fmt(r.cacheRead)}</Td>
-                  <Td>{fmt(r.cacheCreation)}</Td>
-                  <Td>{fmt(r.input + r.output + r.cacheRead + r.cacheCreation)}</Td>
-                  <Td className="pr-0">{r.costUSD > 0 ? "$" + r.costUSD.toFixed(4) : "—"}</Td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-      </div>
-    </div>
+      <Table className="whitespace-nowrap" label={ariaLabel ?? title} aria-label={ariaLabel ?? title}>
+        <thead>
+          <tr>
+            <Th>{title}</Th>
+            {showRoutedModels ? <Th>{t("dash.routedModels")}</Th> : null}
+            <Th numeric>{t("dash.requests")}</Th>
+            <Th numeric>{t("dash.input")}</Th>
+            <Th numeric>{t("dash.output")}</Th>
+            <Th numeric>{t("dash.cacheRead")}</Th>
+            <Th numeric>{t("dash.cacheCreation")}</Th>
+            <Th numeric>{t("dash.totalTokens")}</Th>
+            <Th numeric>{t("dash.cost")}</Th>
+          </tr>
+        </thead>
+        <TBody>
+          {rows.map((r, i) => {
+            const isHover = hovered === r.id
+            const someoneElse = hovered && hovered !== r.id
+            return (
+              <tr
+                key={r.id}
+                onMouseEnter={() => setHovered(r.id)}
+                onMouseLeave={() => setHovered(null)}
+                className={`transition-all duration-150 cursor-pointer ${
+                  isHover ? "bg-muted" : someoneElse ? "opacity-40" : ""
+                }`}
+              >
+                <Th row>
+                  <span className="inline-flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full shrink-0" style={{ background: palette[i % palette.length] }} />
+                    <span>{r.label}</span>
+                  </span>
+                </Th>
+                {showRoutedModels ? <Td className="text-fg-muted">{r.routedModels?.join(", ") ?? "—"}</Td> : null}
+                <Td numeric className="text-fg-muted">{fmt(r.requests)}</Td>
+                <Td numeric className="text-fg-muted">{fmt(r.input)}</Td>
+                <Td numeric className="text-fg-muted">{fmt(r.output)}</Td>
+                <Td numeric className="text-fg-muted">{fmt(r.cacheRead)}</Td>
+                <Td numeric className="text-fg-muted">{fmt(r.cacheCreation)}</Td>
+                <Td numeric className="text-fg-muted">{fmt(r.input + r.output + r.cacheRead + r.cacheCreation)}</Td>
+                <Td numeric className="text-fg-muted">{r.costUSD > 0 ? "$" + r.costUSD.toFixed(4) : "—"}</Td>
+              </tr>
+            )
+          })}
+        </TBody>
+      </Table>
+    </Card>
   )
 }
 
@@ -141,7 +141,7 @@ interface StackedBarProps {
 function StackedBar({ label, rows, pct, palette, hovered, onHover }: StackedBarProps) {
   return (
     <div>
-      <p className="text-[11px] text-themed-dim mb-1.5">{label}</p>
+      <p className="text-xs text-fg-subtle mb-1.5">{label}</p>
       <div className="flex h-[14px] gap-[2px] rounded-full overflow-hidden">
         {rows.map((r, i) => {
           const p = pct[i] ?? 0
@@ -163,30 +163,5 @@ function StackedBar({ label, rows, pct, palette, hovered, onHover }: StackedBarP
         })}
       </div>
     </div>
-  )
-}
-
-function Th({
-  children,
-  align = "right",
-  className = "",
-}: {
-  children: React.ReactNode
-  align?: "left" | "right"
-  className?: string
-}) {
-  const alignCls = align === "left" ? "text-left" : "text-right"
-  return (
-    <th
-      className={`py-2.5 pr-4 text-xs font-medium text-themed-dim uppercase tracking-widest ${alignCls} ${className}`}
-    >
-      {children}
-    </th>
-  )
-}
-
-function Td({ children, className = "" }: { children: React.ReactNode; className?: string }) {
-  return (
-    <td className={`py-2.5 pr-4 text-right text-themed-secondary font-mono text-xs ${className}`}>{children}</td>
   )
 }

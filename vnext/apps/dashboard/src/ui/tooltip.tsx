@@ -16,12 +16,16 @@ interface TooltipProps {
   side?: "top" | "right" | "bottom" | "left"
   /** Render the trigger alone, e.g. when the label is already visible. */
   disabled?: boolean
+  /** Controlled open state, for a trigger that also toggles on tap (Radix never opens on touch). */
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
 }
 
-export function Tooltip({ content, children, side = "right", disabled = false }: TooltipProps) {
+export function Tooltip({ content, children, side = "right", disabled = false, open, onOpenChange }: TooltipProps) {
   if (disabled) return children
   return (
-    <RadixTooltip.Root>
+    // Left undefined, open is uncontrolled and Radix keeps its own state.
+    <RadixTooltip.Root open={open} onOpenChange={onOpenChange}>
       <RadixTooltip.Trigger asChild>{children}</RadixTooltip.Trigger>
       <RadixTooltip.Portal>
         <RadixTooltip.Content

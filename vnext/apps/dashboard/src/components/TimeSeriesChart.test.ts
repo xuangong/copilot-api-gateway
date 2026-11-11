@@ -128,3 +128,12 @@ describe("bucketTotalCost", () => {
     expect(bucketTotalCost([[3], null], 0)).toBe(3)
   })
 })
+
+describe("chartFont", () => {
+  test("reads the family from the CSS variable and falls back when it is missing", async () => {
+    const { chartFont } = await import("./TimeSeriesChart")
+    expect(chartFont((name) => (name === "--font-sans" ? ' "Geist", sans-serif ' : ""), "sans")).toBe('"Geist", sans-serif')
+    expect(chartFont(() => "", "mono")).toBe("ui-monospace, monospace")
+    expect(chartFont(() => "", "sans")).toBe("ui-sans-serif, system-ui, sans-serif")
+  })
+})

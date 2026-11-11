@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp } from "lucide-react"
 import { useAuth } from "../../state/auth"
 import { formatDayLabel, formatMonthLabel, formatWeekLabel, useUsage, type UsageMetric, type UsageRange } from "../../state/usage"
 import { UsageFiltersBar } from "./UsageFilters"
@@ -12,6 +13,11 @@ import { dateKey } from "../../state/time-buckets"
 import { localOffsetLabel, localZoneLabel, setZoneMode, useZoneMode, zoneOps, type TimeZoneMode } from "../../state/timezone"
 import { useT } from "../../state/i18n"
 import { formatUsageFilterHint } from "../../state/usage-model-dimensions"
+import { Button } from "../../ui/button"
+import { Card, SectionHeading } from "../../ui/card"
+import { EmptyState } from "../../ui/empty-state"
+import { PageHeader } from "../../ui/page-header"
+import { SegmentedControl, type SegmentedOption } from "../../ui/segmented-control"
 
 /**
  * Whether the strip and the forecast are open. Folded away by default: they
@@ -39,25 +45,25 @@ export function UsageTab() {
   // joins are siblings: the row is hovered in one and the days light up in the
   // other.
   const [forecastRun, setForecastRun] = useState<number | null>(null)
-  const RANGE_OPTIONS: Array<{ id: UsageRange; label: string }> = [
-    { id: "today", label: t("dash.day") },
-    { id: "week", label: t("dash.week") },
-    { id: "month", label: t("dash.month") },
-    { id: "28d", label: t("dash.twentyEightDays") },
+  const RANGE_OPTIONS: Array<SegmentedOption<UsageRange>> = [
+    { value: "today", label: t("dash.day") },
+    { value: "week", label: t("dash.week") },
+    { value: "month", label: t("dash.month") },
+    { value: "28d", label: t("dash.twentyEightDays") },
   ]
-  const METRIC_OPTIONS: Array<{ id: UsageMetric; label: string }> = [
-    { id: "tokens", label: t("dash.metricTokens") },
-    { id: "requests", label: t("dash.metricRequests") },
+  const METRIC_OPTIONS: Array<SegmentedOption<UsageMetric>> = [
+    { value: "tokens", label: t("dash.metricTokens") },
+    { value: "requests", label: t("dash.metricRequests") },
   ]
-  const MODEL_KIND_OPTIONS: Array<{ id: "routed" | "incoming"; label: string }> = [
-    { id: "routed", label: t("dash.routedModel") },
-    { id: "incoming", label: t("dash.incomingModel") },
+  const MODEL_KIND_OPTIONS: Array<SegmentedOption<"routed" | "incoming">> = [
+    { value: "routed", label: t("dash.routedModel") },
+    { value: "incoming", label: t("dash.incomingModel") },
   ]
   // The local option names the zone it means. "Local" on its own is the thing
   // this switch exists to remove: a boundary the page will not say out loud.
-  const TZ_OPTIONS: Array<{ id: TimeZoneMode; label: string }> = [
-    { id: "local", label: t("dash.tzLocal", { zone: localOffsetLabel() }) },
-    { id: "utc", label: t("dash.tzUtc") },
+  const TZ_OPTIONS: Array<SegmentedOption<TimeZoneMode>> = [
+    { value: "local", label: t("dash.tzLocal", { zone: localOffsetLabel() }) },
+    { value: "utc", label: t("dash.tzUtc") },
   ]
   const isDark = typeof document !== "undefined" && document.documentElement.getAttribute("data-theme") !== "light"
   const palette = paletteFor(isDark ? "dark" : "light")
@@ -116,75 +122,77 @@ export function UsageTab() {
 
   return (
     <div>
-      {/* z-10: the cards below build their own stacking contexts (backdrop-filter),
-          so without this the summary's hover popup paints underneath them. */}
-      <div className="glass-card p-4 sm:p-6 animate-in relative z-10">
-        <div className="flex flex-col gap-4 mb-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <span className="text-xs font-medium text-themed-dim uppercase tracking-widest">{t("dash.usage")}</span>
-              <UsageRefresh
-                loading={usage.loading}
-                lastUpdated={usage.lastUpdated}
-                onRefresh={usage.refresh}
-              />
-            </div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <SegmentedGroup
-                options={METRIC_OPTIONS}
-                value={usage.metric}
-                onChange={(v) => usage.setMetric(v)}
-              />
-              <SegmentedGroup
-                options={RANGE_OPTIONS}
-                value={usage.range}
-                onChange={(v) => usage.switchRange(v)}
-              />
-              <SegmentedGroup
-                options={TZ_OPTIONS}
-                value={mode}
-                onChange={(v) => setZoneMode(v)}
-              />
-            </div>
+      <PageHeader
+        title={t("dash.usage")}
+        actions={
+          <UsageRefresh
+            loading={usage.loading}
+            lastUpdated={usage.lastUpdated}
+            onRefresh={usage.refresh}
+          />
+        }
+      />
+
+      <div className="flex flex-col gap-4 mb-5">
+        <div className="flex items-center gap-2 flex-wrap">
+          <SegmentedControl
+            ariaLabel={t("dash.usage.metricLabel")}
+            options={METRIC_OPTIONS}
+            value={usage.metric}
+            onChange={(v) => usage.setMetric(v)}
+          />
+          <SegmentedControl
+            ariaLabel={t("dash.usage.rangeLabel")}
+            options={RANGE_OPTIONS}
+            value={usage.range}
+            onChange={(v) => usage.switchRange(v)}
+          />
+          <SegmentedControl
+            ariaLabel={t("dash.usage.timeZoneLabel")}
+            options={TZ_OPTIONS}
+            value={mode}
+            onChange={(v) => setZoneMode(v)}
+          />
+        </div>
+
+        {/* 28d is a trailing window — no period to step. */}
+        {usage.range === "today" || usage.range === "week" || usage.range === "month" ? (
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => usage.shiftPeriod(-1)}
+              title={`Previous ${periodNoun}`}
+              aria-label={`Previous ${periodNoun}`}
+            >
+              <ChevronLeft aria-hidden="true" />
+            </Button>
+            <span className="text-[13px] text-fg-muted font-medium tabular-nums min-w-[180px] text-center">
+              {usage.range === "today"
+                ? formatDayLabel(usage.periodOffset, new Date(), mode)
+                : usage.range === "week"
+                  ? formatWeekLabel(usage.periodOffset, new Date(), mode)
+                  : formatMonthLabel(usage.periodOffset, new Date(), mode)}
+            </span>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => usage.shiftPeriod(1)}
+              disabled={usage.periodOffset >= 0}
+              title={`Next ${periodNoun}`}
+              aria-label={`Next ${periodNoun}`}
+            >
+              <ChevronRight aria-hidden="true" />
+            </Button>
           </div>
+        ) : null}
 
-          {/* 28d is a trailing window — no period to step. */}
-          {usage.range === "today" || usage.range === "week" || usage.range === "month" ? (
-            <div className="flex items-center gap-3 ml-1">
-              <button
-                onClick={() => usage.shiftPeriod(-1)}
-                className="p-1 rounded-sm hover:bg-surface-600 text-themed-dim hover:text-themed transition-all"
-                title={`Previous ${periodNoun}`}
-              >
-                ‹
-              </button>
-              <span className="text-xs text-themed-secondary font-medium min-w-[180px] text-center">
-                {usage.range === "today"
-                  ? formatDayLabel(usage.periodOffset, new Date(), mode)
-                  : usage.range === "week"
-                    ? formatWeekLabel(usage.periodOffset, new Date(), mode)
-                    : formatMonthLabel(usage.periodOffset, new Date(), mode)}
-              </span>
-              <button
-                onClick={() => usage.shiftPeriod(1)}
-                disabled={usage.periodOffset >= 0}
-                className={`p-1 rounded-sm transition-all ${
-                  usage.periodOffset >= 0
-                    ? "text-themed-dim/30 cursor-not-allowed"
-                    : "hover:bg-surface-600 text-themed-dim hover:text-themed"
-                }`}
-                title={`Next ${periodNoun}`}
-              >
-                ›
-              </button>
-            </div>
-          ) : null}
-
-          {/* 28d has no arrows because its window is not one of a series of
-              periods — the user names its last day instead. */}
-          {usage.range === "28d" ? (
-            <div className="flex items-center gap-2 ml-1 flex-wrap">
-              <label htmlFor="usage-end-date" className="text-xs text-themed-dim">
+        {/* 28d has no arrows because its window is not one of a series of
+            periods — the user names its last day instead. */}
+        {usage.range === "28d" ? (
+          <div className="flex items-center gap-x-3 gap-y-2 flex-wrap">
+            <div className="flex items-center gap-2">
+              <label htmlFor="usage-end-date" className="text-xs font-medium text-fg-muted">
                 {t("dash.endDate")}
               </label>
               <input
@@ -200,20 +208,20 @@ export function UsageTab() {
                 // A window closing in the future could only ever be part empty.
                 max={today}
                 onChange={(e) => usage.chooseEndDate(e.target.value || null)}
-                className="bg-surface-800 rounded-md px-2 py-1 text-xs text-themed border border-transparent focus:border-surface-600! outline-hidden"
               />
-              <span className="text-xs text-themed-secondary font-medium">{windowLabel}</span>
+            </div>
+            <span className="text-[13px] text-fg-muted font-medium tabular-nums">{windowLabel}</span>
+            <div className="flex items-center gap-1">
               {usage.endDate ? (
-                <button
-                  onClick={() => usage.chooseEndDate(null)}
-                  className="text-xs text-themed-dim hover:text-themed underline underline-offset-2"
-                >
+                <Button variant="ghost" size="sm" onClick={() => usage.chooseEndDate(null)}>
                   {t("dash.latestWindow")}
-                </button>
+                </Button>
               ) : null}
               {/* Sits with the other 28d controls rather than over the strip
                   itself: when it is folded there is no strip to sit over. */}
-              <button
+              <Button
+                variant="ghost"
+                size="sm"
                 onClick={() => {
                   // Dropped on the way down so a run left lit by the pointer
                   // cannot come back with the strip when it reopens.
@@ -221,55 +229,57 @@ export function UsageTab() {
                   setStripOpen((v) => !v)
                 }}
                 aria-expanded={stripOpen}
-                className={`px-2 py-1 rounded-md text-xs font-medium transition-all ${
-                  stripOpen ? "bg-surface-600 text-themed" : "bg-surface-800 text-themed-dim hover:text-themed-secondary"
-                }`}
+                className={stripOpen ? "bg-muted text-fg" : undefined}
               >
-                {t("dash.rollingSection")} {stripOpen ? "▴" : "▾"}
-              </button>
+                {t("dash.rollingSection")}
+                {stripOpen ? <ChevronUp aria-hidden="true" /> : <ChevronDown aria-hidden="true" />}
+              </Button>
             </div>
-          ) : null}
+          </div>
+        ) : null}
 
-          {usage.range === "28d" && stripOpen ? (
-            <RollingStrip
-              cells={usage.strip}
-              selectedKey={usage.endDate ?? today}
-              highlightTail={forecastRun}
-              isDark={isDark}
-              onPick={(day) => usage.chooseEndDate(day)}
-            />
-          ) : null}
-
-          {usage.range === "28d" && stripOpen ? (
-            <UsageForecast cells={usage.strip} onHoverRun={setForecastRun} />
-          ) : null}
-
-          <UsageFiltersBar
-            isAdmin={isAdmin}
-            filters={usage.filters}
-            dimensions={usage.dimensions}
-            onChange={usage.updateFilter}
-            onClear={usage.clearFilters}
+        {usage.range === "28d" && stripOpen ? (
+          <RollingStrip
+            cells={usage.strip}
+            selectedKey={usage.endDate ?? today}
+            highlightTail={forecastRun}
+            isDark={isDark}
+            onPick={(day) => usage.chooseEndDate(day)}
           />
+        ) : null}
 
-          <FilterHint
-            isAdmin={isAdmin}
-            usersAvailable={usage.dimensions.users.length > 0}
-            filters={usage.filters}
-            visible={usage.data.length > 0}
-            keyName={usage.dimensions.keys.find((k) => k.id === usage.filters.key)?.name}
-            userName={usage.dimensions.users.find((u) => u.id === usage.filters.user)?.name}
-          />
-        </div>
+        {usage.range === "28d" && stripOpen ? (
+          <UsageForecast cells={usage.strip} onHoverRun={setForecastRun} />
+        ) : null}
 
-        <div className="flex items-center justify-between gap-3 flex-wrap mt-2">
-          <p className="text-[11px] text-themed-dim">
+        <UsageFiltersBar
+          isAdmin={isAdmin}
+          filters={usage.filters}
+          dimensions={usage.dimensions}
+          onChange={usage.updateFilter}
+          onClear={usage.clearFilters}
+        />
+
+        <FilterHint
+          isAdmin={isAdmin}
+          usersAvailable={usage.dimensions.users.length > 0}
+          filters={usage.filters}
+          visible={usage.data.length > 0}
+          keyName={usage.dimensions.keys.find((k) => k.id === usage.filters.key)?.name}
+          userName={usage.dimensions.users.find((u) => u.id === usage.filters.user)?.name}
+        />
+      </div>
+
+      <Card>
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <p className="text-xs text-fg-subtle">
             {usage.chart.grouping === "user"
               ? t("dash.chartLinesByUser")
               : t(usage.modelKind === "routed" ? "dash.chartLinesByRoutedModel" : "dash.chartLinesByIncomingModel")}
           </p>
           {usage.chart.grouping === "model" ? (
-            <SegmentedGroup
+            <SegmentedControl
+              size="sm"
               options={MODEL_KIND_OPTIONS}
               value={usage.modelKind}
               onChange={usage.setModelKind}
@@ -291,17 +301,18 @@ export function UsageTab() {
           />
         </div>
 
-        <p className="text-[10px] text-themed-dim">
+        <p className="text-xs text-fg-subtle">
           {mode === "utc"
             ? t("dash.allTimestampsUtc")
             : t("dash.allTimestampsLocalNamed", { zone: zoneLabel })}
         </p>
         <UsageSummaryCards summary={usage.summary} />
-      </div>
+      </Card>
 
-      <div className="flex items-center justify-between mt-5">
-        <span className="text-xs font-medium text-themed-dim uppercase tracking-widest">{t("dash.modelDistribution")}</span>
-        <SegmentedGroup
+      <div className="flex items-center justify-between gap-3 flex-wrap mt-6">
+        <SectionHeading>{t("dash.modelDistribution")}</SectionHeading>
+        <SegmentedControl
+          size="sm"
           options={MODEL_KIND_OPTIONS}
           value={usage.modelKind}
           onChange={usage.setModelKind}
@@ -318,37 +329,10 @@ export function UsageTab() {
       <UsageDistributionTable title={t("dash.byClient")} rows={usage.distributions.byClient} />
 
       {!usage.loading && usage.data.length === 0 ? (
-        <p className="text-sm text-themed-dim italic mt-6">{t("dash.noUsageInRange")}</p>
+        <div className="mt-6">
+          <EmptyState title={t("dash.noUsageInRange")} />
+        </div>
       ) : null}
-    </div>
-  )
-}
-
-interface SegmentedGroupProps<T extends string> {
-  options: ReadonlyArray<{ id: T; label: string }>
-  value: T
-  onChange: (v: T) => void
-  ariaLabel?: string
-}
-
-function SegmentedGroup<T extends string>({ options, value, onChange, ariaLabel }: SegmentedGroupProps<T>) {
-  return (
-    <div className="flex items-center gap-1 bg-surface-800 rounded-lg p-0.5" role="group" aria-label={ariaLabel}>
-      {options.map((o) => (
-        <button
-          key={o.id}
-          type="button"
-          aria-pressed={value === o.id}
-          onClick={() => onChange(o.id)}
-          className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-            value === o.id
-              ? "bg-surface-600 text-themed"
-              : "text-themed-dim hover:text-themed-secondary"
-          }`}
-        >
-          {o.label}
-        </button>
-      ))}
     </div>
   )
 }
@@ -387,5 +371,5 @@ function FilterHint({
   } else {
     remaining.push(t("dash.incomingModel"))
   }
-  return <p className="text-[11px] text-themed-dim">{formatUsageFilterHint({ selected, remaining }, t)}</p>
+  return <p className="text-xs text-fg-subtle">{formatUsageFilterHint({ selected, remaining }, t)}</p>
 }
