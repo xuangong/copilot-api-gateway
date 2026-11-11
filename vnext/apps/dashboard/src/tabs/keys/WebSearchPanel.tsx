@@ -1,12 +1,25 @@
-import { useMemo, useState } from "react"
+import { useId, useMemo, useState } from "react"
+import { ChevronDown, ChevronUp, Link2 } from "lucide-react"
 import type { ApiKeyDetail, KeyPatchBody, KeyRefDescriptor, WebSearchRange, WebSearchUsage } from "../../api/keys"
-import { useT, t as tStatic } from "../../state/i18n"
+import { useT } from "../../state/i18n"
 import { DEFAULT_WS_PRIORITY } from "./helpers"
-import { Select } from "../../components/Select"
 import type { ModelCatalog } from "../../state/models"
 import { testKeyWebSearch, type WebSearchTestResult } from "../../api/keys"
+import { Badge } from "../../ui/badge"
+import { Button } from "../../ui/button"
+import { Card, SectionHeading } from "../../ui/card"
+import { Notice } from "../../ui/notice"
+import { SegmentedControl } from "../../ui/segmented-control"
+import { Select } from "../../ui/select"
+import { WebSearchBorrowDialog } from "./WebSearchBorrowDialog"
+import { WebSearchEngineRow } from "./WebSearchEngineRow"
+import { borrowCandidates, linkedKeyName, type WebSearchEngine as Engine } from "./web-search-borrow"
 
-type Engine = "langsearch" | "tavily" | "msGrounding" | "jina"
+const USAGE_RANGES = [
+  { value: "1d", label: "1d" },
+  { value: "7d", label: "7d" },
+  { value: "30d", label: "30d" },
+] as const satisfies ReadonlyArray<{ value: WebSearchRange; label: string }>
 
 interface Props {
   keyRow: ApiKeyDetail
@@ -69,18 +82,6 @@ function initialEdit(key: ApiKeyDetail): EditState {
   }
 }
 
-function borrowName(id: string, keys: ApiKeyDetail[]): string {
-  if (!id) return ""
-  const k = keys.find((x) => x.id === id)
-  return k?.name ?? id
-}
-
-function refLabel(ref: KeyRefDescriptor | null, fallbackId: string, keys: ApiKeyDetail[]): string {
-  if (ref?.broken) return tStatic("dash.wsLinkUnavailable")
-  if (ref) return `↗ ${ref.name ?? ref.id}`
-  return `↗ ${borrowName(fallbackId, keys)}`
-}
-
 export function WebSearchPanel({
   keyRow,
   allKeys,
@@ -98,19 +99,11 @@ export function WebSearchPanel({
   const [edit, setEdit] = useState<EditState>(() => initialEdit(keyRow))
   const [borrowPickerEngine, setBorrowPickerEngine] = useState<Engine | "">("")
   const t = useT()
+  const panelId = useId()
 
   const startEdit = () => {
     setEdit(initialEdit(keyRow))
     setEditing(true)
-  }
-
-  const candidatesFor = (engine: Engine): ApiKeyDetail[] => {
-    const field = engine === "langsearch"
-      ? "web_search_langsearch_key"
-      : engine === "tavily"
-        ? "web_search_tavily_key"
-        : "web_search_ms_grounding_key"
-    return allKeys.filter((k) => k.id !== keyRow.id && k[field])
   }
 
   // Only codex and custom upstreams can serve alpha_search — the same check
@@ -135,8 +128,7 @@ export function WebSearchPanel({
   }
 
   const currentBorrowCandidates = useMemo(
-    () => (borrowPickerEngine ? candidatesFor(borrowPickerEngine) : []),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    () => (borrowPickerEngine ? borrowCandidates(borrowPickerEngine, allKeys, keyRow.id) : []),
     [borrowPickerEngine, allKeys, keyRow.id],
   )
 
@@ -240,256 +232,193 @@ export function WebSearchPanel({
     return priority.map((id) => all[id]).filter(Boolean) as Array<typeof all[string]>
   })()
 
+
+  const engineRow = (
+    engine: Engine,
+    label: string,
+    refKey: "langsearchRef" | "tavilyRef" | "msGroundingRef" | "jinaRef",
+    valueKey: "langsearch" | "tavily" | "msGrounding" | "jina",
+    replacingKey: "langsearchReplacing" | "tavilyReplacing" | "msGroundingReplacing" | "jinaReplacing",
+    refDescriptor: KeyRefDescriptor | null,
+    existingMasked: string | null,
+  ) => (
+    <WebSearchEngineRow
+      label={label}
+      refId={edit[refKey]}
+      refDescriptor={refDescriptor}
+      existingMasked={existingMasked}
+      replacing={edit[replacingKey]}
+      value={edit[valueKey]}
+      allKeys={allKeys}
+      onUnlinkRef={() => setEdit({ ...edit, [refKey]: "" })}
+      onStartReplace={() => setEdit({ ...edit, [replacingKey]: true, [valueKey]: "" })}
+      onChangeValue={(v) => setEdit({ ...edit, [valueKey]: v })}
+      onBorrowOpen={() => setBorrowPickerEngine(engine)}
+    />
+  )
+
   return (
-    <div className="glass-card p-4 sm:p-6 mb-6 animate-in delay-1">
-      <div className="flex items-center justify-between mb-4">
-        <span className="text-xs font-medium text-themed-dim uppercase tracking-widest">{t("dash.webSearchLabel")}</span>
+    <Card aria-labelledby={`${panelId}-title`}>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <SectionHeading id={`${panelId}-title`}>{t("dash.webSearchLabel")}</SectionHeading>
         <div className="flex items-center gap-2">
           {!editing && canEdit ? (
             <>
-              <button type="button" onClick={() => void runTest()} disabled={testing} className="btn-ghost text-xs">
+              <Button variant="ghost" size="sm" onClick={() => void runTest()} disabled={testing}>
                 {testing ? t("dash.wsTesting") : t("dash.wsTest")}
-              </button>
-              <button type="button" onClick={startEdit} className="btn-ghost text-xs">
+              </Button>
+              <Button variant="ghost" size="sm" onClick={startEdit}>
                 {t("dash.edit")}
-              </button>
+              </Button>
             </>
           ) : null}
           {editing ? (
             <>
-              <button type="button" onClick={save} disabled={busy} className="btn-primary text-xs py-1 px-3">
+              <Button variant="primary" size="sm" onClick={save} disabled={busy}>
                 {busy ? t("dash.savingShort") : t("dash.save")}
-              </button>
-              <button type="button" onClick={() => setEditing(false)} className="btn-ghost text-xs">
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => setEditing(false)}>
                 {t("dash.cancel")}
-              </button>
+              </Button>
             </>
           ) : null}
         </div>
       </div>
 
       {editing ? (
-        <div className="space-y-4 mb-4">
-          <div className="flex items-center gap-6 flex-wrap">
-            <label className="flex items-center gap-2 text-xs text-themed-secondary cursor-pointer">
-              <input
-                type="checkbox"
-                checked={edit.enabled}
-                onChange={(e) => setEdit({ ...edit, enabled: e.target.checked })}
-                className="accent-accent-violet"
-              />
-              {t("dash.webSearchEnableLabel")}
-            </label>
-          </div>
+        <div className="mb-4 space-y-4">
+          <label className="flex w-fit cursor-pointer items-center gap-2 text-xs text-fg-muted">
+            <input
+              type="checkbox"
+              checked={edit.enabled}
+              onChange={(e) => setEdit({ ...edit, enabled: e.target.checked })}
+              className="accent-brand"
+            />
+            {t("dash.webSearchEnableLabel")}
+          </label>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <EngineEditorRow
-              label={t("dash.wsLangSearchKey")}
-              engine="langsearch"
-              refId={edit.langsearchRef}
-              refDescriptor={keyRow.web_search_langsearch_ref}
-              existingMasked={keyRow.web_search_langsearch_key}
-              replacing={edit.langsearchReplacing}
-              value={edit.langsearch}
-              allKeys={allKeys}
-              onUnlinkRef={() => setEdit({ ...edit, langsearchRef: "" })}
-              onStartReplace={() => setEdit({ ...edit, langsearchReplacing: true, langsearch: "" })}
-              onChangeValue={(v) => setEdit({ ...edit, langsearch: v })}
-              onBorrowOpen={() => setBorrowPickerEngine("langsearch")}
-            />
-            <EngineEditorRow
-              label={t("dash.wsTavilyKey")}
-              engine="tavily"
-              refId={edit.tavilyRef}
-              refDescriptor={keyRow.web_search_tavily_ref}
-              existingMasked={keyRow.web_search_tavily_key}
-              replacing={edit.tavilyReplacing}
-              value={edit.tavily}
-              allKeys={allKeys}
-              onUnlinkRef={() => setEdit({ ...edit, tavilyRef: "" })}
-              onStartReplace={() => setEdit({ ...edit, tavilyReplacing: true, tavily: "" })}
-              onChangeValue={(v) => setEdit({ ...edit, tavily: v })}
-              onBorrowOpen={() => setBorrowPickerEngine("tavily")}
-            />
-            <EngineEditorRow
-              label={t("dash.wsJinaKey")}
-              engine="jina"
-              refId={edit.jinaRef}
-              refDescriptor={keyRow.web_search_jina_ref}
-              existingMasked={keyRow.web_search_jina_key}
-              replacing={edit.jinaReplacing}
-              value={edit.jina}
-              allKeys={allKeys}
-              onUnlinkRef={() => setEdit({ ...edit, jinaRef: "" })}
-              onStartReplace={() => setEdit({ ...edit, jinaReplacing: true, jina: "" })}
-              onChangeValue={(v) => setEdit({ ...edit, jina: v })}
-              onBorrowOpen={() => setBorrowPickerEngine("jina")}
-            />
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {engineRow("langsearch", t("dash.wsLangSearchKey"), "langsearchRef", "langsearch", "langsearchReplacing", keyRow.web_search_langsearch_ref, keyRow.web_search_langsearch_key)}
+            {engineRow("tavily", t("dash.wsTavilyKey"), "tavilyRef", "tavily", "tavilyReplacing", keyRow.web_search_tavily_ref, keyRow.web_search_tavily_key)}
+            {engineRow("jina", t("dash.wsJinaKey"), "jinaRef", "jina", "jinaReplacing", keyRow.web_search_jina_ref, keyRow.web_search_jina_key)}
             <div className="sm:col-span-2">
-              <EngineEditorRow
-                label={t("dash.wsMsGroundingKey")}
-                engine="msGrounding"
-                refId={edit.msGroundingRef}
-                refDescriptor={keyRow.web_search_ms_grounding_ref}
-                existingMasked={keyRow.web_search_ms_grounding_key}
-                replacing={edit.msGroundingReplacing}
-                value={edit.msGrounding}
-                allKeys={allKeys}
-                onUnlinkRef={() => setEdit({ ...edit, msGroundingRef: "" })}
-                onStartReplace={() => setEdit({ ...edit, msGroundingReplacing: true, msGrounding: "" })}
-                onChangeValue={(v) => setEdit({ ...edit, msGrounding: v })}
-                onBorrowOpen={() => setBorrowPickerEngine("msGrounding")}
-              />
+              {engineRow("msGrounding", t("dash.wsMsGroundingKey"), "msGroundingRef", "msGrounding", "msGroundingReplacing", keyRow.web_search_ms_grounding_ref, keyRow.web_search_ms_grounding_key)}
             </div>
           </div>
 
-          <div className="space-y-2 border-t border-themed pt-3">
-            <label className="text-xs text-themed-dim">{t("dash.wsPassthrough")}</label>
-            <p className="text-[10px] text-themed-dim">{t("dash.wsPassthroughHint")}</p>
-            <div className="flex items-center gap-2 flex-wrap">
-              <Select
-                value={edit.passthroughUpstream}
-                onChange={(v) => setEdit({ ...edit, passthroughUpstream: v, passthroughModel: "" })}
-                className="min-w-[200px]"
-                options={[
-                  { value: "", label: t("dash.wsPassthroughOff") },
-                  ...passthroughUpstreams.map((g) => ({ value: g.upstream, label: g.upstream })),
-                ]}
-              />
-              <Select
-                value={edit.passthroughModel}
-                onChange={(v) => setEdit({ ...edit, passthroughModel: v })}
-                className="min-w-[180px]"
-                options={[
-                  { value: "", label: t("dash.wsPassthroughPickModel") },
-                  ...passthroughModels.map((m) => ({ value: m.id, label: m.id })),
-                ]}
-              />
+          <div className="space-y-2 border-t border-border pt-3">
+            <span id={`${panelId}-passthrough`} className="block text-xs font-medium text-fg-muted">{t("dash.wsPassthrough")}</span>
+            <p className="text-xs text-fg-subtle">{t("dash.wsPassthroughHint")}</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="min-w-[200px]">
+                <Select
+                  labelledBy={`${panelId}-passthrough`}
+                  value={edit.passthroughUpstream}
+                  onChange={(v) => setEdit({ ...edit, passthroughUpstream: v, passthroughModel: "" })}
+                  options={[
+                    { value: "", label: t("dash.wsPassthroughOff") },
+                    ...passthroughUpstreams.map((g) => ({ value: g.upstream, label: g.upstream })),
+                  ]}
+                />
+              </div>
+              <div className="min-w-[180px]">
+                <Select
+                  labelledBy={`${panelId}-passthrough`}
+                  value={edit.passthroughModel}
+                  onChange={(v) => setEdit({ ...edit, passthroughModel: v })}
+                  options={[
+                    { value: "", label: t("dash.wsPassthroughPickModel") },
+                    ...passthroughModels.map((m) => ({ value: m.id, label: m.id })),
+                  ]}
+                />
+              </div>
             </div>
             {passthroughUpstreams.length === 0 ? (
-              <p className="text-[10px] text-accent-amber">{t("dash.wsPassthroughNoUpstream")}</p>
+              <Notice tone="warn">{t("dash.wsPassthroughNoUpstream")}</Notice>
             ) : null}
           </div>
 
           {isAdmin ? (
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <label className="text-xs text-themed-dim">{t("dash.wsEnginePriority")}</label>
-                <button type="button" onClick={resetPriority} className="btn-ghost text-[10px]">
+                <span id={`${panelId}-priority`} className="text-xs font-medium text-fg-muted">{t("dash.wsEnginePriority")}</span>
+                <Button variant="ghost" size="sm" onClick={resetPriority}>
                   {t("dash.wsResetLabel")}
-                </button>
+                </Button>
               </div>
-              <p className="text-[10px] text-themed-dim">{t("dash.wsPriorityWinner")}</p>
-              <div className="space-y-1">
+              <p className="text-xs text-fg-subtle">{t("dash.wsPriorityWinner")}</p>
+              <ol aria-labelledby={`${panelId}-priority`}>
                 {edit.priority.map((eng, idx) => (
-                  <div
-                    key={eng}
-                    className="flex items-center gap-2 px-2 py-1 rounded-sm bg-surface-700/50"
-                  >
-                    <span className="text-[10px] text-themed-dim w-4">{idx + 1}.</span>
-                    <span className="text-xs font-mono text-themed flex-1">{eng}</span>
-                    <button
-                      type="button"
+                  <li key={eng} className="flex items-center gap-2 border-b border-border px-2 py-1">
+                    <span className="w-4 text-xs tabular-nums text-fg-subtle">{idx + 1}.</span>
+                    <span className="flex-1 font-mono text-xs text-fg">{eng}</span>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
                       onClick={() => movePriority(idx, -1)}
                       disabled={idx === 0}
-                      className="btn-ghost text-xs px-1.5 py-0.5 disabled:opacity-30"
                       title={t("dash.wsUpTitle")}
+                      aria-label={`${t("dash.wsUpTitle")} ${eng}`}
                     >
-                      ▲
-                    </button>
-                    <button
-                      type="button"
+                      <ChevronUp aria-hidden="true" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
                       onClick={() => movePriority(idx, 1)}
                       disabled={idx === edit.priority.length - 1}
-                      className="btn-ghost text-xs px-1.5 py-0.5 disabled:opacity-30"
                       title={t("dash.wsDownTitle")}
+                      aria-label={`${t("dash.wsDownTitle")} ${eng}`}
                     >
-                      ▼
-                    </button>
-                  </div>
+                      <ChevronDown aria-hidden="true" />
+                    </Button>
+                  </li>
                 ))}
-              </div>
+              </ol>
             </div>
           ) : null}
 
           <div className="flex items-center gap-2">
-            <Select
-              value={edit.copySourceId}
-              onChange={(v) => setEdit({ ...edit, copySourceId: v })}
-              className="flex-1 mt-1"
-              options={[
-                { value: "", label: t("dash.wsCopyFromKeyPlaceholder") },
-                ...allKeys
-                  .filter((k) => k.id !== keyRow.id && k.web_search_enabled)
-                  .map((k) => ({ value: k.id, label: t("dash.wsEnabledOption", { name: k.name }) })),
-              ]}
-            />
-            <button
-              type="button"
-              onClick={copyFrom}
-              disabled={!edit.copySourceId || busy}
-              className="btn-ghost text-xs"
-            >
+            <div className="min-w-0 flex-1">
+              <Select
+                ariaLabel={t("dash.wsCopyFromKeyPlaceholder")}
+                value={edit.copySourceId}
+                onChange={(v) => setEdit({ ...edit, copySourceId: v })}
+                options={[
+                  { value: "", label: t("dash.wsCopyFromKeyPlaceholder") },
+                  ...allKeys
+                    .filter((k) => k.id !== keyRow.id && k.web_search_enabled)
+                    .map((k) => ({ value: k.id, label: t("dash.wsEnabledOption", { name: k.name }) })),
+                ]}
+              />
+            </div>
+            <Button variant="secondary" size="sm" onClick={copyFrom} disabled={!edit.copySourceId || busy}>
               {t("dash.copy")}
-            </button>
+            </Button>
           </div>
         </div>
       ) : null}
 
-      {borrowPickerEngine ? (
-        <div
-          className="fixed inset-0 z-100 flex items-center justify-center bg-black/60 p-4"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setBorrowPickerEngine("")
-          }}
-        >
-          <div className="glass-card rounded-xl p-4 sm:p-6 w-full max-w-sm space-y-4">
-            <h3 className="text-sm font-semibold text-themed">{t("dash.wsBorrowFromTitle")}</h3>
-            <div className="space-y-2 max-h-64 overflow-y-auto">
-              {currentBorrowCandidates.length === 0 ? (
-                <p className="text-xs text-themed-dim">{t("dash.wsNoAvailableKeys")}</p>
-              ) : (
-                currentBorrowCandidates.map((c) => (
-                  <button
-                    key={c.id}
-                    type="button"
-                    onClick={() => confirmBorrow(c.id)}
-                    className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/5 transition-colors"
-                  >
-                    <span className="text-xs font-medium text-themed block">{c.name || c.id}</span>
-                    <span className="text-[10px] text-themed-dim">{c.owner_name ?? c.owner_id ?? ""}</span>
-                  </button>
-                ))
-              )}
-            </div>
-            <div className="flex justify-end">
-              <button type="button" onClick={() => setBorrowPickerEngine("")} className="btn-ghost text-xs">
-                {t("dash.cancel")}
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <WebSearchBorrowDialog
+        open={borrowPickerEngine !== ""}
+        candidates={currentBorrowCandidates}
+        onPick={confirmBorrow}
+        onClose={() => setBorrowPickerEngine("")}
+      />
 
       {!editing ? (
         <div className="space-y-3">
           <div className="flex items-center gap-4">
-            <span className="text-xs text-themed-secondary">{t("dash.wsStatusLabel")}</span>
-            <span
-              className={`text-xs font-medium ${keyRow.web_search_enabled ? "text-accent-teal" : "text-themed-dim"}`}
-            >
+            <span className="text-xs text-fg-muted">{t("dash.wsStatusLabel")}</span>
+            <Badge tone={keyRow.web_search_enabled ? "success" : "neutral"}>
               {keyRow.web_search_enabled ? t("dash.wsEnabledShort") : t("dash.wsDisabledShort")}
-            </span>
+            </Badge>
           </div>
           {testResult ? (
             // The one job of a test button is to say whether search works. Lead
             // with the verdict and label the evidence — a bare engine name and
             // a page title read as neither.
-            <div
-              className={`text-[11px] rounded-sm px-2 py-1.5 space-y-1 ${
-                testResult.ok ? "bg-accent-teal/10 text-accent-teal" : "bg-accent-red/10 text-accent-red"
-              }`}
-            >
+            <Notice tone={testResult.ok ? "success" : "danger"} className="space-y-1">
               <div className="font-medium">
                 {testResult.ok
                   ? t("dash.wsTestOk", {
@@ -499,17 +428,17 @@ export function WebSearchPanel({
                   : t("dash.wsTestFailed", { reason: testResult.error?.message ?? testResult.error?.code ?? "" })}
               </div>
               {testResult.ok && testResult.results?.[0] ? (
-                <div className="text-themed-dim">
+                <div className="text-xs text-fg-muted">
                   {t("dash.wsTestSample", { query: testResult.query })}
                   <span className="block truncate">{testResult.results[0].title}</span>
                 </div>
               ) : null}
-            </div>
+            </Notice>
           ) : null}
           {keyRow.web_search_passthrough_upstream && keyRow.web_search_passthrough_model ? (
             <div className="flex items-start gap-3">
-              <span className="text-xs text-themed-secondary shrink-0 mt-0.5">{t("dash.wsPassthrough")}</span>
-              <span className="text-[10px] font-mono text-themed-secondary">
+              <span className="mt-0.5 shrink-0 text-xs text-fg-muted">{t("dash.wsPassthrough")}</span>
+              <span className="font-mono text-xs text-fg-muted">
                 {keyRow.web_search_passthrough_upstream} · {keyRow.web_search_passthrough_model}
               </span>
             </div>
@@ -517,91 +446,62 @@ export function WebSearchPanel({
           {keyRow.web_search_enabled ? (
             <div className="space-y-2">
               <div className="flex items-start gap-3">
-                <span className="text-xs text-themed-secondary shrink-0 mt-0.5">{t("dash.wsEnginesLabel")}</span>
+                <span className="mt-0.5 shrink-0 text-xs text-fg-muted">{t("dash.wsEnginesLabel")}</span>
                 <div className="flex flex-wrap gap-1.5">
                   {engineSlots.map((slot) => (
-                    <span
+                    <Badge
                       key={slot.id}
-                      className={`text-[10px] px-2 py-0.5 rounded-sm inline-flex items-center gap-1 ${
-                        slot.ref
-                          ? slot.ref.broken
-                            ? "bg-accent-red/15 text-accent-red"
-                            : "bg-accent-violet/15 text-accent-violet"
-                          : slot.key
-                            ? "bg-accent-teal/15 text-accent-teal"
-                            : slot.builtin
-                              ? "bg-surface-700 text-themed-secondary"
-                              : "bg-surface-700 text-themed-dim"
-                      }`}
+                      tone={slot.ref ? (slot.ref.broken ? "danger" : "brand") : slot.key ? "success" : "neutral"}
+                      className={!slot.ref && !slot.key && !slot.builtin ? "gap-1 opacity-60" : "gap-1"}
                     >
                       <span className="font-medium">{slot.label}</span>
                       {slot.ref ? (
-                        <span className="font-mono opacity-80">{refLabel(slot.ref, slot.ref.id, allKeys)}</span>
+                        slot.ref.broken ? (
+                          <span className="font-mono opacity-80">{t("dash.wsLinkUnavailable")}</span>
+                        ) : (
+                          <span className="inline-flex items-center gap-0.5 font-mono opacity-80">
+                            <Link2 className="size-3" aria-hidden="true" />
+                            {linkedKeyName(slot.ref, slot.ref.id, allKeys)}
+                          </span>
+                        )
                       ) : null}
-                      {!slot.ref && slot.key ? (
-                        <span className="font-mono opacity-80">{slot.key}</span>
-                      ) : null}
-                      {!slot.ref && !slot.key && slot.builtin ? (
-                        <span className="opacity-70">{t("dash.wsBuiltinTag")}</span>
-                      ) : null}
-                      {!slot.ref && !slot.key && !slot.builtin ? <span className="opacity-60">—</span> : null}
-                    </span>
+                      {!slot.ref && slot.key ? <span className="font-mono opacity-80">{slot.key}</span> : null}
+                      {!slot.ref && !slot.key && slot.builtin ? <span className="opacity-70">{t("dash.wsBuiltinTag")}</span> : null}
+                      {!slot.ref && !slot.key && !slot.builtin ? <span>—</span> : null}
+                    </Badge>
                   ))}
                 </div>
               </div>
 
-              <div className="flex items-center gap-3 flex-wrap">
-                <div className="inline-flex items-center gap-0.5 bg-surface-800 rounded-md p-0.5">
-                  {(["1d", "7d", "30d"] as const).map((r) => (
-                    <button
-                      key={r}
-                      type="button"
-                      onClick={() => onUsageRangeChange(r)}
-                      className={`px-2 py-0.5 rounded-sm text-[10px] font-medium transition-all ${
-                        usageRange === r
-                          ? "bg-surface-600 text-themed"
-                          : "text-themed-dim hover:text-themed-secondary"
-                      }`}
-                    >
-                      {r}
-                    </button>
-                  ))}
-                </div>
-                <span className="text-xs font-mono text-themed">{usage.searches} searches</span>
-                <span className="text-[10px] text-accent-teal">{usage.successes} ok</span>
+              <div className="flex flex-wrap items-center gap-3">
+                <SegmentedControl
+                  size="sm"
+                  options={USAGE_RANGES}
+                  value={usageRange}
+                  onChange={onUsageRangeChange}
+                  ariaLabel={t("dash.wsUsageRangeAria")}
+                />
+                <span className="text-xs tabular-nums text-fg">{usage.searches} searches</span>
+                <span className="text-xs tabular-nums text-success">{usage.successes} ok</span>
                 {usage.failures > 0 ? (
-                  <span className="text-[10px] text-accent-red">{usage.failures} failed</span>
+                  <span className="text-xs tabular-nums text-danger">{usage.failures} failed</span>
                 ) : null}
               </div>
 
               {usage.engines.length > 0 ? (
-                <div className="space-y-1.5 mt-1">
+                <div className="mt-1">
                   {usage.engines.map((eng) => (
-                    <div key={eng.engineId} className="flex items-center gap-1.5 flex-wrap text-[10px]">
-                      <span className="font-mono text-themed-secondary w-20 shrink-0">{eng.engineId}</span>
-                      <span className="px-1.5 py-0.5 rounded-sm bg-accent-teal/15 text-accent-teal">
-                        {eng.successes} ok
-                      </span>
+                    <div key={eng.engineId} className="flex flex-wrap items-center gap-x-3 gap-y-0.5 border-b border-border py-1.5 text-xs tabular-nums">
+                      <span className="w-20 shrink-0 font-mono text-fg-muted">{eng.engineId}</span>
+                      <span className="text-success">{eng.successes} ok</span>
                       {eng.emptyResults > 0 ? (
-                        <span className="px-1.5 py-0.5 rounded-sm bg-accent-amber/15 text-accent-amber">
+                        <span className="text-warn-text">
                           {eng.emptyResults} empty · {Math.round((eng.emptyResults * 100) / Math.max(eng.successes, 1))}%
                         </span>
                       ) : null}
-                      {eng.failures > 0 ? (
-                        <span className="px-1.5 py-0.5 rounded-sm bg-accent-red/15 text-accent-red">
-                          {eng.failures} fail
-                        </span>
-                      ) : null}
-                      {eng.successes > 0 ? (
-                        <span className="px-1.5 py-0.5 rounded-sm bg-surface-700 text-themed-dim">
-                          ok ~{eng.avgSuccessMs}ms
-                        </span>
-                      ) : null}
-                      {eng.failures > 0 ? (
-                        <span className="px-1.5 py-0.5 rounded-sm bg-surface-700 text-themed-dim">
-                          fail ~{eng.avgFailureMs}ms
-                        </span>
-                      ) : null}
+                      {eng.failures > 0 ? <span className="text-danger">{eng.failures} fail</span> : null}
+                      {eng.successes > 0 ? <span className="text-fg-subtle">ok ~{eng.avgSuccessMs}ms</span> : null}
+                      {eng.failures > 0 ? <span className="text-fg-subtle">fail ~{eng.avgFailureMs}ms</span> : null}
                     </div>
                   ))}
                 </div>
@@ -610,72 +510,6 @@ export function WebSearchPanel({
           ) : null}
         </div>
       ) : null}
-    </div>
-  )
-}
-
-interface RowProps {
-  label: string
-  engine: Engine
-  refId: string
-  refDescriptor: KeyRefDescriptor | null
-  existingMasked: string | null
-  replacing: boolean
-  value: string
-  allKeys: ApiKeyDetail[]
-  onUnlinkRef: () => void
-  onStartReplace: () => void
-  onChangeValue: (v: string) => void
-  onBorrowOpen: () => void
-}
-
-function EngineEditorRow({
-  label,
-  refId,
-  refDescriptor,
-  existingMasked,
-  replacing,
-  value,
-  allKeys,
-  onUnlinkRef,
-  onStartReplace,
-  onChangeValue,
-  onBorrowOpen,
-}: RowProps) {
-  const t = useT()
-  return (
-    <div>
-      <label className="text-xs text-themed-dim block mb-1">{label}</label>
-      {refId ? (
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-mono text-themed-secondary truncate">
-            {refLabel(refDescriptor, refId, allKeys)}
-          </span>
-          <button type="button" onClick={onUnlinkRef} className="btn-ghost text-xs shrink-0">
-            {t("dash.unlinkBtn")}
-          </button>
-        </div>
-      ) : existingMasked && !replacing ? (
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-mono text-themed-secondary truncate">{existingMasked}</span>
-          <button type="button" onClick={onStartReplace} className="btn-ghost text-xs shrink-0">
-            {t("dash.replaceBtn")}
-          </button>
-        </div>
-      ) : (
-        <div className="flex items-center gap-2">
-          <input
-            type="text"
-            value={value}
-            onChange={(e) => onChangeValue(e.target.value)}
-            placeholder={replacing ? t("dash.wsBlankToClearPlaceholder") : t("dash.wsNotSetPlaceholder")}
-            className="w-full mt-1 text-sm flex-1 font-mono"
-          />
-          <button type="button" onClick={onBorrowOpen} className="btn-ghost text-xs shrink-0">
-            {t("dash.wsBorrowFromLabel")}
-          </button>
-        </div>
-      )}
-    </div>
+    </Card>
   )
 }

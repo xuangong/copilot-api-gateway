@@ -1,6 +1,10 @@
 import { useState } from "react"
+import { User, X } from "lucide-react"
 import type { ApiKeyDetail } from "../../api/keys"
 import { useT } from "../../state/i18n"
+import { Badge } from "../../ui/badge"
+import { Button } from "../../ui/button"
+import { Card, SectionHeading } from "../../ui/card"
 
 interface Props {
   keyRow: ApiKeyDetail
@@ -27,73 +31,66 @@ export function AssigneesPanel({ keyRow, onAssign, onUnassign }: Props) {
   }
 
   return (
-    <div className="glass-card p-4 sm:p-6 mb-6 animate-in delay-1">
-      <span className="text-xs font-medium text-themed-dim uppercase tracking-widest">{t("dash.sharedWith")}</span>
-      <div className="flex flex-wrap gap-2 mt-3">
+    <Card>
+      <SectionHeading>{t("dash.sharedWith")}</SectionHeading>
+      <div className="mt-3 flex flex-wrap gap-2">
         {(keyRow.assignees ?? []).map((a) => (
-          <span
-            key={a.user_id}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs bg-accent-violet/10 text-accent-violet border border-accent-violet/20"
-          >
-            <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-              <circle cx="12" cy="7" r="4" />
-            </svg>
+          <Badge key={a.user_id} tone="brand" className="gap-1 pr-0">
+            <User aria-hidden="true" className="size-3" />
             <span>{a.user_name || t("dash.unknown")}</span>
-            <button
-              type="button"
+            <Button
+              variant="ghost"
+              size="icon-sm"
               onClick={() => onUnassign(a.user_id)}
-              className="ml-1 -mr-0.5 hover:text-accent-red transition-colors"
+              className="size-5 text-current hover:text-danger [&_svg]:size-3"
+              aria-label={t("dash.unshareTip")}
               title={t("dash.unshareTip")}
             >
-              <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                <path d="M18 6L6 18M6 6l12 12" />
-              </svg>
-            </button>
-          </span>
+              <X />
+            </Button>
+          </Badge>
         ))}
       </div>
       <div className="mt-4 flex items-center gap-2">
-        <input
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault()
-              submit()
-            }
-          }}
-          placeholder={alreadyShared ? t("dash.shareUnshareFirst") : t("dash.shareEmailPlaceholderLong")}
-          disabled={sharing || alreadyShared}
-          className="w-full mt-1 text-sm flex-1"
-        />
-        <button
-          type="button"
+        <div className="min-w-0 flex-1">
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault()
+                submit()
+              }
+            }}
+            aria-label={t("dash.shareEmailPlaceholderLong")}
+            placeholder={alreadyShared ? t("dash.shareUnshareFirst") : t("dash.shareEmailPlaceholderLong")}
+            disabled={sharing || alreadyShared}
+          />
+        </div>
+        <Button
+          variant="primary"
+          size="sm"
           onClick={submit}
           disabled={sharing || !email || alreadyShared}
           title={alreadyShared ? t("dash.shareUnshareFirst") : undefined}
-          className="btn-primary text-xs py-1.5 px-3"
         >
           {t("dash.share")}
-        </button>
+        </Button>
       </div>
-    </div>
+    </Card>
   )
 }
 
 export function SharedByOwnerPanel({ keyRow }: { keyRow: ApiKeyDetail }) {
   const t = useT()
   return (
-    <div className="glass-card p-4 sm:p-6 mb-6 animate-in delay-1">
-      <span className="text-xs font-medium text-themed-dim uppercase tracking-widest">{t("dash.sharedByLabel")}</span>
-      <div className="mt-3 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs bg-accent-violet/10 text-accent-violet border border-accent-violet/20">
-        <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-          <circle cx="12" cy="7" r="4" />
-        </svg>
+    <Card>
+      <SectionHeading>{t("dash.sharedByLabel")}</SectionHeading>
+      <Badge tone="brand" className="mt-3 gap-1">
+        <User aria-hidden="true" className="size-3" />
         <span>{keyRow.owner_name ?? t("dash.unknown")}</span>
-      </div>
-    </div>
+      </Badge>
+    </Card>
   )
 }

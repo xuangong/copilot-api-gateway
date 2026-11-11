@@ -1,6 +1,11 @@
 import { useState } from "react"
+import { Check, Copy, Trash2 } from "lucide-react"
 import type { ApiKeyDetail } from "../../api/keys"
 import { useT } from "../../state/i18n"
+import { Badge } from "../../ui/badge"
+import { Button } from "../../ui/button"
+import { cn } from "../../ui/cn"
+import { Td } from "../../ui/table"
 import { copyToClipboard, fullDateTime, timeAgo, truncateKey } from "./helpers"
 
 interface Props {
@@ -19,7 +24,7 @@ export function KeyRow({ row, selected, canManage, busy, onSelect, onDelete, onR
 
   const handleCopy = async (e: React.MouseEvent) => {
     e.stopPropagation()
-    await copyToClipboard(row.key)
+    if (!(await copyToClipboard(row.key))) return
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }
@@ -35,117 +40,96 @@ export function KeyRow({ row, selected, canManage, busy, onSelect, onDelete, onR
   return (
     <tr
       onClick={onSelect}
-      className={`border-b border-white/3 transition-colors cursor-pointer ${
-        selected ? "bg-accent-violet/5 hover:bg-accent-violet/10" : "hover:bg-white/2"
-      }`}
+      className={cn(
+        "transition-colors cursor-pointer",
+        selected ? "bg-muted" : "hover:bg-muted/60",
+      )}
     >
-      <td className="py-3 pr-4 pl-2">
+      <Td>
         <div className="flex items-center gap-2">
-          <div
-            className={`w-1.5 h-1.5 rounded-full shrink-0 transition-colors ${
-              selected ? "bg-accent-violet" : "bg-transparent"
-            }`}
-          />
-          <span className="text-themed font-medium">{row.name}</span>
-        </div>
-      </td>
-      <td className="py-3 pr-4">
-        {row.owner_name ? (
-          <span className="text-xs text-themed-secondary">{row.owner_name}</span>
-        ) : !isShared ? (
-          <span className="text-xs text-themed-dim">—</span>
-        ) : null}
-        {isShared ? (
-          <span className="ml-1 px-1.5 py-0.5 rounded-sm text-[10px] bg-accent-violet/10 text-accent-violet">
-            {t("dash.sharedBadge")}
-          </span>
-        ) : null}
-        {!isShared && assigneeCount > 0 ? (
           <span
-            className="ml-1 text-[10px] text-themed-dim cursor-default"
-            title={row.assignees!.map((a) => a.user_name || t("dash.unknown")).join(", ")}
+            aria-hidden="true"
+            className={cn("size-1.5 rounded-full shrink-0 transition-colors", selected ? "bg-brand" : "bg-transparent")}
+          />
+          <button
+            type="button"
+            aria-pressed={selected}
+            className="text-left font-medium text-fg cursor-pointer rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-text"
           >
-            <span className="px-1.5 py-0.5 rounded-sm bg-accent-teal/10 text-accent-teal">
-              {t("dash.sharedWithCount", { n: assigneeCount })}
+            {row.name}
+          </button>
+        </div>
+      </Td>
+      <Td>
+        <div className="flex items-center gap-1">
+          {row.owner_name ? (
+            <span className="text-xs text-fg-muted">{row.owner_name}</span>
+          ) : !isShared ? (
+            <span className="text-xs text-fg-subtle">—</span>
+          ) : null}
+          {isShared ? <Badge tone="brand">{t("dash.sharedBadge")}</Badge> : null}
+          {!isShared && assigneeCount > 0 ? (
+            <span
+              className="cursor-default"
+              title={row.assignees!.map((a) => a.user_name || t("dash.unknown")).join(", ")}
+            >
+              <Badge tone="success">{t("dash.sharedWithCount", { n: assigneeCount })}</Badge>
             </span>
-          </span>
-        ) : null}
-      </td>
-      <td className="py-3 pr-4">
-        <code className="text-xs font-mono text-themed-dim bg-surface-800 rounded-sm px-2 py-1">
-          {truncateKey(row.key)}
-        </code>
-      </td>
-      <td className="py-3 pr-4 hidden sm:table-cell">
-        <span className="text-themed-dim text-xs cursor-default" title={fullDateTime(row.created_at)}>
+          ) : null}
+        </div>
+      </Td>
+      <Td>
+        <code className="font-mono text-xs text-fg-muted">{truncateKey(row.key)}</code>
+      </Td>
+      <Td className="hidden sm:table-cell">
+        <span className="tabular-nums text-fg-muted cursor-default" title={fullDateTime(row.created_at)}>
           {timeAgo(row.created_at)}
         </span>
-      </td>
-      <td className="py-3 pr-4 hidden sm:table-cell">
+      </Td>
+      <Td className="hidden sm:table-cell">
         {row.last_used_at ? (
-          <span className="text-themed-dim text-xs cursor-default" title={fullDateTime(row.last_used_at)}>
+          <span className="tabular-nums text-fg-muted cursor-default" title={fullDateTime(row.last_used_at)}>
             {timeAgo(row.last_used_at)}
           </span>
         ) : (
-          <span className="text-themed-dim text-xs">{t("dash.never")}</span>
+          <span className="text-fg-muted">{t("dash.never")}</span>
         )}
-      </td>
-      <td className="py-3 pr-2 text-right">
+      </Td>
+      <Td className="text-right">
         <div className="flex items-center justify-end gap-1">
           {onRequests ? (
-            <button
-              type="button"
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={(event) => { event.stopPropagation(); onRequests() }}
-              className="text-xs text-accent-violet hover:underline px-2 py-1 focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-accent-violet"
             >
               {t("dash.requests.action")}
-            </button>
+            </Button>
           ) : null}
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="icon-sm"
             onClick={handleCopy}
             title={t("dash.copyKey")}
-            className="text-themed-dim hover:text-accent-violet! transition-colors p-1"
+            aria-label={t("dash.copyKey")}
           >
-            {copied ? (
-              <svg
-                className="w-4 h-4 text-accent-teal"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-              >
-                <polyline points="20 6 9 17 4 12" />
-              </svg>
-            ) : (
-              <svg
-                className="w-4 h-4"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-              >
-                <rect x="9" y="9" width="13" height="13" rx="2" />
-                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-              </svg>
-            )}
-          </button>
+            {copied ? <Check aria-hidden="true" className="text-success" /> : <Copy aria-hidden="true" />}
+          </Button>
           {canManage && !isShared ? (
-            <button
-              type="button"
+            <Button
+              variant="ghost"
+              size="icon-sm"
               onClick={handleDelete}
               disabled={busy}
               title={t("dash.deleteKey")}
-              className="text-themed-dim hover:text-accent-red! transition-colors p-1 disabled:opacity-40"
+              aria-label={t("dash.deleteKey")}
+              className="hover:text-danger"
             >
-              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <polyline points="3 6 5 6 21 6" />
-                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-              </svg>
-            </button>
+              <Trash2 aria-hidden="true" />
+            </Button>
           ) : null}
         </div>
-      </td>
+      </Td>
     </tr>
   )
 }

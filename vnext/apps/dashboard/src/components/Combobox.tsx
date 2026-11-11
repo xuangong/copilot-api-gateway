@@ -11,6 +11,8 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { createPortal } from "react-dom";
+import { Badge } from "../ui/badge";
+import { cn } from "../ui/cn";
 import {
   filterComboboxOptions,
   getComboboxPlacement,
@@ -27,6 +29,8 @@ export interface ComboboxProps {
   onBlur?: () => void;
   placeholder: string;
   ariaLabel: string;
+  /** Id of a visible label. When given it names the field (aria-labelledby) instead of ariaLabel. */
+  labelledBy?: string;
   disabled?: boolean;
   ariaInvalid?: boolean;
   ariaDescribedBy?: string;
@@ -49,6 +53,7 @@ export function Combobox({
   onBlur,
   placeholder,
   ariaLabel,
+  labelledBy,
   disabled = false,
   ariaInvalid = false,
   ariaDescribedBy,
@@ -69,6 +74,10 @@ export function Combobox({
     () => filterComboboxOptions(options, query),
     [options, query],
   );
+
+  const nameProps = labelledBy
+    ? { "aria-labelledby": labelledBy }
+    : { "aria-label": ariaLabel };
 
   const close = () => {
     setOpen(false);
@@ -233,9 +242,9 @@ export function Combobox({
       ref={popupRef}
       id={listboxId}
       role="listbox"
-      aria-label={ariaLabel}
+      {...nameProps}
       data-placement={placement.placement}
-      className="fixed z-90 overflow-y-auto rounded-md border border-white/10 bg-surface-800 shadow-xl scrollbar-thin"
+      className="fixed z-90 overflow-y-auto rounded-md border border-border bg-background shadow-lg"
       style={{
         left: placement.left,
         top: placement.top,
@@ -244,7 +253,7 @@ export function Combobox({
       }}
     >
       {filteredOptions.length === 0 ? (
-        <p className="px-3 py-2 text-xs text-themed-dim">{noMatchesText}</p>
+        <p className="px-3 py-2 text-xs text-fg-subtle">{noMatchesText}</p>
       ) : (
         filteredOptions.map((option, index) => (
           <button
@@ -256,14 +265,19 @@ export function Combobox({
             disabled={option.disabled}
             onPointerDown={(event) => handleOptionPointerDown(event, option)}
             onClick={() => choose(option)}
-            className={`w-full px-3 py-2 text-left text-xs ${option.disabled ? "cursor-not-allowed opacity-50" : "hover:bg-surface-600"} ${index === activeIndex ? "bg-surface-600" : ""} ${option.value === value ? "text-accent-violet" : "text-themed-secondary"}`}
+            className={cn(
+              "w-full px-3 py-2 text-left text-[13px]",
+              option.disabled ? "cursor-not-allowed opacity-50" : "hover:bg-muted",
+              index === activeIndex && "bg-muted",
+              option.value === value ? "text-brand-text" : "text-fg",
+            )}
           >
             <span className="flex min-w-0 items-center gap-1.5">
               <span className="min-w-0 truncate">{option.label}</span>
               {option.badge ? (
-                <span className="max-w-[45%] shrink-0 truncate rounded-sm bg-accent-teal/10 px-1.5 py-0.5 text-[10px] text-accent-teal">
-                  {option.badge}
-                </span>
+                <Badge className="max-w-[45%] shrink-0">
+                  <span className="min-w-0 truncate">{option.badge}</span>
+                </Badge>
               ) : null}
             </span>
           </button>
@@ -281,7 +295,7 @@ export function Combobox({
         value={open ? query : (selected?.label ?? value)}
         disabled={disabled}
         placeholder={placeholder}
-        aria-label={ariaLabel}
+        {...nameProps}
         aria-autocomplete="list"
         aria-controls={open ? listboxId : undefined}
         aria-expanded={open}
@@ -312,7 +326,10 @@ export function Combobox({
           );
         }}
         onKeyDown={onKeyDown}
-        className="w-full rounded-md border border-white/10 bg-surface-800 px-2.5 py-1.5 text-xs text-themed-secondary outline-hidden focus:border-accent-violet/50! disabled:cursor-not-allowed disabled:opacity-60"
+        // The global input[type=text] rule (unlayered, styles.css) supplies the
+        // border-input border, background, padding, 13px text and the brand
+        // focus ring, so this matches the plain text fields beside it.
+        className="disabled:cursor-not-allowed disabled:opacity-60"
       />
       {popup ? createPortal(popup, document.body) : null}
     </div>

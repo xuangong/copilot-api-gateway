@@ -46,7 +46,7 @@ export function useToast(): ToastApi {
 export function ToastHost() {
   const { toasts, dismiss } = useToast()
   return (
-    <div className="fixed top-4 right-4 z-50 flex flex-col gap-2">
+    <div className="fixed top-4 right-4 z-[60] flex flex-col gap-2">
       {toasts.map((t) => {
         const tone =
           t.kind === "error"

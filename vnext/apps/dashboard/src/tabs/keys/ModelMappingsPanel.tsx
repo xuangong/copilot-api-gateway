@@ -1,8 +1,13 @@
-import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { ChevronDown, ChevronUp, GripVertical, X } from "lucide-react";
 import type { ApiKeyDetail, ApiKeyModelMapping } from "../../api/keys";
 import { Combobox } from "../../components/Combobox";
 import { useT } from "../../state/i18n";
 import type { ModelCatalog } from "../../state/models";
+import { Button } from "../../ui/button";
+import { Card, SectionHeading } from "../../ui/card";
+import { cn } from "../../ui/cn";
+import { Notice } from "../../ui/notice";
 import {
   buildDestinationChoices,
   isModelMappingsDirty,
@@ -57,6 +62,7 @@ export function ModelMappingsPanel({
   onSave,
 }: Props) {
   const t = useT();
+  const panelId = useId();
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [draft, setDraft] = useState<ModelMappingsDraft>(() =>
@@ -167,30 +173,30 @@ export function ModelMappingsPanel({
     ? t("dash.wsEnabledShort")
     : t("dash.wsDisabledShort");
   return (
-    <div className="glass-card p-4 sm:p-6 mb-6 animate-in delay-1">
-      <div className="flex items-center justify-between gap-3 mb-4">
-        <div className="min-w-0 flex items-center gap-3">
-          <span className="text-xs font-medium text-themed-dim uppercase tracking-widest">
+    <Card aria-labelledby={`${panelId}-title`}>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <SectionHeading id={`${panelId}-title`}>
             {t("dash.modelMappingsLabel")}
-          </span>
-          <label className="flex items-center gap-1.5 text-[10px] text-themed-secondary cursor-pointer">
+          </SectionHeading>
+          <label className="flex cursor-pointer items-center gap-1.5 text-xs text-fg-muted">
             <input
               type="checkbox"
               checked={editing ? draft.enabled : keyRow.model_mappings_enabled}
               disabled={!canEdit || interactionDisabled}
               onChange={(event) => toggleEnabled(event.target.checked)}
               aria-label={t("dash.modelMappingsToggleAria")}
-              className="accent-accent-violet disabled:cursor-not-allowed"
+              className="accent-brand disabled:cursor-not-allowed"
             />
             <span
               className={
                 editing
                   ? draft.enabled
-                    ? "text-accent-teal"
-                    : "text-themed-dim"
+                    ? "text-success"
+                    : "text-fg-subtle"
                   : keyRow.model_mappings_enabled
-                    ? "text-accent-teal"
-                    : "text-themed-dim"
+                    ? "text-success"
+                    : "text-fg-subtle"
               }
             >
               {editing
@@ -201,49 +207,49 @@ export function ModelMappingsPanel({
             </span>
           </label>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex shrink-0 items-center gap-2">
           {!editing && canEdit ? (
-            <button
-              type="button"
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={() => startEdit()}
               disabled={interactionDisabled}
-              className="btn-ghost text-xs"
             >
               {t("dash.edit")}
-            </button>
+            </Button>
           ) : null}
           {editing ? (
             <>
-              <button
-                type="button"
+              <Button
+                variant="primary"
+                size="sm"
                 onClick={save}
                 disabled={interactionDisabled || !dirty || catalogLoading}
-                className="btn-primary text-xs py-1 px-3"
               >
                 {interactionDisabled ? t("dash.savingShort") : t("dash.save")}
-              </button>
-              <button
-                type="button"
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
                 onClick={cancel}
                 disabled={interactionDisabled}
-                className="btn-ghost text-xs"
               >
                 {t("dash.cancel")}
-              </button>
+              </Button>
             </>
           ) : null}
         </div>
       </div>
 
       {keyRow.model_mappings_invalid ? (
-        <div className="rounded-md bg-accent-amber/10 text-accent-amber text-xs p-3 mb-4">
+        <Notice tone="warn" className="mb-4">
           {t("dash.modelMappingsInvalidWarning")}
-        </div>
+        </Notice>
       ) : null}
 
       {editing ? (
         <div className="space-y-3">
-          <p className="text-[10px] text-themed-dim">
+          <p className="text-xs text-fg-subtle">
             {t("dash.modelMappingsHint")}
           </p>
           {draft.rows.map((mapping, index) => {
@@ -267,13 +273,17 @@ export function ModelMappingsPanel({
               <div
                 key={mapping.rowId}
                 data-mapping-row-id={mapping.rowId}
-                className={`rounded-lg bg-surface-700/50 p-3 space-y-2 ${dragRowId === mapping.rowId ? "opacity-50" : ""} ${dropRowId === mapping.rowId ? "ring-2 ring-accent-violet" : ""}`}
+                className={cn(
+                  "space-y-2 rounded-lg border border-border bg-panel p-3",
+                  dragRowId === mapping.rowId && "opacity-50",
+                  dropRowId === mapping.rowId && "ring-2 ring-brand-text",
+                )}
               >
-                <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-2 items-start">
+                <div className="grid grid-cols-1 items-start gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
                   <div>
                     <label
                       htmlFor={`model-mapping-source-${mapping.rowId}`}
-                      className="text-[10px] text-themed-dim block mb-1"
+                      className="mb-1 block text-xs font-medium text-fg-muted"
                     >
                       {t("dash.modelMappingSource")}
                     </label>
@@ -294,22 +304,23 @@ export function ModelMappingsPanel({
                           touchDraftMapping(current, index, "source"),
                         )
                       }
-                      className="w-full text-xs font-mono"
                     />
                     {sourceErrors.map((code) => (
                       <p
                         id={sourceErrorId}
                         key={code}
-                        className="mt-1 text-[10px] text-accent-red"
+                        className="mt-1 text-xs text-danger"
                       >
                         {errorText({ index, field: "source", code }, t)}
                       </p>
                     ))}
                   </div>
                   <div>
-                    <label className="text-[10px] text-themed-dim block mb-1">
+                    <span
+                      className="mb-1 block text-xs font-medium text-fg-muted"
+                    >
                       {t("dash.modelMappingDestination")}
-                    </label>
+                    </span>
                     <Combobox
                       value={mapping.destination}
                       disabled={interactionDisabled}
@@ -348,15 +359,16 @@ export function ModelMappingsPanel({
                       <p
                         id={destinationErrorId}
                         key={code}
-                        className="mt-1 text-[10px] text-accent-red"
+                        className="mt-1 text-xs text-danger"
                       >
                         {errorText({ index, field: "destination", code }, t)}
                       </p>
                     ))}
                   </div>
-                  <div className="flex sm:pt-5 gap-1">
-                    <button
-                      type="button"
+                  <div className="flex gap-1 sm:pt-5">
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
                       disabled={interactionDisabled}
                       onPointerDown={(event) => {
                         if (event.button !== 0) return;
@@ -391,12 +403,13 @@ export function ModelMappingsPanel({
                       }}
                       aria-label={t("dash.reorderMappingHandle", { n: index + 1 })}
                       title={t("dash.reorderMappingHandle", { n: index + 1 })}
-                      className="btn-ghost text-xs px-2 cursor-grab enabled:active:cursor-grabbing! touch-none"
+                      className="cursor-grab touch-none active:cursor-grabbing"
                     >
-                      ⠿
-                    </button>
-                    <button
-                      type="button"
+                      <GripVertical aria-hidden="true" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
                       onClick={() =>
                         setDraft((current) =>
                           moveDraftMapping(current, index, -1),
@@ -406,12 +419,12 @@ export function ModelMappingsPanel({
                       aria-label={t("dash.modelMappingMoveUp", {
                         n: index + 1,
                       })}
-                      className="btn-ghost text-xs px-2 disabled:opacity-30"
                     >
-                      ▲
-                    </button>
-                    <button
-                      type="button"
+                      <ChevronUp aria-hidden="true" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
                       onClick={() =>
                         setDraft((current) =>
                           moveDraftMapping(current, index, 1),
@@ -423,12 +436,12 @@ export function ModelMappingsPanel({
                       aria-label={t("dash.modelMappingMoveDown", {
                         n: index + 1,
                       })}
-                      className="btn-ghost text-xs px-2 disabled:opacity-30"
                     >
-                      ▼
-                    </button>
-                    <button
-                      type="button"
+                      <ChevronDown aria-hidden="true" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
                       onClick={() =>
                         setDraft((current) =>
                           deleteDraftMapping(current, index),
@@ -438,46 +451,46 @@ export function ModelMappingsPanel({
                       aria-label={t("dash.modelMappingDelete", {
                         n: index + 1,
                       })}
-                      className="btn-ghost text-xs px-2 text-accent-red"
+                      className="text-danger hover:text-danger"
                     >
-                      ×
-                    </button>
+                      <X aria-hidden="true" />
+                    </Button>
                   </div>
                 </div>
               </div>
             );
           })}
           {errors.find((error) => error.field === "mappings") ? (
-            <p className="text-[10px] text-accent-red">
+            <p className="text-xs text-danger">
               {t("dash.modelMappingTooMany")}
             </p>
           ) : null}
-          <button
-            type="button"
+          <Button
+            variant="secondary"
+            size="sm"
             onClick={() => setDraft((current) => addDraftMapping(current))}
             disabled={interactionDisabled || draft.rows.length >= 100}
-            className="btn-ghost text-xs"
           >
             {t("dash.modelMappingAdd")}
-          </button>
+          </Button>
         </div>
       ) : (
         <div className="space-y-2">
           {keyRow.model_mappings.length === 0 ? (
-            <p className="text-xs text-themed-dim">
+            <p className="text-xs text-fg-subtle">
               {t("dash.modelMappingsEmpty")}
             </p>
           ) : (
             keyRow.model_mappings.map((mapping, index) => (
               <div
                 key={`${mapping.source}-${index}`}
-                className="flex items-center gap-2 text-xs font-mono min-w-0"
+                className="flex min-w-0 items-center gap-2 font-mono text-xs"
               >
-                <span className="truncate text-themed-secondary">
+                <span className="truncate text-fg-muted">
                   {mapping.source}
                 </span>
-                <span className="text-themed-dim">→</span>
-                <span className="truncate text-themed">
+                <span className="text-fg-subtle">→</span>
+                <span className="truncate text-fg">
                   {mapping.destination}
                 </span>
               </div>
@@ -485,6 +498,6 @@ export function ModelMappingsPanel({
           )}
         </div>
       )}
-    </div>
+    </Card>
   );
 }

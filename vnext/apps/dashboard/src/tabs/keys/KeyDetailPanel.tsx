@@ -52,7 +52,7 @@ export function KeyDetailPanel({
   const canManage = (isAdmin || isUser) && isOwned
 
   return (
-    <>
+    <div className="flex flex-col gap-4">
       {isOwned ? (
         <AssigneesPanel keyRow={keyRow} onAssign={onAssign} onUnassign={onUnassign} />
       ) : (
@@ -75,9 +75,9 @@ export function KeyDetailPanel({
         }
       />
 
-      <SharedSessionPanel key={keyRow.id} keyRow={keyRow} canEdit={canManage} busy={busy} onSaved={onSettingsSaved} />
+      <SharedSessionPanel key={`${keyRow.id}:shared-session`} keyRow={keyRow} canEdit={canManage} busy={busy} onSaved={onSettingsSaved} />
 
-      <ResponsesRetentionPanel key={keyRow.id} keyRow={keyRow} canEdit={canManage} busy={busy} onSave={onPatch} />
+      <ResponsesRetentionPanel key={`${keyRow.id}:retention`} keyRow={keyRow} canEdit={canManage} busy={busy} onSave={onPatch} />
 
       <WebSearchPanel
         keyRow={keyRow}
@@ -94,7 +94,7 @@ export function KeyDetailPanel({
       />
 
       <UpstreamAccessPanel
-        key={keyRow.id}
+        key={`${keyRow.id}:upstream-access`}
         keyRow={keyRow}
         canEdit={keyRow.can_manage_upstreams}
         busy={busy}
@@ -119,11 +119,11 @@ export function KeyDetailPanel({
       />
 
       <ConfigurationPanel
-        key={keyRow.id}
+        key={`${keyRow.id}:configuration`}
         keyRow={keyRow}
         catalog={modelCatalogState.catalog}
         catalogLoading={modelCatalogState.loading}
       />
-    </>
+    </div>
   )
 }

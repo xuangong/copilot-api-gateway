@@ -1,7 +1,13 @@
 import { useEffect, useId, useRef, useState } from "react"
+import { ChevronDown, ChevronUp } from "lucide-react"
 import { getKeyUpstreams, type ApiKeyDetail } from "../../api/keys"
 import type { KeyUpstreamChoice } from "../../api/types"
 import { useT } from "../../state/i18n"
+import { Badge } from "../../ui/badge"
+import { Button } from "../../ui/button"
+import { Card, SectionHeading } from "../../ui/card"
+import { cn } from "../../ui/cn"
+import { Notice } from "../../ui/notice"
 import {
   buildUpstreamAccessRows,
   initialUpstreamAccessDraft,
@@ -106,64 +112,56 @@ export function UpstreamAccessPanel({ keyRow, canEdit, busy, onSave }: Props) {
   }
 
   return (
-    <section className="glass-card p-4 sm:p-6 mb-6 animate-in delay-1" aria-labelledby={`${panelId}-title`}>
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-        <div className="min-w-0 flex items-center gap-3">
-          <h3 id={`${panelId}-title`} className="text-xs font-medium text-themed-dim uppercase tracking-widest">
-            {t("dash.upstreamAccessLabel")}
-          </h3>
-          <label className="flex items-center gap-1.5 text-[10px] text-themed-secondary cursor-pointer">
+    <Card aria-labelledby={`${panelId}-title`}>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <SectionHeading id={`${panelId}-title`}>{t("dash.upstreamAccessLabel")}</SectionHeading>
+          <label className="flex cursor-pointer items-center gap-1.5 text-xs text-fg-muted">
             <input
               type="checkbox"
               checked={current.mode === "custom"}
               disabled={!canEdit || interactionDisabled}
               onChange={(event) => toggleEnabled(event.target.checked)}
               aria-label={t("dash.upstreamAccessToggleAria")}
-              className="accent-accent-violet disabled:cursor-not-allowed"
+              className="accent-brand disabled:cursor-not-allowed"
             />
-            <span className={current.mode === "custom" ? "text-accent-teal" : "text-themed-dim"}>
+            <span className={current.mode === "custom" ? "text-success" : "text-fg-subtle"}>
               {t(current.mode === "custom" ? "dash.wsEnabledShort" : "dash.wsDisabledShort")}
             </span>
           </label>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex shrink-0 items-center gap-2">
           {!editing && canEdit ? (
-            <button type="button" onClick={() => startEdit()} disabled={interactionDisabled} className="btn-ghost text-xs">
-              {t("dash.edit")}
-            </button>
+            <Button variant="ghost" size="sm" onClick={() => startEdit()} disabled={interactionDisabled}>{t("dash.edit")}</Button>
           ) : null}
           {editing ? (
             <>
-              <button type="button" onClick={save} disabled={interactionDisabled || !dirty || customBlocked} className="btn-primary text-xs py-1 px-3">
+              <Button variant="primary" size="sm" onClick={save} disabled={interactionDisabled || !dirty || customBlocked}>
                 {saving ? t("dash.savingShort") : t("dash.save")}
-              </button>
-              <button type="button" onClick={cancel} disabled={interactionDisabled} className="btn-ghost text-xs">
-                {t("dash.cancel")}
-              </button>
+              </Button>
+              <Button variant="ghost" size="sm" onClick={cancel} disabled={interactionDisabled}>{t("dash.cancel")}</Button>
             </>
           ) : null}
         </div>
       </div>
 
-      <p className="text-xs text-themed-secondary mb-3">{t("dash.upstreamAccessSharedHint")}</p>
+      <p className="mb-3 text-xs text-fg-muted">{t("dash.upstreamAccessSharedHint")}</p>
       {keyRow.upstream_ids_invalid ? (
-        <p role="alert" className="rounded-md bg-accent-amber/10 text-accent-amber text-xs p-3 mb-3">
-          {t("dash.upstreamAccessInvalid")}
-        </p>
+        <Notice tone="warn" role="alert" className="mb-3">{t("dash.upstreamAccessInvalid")}</Notice>
       ) : null}
 
       {editing ? (
         <div className="space-y-3">
-          <button type="button" onClick={restoreDefault} disabled={interactionDisabled || draft.mode === "inherit"} className="btn-ghost text-xs">
+          <Button variant="ghost" size="sm" onClick={restoreDefault} disabled={interactionDisabled || draft.mode === "inherit"}>
             {t("dash.upstreamAccessRestore")}
-          </button>
-          <p className="text-[10px] text-themed-dim">{t("dash.upstreamAccessOrderHint")}</p>
-          {loading ? <p role="status" className="text-xs text-themed-dim">{t("dash.loadingShort")}</p> : null}
+          </Button>
+          <p className="text-xs text-fg-subtle">{t("dash.upstreamAccessOrderHint")}</p>
+          {loading ? <p role="status" className="text-xs text-fg-subtle">{t("dash.loadingShort")}</p> : null}
           {loadError ? (
-            <div role="alert" className="rounded-md bg-accent-amber/10 text-accent-amber text-xs p-3 flex flex-wrap items-center gap-2">
+            <Notice tone="danger" className="flex flex-wrap items-center gap-2">
               <span>{t("dash.upstreamAccessLoadFailed", { error: loadError })}</span>
-              <button type="button" onClick={() => void loadChoices()} disabled={interactionDisabled || loading} className="btn-ghost text-xs">{t("dash.upstreamAccessRetry")}</button>
-            </div>
+              <Button variant="ghost" size="sm" onClick={() => void loadChoices()} disabled={interactionDisabled || loading}>{t("dash.upstreamAccessRetry")}</Button>
+            </Notice>
           ) : null}
           {draft.mode === "custom" ? (
             <>
@@ -171,49 +169,51 @@ export function UpstreamAccessPanel({ keyRow, canEdit, busy, onSave }: Props) {
                 {rows.map((row) => {
                   const selectedIndex = draft.ids.indexOf(row.id)
                   return (
-                    <li key={row.id} className="rounded-lg bg-surface-700/50 p-3 flex items-center justify-between gap-3">
-                      <label className="min-w-0 flex items-center gap-3 cursor-pointer">
-                        <input type="checkbox" checked={row.selected} disabled={interactionDisabled || loading || !loaded || (!row.selected && row.unavailable)} onChange={(event) => setDraft((value) => setUpstreamSelected(value, row.id, event.target.checked))} className="accent-accent-violet shrink-0" />
-                        <span className="min-w-0">
-                          <span className="text-xs text-themed break-all">{row.selected ? `${selectedIndex + 1}. ` : ""}{row.name}</span>
-                          <span className="block text-[10px] text-themed-dim break-all">{row.id}{row.provider ? ` · ${row.provider}` : ""}</span>
-                          <span className={`block text-[10px] ${row.selected ? "text-accent-teal" : "text-themed-dim"}`}>
-                            {t(row.selected ? "dash.upstreamAccessKeyEnabled" : "dash.upstreamAccessKeyDisabled")}
+                    <li key={row.id} className={cn("flex items-center justify-between gap-3 rounded-lg border border-border p-3", row.selected && "bg-muted")}>
+                      <label className="flex min-w-0 cursor-pointer items-center gap-3">
+                        <input type="checkbox" checked={row.selected} disabled={interactionDisabled || loading || !loaded || (!row.selected && row.unavailable)} onChange={(event) => setDraft((value) => setUpstreamSelected(value, row.id, event.target.checked))} className="shrink-0 accent-brand" />
+                        <span className="min-w-0 space-y-0.5">
+                          <span className="block break-all text-[13px] text-fg">{row.selected ? `${selectedIndex + 1}. ` : ""}{row.name}</span>
+                          <span className="block break-all font-mono text-xs text-fg-subtle">{row.id}{row.provider ? ` · ${row.provider}` : ""}</span>
+                          <span className="flex flex-wrap items-center gap-1.5">
+                            <Badge tone={row.selected ? "success" : "neutral"}>
+                              {t(row.selected ? "dash.upstreamAccessKeyEnabled" : "dash.upstreamAccessKeyDisabled")}
+                            </Badge>
+                            {loaded && !loading && (row.unavailable || !row.enabled) ? (
+                              <span className="text-xs text-warn-text">
+                                {t(row.unavailable ? "dash.upstreamAccessUnavailable" : "dash.upstreamAccessDisabled")}
+                              </span>
+                            ) : null}
                           </span>
-                          {loaded && !loading && (row.unavailable || !row.enabled) ? (
-                            <span className="block text-[10px] text-accent-amber">
-                              {t(row.unavailable ? "dash.upstreamAccessUnavailable" : "dash.upstreamAccessDisabled")}
-                            </span>
-                          ) : null}
                         </span>
                       </label>
                       {row.selected ? (
-                        <div className="flex gap-1 shrink-0">
-                          <button type="button" onClick={() => setDraft((value) => moveSelectedUpstream(value, selectedIndex, -1))} disabled={interactionDisabled || selectedIndex === 0} aria-label={t("dash.upstreamAccessMoveUp", { name: row.name })} className="btn-ghost text-xs px-2">↑</button>
-                          <button type="button" onClick={() => setDraft((value) => moveSelectedUpstream(value, selectedIndex, 1))} disabled={interactionDisabled || selectedIndex === draft.ids.length - 1} aria-label={t("dash.upstreamAccessMoveDown", { name: row.name })} className="btn-ghost text-xs px-2">↓</button>
+                        <div className="flex shrink-0 gap-1">
+                          <Button variant="ghost" size="icon-sm" onClick={() => setDraft((value) => moveSelectedUpstream(value, selectedIndex, -1))} disabled={interactionDisabled || selectedIndex === 0} aria-label={t("dash.upstreamAccessMoveUp", { name: row.name })}><ChevronUp aria-hidden="true" /></Button>
+                          <Button variant="ghost" size="icon-sm" onClick={() => setDraft((value) => moveSelectedUpstream(value, selectedIndex, 1))} disabled={interactionDisabled || selectedIndex === draft.ids.length - 1} aria-label={t("dash.upstreamAccessMoveDown", { name: row.name })}><ChevronDown aria-hidden="true" /></Button>
                         </div>
                       ) : null}
                     </li>
                   )
                 })}
               </ul>
-              {loaded && rows.length === 0 ? <p className="text-xs text-themed-dim">{t("dash.upstreamAccessNoChoices")}</p> : null}
-              {missing ? <p role="alert" className="text-xs text-accent-amber">{t("dash.upstreamAccessRemoveUnavailable")}</p> : null}
+              {loaded && rows.length === 0 ? <p className="text-xs text-fg-subtle">{t("dash.upstreamAccessNoChoices")}</p> : null}
+              {missing ? <Notice tone="warn" role="alert">{t("dash.upstreamAccessRemoveUnavailable")}</Notice> : null}
             </>
           ) : null}
-          {saveError ? <p role="alert" className="text-xs text-accent-red">{saveError}</p> : null}
+          {saveError ? <Notice tone="danger">{saveError}</Notice> : null}
         </div>
       ) : current.mode === "custom" && current.ids.length > 0 ? (
-        <p className="text-xs text-themed-secondary break-all">
+        <p className="break-all text-xs text-fg-muted">
           {t("dash.upstreamAccessSelected", { n: current.ids.length })} · {current.ids.join(" → ")}
         </p>
       ) : null}
 
       {current.mode === "inherit" ? (
-        <p className="text-xs text-themed-dim mt-3">{t("dash.upstreamAccessInheritHint")}</p>
+        <p className="mt-3 text-xs text-fg-subtle">{t("dash.upstreamAccessInheritHint")}</p>
       ) : current.customInitialized && current.ids.length === 0 ? (
-        <p role="status" className="rounded-md bg-accent-amber/10 text-accent-amber text-xs p-3 mt-3">{t("dash.upstreamAccessEmpty")}</p>
+        <Notice tone="warn" role="status" className="mt-3">{t("dash.upstreamAccessEmpty")}</Notice>
       ) : null}
-    </section>
+    </Card>
   )
 }

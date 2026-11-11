@@ -1,12 +1,18 @@
 import { SetupPanel } from "./SetupPanel"
 import { canSetup } from "./setup-state"
-import { useEffect, useRef, useState } from "react"
+import { copyToClipboard } from "./helpers"
+import { useEffect, useId, useRef, useState } from "react"
 import type { ApiKeyDetail } from "../../api/keys"
 import { useT } from "../../state/i18n"
 import type { ModelCatalog } from "../../state/models"
 import { useToast } from "../../state/toast"
 import { useAuth } from "../../state/auth"
-import { Select } from "../../components/Select"
+import { Info } from "lucide-react"
+import { Badge } from "../../ui/badge"
+import { Card, SectionHeading } from "../../ui/card"
+import { CodeBlock } from "../../ui/code-block"
+import { SegmentedControl } from "../../ui/segmented-control"
+import { Select } from "../../ui/select"
 import {
   availableClaudeTierSelection,
   claudeCodeSettingsSnippet,
@@ -28,68 +34,11 @@ interface Props {
 type ConfigTab = "claude" | "codex" | "gemini"
 type ClaudeFormat = "shell" | "settings"
 
-async function copyToClipboard(text: string): Promise<boolean> {
-  try {
-    if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(text)
-      return true
-    }
-  } catch {
-    /* fall through */
-  }
-  try {
-    const ta = document.createElement("textarea")
-    ta.value = text
-    ta.style.position = "fixed"
-    ta.style.opacity = "0"
-    document.body.appendChild(ta)
-    ta.select()
-    const ok = document.execCommand("copy")
-    document.body.removeChild(ta)
-    return ok
-  } catch {
-    return false
-  }
-}
-
-interface CodeBlockProps {
-  language: string
-  text: string
-  onCopy: () => void | Promise<void>
-  copied: boolean
-}
-function CodeBlock({ language, text, onCopy, copied }: CodeBlockProps) {
-  const t = useT()
-  return (
-    <div className="relative group">
-      <pre className="code-block rounded-xl p-4 pr-10 overflow-x-auto whitespace-pre">
-        <code className={`language-${language}`}>{text}</code>
-      </pre>
-      <button
-        type="button"
-        onClick={() => void onCopy()}
-        className="code-block-btn absolute top-2.5 right-2.5 p-1.5 rounded-md opacity-0 group-hover:opacity-100 transition-opacity"
-        title={copied ? t("dash.codeCopyTipCopied") : t("dash.codeCopyTipCopy")}
-      >
-        {copied ? (
-          <svg className="w-3.5 h-3.5 text-accent-teal" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-            <polyline points="20 6 9 17 4 12" />
-          </svg>
-        ) : (
-          <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-            <rect x="9" y="9" width="13" height="13" rx="2" />
-            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-          </svg>
-        )}
-      </button>
-    </div>
-  )
-}
-
 export function ConfigurationPanel({ keyRow, catalog, catalogLoading }: Props) {
   const { push: toast } = useToast()
   const { session } = useAuth()
   const t = useT()
+  const panelId = useId()
   const [tab, setTab] = useState<ConfigTab>("claude")
   const [claudeBig, setClaudeBig] = useState<string>("")
   const [claudeSmall, setClaudeSmall] = useState<string>("")
@@ -178,151 +127,103 @@ export function ConfigurationPanel({ keyRow, catalog, catalogLoading }: Props) {
     (g) => g.provider !== "copilot" && g.models.length > 0,
   )
 
-  const subTabBtn = (id: ConfigTab, label: string) => (
-    <button
-      key={id}
-      type="button"
-      onClick={() => setTab(id)}
-      className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-        tab === id ? "bg-surface-600 text-themed" : "text-themed-dim hover:text-themed-secondary"
-      }`}
-    >
-      {label}
-    </button>
+  const codeBlock = (language: string, tag: string, txt: string) => {
+    const copied = copiedTag === tag
+    return (
+      <CodeBlock
+        language={language}
+        text={txt}
+        copied={copied}
+        copyLabel={copied ? t("dash.codeCopyTipCopied") : t("dash.codeCopyTipCopy")}
+        onCopy={() => doCopy(txt, tag)}
+      />
+    )
+  }
+
+  // A visible label and the select it names; the select is wrapped because ui/select fills its container.
+  const modelPicker = (id: string, label: string, value: string, onChange: (value: string) => void, options: Array<{ value: string; label: string }>) => (
+    <div key={id} className="flex min-w-0 items-center gap-2">
+      <span id={id} className="whitespace-nowrap text-xs font-medium text-fg-muted">{label}</span>
+      <div className="min-w-[220px]">
+        <Select value={value} onChange={onChange} labelledBy={id} options={options} />
+      </div>
+    </div>
   )
 
+  const hint = "mb-2 text-xs text-fg-subtle"
+
   return (
-    <div className="glass-card p-4 sm:p-6 mb-6 animate-in delay-1">
-      <span className="text-xs font-medium text-themed-dim uppercase tracking-widest">
-        {t("dash.configurationLabel")}
-      </span>
-      <p className="text-xs text-accent-violet mt-2 flex items-center gap-1.5">
-        <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-          <circle cx="12" cy="12" r="10" />
-          <path d="M12 16v-4" />
-          <path d="M12 8h.01" />
-        </svg>
+    <Card aria-labelledby={`${panelId}-title`}>
+      <SectionHeading id={`${panelId}-title`}>{t("dash.configurationLabel")}</SectionHeading>
+      <p className="mt-2 flex items-center gap-1.5 text-[13px] text-fg-muted">
+        <Info className="size-3.5 shrink-0" aria-hidden="true" />
         {t("dash.configUsesSelectedKey")}
       </p>
 
       {catalogLoading ? (
-        <p className="mt-4 text-xs text-themed-dim">{t("dash.loadingModels")}</p>
+        <p className="mt-4 text-xs text-fg-subtle">{t("dash.loadingModels")}</p>
       ) : (
         <div className="mt-4">
-          <div className="flex items-center gap-1 bg-surface-800 rounded-lg p-0.5 mb-5 w-fit">
-            {subTabBtn("claude", "Claude Code")}
-            {subTabBtn("codex", "Codex")}
-            {subTabBtn("gemini", "Gemini CLI")}
-          </div>
+          <SegmentedControl
+            className="mb-5"
+            options={[
+              { value: "claude", label: "Claude Code" },
+              { value: "codex", label: "Codex" },
+              { value: "gemini", label: "Gemini CLI" },
+            ]}
+            value={tab}
+            onChange={setTab}
+            ariaLabel={t("dash.configClientAria")}
+          />
 
           {tab === "claude" ? (
             <div>
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mb-3">
-                <div className="flex items-center gap-2 min-w-0">
-                  <label className="text-xs text-themed-dim whitespace-nowrap">{t("dash.model")}</label>
-                  <Select
-                    value={claudeBig}
-                    onChange={setClaudeBig}
-                    ariaLabel={t("dash.model")}
-                    className="min-w-[220px]"
-                    options={catalog.claudeBig.map((m) => ({ value: m, label: m }))}
-                  />
-                </div>
-                <div className="flex items-center gap-2 min-w-0">
-                  <label className="text-xs text-themed-dim whitespace-nowrap">{t("dash.smallFastModel")}</label>
-                  <Select
-                    value={claudeSmall}
-                    onChange={setClaudeSmall}
-                    ariaLabel={t("dash.smallFastModel")}
-                    className="min-w-[220px]"
-                    options={catalog.claudeSmall.map((m) => ({ value: m, label: m }))}
-                  />
-                </div>
+              <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+                {modelPicker(`${panelId}-claude-model`, t("dash.model"), claudeBig, setClaudeBig, catalog.claudeBig.map((m) => ({ value: m, label: m })))}
+                {modelPicker(`${panelId}-claude-small`, t("dash.smallFastModel"), claudeSmall, setClaudeSmall, catalog.claudeSmall.map((m) => ({ value: m, label: m })))}
               </div>
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mb-3">
+              <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-2">
                 {([
                   { tier: "opus", label: t("dash.claudeDefaultOpusModel") },
                   { tier: "sonnet", label: t("dash.claudeDefaultSonnetModel") },
                   { tier: "haiku", label: t("dash.claudeDefaultHaikuModel") },
-                ] as const).map(({ tier, label }) => {
-                  return (
-                    <div key={tier} className="flex items-center gap-2 min-w-0">
-                      <label className="text-xs text-themed-dim whitespace-nowrap">{label}</label>
-                      <Select
-                        value={selectedClaudeTiers[tier] ?? ""}
-                        onChange={(value) => setClaudeTiers((previous) => ({ ...previous, [tier]: value }))}
-                        ariaLabel={label}
-                        className="min-w-[220px]"
-                        options={[
-                          { value: "", label: t("dash.claudeDefaultUnselected") },
-                          ...catalog.claudeBig.map((model) => ({ value: model, label: model })),
-                        ]}
-                      />
-                    </div>
-                  )
-                })}
+                ] as const).map(({ tier, label }) =>
+                  modelPicker(
+                    `${panelId}-claude-${tier}`,
+                    label,
+                    selectedClaudeTiers[tier] ?? "",
+                    (value) => setClaudeTiers((previous) => ({ ...previous, [tier]: value })),
+                    [
+                      { value: "", label: t("dash.claudeDefaultUnselected") },
+                      ...catalog.claudeBig.map((model) => ({ value: model, label: model })),
+                    ],
+                  ),
+                )}
               </div>
-              <label className="flex items-center gap-2 mb-3 text-xs text-themed-dim w-fit">
-                <input type="checkbox" checked={claudeDisableArtifact} onChange={(event) => setClaudeDisableArtifact(event.target.checked)} />
+              <label className="mb-3 flex w-fit items-center gap-2 text-xs text-fg-muted">
+                <input type="checkbox" className="accent-brand" checked={claudeDisableArtifact} onChange={(event) => setClaudeDisableArtifact(event.target.checked)} />
                 {t("dash.claudeDisableArtifact")}
               </label>
-              <div className="flex items-center gap-1 bg-surface-800 rounded-lg p-0.5 mb-3 w-fit">
-                <button
-                  type="button"
-                  onClick={() => setClaudeFormat("shell")}
-                  className={`px-3 py-1 rounded-md text-[11px] font-medium transition-all ${
-                    claudeFormat === "shell"
-                      ? "bg-surface-600 text-themed"
-                      : "text-themed-dim hover:text-themed-secondary"
-                  }`}
-                >
-                  {t("dash.shellRc")}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setClaudeFormat("settings")}
-                  className={`px-3 py-1 rounded-md text-[11px] font-medium transition-all ${
-                    claudeFormat === "settings"
-                      ? "bg-surface-600 text-themed"
-                      : "text-themed-dim hover:text-themed-secondary"
-                  }`}
-                >
-                  {t("dash.settingsJson")}
-                </button>
-              </div>
+              <SegmentedControl
+                size="sm"
+                className="mb-3"
+                options={[
+                  { value: "shell", label: t("dash.shellRc") },
+                  { value: "settings", label: t("dash.settingsJson") },
+                ]}
+                value={claudeFormat}
+                onChange={setClaudeFormat}
+                ariaLabel={t("dash.configFormatAria")}
+              />
               {claudeFormat === "shell" ? (
                 <>
-                  <p className="text-[11px] text-themed-dim mb-2">
-                    {t("dash.addToBashrc")}
-                  </p>
-                  {(() => {
-                    const txt = claudeCodeShellSnippet(claudeBig, claudeSmall, baseUrl, keyValue, catalog.mappedModelIds, selectedClaudeTiers)
-                    return (
-                      <CodeBlock
-                        language="bash"
-                        text={txt}
-                        copied={copiedTag === "claude-shell"}
-                        onCopy={() => doCopy(txt, "claude-shell")}
-                      />
-                    )
-                  })()}
+                  <p className={hint}>{t("dash.addToBashrc")}</p>
+                  {codeBlock("bash", "claude-shell", claudeCodeShellSnippet(claudeBig, claudeSmall, baseUrl, keyValue, catalog.mappedModelIds, selectedClaudeTiers))}
                 </>
               ) : (
                 <>
-                  <p className="text-[11px] text-themed-dim mb-2">
-                    {t("dash.mergeIntoSettings")}
-                  </p>
-                  {(() => {
-                    const txt = claudeCodeSettingsSnippet(claudeBig, claudeSmall, baseUrl, keyValue, catalog.mappedModelIds, selectedClaudeTiers, { disableArtifact: claudeDisableArtifact })
-                    return (
-                      <CodeBlock
-                        language="json"
-                        text={txt}
-                        copied={copiedTag === "claude-settings"}
-                        onCopy={() => doCopy(txt, "claude-settings")}
-                      />
-                    )
-                  })()}
+                  <p className={hint}>{t("dash.mergeIntoSettings")}</p>
+                  {codeBlock("json", "claude-settings", claudeCodeSettingsSnippet(claudeBig, claudeSmall, baseUrl, keyValue, catalog.mappedModelIds, selectedClaudeTiers, { disableArtifact: claudeDisableArtifact }))}
                 </>
               )}
             </div>
@@ -330,87 +231,25 @@ export function ConfigurationPanel({ keyRow, catalog, catalogLoading }: Props) {
 
           {tab === "codex" ? (
             <div>
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mb-3">
-                <div className="flex items-center gap-2 min-w-0">
-                  <label className="text-xs text-themed-dim whitespace-nowrap">{t("dash.model")}</label>
-                  <Select
-                    value={codexModel}
-                    onChange={setCodexModel}
-                    className="min-w-[220px]"
-                    options={catalog.codex.map((m) => ({ value: m, label: m }))}
-                  />
-                </div>
+              <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+                {modelPicker(`${panelId}-codex-model`, t("dash.model"), codexModel, setCodexModel, catalog.codex.map((m) => ({ value: m, label: m })))}
               </div>
-              <p className="text-[11px] text-themed-dim mb-2">
-                {t("dash.addCodexConfig")}
-              </p>
-              {(() => {
-                const txt = codexTomlSnippet(codexModel, baseUrl, codexWebSocketsAvailable)
-                return (
-                  <CodeBlock
-                    language="toml"
-                    text={txt}
-                    copied={copiedTag === "codex-toml"}
-                    onCopy={() => doCopy(txt, "codex-toml")}
-                  />
-                )
-              })()}
-              <p className="text-[11px] text-themed-dim mb-2 mt-4">
-                2. {t("dash.addToBashrc")}
-              </p>
-              {(() => {
-                const txt = codexEnvSnippet(keyValue)
-                return (
-                  <CodeBlock
-                    language="bash"
-                    text={txt}
-                    copied={copiedTag === "codex-env"}
-                    onCopy={() => doCopy(txt, "codex-env")}
-                  />
-                )
-              })()}
-              <p className="text-[11px] text-themed-dim mb-2 mt-4">{t("dash.startCodex")}</p>
-              {(() => {
-                const txt = codexStartSnippet(codexModel)
-                return (
-                  <CodeBlock
-                    language="bash"
-                    text={txt}
-                    copied={copiedTag === "codex-start"}
-                    onCopy={() => doCopy(txt, "codex-start")}
-                  />
-                )
-              })()}
+              <p className={hint}>{t("dash.addCodexConfig")}</p>
+              {codeBlock("toml", "codex-toml", codexTomlSnippet(codexModel, baseUrl, codexWebSocketsAvailable))}
+              <p className={`${hint} mt-4`}>2. {t("dash.addToBashrc")}</p>
+              {codeBlock("bash", "codex-env", codexEnvSnippet(keyValue))}
+              <p className={`${hint} mt-4`}>{t("dash.startCodex")}</p>
+              {codeBlock("bash", "codex-start", codexStartSnippet(codexModel))}
             </div>
           ) : null}
 
           {tab === "gemini" ? (
             <div>
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mb-3">
-                <div className="flex items-center gap-2 min-w-0">
-                  <label className="text-xs text-themed-dim whitespace-nowrap">{t("dash.model")}</label>
-                  <Select
-                    value={geminiModel}
-                    onChange={setGeminiModel}
-                    className="min-w-[220px]"
-                    options={catalog.gemini.map((m) => ({ value: m, label: m }))}
-                  />
-                </div>
+              <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+                {modelPicker(`${panelId}-gemini-model`, t("dash.model"), geminiModel, setGeminiModel, catalog.gemini.map((m) => ({ value: m, label: m })))}
               </div>
-              <p className="text-[11px] text-themed-dim mb-2">
-                {t("dash.addToBashrc")}
-              </p>
-              {(() => {
-                const txt = geminiSnippet(geminiModel, baseUrl, keyValue)
-                return (
-                  <CodeBlock
-                    language="bash"
-                    text={txt}
-                    copied={copiedTag === "gemini-env"}
-                    onCopy={() => doCopy(txt, "gemini-env")}
-                  />
-                )
-              })()}
+              <p className={hint}>{t("dash.addToBashrc")}</p>
+              {codeBlock("bash", "gemini-env", geminiSnippet(geminiModel, baseUrl, keyValue))}
             </div>
           ) : null}
 
@@ -424,26 +263,16 @@ export function ConfigurationPanel({ keyRow, catalog, catalogLoading }: Props) {
           ) : null}
 
           {otherGroups.length > 0 ? (
-            <div className="mt-6 pt-6 border-t border-white/10">
-              <h4 className="text-xs font-medium text-themed-dim uppercase tracking-widest mb-2">
-                {t("dash.otherAvailableModels")}
-              </h4>
-              <p className="text-[11px] text-themed-dim mb-3">
+            <div className="mt-6 border-t border-border pt-6">
+              <SectionHeading as="h3" className="mb-2">{t("dash.otherAvailableModels")}</SectionHeading>
+              <p className="mb-3 text-xs text-fg-subtle">
                 {t("dash.otherModelsDesc", { form: "upstreamId/model" })}
               </p>
               {otherGroups.map((grp) => (
                 <div key={grp.upstream} className="mb-3">
-                  <div className="text-[11px] text-themed-dim mb-1">
+                  <div className="mb-1 flex items-center gap-1 text-xs text-fg-muted">
                     <span className="font-mono">{grp.upstream}</span>
-                    <span
-                      className={`ml-1 px-1.5 py-0.5 rounded-sm text-[10px] ${
-                        grp.provider === "azure"
-                          ? "bg-blue-900/40 text-blue-300"
-                          : "bg-purple-900/40 text-purple-300"
-                      }`}
-                    >
-                      {grp.provider}
-                    </span>
+                    <Badge tone={grp.provider === "azure" ? "brand" : "neutral"}>{grp.provider}</Badge>
                   </div>
                   <div className="flex flex-wrap gap-1">
                     {grp.models.map((m) => (
@@ -455,7 +284,7 @@ export function ConfigurationPanel({ keyRow, catalog, catalogLoading }: Props) {
                           doCopy(txt, `model-${grp.upstream}-${m.id}`, t("dash.copiedModelId"))
                         }}
                         title={`click: copy ${m.id}\nshift-click: copy pinned ${grp.upstream}/${m.id}`}
-                        className="px-2 py-0.5 bg-surface-600 hover:bg-surface-500 rounded-sm text-themed font-mono text-xs"
+                        className="rounded-md border border-control bg-background px-2 py-0.5 font-mono text-xs text-fg hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-text"
                       >
                         {m.id}
                       </button>
@@ -467,6 +296,6 @@ export function ConfigurationPanel({ keyRow, catalog, catalogLoading }: Props) {
           ) : null}
         </div>
       )}
-    </div>
+    </Card>
   )
 }

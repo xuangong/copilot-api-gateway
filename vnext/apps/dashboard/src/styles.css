@@ -77,6 +77,7 @@
   --color-success: var(--success);
   --color-warn: var(--warn);
   --color-danger: var(--danger);
+  --color-success-text: var(--success-text);
   --color-warn-text: var(--warn-text);
   --color-danger-text: var(--danger-text);
 
@@ -154,7 +155,9 @@
   --success: #047857;
   --warn: #b45309;
   --danger: #dc2626;
-  /* Darker text for warn/danger on their 10% tints, so it reaches 4.5:1. */
+  /* Darker text for success/warn/danger on their 10% tints, so it reaches 4.5:1
+     (#047857 on its tint over the muted surface is only 4.28:1). */
+  --success-text: #065f46;
   --warn-text: #92400e;
   --danger-text: #b91c1c;
   --danger-wash: color-mix(in oklab, var(--danger) 10%, transparent);
@@ -191,6 +194,7 @@
   --success: #34d399;
   --warn: #fbbf24;
   --danger: #f87171;
+  --success-text: var(--success);
   --warn-text: var(--warn);
   --danger-text: var(--danger);
   --danger-wash: color-mix(in oklab, var(--danger) 12%, transparent);

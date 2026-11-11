@@ -1,6 +1,9 @@
 import { useId, useState } from "react"
 import type { ApiKeyDetail, KeyPatchBody } from "../../api/keys"
 import { useT } from "../../state/i18n"
+import { Button } from "../../ui/button"
+import { Card, SectionHeading } from "../../ui/card"
+import { cn } from "../../ui/cn"
 import { retentionFromDraft } from "./responses-retention-state"
 
 interface Props {
@@ -29,51 +32,50 @@ export function ResponsesRetentionPanel({ keyRow, canEdit, busy, onSave }: Props
   }
 
   return (
-    <section className="glass-card p-4 sm:p-6 mb-6" aria-labelledby={`${inputId}-title`}>
-      <div className="flex items-center justify-between gap-3 mb-3">
-        <h3 id={`${inputId}-title`} className="text-xs font-medium text-themed-dim uppercase tracking-widest">
-          {t("dash.responsesRetentionTitle")}
-        </h3>
-        {canEdit && !editing ? <button type="button" className="btn-ghost text-xs" disabled={busy} onClick={beginEdit}>{t("dash.edit")}</button> : null}
+    <Card aria-labelledby={`${inputId}-title`}>
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <SectionHeading id={`${inputId}-title`}>{t("dash.responsesRetentionTitle")}</SectionHeading>
+        {canEdit && !editing ? <Button variant="ghost" size="sm" disabled={busy} onClick={beginEdit}>{t("dash.edit")}</Button> : null}
       </div>
-      <p className="text-xs text-themed-secondary leading-relaxed mb-4">{t("dash.responsesRetentionHint")}</p>
+      <p className="mb-4 text-xs leading-relaxed text-fg-muted">{t("dash.responsesRetentionHint")}</p>
       {editing && canEdit ? (
         <div className="space-y-4">
-          <label className="flex items-center gap-2 text-sm text-themed">
-            <input type="checkbox" role="switch" checked={enabled} disabled={busy} onChange={(event) => setEnabled(event.target.checked)} />
+          <label className="flex items-center gap-2 text-sm text-fg">
+            <input type="checkbox" role="switch" checked={enabled} disabled={busy} onChange={(event) => setEnabled(event.target.checked)} className="accent-brand" />
             {t("dash.responsesRetentionEnable")}
           </label>
           {enabled ? (
             <div className="space-y-2">
-              <label htmlFor={inputId} className="block text-xs text-themed-secondary">{t("dash.responsesRetentionDays")}</label>
+              <label htmlFor={inputId} className="block text-xs font-medium text-fg-muted">{t("dash.responsesRetentionDays")}</label>
               <div className="flex flex-wrap items-center gap-2">
-                <input id={inputId} type="number" min="1" max="3650" step="1" value={days}
-                  disabled={busy} onChange={(event) => setDays(event.target.value)}
-                  aria-invalid={seconds === null} aria-describedby={`${inputId}-help`}
-                  className="w-24 text-sm" />
+                <div className="w-28">
+                  <input id={inputId} type="number" min="1" max="3650" step="1" value={days}
+                    disabled={busy} onChange={(event) => setDays(event.target.value)}
+                    aria-invalid={seconds === null} aria-describedby={`${inputId}-help`} />
+                </div>
                 {[1, 3, 7].map((value) => (
-                  <button key={value} type="button" disabled={busy} aria-pressed={Number(days) === value}
-                    className={Number(days) === value ? "btn-primary text-xs py-2 px-3" : "btn-ghost text-xs py-2 px-3"}
-                    onClick={() => setDays(String(value))}>{t("dash.responsesRetentionPreset", { n: value })}</button>
+                  <Button key={value} variant={Number(days) === value ? "primary" : "secondary"} size="sm"
+                    disabled={busy} aria-pressed={Number(days) === value}
+                    onClick={() => setDays(String(value))}>{t("dash.responsesRetentionPreset", { n: value })}</Button>
                 ))}
               </div>
-              <p id={`${inputId}-help`} className={`text-xs ${seconds === null ? "text-accent-red" : "text-themed-dim"}`}>
+              <p id={`${inputId}-help`} className={cn("text-xs", seconds === null ? "text-danger" : "text-fg-subtle")}>
                 {seconds === null ? t("dash.responsesRetentionInvalid") : t("dash.responsesRetentionExpiry")}
               </p>
             </div>
-          ) : <p className="text-xs text-themed-dim">{t("dash.responsesRetentionDisabledHint")}</p>}
+          ) : <p className="text-xs text-fg-subtle">{t("dash.responsesRetentionDisabledHint")}</p>}
           <div className="flex items-center gap-2">
-            <button type="button" className="btn-primary text-xs py-2 px-3" disabled={busy || seconds === null} onClick={save}>
+            <Button variant="primary" size="sm" disabled={busy || seconds === null} onClick={save}>
               {busy ? t("dash.savingShort") : t("dash.save")}
-            </button>
-            <button type="button" className="btn-ghost text-xs" disabled={busy} onClick={() => setEditing(false)}>{t("dash.cancel")}</button>
+            </Button>
+            <Button variant="ghost" size="sm" disabled={busy} onClick={() => setEditing(false)}>{t("dash.cancel")}</Button>
           </div>
         </div>
       ) : (
-        <p className="text-sm text-themed">{savedSeconds > 0
+        <p className="text-sm text-fg">{savedSeconds > 0
           ? t("dash.responsesRetentionSummary", { n: savedSeconds / 86400 })
           : t("dash.responsesRetentionOff")}</p>
       )}
-    </section>
+    </Card>
   )
 }

@@ -1,8 +1,13 @@
-import { useState } from "react"
+import { useId, useState } from "react"
 import type { ApiKeyDetail } from "../../api/keys"
 import { WEIGHTED_FORMULA_PARTS, formatWeight } from "../../components/weighted-formula"
 import { useT } from "../../state/i18n"
 import type { QuotaLoad, QuotaUsage } from "../../state/key-quota"
+import { Button } from "../../ui/button"
+import { Card, SectionHeading } from "../../ui/card"
+import { cn } from "../../ui/cn"
+import { Meter, meterTone } from "../../ui/meter"
+import { Notice } from "../../ui/notice"
 
 interface Props {
   keyRow: ApiKeyDetail
@@ -14,18 +19,109 @@ interface Props {
   onSave: (req: number | null, token: number | null, cost: number | null) => Promise<boolean>
 }
 
-function progressClass(percent: number): string {
-  if (percent > 90) return "bg-accent-red"
-  if (percent > 70) return "bg-linear-to-r from-accent-amber to-accent-red"
-  return "bg-linear-to-r from-accent-violet to-accent-teal"
-}
-
 // For unlimited quotas, scale usage logarithmically so the bar still moves
 // noticeably as usage grows but never fills. 0 → 0%, 1k → ~30%, 1M → ~75%.
-function unlimitedFillPercent(used: number): number {
+export function unlimitedFillPercent(used: number): number {
   if (used <= 0) return 0
   const pct = Math.log10(used + 1) * 12
   return Math.max(3, Math.min(95, pct))
+}
+
+/** How one usage dimension prints its numbers. */
+export interface UsageFormat {
+  /** Used and remaining amounts against a limit. */
+  amount: (n: number) => string
+  /** The limit itself. */
+  limit: (n: number) => string
+  /** The used amount when there is no limit. */
+  unlimited: (n: number) => string
+}
+
+export const REQUESTS_FORMAT: UsageFormat = {
+  amount: (n) => String(n),
+  limit: (n) => String(n),
+  unlimited: (n) => n.toLocaleString(),
+}
+
+export const TOKENS_FORMAT: UsageFormat = {
+  amount: (n) => Math.round(n).toLocaleString(),
+  limit: (n) => n.toLocaleString(),
+  unlimited: (n) => Math.round(n).toLocaleString(),
+}
+
+export const COST_FORMAT: UsageFormat = {
+  amount: (n) => `$${n.toFixed(4)}`,
+  limit: (n) => `$${n}`,
+  unlimited: (n) => `$${n.toFixed(4)}`,
+}
+
+interface UsageRowProps {
+  label: string
+  used: number
+  limit: number | null
+  /** Rounded percent of the limit (0 when there is no limit). */
+  percent: number
+  format: UsageFormat
+}
+
+export function UsageRow({ label, used, limit, percent, format }: UsageRowProps) {
+  const t = useT()
+  return (
+    <div>
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <span className="text-xs text-fg-muted">{label}</span>
+        <span className={cn("text-xs tabular-nums", limit ? "text-fg" : "text-fg-subtle")}>
+          {limit ? `${format.amount(used)} / ${format.limit(limit)}` : `${format.amount(used)} / ∞`}
+        </span>
+      </div>
+      {limit ? (
+        <>
+          <Meter percent={Math.min(percent, 100)} tone={meterTone(percent)} />
+          <p className="mt-1 text-xs text-fg-subtle">
+            <span className="tabular-nums">{format.amount(Math.max(0, limit - used))}</span> {t("dash.remaining")}
+            {percent >= 100 ? <span className="ml-1 font-medium text-danger">{t("dash.quotaExceeded")}</span> : null}
+          </p>
+        </>
+      ) : (
+        <>
+          <Meter percent={unlimitedFillPercent(used)} tone="muted" />
+          <p className="mt-1 text-xs text-fg-subtle">{t("dash.unlimitedUsedThisMonth", { n: format.unlimited(used) })}</p>
+        </>
+      )}
+    </div>
+  )
+}
+
+function QuotaField({
+  label,
+  value,
+  onChange,
+  step,
+}: {
+  label: string
+  value: string
+  onChange: (v: string) => void
+  step?: string
+}) {
+  const t = useT()
+  const id = useId()
+  return (
+    <div>
+      <label htmlFor={id} className="mb-1 block text-xs font-medium text-fg-muted">
+        {label}
+      </label>
+      <input
+        id={id}
+        type="number"
+        min="0"
+        step={step}
+        placeholder={t("dash.placeholderUnlimited")}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      />
+      <p className="mt-1 text-xs text-fg-subtle">{t("dash.leaveEmptyForUnlimited")}</p>
+    </div>
+  )
 }
 
 export function QuotaEditor({ keyRow, usage, load, onRetry, canEdit, busy, onSave }: Props) {
@@ -55,230 +151,97 @@ export function QuotaEditor({ keyRow, usage, load, onRetry, canEdit, busy, onSav
   }
 
   return (
-    <div className="glass-card p-4 sm:p-6 mb-6 animate-in delay-1">
-      <div className="flex items-center justify-between mb-4">
-        <span className="text-xs font-medium text-themed-dim uppercase tracking-widest">{t("dash.monthlyQuotaLabel")}</span>
+    <Card>
+      <div className="mb-4 flex items-center justify-between gap-2">
+        <SectionHeading>{t("dash.monthlyQuotaLabel")}</SectionHeading>
         <div className="flex items-center gap-2">
           {!editing && canEdit ? (
-            <button type="button" onClick={startEdit} className="btn-ghost text-xs">
+            <Button variant="ghost" size="sm" onClick={startEdit}>
               {t("dash.edit")}
-            </button>
+            </Button>
           ) : null}
           {editing ? (
             <>
-              <button
-                type="button"
-                onClick={save}
-                disabled={busy}
-                className="btn-primary text-xs py-1 px-3"
-              >
+              <Button variant="primary" size="sm" onClick={save} disabled={busy}>
                 {busy ? t("dash.savingShort") : t("dash.save")}
-              </button>
-              <button type="button" onClick={() => setEditing(false)} className="btn-ghost text-xs">
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => setEditing(false)}>
                 {t("dash.cancel")}
-              </button>
+              </Button>
             </>
           ) : null}
         </div>
       </div>
 
       {editing ? (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
-          <div>
-            <label className="text-xs text-themed-dim block mb-1">{t("dash.requestsPerMonthLabel")}</label>
-            <input
-              type="number"
-              min="0"
-              placeholder={t("dash.placeholderUnlimited")}
-              value={reqInput}
-              onChange={(e) => setReqInput(e.target.value)}
-              className="w-full mt-1 text-sm"
-            />
-            <p className="text-[10px] text-themed-dim mt-1">{t("dash.leaveEmptyForUnlimited")}</p>
-          </div>
-          <div>
-            <label className="text-xs text-themed-dim block mb-1">{t("dash.weightedTokensPerMonthLabel")}</label>
-            <input
-              type="number"
-              min="0"
-              placeholder={t("dash.placeholderUnlimited")}
-              value={tokenInput}
-              onChange={(e) => setTokenInput(e.target.value)}
-              className="w-full mt-1 text-sm"
-            />
-            <p className="text-[10px] text-themed-dim mt-1">{t("dash.leaveEmptyForUnlimited")}</p>
-          </div>
-          <div>
-            <label className="text-xs text-themed-dim block mb-1">{t("dash.costPerMonthLabel")}</label>
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              placeholder={t("dash.placeholderUnlimited")}
-              value={costInput}
-              onChange={(e) => setCostInput(e.target.value)}
-              className="w-full mt-1 text-sm"
-            />
-            <p className="text-[10px] text-themed-dim mt-1">{t("dash.leaveEmptyForUnlimited")}</p>
-          </div>
+        <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <QuotaField label={t("dash.requestsPerMonthLabel")} value={reqInput} onChange={setReqInput} />
+          <QuotaField label={t("dash.weightedTokensPerMonthLabel")} value={tokenInput} onChange={setTokenInput} />
+          <QuotaField label={t("dash.costPerMonthLabel")} value={costInput} onChange={setCostInput} step="0.01" />
         </div>
       ) : null}
 
       {load.status === "loading" ? (
-        <p role="status" className="text-xs text-themed-dim mb-3">
+        <Notice role="status" className="mb-3">
           {t(usage ? "dash.quotaRefreshingStale" : "dash.quotaLoading")}
-        </p>
+        </Notice>
       ) : null}
       {load.status === "error" ? (
-        <div role="alert" className="flex items-center gap-3 text-xs text-accent-red mb-3">
+        <Notice tone="danger" className="mb-3 flex items-center gap-3">
           <span>{t(usage ? "dash.quotaErrorStale" : "dash.quotaError")}: {load.error}</span>
-          <button type="button" onClick={onRetry} className="btn-ghost text-xs">{t("dash.quotaRetry")}</button>
-        </div>
+          <Button variant="ghost" size="sm" onClick={onRetry}>
+            {t("dash.quotaRetry")}
+          </Button>
+        </Notice>
       ) : null}
-      {usage ? <>
-      <div className="mb-5">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-xs text-themed-secondary">{t("dash.requestsPerMonthLabel")}</span>
-          <span
-            className={`text-xs font-mono ${usage.reqLimit ? "text-themed" : "text-themed-dim"}`}
-          >
-            {usage.reqLimit
-              ? `${usage.reqUsed} / ${usage.reqLimit}`
-              : `${usage.reqUsed} / ∞`}
-          </span>
+      {usage ? (
+        <div className="mb-4 space-y-4">
+          <UsageRow
+            label={t("dash.requestsPerMonthLabel")}
+            used={usage.reqUsed}
+            limit={usage.reqLimit}
+            percent={usage.reqPercent}
+            format={REQUESTS_FORMAT}
+          />
+          <UsageRow
+            label={t("dash.weightedTokensPerMonthLabel")}
+            used={usage.tokenUsed}
+            limit={usage.tokenLimit}
+            percent={usage.tokenPercent}
+            format={TOKENS_FORMAT}
+          />
+          <UsageRow
+            label={t("dash.costPerMonthLabel")}
+            used={usage.costUsed}
+            limit={usage.costLimit}
+            percent={usage.costPercent}
+            format={COST_FORMAT}
+          />
         </div>
-        {usage.reqLimit ? (
-          <>
-            <div className="progress-track">
-              <div
-                className={`progress-fill ${progressClass(usage.reqPercent)}`}
-                style={{ width: `${Math.min(usage.reqPercent, 100)}%` }}
-              />
-            </div>
-            <p className="text-[10px] text-themed-dim mt-1">
-              {Math.max(0, usage.reqLimit - usage.reqUsed)} {t("dash.remaining")}
-              {usage.reqPercent >= 100 ? (
-                <span className="text-accent-red font-medium ml-1">{t("dash.quotaExceeded")}</span>
-              ) : null}
-            </p>
-          </>
-        ) : (
-          <>
-            <div className="progress-track">
-              <div
-                className="progress-fill bg-linear-to-r from-accent-violet/40 to-accent-teal/40"
-                style={{ width: `${unlimitedFillPercent(usage.reqUsed)}%` }}
-              />
-            </div>
-            <p className="text-[10px] text-themed-dim mt-1">{t("dash.unlimitedUsedThisMonth", { n: usage.reqUsed.toLocaleString() })}</p>
-          </>
-        )}
-      </div>
-
-      <div className="mb-4">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-xs text-themed-secondary">{t("dash.weightedTokensPerMonthLabel")}</span>
-          <span
-            className={`text-xs font-mono ${usage.tokenLimit ? "text-themed" : "text-themed-dim"}`}
-          >
-            {usage.tokenLimit
-              ? `${Math.round(usage.tokenUsed).toLocaleString()} / ${usage.tokenLimit.toLocaleString()}`
-              : `${Math.round(usage.tokenUsed).toLocaleString()} / ∞`}
-          </span>
-        </div>
-        {usage.tokenLimit ? (
-          <>
-            <div className="progress-track">
-              <div
-                className={`progress-fill ${progressClass(usage.tokenPercent)}`}
-                style={{ width: `${Math.min(usage.tokenPercent, 100)}%` }}
-              />
-            </div>
-            <p className="text-[10px] text-themed-dim mt-1">
-              {Math.max(0, Math.round(usage.tokenLimit - usage.tokenUsed)).toLocaleString()} {t("dash.remaining")}
-              {usage.tokenPercent >= 100 ? (
-                <span className="text-accent-red font-medium ml-1">{t("dash.quotaExceeded")}</span>
-              ) : null}
-            </p>
-          </>
-        ) : (
-          <>
-            <div className="progress-track">
-              <div
-                className="progress-fill bg-linear-to-r from-accent-violet/40 to-accent-teal/40"
-                style={{ width: `${unlimitedFillPercent(usage.tokenUsed)}%` }}
-              />
-            </div>
-            <p className="text-[10px] text-themed-dim mt-1">
-              {t("dash.unlimitedUsedThisMonth", { n: Math.round(usage.tokenUsed).toLocaleString() })}
-            </p>
-          </>
-        )}
-      </div>
-
-      <div className="mb-4">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-xs text-themed-secondary">{t("dash.costPerMonthLabel")}</span>
-          <span className={`text-xs font-mono ${usage.costLimit ? "text-themed" : "text-themed-dim"}`}>
-            {usage.costLimit
-              ? `$${usage.costUsed.toFixed(4)} / $${usage.costLimit}`
-              : `$${usage.costUsed.toFixed(4)} / ∞`}
-          </span>
-        </div>
-        {usage.costLimit ? (
-          <>
-            <div className="progress-track">
-              <div
-                className={`progress-fill ${progressClass(usage.costPercent)}`}
-                style={{ width: `${Math.min(usage.costPercent, 100)}%` }}
-              />
-            </div>
-            <p className="text-[10px] text-themed-dim mt-1">
-              ${Math.max(0, usage.costLimit - usage.costUsed).toFixed(4)} {t("dash.remaining")}
-              {usage.costPercent >= 100 ? (
-                <span className="text-accent-red font-medium ml-1">{t("dash.quotaExceeded")}</span>
-              ) : null}
-            </p>
-          </>
-        ) : (
-          <>
-            <div className="progress-track">
-              <div
-                className="progress-fill bg-linear-to-r from-accent-violet/40 to-accent-teal/40"
-                style={{ width: `${unlimitedFillPercent(usage.costUsed)}%` }}
-              />
-            </div>
-            <p className="text-[10px] text-themed-dim mt-1">
-              {t("dash.unlimitedUsedThisMonth", { n: `$${usage.costUsed.toFixed(4)}` })}
-            </p>
-          </>
-        )}
-      </div>
-
-      </> : (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4 text-xs text-themed-dim">
+      ) : (
+        <div className="mb-4 grid grid-cols-1 gap-3 text-xs text-fg-subtle sm:grid-cols-3">
           <p>{t("dash.requestsPerMonthLabel")}: — / {keyRow.quota_requests_per_month ?? "∞"}</p>
           <p>{t("dash.weightedTokensPerMonthLabel")}: — / {keyRow.quota_tokens_per_month ?? "∞"}</p>
           <p>{t("dash.costPerMonthLabel")}: — / {keyRow.quota_cost_per_month ?? "∞"}</p>
         </div>
       )}
       {usage && usage.unpricedDimensionRows > 0 ? (
-        <p className="text-[10px] text-themed-dim mb-3">{t("dash.quotaUnpriced", { rows: usage.unpricedDimensionRows })}</p>
+        <p className="mb-3 text-xs text-fg-subtle">{t("dash.quotaUnpriced", { rows: usage.unpricedDimensionRows })}</p>
       ) : null}
-      <p className="text-[10px] text-themed-dim mb-3">{t("dash.quotaRecordedCost")}</p>
-      <div className="rounded-lg bg-surface-800/60 border border-white/4 p-3">
-        <p className="text-[10px] text-themed-dim leading-relaxed">
-          <span className="text-themed-secondary font-medium">{t("dash.tokenQuotaFormulaLabel")}</span>
+      <p className="mb-3 text-xs text-fg-subtle">{t("dash.quotaRecordedCost")}</p>
+      <div className="rounded-lg border border-border bg-muted p-3">
+        <p className="text-xs leading-relaxed text-fg-subtle">
+          <span className="font-medium text-fg-muted">{t("dash.tokenQuotaFormulaLabel")}</span>
           {WEIGHTED_FORMULA_PARTS.map((part, i) => (
             <span key={part.labelKey}>
               {i > 0 ? " + " : " "}
-              <code className={part.colorClass}>
+              <code className="text-fg">
                 {t(part.labelKey)} {formatWeight(part.weight)}
               </code>
             </span>
           ))}
         </p>
       </div>
-    </div>
+    </Card>
   )
 }

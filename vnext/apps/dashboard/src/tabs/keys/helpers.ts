@@ -28,16 +28,35 @@ export function fullDateTime(dateStr: string | null | undefined): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
 }
 
-export async function copyToClipboard(text: string): Promise<void> {
+/**
+ * Copies text and reports whether it worked. Falls back to execCommand when the
+ * async clipboard API is missing or blocked (e.g. plain HTTP on a LAN address).
+ * The fallback textarea goes inside the open dialog, if any: a modal dialog traps
+ * focus, and selecting text outside it would be undone before the copy runs.
+ */
+export async function copyToClipboard(text: string): Promise<boolean> {
   try {
-    await navigator.clipboard.writeText(text)
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text)
+      return true
+    }
   } catch {
+    /* fall through */
+  }
+  try {
+    const host = document.activeElement?.closest('[role="dialog"]') ?? document.body
     const ta = document.createElement("textarea")
     ta.value = text
-    document.body.appendChild(ta)
+    ta.setAttribute("readonly", "")
+    ta.style.position = "fixed"
+    ta.style.opacity = "0"
+    host.appendChild(ta)
     ta.select()
-    document.execCommand("copy")
-    document.body.removeChild(ta)
+    const ok = document.execCommand("copy")
+    host.removeChild(ta)
+    return ok
+  } catch {
+    return false
   }
 }
 

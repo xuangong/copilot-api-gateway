@@ -1,12 +1,21 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useId, useRef, useState } from "react"
 import { mintSetup, previewSetup, revokeSetup } from "../../api/setup"
 import type { SetupEffort, SetupPlatform, SetupPreview, SetupSelection } from "../../api/setup"
 import { useT } from "../../state/i18n"
+import { Button } from "../../ui/button"
+import { Notice } from "../../ui/notice"
+import { Select } from "../../ui/select"
 import { SetupRequestGate, setupScope, staticSetupCommand, bindMintedLease } from "./setup-state"
 import type { IssuedSetupLease } from "./setup-state"
+
+const PLATFORM_OPTIONS = [{ value: "posix", label: "macOS / Linux" }, { value: "windows", label: "Windows / PowerShell" }]
+const EFFORTS = ["low", "medium", "high", "xhigh", "max"]
+const pre = "rounded-lg border border-border bg-muted p-3 font-mono text-xs leading-relaxed text-fg"
+
 interface Props { keyId: string; client: "claude" | "codex"; origin: string; settings: { model: string | null; smallModel?: string | null; opusModel?: string | null; sonnetModel?: string | null; haikuModel?: string | null; disableArtifact?: boolean } }
 export function SetupPanel({ keyId, client, origin, settings }: Props) {
   const t = useT()
+  const id = useId()
   const [platform, setPlatform] = useState<SetupPlatform>("posix")
   const [effort, setEffort] = useState<SetupEffort | "">("")
   const [context1m, setContext1m] = useState(false)
@@ -53,30 +62,37 @@ export function SetupPanel({ keyId, client, origin, settings }: Props) {
     try { await navigator.clipboard.writeText(value); setCopyStatus(t("dash.codeCopyTipCopied")) } catch { setCopyStatus(t("dash.clipboardUnavailable")) }
   }
   const expired = lease !== null && Date.parse(lease.expiresAt) <= now
-  const button = "px-3 py-2 rounded-md bg-surface-600 text-xs disabled:opacity-40 hover:bg-surface-500"
-  return <section className="mt-5 border-t border-white/10 pt-5" aria-label={t("dash.setupTitle")}>
-    <h4 className="text-sm font-medium text-themed">{t("dash.setupTitle")}</h4>
-    <p className="text-xs text-themed-dim mt-2 leading-relaxed">{t("dash.setupPrerequisite")}</p>
-    <p className="text-xs text-themed-dim mt-1 leading-relaxed">{t("dash.setupTestBoundary")}</p>
-    <div className="flex flex-wrap gap-4 items-center mt-4 text-xs">
-      <label>{t("dash.setupPlatform")} <select className="bg-surface-800 rounded-sm p-2 ml-2" value={platform} disabled={busy || lease !== null} onChange={event => setPlatform(event.target.value as SetupPlatform)}><option value="posix">macOS / Linux</option><option value="windows">Windows / PowerShell</option></select></label>
+  const locked = busy || lease !== null
+  return <section className="mt-5 border-t border-border pt-5" aria-label={t("dash.setupTitle")}>
+    <h3 className="text-[13px] font-medium text-fg">{t("dash.setupTitle")}</h3>
+    <p className="mt-2 text-xs leading-relaxed text-fg-subtle">{t("dash.setupPrerequisite")}</p>
+    <p className="mt-1 text-xs leading-relaxed text-fg-subtle">{t("dash.setupTestBoundary")}</p>
+    <div className="mt-4 flex flex-wrap items-center gap-4 text-xs">
+      <div className="flex items-center gap-2">
+        <span id={`${id}-platform`} className="text-xs font-medium text-fg-muted">{t("dash.setupPlatform")}</span>
+        <div className="w-48"><Select labelledBy={`${id}-platform`} value={platform} disabled={locked} onChange={value => setPlatform(value as SetupPlatform)} options={PLATFORM_OPTIONS} /></div>
+      </div>
       {client === "claude" && <>
-        <label>{t("dash.setupEffort")} <select className="bg-surface-800 rounded-sm p-2 ml-2" value={effort} disabled={busy || lease !== null} onChange={event => setEffort(event.target.value as SetupEffort | "")}><option value="">{t("dash.setupPreserve")}</option>{["low", "medium", "high", "xhigh", "max"].map(value => <option key={value} value={value}>{value}</option>)}</select></label>
-        <label className="flex items-center gap-2"><input type="checkbox" checked={context1m} disabled={busy || lease !== null} onChange={event => setContext1m(event.target.checked)} />{t("dash.setupContext")}</label>
+        <div className="flex items-center gap-2">
+          <span id={`${id}-effort`} className="text-xs font-medium text-fg-muted">{t("dash.setupEffort")}</span>
+          <div className="w-40"><Select labelledBy={`${id}-effort`} value={effort} disabled={locked} onChange={value => setEffort(value as SetupEffort | "")} options={[{ value: "", label: t("dash.setupPreserve") }, ...EFFORTS.map(value => ({ value, label: value }))]} /></div>
+        </div>
+        <label className="flex items-center gap-2 text-fg-muted"><input type="checkbox" className="accent-brand" checked={context1m} disabled={locked} onChange={event => setContext1m(event.target.checked)} />{t("dash.setupContext")}</label>
       </>}
     </div>
-    <div className="mt-4 flex gap-2"><button type="button" className={button} disabled={busy || lease !== null} onClick={() => void loadPreview()}>{t("dash.setupPreview")}</button>{current && !lease && <button type="button" className={button} disabled={busy} onClick={() => void mint()}>{t("dash.setupMint")}</button>}</div>
-    {lease && lease.scope !== scope && <p role="status" className="text-xs text-amber-400 mt-3">{t("dash.setupSelectionChanged")}</p>}
-    {shownPreview && <div className="mt-3 text-xs"><pre className="code-block p-3 rounded-lg overflow-auto">{JSON.stringify(shownPreview.redactedArtifact, null, 2)}</pre><p className="font-mono break-all mt-2">SHA-256: {shownPreview.artifactDigest}</p><ul className="text-themed-dim mt-2">{shownPreview.touchedKeys.map(item => <li key={item.target + item.key}>{item.target}: {item.key}</li>)}</ul></div>}
+    <div className="mt-4 flex gap-2"><Button variant="secondary" size="sm" disabled={locked} onClick={() => void loadPreview()}>{t("dash.setupPreview")}</Button>{current && !lease && <Button variant="secondary" size="sm" disabled={busy} onClick={() => void mint()}>{t("dash.setupMint")}</Button>}</div>
+    {lease && lease.scope !== scope && <Notice tone="warn" role="status" className="mt-3">{t("dash.setupSelectionChanged")}</Notice>}
+    {shownPreview && <div className="mt-3 text-xs"><pre className={`${pre} overflow-auto`}>{JSON.stringify(shownPreview.redactedArtifact, null, 2)}</pre><p className="mt-2 break-all font-mono text-fg">SHA-256: {shownPreview.artifactDigest}</p><ul className="mt-2 text-fg-muted">{shownPreview.touchedKeys.map(item => <li key={item.target + item.key}>{item.target}: {item.key}</li>)}</ul></div>}
     {lease && <div className="mt-4 space-y-3">
-      <p className="text-xs text-accent-teal">{expired ? t("dash.setupExpired") : t("dash.setupExpires", { time: new Date(lease.expiresAt).toLocaleTimeString() })}</p>
-      <p className="text-xs text-themed-dim">{t("dash.setupPaste")}</p>
-      {!expired && <div className="flex gap-2"><input type="password" readOnly value={lease.leaseToken} aria-label={t("dash.setupToken")} autoComplete="off" className="bg-surface-800 rounded-sm px-3 py-2 min-w-0 flex-1 font-mono text-xs" /><button type="button" className={button} onClick={() => void copy(lease.leaseToken)}>{t("dash.setupCopyToken")}</button></div>}
-      <pre className="code-block p-3 rounded-lg overflow-x-auto text-xs whitespace-pre-wrap break-all">{command}</pre>
-      <div className="flex gap-2"><button type="button" className={button} onClick={() => void copy(command)}>{t("dash.setupCopyCommand")}</button><button type="button" className={button} disabled={busy} onClick={() => void revoke()}>{t("dash.setupRevoke")}</button></div>
+      <p className="text-xs tabular-nums text-success">{expired ? t("dash.setupExpired") : t("dash.setupExpires", { time: new Date(lease.expiresAt).toLocaleTimeString() })}</p>
+      <p className="text-xs text-fg-subtle">{t("dash.setupPaste")}</p>
+      {/* The global input rule fixes width and font-family: inherit, so the wrapper sizes it and sets the mono face. */}
+      {!expired && <div className="flex items-center gap-2"><div className="min-w-0 flex-1 font-mono"><input type="password" readOnly value={lease.leaseToken} aria-label={t("dash.setupToken")} autoComplete="off" /></div><Button variant="secondary" size="sm" onClick={() => void copy(lease.leaseToken)}>{t("dash.setupCopyToken")}</Button></div>}
+      <pre className={`${pre} overflow-x-auto whitespace-pre-wrap break-all`}>{command}</pre>
+      <div className="flex gap-2"><Button variant="secondary" size="sm" onClick={() => void copy(command)}>{t("dash.setupCopyCommand")}</Button><Button variant="danger" size="sm" disabled={busy} onClick={() => void revoke()}>{t("dash.setupRevoke")}</Button></div>
     </div>}
-    <p className="text-xs text-themed-dim mt-3">{t("dash.setupInvalidation")}</p>
-    {error && <p role="alert" className="text-xs text-red-400 mt-3">{error}</p>}
-    <p role="status" className="text-xs text-themed-dim mt-2">{copyStatus}</p>
+    <p className="mt-3 text-xs text-fg-subtle">{t("dash.setupInvalidation")}</p>
+    {error && <Notice tone="danger" className="mt-3">{error}</Notice>}
+    <p role="status" className="mt-2 text-xs text-fg-muted">{copyStatus}</p>
   </section>
 }
