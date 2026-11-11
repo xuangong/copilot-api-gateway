@@ -1,9 +1,10 @@
-import { type KeyboardEvent, useRef } from "react"
+import { type KeyboardEvent, type ReactNode, useRef } from "react"
 import { cn } from "./cn"
 
 export interface SegmentedOption<T extends string> {
   value: T
-  label: string
+  /** Usually plain text; a node lets a segment carry a tag (e.g. a Badge) after its name. */
+  label: ReactNode
 }
 
 interface Props<T extends string> {
@@ -12,6 +13,8 @@ interface Props<T extends string> {
   onChange: (value: T) => void
   ariaLabel: string
   size?: "sm" | "md"
+  /** Disables every segment, e.g. while a request that depends on the choice is in flight. */
+  disabled?: boolean
   className?: string
 }
 
@@ -35,7 +38,7 @@ export function nextSegmentIndex(current: number, key: string, count: number): n
 }
 
 /** A small set of mutually exclusive choices shown side by side: a radio group with a roving tabindex. */
-export function SegmentedControl<T extends string>({ options, value, onChange, ariaLabel, size = "md", className }: Props<T>) {
+export function SegmentedControl<T extends string>({ options, value, onChange, ariaLabel, size = "md", disabled = false, className }: Props<T>) {
   const buttons = useRef<Array<HTMLButtonElement | null>>([])
   const selected = options.findIndex((o) => o.value === value)
 
@@ -65,10 +68,11 @@ export function SegmentedControl<T extends string>({ options, value, onChange, a
             role="radio"
             aria-checked={active}
             tabIndex={tabbable ? 0 : -1}
+            disabled={disabled}
             onClick={() => onChange(option.value)}
             onKeyDown={(event) => onKeyDown(event, index)}
             className={cn(
-              "whitespace-nowrap rounded-[5px] px-2.5 text-[13px] font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-text",
+              "whitespace-nowrap rounded-[5px] px-2.5 text-[13px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-text",
               size === "sm" ? "h-6" : "h-7",
               active ? "bg-background text-fg shadow-xs ring-1 ring-control" : "text-fg-muted hover:text-fg",
             )}

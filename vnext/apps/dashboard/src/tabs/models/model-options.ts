@@ -1,5 +1,5 @@
 import type { PlaygroundModel } from "../../api/models"
-import type { SelectOption } from "../../components/Select"
+import type { SelectOption } from "../../ui/select"
 
 export function playgroundModelOptions(models: PlaygroundModel[], mappedBadge: string): SelectOption[] {
   return [...models]

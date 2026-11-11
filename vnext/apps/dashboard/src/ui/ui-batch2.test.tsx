@@ -42,6 +42,17 @@ test("SegmentedControl is a labelled radio group with one checked, tabbable opti
   expect(html).toMatch(/aria-checked="true" tabindex="0"[^>]*>Week</)
 })
 
+test("SegmentedControl disabled disables every segment", () => {
+  const html = renderToStaticMarkup(
+    <SegmentedControl ariaLabel="Format" value="a" onChange={() => {}} disabled options={[{ value: "a", label: "A" }, { value: "b", label: "B" }]} />,
+  )
+  expect(html.match(/<button[^>]* disabled=""/g)?.length).toBe(2)
+  const enabled = renderToStaticMarkup(
+    <SegmentedControl ariaLabel="Format" value="a" onChange={() => {}} options={[{ value: "a", label: "A" }, { value: "b", label: "B" }]} />,
+  )
+  expect(enabled).not.toContain("disabled=\"\"")
+})
+
 test("nextSegmentIndex: arrows step and wrap, Home/End jump, other keys do nothing", () => {
   expect(nextSegmentIndex(0, "ArrowRight", 3)).toBe(1)
   expect(nextSegmentIndex(2, "ArrowRight", 3)).toBe(0)

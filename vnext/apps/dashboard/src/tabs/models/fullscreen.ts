@@ -63,3 +63,24 @@ export function persistFullscreen(on: boolean): void {
     /* nothing to do — the preference just won't survive the reload */
   }
 }
+
+/**
+ * Whether a keydown should drop the playground out of fullscreen.
+ *
+ * Esc is a single "undo the topmost thing" — it must never close something
+ * *and* leave fullscreen. Everything that can sit above the fullscreen frame —
+ * the model and image-param selects, the image zoom — is a Radix layer. Radix
+ * handles Esc in a capture-phase listener on `document`, which runs before our
+ * bubble-phase one, and calls `preventDefault()` when it dismisses the layer.
+ * So `defaultPrevented` means "already used up", whatever closed — no need to
+ * know which component it was or to query the DOM for it.
+ *
+ * `zoomOpen` is a second guard for the zoom: while it is open, Esc belongs to
+ * it even if the event somehow arrives unmarked.
+ */
+export function escapeExitsFullscreen(
+  event: { key: string; defaultPrevented: boolean },
+  zoomOpen: boolean,
+): boolean {
+  return event.key === "Escape" && !event.defaultPrevented && !zoomOpen
+}

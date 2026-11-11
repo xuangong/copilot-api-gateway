@@ -1,6 +1,10 @@
-import { useEffect, useState } from "react"
+import { useEffect, useId, useState } from "react"
 import { getPricing, type PricingCatalog, type PricingTier } from "../../api/pricing"
 import { useT } from "../../state/i18n"
+import { Card, SectionHeading } from "../../ui/card"
+import { Notice } from "../../ui/notice"
+import { PageHeader } from "../../ui/page-header"
+import { Table, TBody, Td, Th } from "../../ui/table"
 
 /** "5.00", "0.075", "—" — two decimals unless a third is significant. */
 function usd(v: number | undefined): string {
@@ -18,6 +22,7 @@ export function PricingTab() {
   const t = useT()
   const [data, setData] = useState<PricingCatalog | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const idBase = useId()
 
   useEffect(() => {
     let alive = true
@@ -33,67 +38,89 @@ export function PricingTab() {
     }
   }, [])
 
-  if (error) return <div className="glass-card p-4 sm:p-6 text-sm text-accent-red">{error}</div>
-  if (!data) return <div className="glass-card p-4 sm:p-6 text-sm text-themed-dim">{t("dash.loadingShort")}</div>
+  const header = <PageHeader title={t("dash.pricing")} />
+  if (error) {
+    return (
+      <div>
+        {header}
+        <Notice tone="danger">{error}</Notice>
+      </div>
+    )
+  }
+  if (!data) {
+    return (
+      <div>
+        {header}
+        <p role="status" className="text-sm text-fg-subtle">{t("dash.loadingShort")}</p>
+      </div>
+    )
+  }
 
   return (
-    <div className="flex flex-col gap-4">
-      {data.providers.map((p) => (
-        <div key={p.provider} className="glass-card p-4 sm:p-6 animate-in">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
-            <span className="text-xs font-medium text-themed-dim uppercase tracking-widest">
-              {p.provider}
-            </span>
-            <div className="flex items-center gap-3 text-xs text-themed-dim">
-              <span>
-                {t("dash.pricing.verifiedOn")} {p.source.verifiedOn}
-              </span>
-              <a
-                href={p.source.url}
-                target="_blank"
-                rel="noreferrer"
-                className="underline hover:text-themed-secondary"
-              >
-                {t("dash.pricing.source")}
-              </a>
-            </div>
-          </div>
+    <div>
+      {header}
+      <div className="flex flex-col gap-4">
+        {data.providers.map((p, index) => {
+          const headingId = `${idBase}-${index}`
+          return (
+            <Card key={p.provider} aria-labelledby={headingId} className="sm:p-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+                <SectionHeading id={headingId} className="text-xs font-medium text-fg-subtle uppercase tracking-widest">
+                  {p.provider}
+                </SectionHeading>
+                <div className="flex items-center gap-3 text-xs text-fg-subtle">
+                  <span>
+                    {t("dash.pricing.verifiedOn")} {p.source.verifiedOn}
+                  </span>
+                  <a
+                    href={p.source.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="rounded-sm underline hover:text-fg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-text"
+                  >
+                    {t("dash.pricing.source")}
+                  </a>
+                </div>
+              </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <caption className="text-left text-xs text-themed-dim pb-3">
-                {t("dash.pricing.caption")}
-              </caption>
-              <thead>
-                <tr className="text-xs text-themed-dim uppercase tracking-wider">
-                  <th className="text-left font-medium py-2 pr-4">{t("dash.pricing.model")}</th>
-                  <th className="text-left font-medium py-2 pr-4">{t("dash.pricing.tier")}</th>
-                  <th className="text-right font-medium py-2 pr-4">{t("dash.pricing.input")}</th>
-                  <th className="text-right font-medium py-2 pr-4">{t("dash.pricing.cachedInput")}</th>
-                  <th className="text-right font-medium py-2 pr-4">{t("dash.pricing.cacheWrite")}</th>
-                  <th className="text-right font-medium py-2">{t("dash.pricing.output")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {p.models.flatMap((m) =>
-                  m.tiers.map((tier, i) => (
-                    <tr key={`${m.displayName}-${tier.label}`} className="border-t border-white/5">
-                      <td className="py-2 pr-4 whitespace-nowrap">{i === 0 ? m.displayName : ""}</td>
-                      <td className="py-2 pr-4 whitespace-nowrap text-themed-dim">
-                        {tierLabel(tier, t("dash.pricing.default"))}
-                      </td>
-                      <td className="py-2 pr-4 text-right tabular-nums">{usd(tier.pricing.input)}</td>
-                      <td className="py-2 pr-4 text-right tabular-nums">{usd(tier.pricing.input_cache_read)}</td>
-                      <td className="py-2 pr-4 text-right tabular-nums">{usd(tier.pricing.input_cache_write)}</td>
-                      <td className="py-2 text-right tabular-nums">{usd(tier.pricing.output)}</td>
-                    </tr>
-                  )),
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      ))}
+              <Table className="text-sm">
+                <caption className="text-left text-xs text-fg-subtle pb-3">
+                  {t("dash.pricing.caption")}
+                </caption>
+                <thead>
+                  <tr>
+                    <Th className="uppercase tracking-wider">{t("dash.pricing.model")}</Th>
+                    <Th className="uppercase tracking-wider">{t("dash.pricing.tier")}</Th>
+                    <Th numeric className="uppercase tracking-wider">{t("dash.pricing.input")}</Th>
+                    <Th numeric className="uppercase tracking-wider">{t("dash.pricing.cachedInput")}</Th>
+                    <Th numeric className="uppercase tracking-wider">{t("dash.pricing.cacheWrite")}</Th>
+                    <Th numeric className="uppercase tracking-wider">{t("dash.pricing.output")}</Th>
+                  </tr>
+                </thead>
+                <TBody>
+                  {p.models.flatMap((m) =>
+                    m.tiers.map((tier, i) => (
+                      <tr key={`${m.displayName}-${tier.label}`}>
+                        {/* Later tiers keep a blank model cell, but still name the model for screen readers. */}
+                        <Th row className="whitespace-nowrap">
+                          {i === 0 ? m.displayName : <span className="sr-only">{m.displayName}</span>}
+                        </Th>
+                        <Td className="whitespace-nowrap text-fg-subtle">
+                          {tierLabel(tier, t("dash.pricing.default"))}
+                        </Td>
+                        <Td numeric>{usd(tier.pricing.input)}</Td>
+                        <Td numeric>{usd(tier.pricing.input_cache_read)}</Td>
+                        <Td numeric>{usd(tier.pricing.input_cache_write)}</Td>
+                        <Td numeric>{usd(tier.pricing.output)}</Td>
+                      </tr>
+                    )),
+                  )}
+                </TBody>
+              </Table>
+            </Card>
+          )
+        })}
+      </div>
     </div>
   )
 }

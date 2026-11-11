@@ -1,5 +1,12 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useId, useRef, useState } from "react"
+import { Plus, X } from "lucide-react"
 import { useT } from "../../state/i18n"
+import { Badge } from "../../ui/badge"
+import { Button } from "../../ui/button"
+import { cn } from "../../ui/cn"
+import { Meter } from "../../ui/meter"
+import { Notice } from "../../ui/notice"
+import { SegmentedControl, type SegmentedOption } from "../../ui/segmented-control"
 import {
   buildDecisionBody, decisionExamples, decisionPath, decisionUsage, nativeDecisionDialect, parseDecisionAnswers,
   restoreDecisionDraft, unsentCriteria, validateDecisionDraft,
@@ -106,6 +113,9 @@ export function DecisionPanel({ modelId, apiKey, supportedEndpoints }: Props) {
     localStorage.setItem(LS_DRAFT, JSON.stringify(draft))
   }, [draft])
 
+  const stateId = useId()
+  const stateHintId = useId()
+  const addQuestionId = useId()
   const problem = validateDecisionDraft(draft, native)
   const dropped = unsentCriteria(draft, dialect, native)
 
@@ -174,32 +184,32 @@ export function DecisionPanel({ modelId, apiKey, supportedEndpoints }: Props) {
     }
   }
 
+  const dialectOptions: ReadonlyArray<SegmentedOption<DecisionDialect>> = DIALECTS.map((d) => ({
+    value: d.value,
+    label: d.value === native
+      ? <>{d.label}<Badge tone="brand" className="ml-1.5">{t("dash.playground.decisionNative")}</Badge></>
+      : d.label,
+  }))
+
   return (
     <div className="flex flex-col h-full min-h-0 pg-chat-surface">
       <div className="pg-topbar">
-        <span className="text-themed-dim">{t("dash.playground.protocol")}:</span>
-        <div className="flex items-center gap-1 bg-surface-800 rounded-lg p-0.5">
-          {DIALECTS.map((d) => (
-            <button
-              key={d.value}
-              onClick={() => setDialect(d.value)}
-              disabled={sending}
-              className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${
-                dialect === d.value ? "bg-surface-600 text-themed" : "text-themed-dim hover:text-themed-secondary"
-              }`}
-            >
-              {d.label}
-              {d.value === native && <span className="ml-1.5 text-[10px] text-accent-teal">{t("dash.playground.decisionNative")}</span>}
-            </button>
-          ))}
-        </div>
-        <span className="text-themed-dim">
+        <span className="text-fg-subtle">{t("dash.playground.protocol")}:</span>
+        <SegmentedControl
+          options={dialectOptions}
+          value={dialect}
+          onChange={setDialect}
+          ariaLabel={t("dash.playground.protocol")}
+          size="sm"
+          disabled={sending}
+        />
+        <span className="text-fg-subtle">
           {dialect === native
             ? t("dash.playground.decisionFormatNativeHint", { format: dialectLabel(dialect), path: decisionPath(dialect) })
             : t("dash.playground.decisionFormatTranslatedHint", { format: dialectLabel(dialect), path: decisionPath(dialect), native: dialectLabel(native) })}
         </span>
         {sending && (
-          <span className="text-themed-dim flex items-center gap-2">
+          <span role="status" className="flex items-center gap-2 text-fg-subtle">
             <span className="pg-dots"><span/><span/><span/></span>
             {t("dash.playground.generating")}
           </span>
@@ -218,10 +228,12 @@ export function DecisionPanel({ modelId, apiKey, supportedEndpoints }: Props) {
 
           <section className="space-y-1.5">
             <div className="pg-label">
-              {t("dash.playground.decisionState")}
-              <span className="pg-label-hint">{t("dash.playground.decisionStateHint")}</span>
+              <label htmlFor={stateId}>{t("dash.playground.decisionState")}</label>
+              <span id={stateHintId} className="pg-label-hint">{t("dash.playground.decisionStateHint")}</span>
             </div>
             <textarea
+              id={stateId}
+              aria-describedby={stateHintId}
               className="pg-field pg-field-sans min-h-[84px]"
               value={draft.state}
               onChange={(e) => edit({ ...draft, state: e.target.value })}
@@ -244,27 +256,34 @@ export function DecisionPanel({ modelId, apiKey, supportedEndpoints }: Props) {
                 onRemove={() => edit({ ...draft, questions: draft.questions.filter((_, i) => i !== index) })}
               />
             ))}
-            <div className="flex items-center gap-1.5 text-xs flex-wrap">
-              <span className="text-themed-dim">{t("dash.playground.decisionAddQuestion")}:</span>
+            <div role="group" aria-labelledby={addQuestionId} className="flex items-center gap-1.5 text-xs flex-wrap">
+              <span id={addQuestionId} className="text-fg-subtle">{t("dash.playground.decisionAddQuestion")}:</span>
               {TYPES.map((type) => (
-                <button key={type.value} className="pg-mini-btn" onClick={() => edit({ ...draft, questions: [...draft.questions, blankQuestion(type.value)] })}>
-                  + {t(type.key)}
-                </button>
+                <Button
+                  key={type.value}
+                  variant="secondary"
+                  size="sm"
+                  className="gap-1"
+                  onClick={() => edit({ ...draft, questions: [...draft.questions, blankQuestion(type.value)] })}
+                >
+                  <Plus aria-hidden="true" />
+                  {t(type.key)}
+                </Button>
               ))}
             </div>
           </section>
 
-          {dropped > 0 && <div className="pg-warn">⚠ {t("dash.playground.decisionCriteriaDropped", { n: dropped })}</div>}
+          {dropped > 0 && <Notice tone="warn" className="text-xs">{t("dash.playground.decisionCriteriaDropped", { n: dropped })}</Notice>}
 
           <div className="flex items-center gap-3">
-            <button className="btn-primary py-2! px-5!" disabled={problem !== null || sending} onClick={() => void send()}>
+            <Button variant="primary" className="px-5" disabled={problem !== null || sending} onClick={() => void send()}>
               {t("dash.playground.send")}
-            </button>
+            </Button>
             {sending && (
-              <button className="btn-ghost py-2! px-4!" onClick={() => abortRef.current?.abort()}>{t("dash.playground.stop")}</button>
+              <Button variant="secondary" onClick={() => abortRef.current?.abort()}>{t("dash.playground.stop")}</Button>
             )}
             {problem && (
-              <span className="text-xs text-(--danger)">
+              <span className="text-xs text-danger-text">
                 {t(problem.key, { n: (problem.question ?? 0) + 1 })}
               </span>
             )}
@@ -272,7 +291,7 @@ export function DecisionPanel({ modelId, apiKey, supportedEndpoints }: Props) {
 
           <div ref={resultRef} className="scroll-mt-4">
             {result ? <DecisionResult result={result} /> : !sending && (
-              <div className="text-xs text-themed-dim">{t("dash.playground.decisionEmpty")}</div>
+              <div className="text-xs text-fg-subtle">{t("dash.playground.decisionEmpty")}</div>
             )}
           </div>
         </div>
@@ -296,106 +315,120 @@ interface CardProps {
 function QuestionCard({ index, question, dialect, instructionsRequired, problemKey, onChange, onRetype, onRemove }: CardProps) {
   const t = useT()
   const type = TYPES.find((entry) => entry.value === question.type)!
+  const typeOptions: ReadonlyArray<SegmentedOption<DecisionQuestionType>> = TYPES.map((entry) => ({ value: entry.value, label: t(entry.key) }))
+  const instructionsPlaceholder = t(instructionsRequired
+    ? "dash.playground.decisionInstructionsRequiredPlaceholder"
+    : "dash.playground.decisionInstructionsPlaceholder")
+  const removeLabel = t("dash.playground.decisionRemove")
   return (
-    <div className={"pg-card space-y-2" + (problemKey ? " is-invalid" : "")}>
+    <div className={cn("space-y-2 rounded-lg border bg-panel p-3", problemKey ? "border-danger" : "border-border")}>
       <div className="flex items-center gap-2 flex-wrap">
-        <span className="text-xs font-mono text-themed-dim">#{index + 1}</span>
-        <div className="flex items-center gap-1 bg-surface-800 rounded-lg p-0.5">
-          {TYPES.map((entry) => (
-            <button
-              key={entry.value}
-              onClick={() => onRetype(entry.value)}
-              className={`px-2.5 py-0.5 rounded-md text-xs font-medium transition-all ${
-                question.type === entry.value ? "bg-surface-600 text-themed" : "text-themed-dim hover:text-themed-secondary"
-              }`}
-            >
-              {t(entry.key)}
-            </button>
-          ))}
-        </div>
-        <input
-          type="text"
-          className="pg-field flex-1 min-w-[140px] w-auto!"
-          value={question.name}
-          onChange={(e) => onChange({ name: e.target.value })}
-          placeholder={t("dash.playground.decisionNamePlaceholder")}
-          title={t("dash.playground.decisionNameHint")}
+        <span className="text-xs font-mono text-fg-subtle">#{index + 1}</span>
+        <SegmentedControl
+          options={typeOptions}
+          value={question.type}
+          onChange={onRetype}
+          ariaLabel={t("dash.playground.decisionTypeAria", { n: index + 1 })}
+          size="sm"
         />
-        <button className="pg-mini-btn" onClick={onRemove} title={t("dash.playground.decisionRemove")}>✕</button>
+        <div className="min-w-[140px] flex-1">
+          <input
+            type="text"
+            className="pg-field"
+            value={question.name}
+            onChange={(e) => onChange({ name: e.target.value })}
+            placeholder={t("dash.playground.decisionNamePlaceholder")}
+            aria-label={t("dash.playground.decisionNamePlaceholder")}
+            title={t("dash.playground.decisionNameHint")}
+          />
+        </div>
+        <RemoveButton label={removeLabel} onClick={onRemove} />
       </div>
-      <div className="text-[11px] text-themed-dim">{t(type.hintKey)}</div>
+      <div className="text-xs text-fg-subtle">{t(type.hintKey)}</div>
       <input
         type="text"
         className="pg-field pg-field-sans"
         value={question.instructions}
         onChange={(e) => onChange({ instructions: e.target.value })}
-        placeholder={t(instructionsRequired
-          ? "dash.playground.decisionInstructionsRequiredPlaceholder"
-          : "dash.playground.decisionInstructionsPlaceholder")}
+        placeholder={instructionsPlaceholder}
+        aria-label={instructionsPlaceholder}
       />
 
       {question.type === "yesno" && (dialect === "typesafe-systemone" ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           <input type="text" className="pg-field pg-field-sans" value={question.criteriaTrue}
-            onChange={(e) => onChange({ criteriaTrue: e.target.value })} placeholder={t("dash.playground.decisionCriteriaTrue")} />
+            onChange={(e) => onChange({ criteriaTrue: e.target.value })} placeholder={t("dash.playground.decisionCriteriaTrue")}
+            aria-label={t("dash.playground.decisionCriteriaTrue")} />
           <input type="text" className="pg-field pg-field-sans" value={question.criteriaFalse}
-            onChange={(e) => onChange({ criteriaFalse: e.target.value })} placeholder={t("dash.playground.decisionCriteriaFalse")} />
+            onChange={(e) => onChange({ criteriaFalse: e.target.value })} placeholder={t("dash.playground.decisionCriteriaFalse")}
+            aria-label={t("dash.playground.decisionCriteriaFalse")} />
         </div>
       ) : (
-        <div className="text-[11px] text-themed-dim">{t("dash.playground.decisionCriteriaHidden")}</div>
+        <div className="text-xs text-fg-subtle">{t("dash.playground.decisionCriteriaHidden")}</div>
       ))}
 
       {question.type === "choice" && (
         <div className="space-y-1.5">
           {question.options.map((option, at) => (
             <div key={at} className="flex items-center gap-2">
-              <input type="text" className="pg-field w-40! shrink-0" value={option.value}
-                onChange={(e) => onChange({ options: question.options.map((o, i) => (i === at ? { ...o, value: e.target.value } : o)) })}
-                placeholder={t("dash.playground.decisionOptionValue")} />
+              <div className="w-40 shrink-0">
+                <input type="text" className="pg-field" value={option.value}
+                  onChange={(e) => onChange({ options: question.options.map((o, i) => (i === at ? { ...o, value: e.target.value } : o)) })}
+                  placeholder={t("dash.playground.decisionOptionValue")}
+                  aria-label={t("dash.playground.decisionOptionValue")} />
+              </div>
               <input type="text" className="pg-field pg-field-sans flex-1" value={option.description}
                 onChange={(e) => onChange({ options: question.options.map((o, i) => (i === at ? { ...o, description: e.target.value } : o)) })}
-                placeholder={t("dash.playground.decisionOptionDescription")} />
-              <button className="pg-mini-btn" onClick={() => onChange({ options: question.options.filter((_, i) => i !== at) })}
-                title={t("dash.playground.decisionRemove")}>✕</button>
+                placeholder={t("dash.playground.decisionOptionDescription")}
+                aria-label={t("dash.playground.decisionOptionDescription")} />
+              <RemoveButton label={removeLabel} onClick={() => onChange({ options: question.options.filter((_, i) => i !== at) })} />
             </div>
           ))}
-          <button className="pg-mini-btn" onClick={() => onChange({ options: [...question.options, { value: "", description: "" }] })}>
+          <Button variant="secondary" size="sm" onClick={() => onChange({ options: [...question.options, { value: "", description: "" }] })}>
             {t("dash.playground.decisionAddOption")}
-          </button>
+          </Button>
         </div>
       )}
 
       {question.type === "score" && (
         <div className="space-y-1.5">
-          <div className="text-[11px] text-themed-dim">{t("dash.playground.decisionLevelsOrder")}</div>
+          <div className="text-xs text-fg-subtle">{t("dash.playground.decisionLevelsOrder")}</div>
           {question.levels.map((level, at) => (
             <div key={at} className="flex items-center gap-2">
-              <span className="w-6 shrink-0 text-right text-xs font-mono text-themed-dim">{at}</span>
+              <span className="w-6 shrink-0 text-right text-xs font-mono text-fg-subtle">{at}</span>
               <input type="text" className="pg-field pg-field-sans flex-1" value={level}
                 onChange={(e) => onChange({ levels: question.levels.map((l, i) => (i === at ? e.target.value : l)) })}
-                placeholder={t("dash.playground.decisionLevelPlaceholder", { n: at })} />
-              <button className="pg-mini-btn" onClick={() => onChange({ levels: question.levels.filter((_, i) => i !== at) })}
-                title={t("dash.playground.decisionRemove")}>✕</button>
+                placeholder={t("dash.playground.decisionLevelPlaceholder", { n: at })}
+                aria-label={t("dash.playground.decisionLevelPlaceholder", { n: at })} />
+              <RemoveButton label={removeLabel} onClick={() => onChange({ levels: question.levels.filter((_, i) => i !== at) })} />
             </div>
           ))}
-          <button className="pg-mini-btn" disabled={question.levels.length >= MAX_LEVELS}
+          <Button variant="secondary" size="sm" disabled={question.levels.length >= MAX_LEVELS}
             onClick={() => onChange({ levels: [...question.levels, ""] })}>
             {t("dash.playground.decisionAddLevel")}
-          </button>
+          </Button>
         </div>
       )}
 
-      {problemKey && <div className="text-xs text-(--danger)">{t(problemKey, { n: index + 1 })}</div>}
+      {problemKey && <div className="text-xs text-danger-text">{t(problemKey, { n: index + 1 })}</div>}
     </div>
+  )
+}
+
+function RemoveButton({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <Button variant="ghost" size="icon-sm" className="shrink-0" onClick={onClick} title={label} aria-label={label}>
+      <X aria-hidden="true" />
+    </Button>
   )
 }
 
 function ProbabilityBar({ label, probability, selected }: { label: string; probability: number; selected: boolean }) {
   return (
-    <div className="pg-prob">
-      <span className={"pg-prob-label" + (selected ? " is-selected" : "")} title={label}>{label}</span>
-      <span className="pg-bar"><span className={"pg-bar-fill" + (selected ? " is-selected" : "")} style={{ width: percent(probability) }} /></span>
-      <span className="pg-prob-value">{percent(probability)}</span>
+    <div className="grid grid-cols-[minmax(80px,180px)_1fr_52px] items-center gap-2.5 text-xs">
+      <span className={cn("truncate", selected ? "font-semibold text-fg" : "text-fg-muted")} title={label}>{label}</span>
+      <Meter percent={probability * 100} tone={selected ? "brand" : "muted"} className={cn("h-2", !selected && "[&>div]:bg-fg-subtle/40")} />
+      <span className="text-right font-mono text-fg-muted">{percent(probability)}</span>
     </div>
   )
 }
@@ -405,8 +438,8 @@ function DecisionResult({ result }: { result: Result }) {
   const [raw, setRaw] = useState<"request" | "response" | null>(null)
   return (
     <section className="space-y-2">
-      <div className="flex items-center gap-2 flex-wrap text-xs text-themed-dim">
-        <span className="pg-label mb-0!">{t("dash.playground.decisionAnswers")}</span>
+      <div className="flex items-center gap-2 flex-wrap text-xs text-fg-subtle">
+        <span className="font-semibold text-fg-muted">{t("dash.playground.decisionAnswers")}</span>
         <span className="font-mono">
           {t("dash.playground.decisionMeta", {
             format: dialectLabel(result.dialect),
@@ -417,29 +450,36 @@ function DecisionResult({ result }: { result: Result }) {
         </span>
         <span className="ml-auto flex items-center gap-1">
           {(["request", "response"] as const).map((which) => (
-            <button key={which} className={"pg-mini-btn" + (raw === which ? " is-active" : "")} onClick={() => setRaw(raw === which ? null : which)}>
+            <Button
+              key={which}
+              variant="secondary"
+              size="sm"
+              aria-pressed={raw === which}
+              className="aria-pressed:border-brand-text/40 aria-pressed:bg-brand-text/10 aria-pressed:text-brand-text"
+              onClick={() => setRaw(raw === which ? null : which)}
+            >
               {t(which === "request" ? "dash.playground.rawRequest" : "dash.playground.rawResponse")}
-            </button>
+            </Button>
           ))}
         </span>
       </div>
       {raw && (
-        <pre className="pg-raw">
+        <pre className="max-h-80 overflow-auto whitespace-pre rounded-md border border-border bg-muted px-3 py-2.5 font-mono text-xs">
           {raw === "request" ? JSON.stringify(result.request, null, 2) : prettyJson(result.text)}
         </pre>
       )}
-      {result.error && <div className="pg-error mx-0!">⚠ {result.error}</div>}
+      {result.error && <Notice tone="danger" className="break-words">{result.error}</Notice>}
       {result.answers?.map((answer) => (
-        <div key={answer.name} className="pg-card space-y-1.5">
+        <div key={answer.name} className="space-y-1.5 rounded-lg border border-border bg-panel p-3">
           <div className="flex items-baseline gap-2 flex-wrap text-xs">
-            <span className="font-mono font-medium text-themed">{answer.name}</span>
+            <span className="font-mono font-medium text-fg">{answer.name}</span>
             {answer.kind === "choice" && (
-              <span className="text-themed-secondary">
+              <span className="text-fg-muted">
                 {t("dash.playground.decisionChosen", { choice: answer.choice })} · {t("dash.playground.decisionConfidence", { pct: percent(answer.confidence) })}
               </span>
             )}
             {answer.kind === "score" && (
-              <span className="text-themed-secondary">
+              <span className="text-fg-muted">
                 {t("dash.playground.decisionScored", { score: answer.score.toFixed(2), max: answer.levelCount - 1 })} · {t("dash.playground.decisionConfidence", { pct: percent(answer.confidence) })}
               </span>
             )}
@@ -451,7 +491,7 @@ function DecisionResult({ result }: { result: Result }) {
             </>
           )}
           {(answer.kind === "choice" || answer.kind === "score") && answer.bars.map((bar) => <ProbabilityBar key={bar.label} {...bar} />)}
-          {answer.kind === "refusal" && <div className="text-xs text-(--warn)">{t("dash.playground.decisionRefusal")}</div>}
+          {answer.kind === "refusal" && <div className="text-xs text-warn-text">{t("dash.playground.decisionRefusal")}</div>}
         </div>
       ))}
     </section>

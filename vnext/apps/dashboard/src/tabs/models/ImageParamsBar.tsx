@@ -1,5 +1,7 @@
+import { useId } from "react"
 import { useT } from "../../state/i18n"
-import { Select } from "../../components/Select"
+import { cn } from "../../ui/cn"
+import { Select, type SelectOption } from "../../ui/select"
 import {
   BACKGROUND_OPTIONS, INPUT_FIDELITY_OPTIONS, OUTPUT_FORMAT_OPTIONS,
   QUALITY_OPTIONS, SIZE_OPTIONS, type ImageParams,
@@ -10,10 +12,31 @@ interface Props {
   onChange: (next: ImageParams) => void
   /** Edits-only controls appear once the composer holds a reference image. */
   editing: boolean
+  /** While a reply streams: every select is disabled, for the keyboard too. */
   disabled?: boolean
 }
 
 const N_OPTIONS = [1, 2, 3, 4]
+
+/** One labelled parameter. The visible caption names the select (plus its current value). */
+function ParamField({ label, value, options, onChange, disabled, className }: {
+  label: string
+  value: string
+  options: SelectOption[]
+  onChange: (value: string) => void
+  disabled?: boolean
+  className: string
+}) {
+  const labelId = useId()
+  return (
+    <div className="pg-img-param">
+      <span id={labelId} className={disabled ? "opacity-50" : undefined}>{label}</span>
+      <div className={className}>
+        <Select value={value} onChange={onChange} options={options} labelledBy={labelId} disabled={disabled} size="sm" />
+      </div>
+    </div>
+  )
+}
 
 export function ImageParamsBar({ params, onChange, editing, disabled }: Props) {
   const t = useT()
@@ -31,34 +54,33 @@ export function ImageParamsBar({ params, onChange, editing, disabled }: Props) {
     key: keyof ImageParams,
     options: readonly string[],
   ) => (
-    <label className="pg-img-param">
-      <span>{label}</span>
-      <Select
-        value={String(params[key])}
-        onChange={(v) => set(key, v as never)}
-        options={options.map((o) => ({ value: o, label: o === "auto" ? t("dash.playground.imgAuto") : o }))}
-        className="min-w-[104px]"
-      />
-    </label>
+    <ParamField
+      label={label}
+      value={String(params[key])}
+      onChange={(v) => set(key, v as never)}
+      options={options.map((o) => ({ value: o, label: o === "auto" ? t("dash.playground.imgAuto") : o }))}
+      disabled={disabled}
+      className="min-w-[104px]"
+    />
   )
 
   return (
-    <div className={"pg-img-params" + (disabled ? " opacity-50 pointer-events-none" : "")}>
+    // The selects dim themselves when disabled; only the captions and the mode pill need it here.
+    <div className="pg-img-params">
       {enumField(t("dash.playground.imgSize"), "size", SIZE_OPTIONS)}
       {enumField(t("dash.playground.imgQuality"), "quality", QUALITY_OPTIONS)}
-      <label className="pg-img-param">
-        <span>{t("dash.playground.imgCount")}</span>
-        <Select
-          value={String(params.n)}
-          onChange={(v) => set("n", Number(v))}
-          options={N_OPTIONS.map((n) => ({ value: String(n), label: String(n) }))}
-          className="min-w-[64px]"
-        />
-      </label>
+      <ParamField
+        label={t("dash.playground.imgCount")}
+        value={String(params.n)}
+        onChange={(v) => set("n", Number(v))}
+        options={N_OPTIONS.map((n) => ({ value: String(n), label: String(n) }))}
+        disabled={disabled}
+        className="min-w-[64px]"
+      />
       {enumField(t("dash.playground.imgBackground"), "background", BACKGROUND_OPTIONS)}
       {enumField(t("dash.playground.imgFormat"), "outputFormat", formats)}
       {editing && enumField(t("dash.playground.imgFidelity"), "inputFidelity", INPUT_FIDELITY_OPTIONS)}
-      <span className="pg-img-mode" title={t(editing ? "dash.playground.imgEditHint" : "dash.playground.imgGenerateHint")}>
+      <span className={cn("pg-img-mode", disabled && "opacity-50")} title={t(editing ? "dash.playground.imgEditHint" : "dash.playground.imgGenerateHint")}>
         {t(editing ? "dash.playground.imgEdit" : "dash.playground.imgGenerate")}
       </span>
     </div>

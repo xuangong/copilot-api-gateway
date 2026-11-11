@@ -1,4 +1,7 @@
+import { Lightbulb } from "lucide-react"
 import { useT } from "../../state/i18n"
+import { Button } from "../../ui/button"
+import { cn } from "../../ui/cn"
 
 export interface PlaygroundExample {
   id: string
@@ -26,30 +29,39 @@ export function PlaygroundExamples({ examples, activeId, onPick, onUndo, disable
   return (
     <div className="space-y-1.5">
       <div className="flex items-center gap-1.5 flex-wrap text-xs">
-        <span className="text-themed-dim">{t("dash.playground.examples")}:</span>
-        {examples.map((example) => (
-          <button
-            key={example.id}
-            onClick={() => onPick(example.id)}
-            disabled={disabled}
-            title={t(example.hintKey)}
-            className={`px-2.5 py-1 rounded-md border transition-all disabled:opacity-50 ${
-              example.id === activeId
-                ? "border-accent-violet/40 bg-accent-violet/10 text-accent-violet"
-                : "border-themed text-themed-secondary hover:text-themed"
-            }`}
-          >
-            {t(example.titleKey)}
-          </button>
-        ))}
+        <span className="text-fg-subtle">{t("dash.playground.examples")}:</span>
+        {examples.map((example) => {
+          const isActive = example.id === activeId
+          return (
+            <button
+              key={example.id}
+              type="button"
+              onClick={() => onPick(example.id)}
+              disabled={disabled}
+              title={t(example.hintKey)}
+              aria-pressed={isActive}
+              className={cn(
+                "rounded-md border px-2.5 py-1 transition-colors disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-text",
+                isActive
+                  ? "border-brand-text/40 bg-brand-text/10 text-brand-text"
+                  : "border-border text-fg-muted hover:text-fg",
+              )}
+            >
+              {t(example.titleKey)}
+            </button>
+          )
+        })}
       </div>
       {active && (
-        <div className="flex items-start gap-2 text-xs text-themed-dim">
-          <span>💡 {t(active.hintKey)}</span>
+        <div className="flex items-start gap-2 text-xs text-fg-subtle">
+          <span className="flex items-start gap-1.5">
+            <Lightbulb className="mt-px size-3.5 shrink-0" aria-hidden="true" />
+            <span>{t(active.hintKey)}</span>
+          </span>
           {onUndo && (
-            <button onClick={onUndo} className="shrink-0 underline hover:text-themed">
+            <Button variant="ghost" size="sm" className="-my-1 h-6 shrink-0 px-2 text-xs" onClick={onUndo}>
               {t("dash.playground.exampleUndo")}
-            </button>
+            </Button>
           )}
         </div>
       )}
