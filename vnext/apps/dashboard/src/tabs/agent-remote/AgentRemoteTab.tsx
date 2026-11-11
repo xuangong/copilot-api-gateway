@@ -33,7 +33,7 @@ export function ShareRow({ share, onSave, onRevoke, busy }: {
         <input aria-label={`${t("dash.remote.limit")} · ${share.label}`} type="number" min="0" max="10000" step="1" value={limit} onChange={event => setLimit(event.target.value)} className="mt-1" />
       </label>
       <Button type="submit" variant="secondary" size="md" disabled={busy || parsed === undefined || (!share.revoked && parsed === share.sessionLimit)}>{share.revoked ? t("dash.remote.grant") : t("dash.remote.save")}</Button>
-      {!share.revoked && <Button variant="secondary" size="md" className="text-danger" disabled={busy} onClick={() => { void onRevoke(share.label) }}>{t("dash.remote.revoke")}</Button>}
+      {!share.revoked && <Button variant="secondary" size="md" className="text-danger" disabled={busy} onClick={() => { if (window.confirm(t("dash.remote.revokeConfirm", { label: share.label }))) void onRevoke(share.label) }}>{t("dash.remote.revoke")}</Button>}
     </div>
     {parsed !== undefined && parsed < share.used && <p className="text-xs text-fg-subtle">{t("dash.remote.lowerLimit")}</p>}
   </form>

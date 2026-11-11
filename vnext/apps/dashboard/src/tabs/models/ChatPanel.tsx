@@ -16,8 +16,8 @@ import { escapeExitsFullscreen, initialFullscreen, persistFullscreen, spendLande
 import { pruneIndexedState, retractFrom } from "./retract"
 import { BrowserPerformance, type BrowserPerformanceSnapshot } from "./browser-performance"
 import {
-  appendText, applyCitations, applyWebSearchProgress, compactMessages, dropEmptyAssistant, dropLastUserTurn,
-  finalizeLast as finalizeLastMessage, loadPersistedMessages, loadPersistedProtocol, messageParts,
+  appendText, applyCitations, applyWebSearchProgress, compactMessages, dropEmptyAssistant,
+  finalizeLast as finalizeLastMessage, loadPersistedMessages, loadPersistedProtocol, retryPlan,
   setLastImages, setLastOutput, setLastUsage, toggleIndex,
   LS_MESSAGES, LS_PROTOCOL, MAX_PERSISTED_MESSAGES, type Message, type Protocol,
 } from "./chat/chat-state"
@@ -92,7 +92,6 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
   const abortRef = useRef<AbortController | null>(null)
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const threadObserverRef = useRef<ResizeObserver | null>(null)
-  const lastUserRef = useRef<Message | null>(null)
   const startedAtRef = useRef<number>(0)
 
   useEffect(() => {
@@ -292,21 +291,19 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
   }
 
   // The memo below is effectively per message (its deps change on every
-  // delta), and `retry` reaches it through a `setTimeout` from the render the
-  // retry was clicked in. Known bug carried over unchanged from before the
-  // split: that `send` still sees the failed user turn in `messages`, and its
-  // non-functional `setMessages([...messages, …])` overwrites retry's drop, so a
-  // retry sends the user turn twice. Fix by passing an explicit base history.
+  // delta). `base` is the history the new user turn goes on top of — both for
+  // the request and for the thread it writes back. It defaults to the current
+  // `messages`; `retry` passes the thread with the failed turn already cut
+  // (see `retryPlan`), so the re-sent turn appears exactly once.
   const send = useCallback(
-    async (override?: Part[]) => {
+    async (override?: Part[], base: Message[] = messages) => {
       const parts = override ?? readParts()
       if (parts.length === 0 || mode === undefined) return
       const userMsg: Message = { role: "user", text: partsToText(parts), parts }
-      lastUserRef.current = userMsg
       // Sending is an explicit "show me the answer", so re-arm the pin even if
       // the reader had scrolled up to review something before typing.
       stickToBottomRef.current = true
-      const nextHistory = [...messages, userMsg]
+      const nextHistory = [...base, userMsg]
       // Stamped now, not at render time: the panel's model can change while
       // this reply is still streaming, and the badge must keep naming whoever
       // actually produced the text.
@@ -357,13 +354,12 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
   )
 
   function retry() {
-    const last = lastUserRef.current
-    if (!last) return
-    // Drop the last user message we're about to re-send (we re-add it inside send())
-    setMessages((prev) => dropLastUserTurn(prev))
+    // Re-send the failed user turn on the history before it; `send` writes
+    // `base + turn + new reply` itself, so no separate drop is needed.
+    const plan = retryPlan(messages)
+    if (!plan) return
     setError(null)
-    // Defer to next tick so messages state is committed
-    setTimeout(() => send(messageParts(last)), 0)
+    void send(plan.parts, plan.base)
   }
 
   function finalizeLast(outcome: BrowserPerformanceSnapshot["outcome"], observation?: BrowserPerformance) {

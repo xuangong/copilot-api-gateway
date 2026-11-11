@@ -200,6 +200,20 @@ export function dropLastUserTurn(prev: Message[]): Message[] {
 }
 
 /**
+ * What a retry re-sends: the last user turn's parts, on top of the history
+ * before it. The failed turn and whatever reply it left behind (partial,
+ * empty, or none) are excluded from `base`, so the send re-adds the user turn
+ * exactly once. Null when there is no non-empty user turn to retry.
+ */
+export function retryPlan(prev: Message[]): { base: Message[]; parts: Part[] } | null {
+  const base = dropLastUserTurn(prev)
+  const last = prev[base.length]
+  if (!last || last.role !== "user") return null
+  const parts = messageParts(last)
+  return parts.length > 0 ? { base, parts } : null
+}
+
+/**
  * Drop the oldest user+assistant pair(s). One click = up to 2 oldest turns
  * (4 messages) so the user can shrink large contexts quickly without losing
  * the most recent exchanges that carry conversational state.

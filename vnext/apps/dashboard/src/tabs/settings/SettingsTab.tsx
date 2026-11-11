@@ -95,6 +95,7 @@ export function SettingsTab() {
 
   async function onConfirmImport() {
     if (!preview) return
+    if (preview.mode === "replace" && !window.confirm(t("dash.importReplaceConfirm"))) return
     setImporting(true)
     try {
       const resp = await fetch("/api/import", {

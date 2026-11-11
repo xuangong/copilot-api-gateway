@@ -145,6 +145,7 @@ export function ProxiesTab() {
   }
 
   const remove = async (p: ProxyRecord) => {
+    if (!window.confirm(t("dash.proxyDeleteConfirm", { name: p.name }))) return
     try {
       await deleteProxy(p.id)
       await reload()

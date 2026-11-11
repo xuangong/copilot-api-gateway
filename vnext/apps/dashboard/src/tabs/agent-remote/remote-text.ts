@@ -23,6 +23,7 @@ export const remoteText = {
   "dash.remote.save": "Save limit",
   "dash.remote.grant": "Grant again",
   "dash.remote.revoke": "Revoke",
+  "dash.remote.revokeConfirm": "Revoke {label}'s access to this Host? Their used session count is kept if you grant access again.",
   "dash.remote.revoked": "Revoked",
   "dash.remote.noShares": "This Host has not been shared yet.",
   "dash.remote.loadingShares": "Loading shares…",

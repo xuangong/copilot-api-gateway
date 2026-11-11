@@ -357,6 +357,29 @@ test('POST /admin/users/:id/disable + /enable toggles flag', async () => {
   expect((await store.repo.users.getById('u1'))?.disabled).toBe(false)
 })
 
+test('POST /admin/users/:id/disable refuses the caller\'s own account', async () => {
+  await store.repo.users.create(mkUser({ id: 'admin' }))
+  const res = await buildApp({ authKind: 'session', userId: 'admin', isAdmin: true })
+    .request('/auth/admin/users/admin/disable', { method: 'POST' })
+  expect(res.status).toBe(400)
+  expect((await res.json() as any).error).toBe('You cannot disable your own account')
+  expect((await store.repo.users.getById('admin'))?.disabled).toBe(false)
+})
+
+test('DELETE /admin/users/:id refuses the caller\'s own account', async () => {
+  await store.repo.users.create(mkUser({ id: 'admin' }))
+  await store.repo.sessions.create({
+    token: 'ses_admin', userId: 'admin', createdAt: 'x',
+    expiresAt: new Date(Date.now() + 86400000).toISOString(),
+  })
+  const res = await buildApp({ authKind: 'session', userId: 'admin', isAdmin: true })
+    .request('/auth/admin/users/admin', { method: 'DELETE' })
+  expect(res.status).toBe(400)
+  expect((await res.json() as any).error).toBe('You cannot delete your own account')
+  expect(store.users.has('admin')).toBe(true)
+  expect(store.sessions.size).toBe(1)
+})
+
 test('DELETE /admin/users/:id cascades across repos', async () => {
   await store.repo.users.create(mkUser({ id: 'u1' }))
   await store.repo.sessions.create({

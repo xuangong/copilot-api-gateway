@@ -50,25 +50,27 @@ export function UserRow({ user, busy, isSelf, quotas, onAssign, onToggle, onDele
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-1">
-          {!isSelf ? (
+        {/* Your own row offers no actions: assigning keys to yourself is meaningless,
+            and disabling or deleting yourself would lock you out (the server refuses it too). */}
+        {!isSelf ? (
+          <div className="flex items-center gap-1">
             <Button variant="ghost" size="sm" onClick={onAssign} disabled={busy}>
               {t("dash.assignKeysBtn")}
             </Button>
-          ) : null}
-          <Button variant="ghost" size="sm" onClick={onToggle} disabled={busy}>
-            {user.disabled ? t("dash.enableLabel") : t("dash.disableLabel")}
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onDelete}
-            disabled={busy}
-            className="text-danger hover:bg-danger/10 hover:text-danger"
-          >
-            {t("dash.deleteLabel")}
-          </Button>
-        </div>
+            <Button variant="ghost" size="sm" onClick={onToggle} disabled={busy}>
+              {user.disabled ? t("dash.enableLabel") : t("dash.disableLabel")}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onDelete}
+              disabled={busy}
+              className="text-danger hover:bg-danger/10 hover:text-danger"
+            >
+              {t("dash.deleteLabel")}
+            </Button>
+          </div>
+        ) : null}
       </div>
     </div>
   )

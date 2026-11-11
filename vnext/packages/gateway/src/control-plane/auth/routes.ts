@@ -232,6 +232,8 @@ authRouter.get('/admin/users', async (c) => {
 
 authRouter.post('/admin/users/:id/disable', async (c) => {
   if (!c.get('auth')?.isAdmin) return c.json({ error: 'Admin only' }, 403)
+  // An admin who disables or deletes their own account locks themselves out.
+  if (c.req.param('id') === c.get('auth')?.userId) return c.json({ error: 'You cannot disable your own account' }, 400)
   await getRepo().users.update(c.req.param('id') as UserId, { disabled: true })
   return c.json({ ok: true })
 })
@@ -246,6 +248,7 @@ authRouter.delete('/admin/users/:id', async (c) => {
   if (!c.get('auth')?.isAdmin) return c.json({ error: 'Admin only' }, 403)
   const repo = getRepo()
   const userId = c.req.param('id') as UserId
+  if (userId === c.get('auth')?.userId) return c.json({ error: 'You cannot delete your own account' }, 400)
 
   await repo.sessions.deleteByUserId(userId)
   await repo.inviteCodes.clearUsedBy(userId)

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import {
   appendText, applyCitations, applyWebSearchProgress, compactMessages, composeSystemPrompt, dropEmptyAssistant,
   dropLastUserTurn, finalizeLast, hostOf, loadPersistedMessages, loadPersistedProtocol, messageParts,
-  setLastImages, setLastOutput, setLastUsage, toggleIndex, type Message,
+  retryPlan, setLastImages, setLastOutput, setLastUsage, toggleIndex, type Message,
 } from "./chat-state"
 
 const user = (text: string): Message => ({ role: "user", text })
@@ -100,6 +100,31 @@ describe("dropLastUserTurn", () => {
   })
   test("a thread without a user turn empties", () => {
     expect(dropLastUserTurn([assistant("x")])).toEqual([])
+  })
+})
+
+describe("retryPlan", () => {
+  const parts = (text: string) => [{ type: "text" as const, text }]
+  test("a failed first turn re-sends its parts on an empty base", () => {
+    const u1: Message = { role: "user", text: "hi", parts: parts("hi") }
+    expect(retryPlan([u1, assistant("partial")])).toEqual({ base: [], parts: parts("hi") })
+  })
+  test("a failed turn with no assistant bubble left re-sends on the earlier history", () => {
+    expect(retryPlan([user("a"), assistant("1"), user("b")])).toEqual({ base: [user("a"), assistant("1")], parts: parts("b") })
+  })
+  test("keeps the earlier exchanges and drops only the failed turn and its reply", () => {
+    const u0 = user("a"), a0 = assistant("1")
+    expect(retryPlan([u0, a0, user("b"), assistant("", { durationMs: 5 })])).toEqual({ base: [u0, a0], parts: parts("b") })
+  })
+  test("the base never contains the re-sent user turn, so the request carries it once", () => {
+    const plan = retryPlan([user("a"), assistant("1"), user("b"), assistant("x")])!
+    const next = [...plan.base, { role: "user" as const, text: "b", parts: plan.parts }]
+    expect(next.filter((m) => m.role === "user" && m.text === "b")).toHaveLength(1)
+  })
+  test("is null when there is nothing to retry", () => {
+    expect(retryPlan([])).toBeNull()
+    expect(retryPlan([assistant("x")])).toBeNull()
+    expect(retryPlan([user("")])).toBeNull()
   })
 })
 
