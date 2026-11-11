@@ -35,7 +35,7 @@ function QuotaPanel({ upstreamId }: { upstreamId: string }) {
         {state.status === "ready" && state.result.quota === null ? <p>{t("dash.codexQuotaMissing")}</p> : null}
       </div>
       {state.status === "ready" && state.result.quota ? Object.entries(state.result.quota).map(([key, observation]) => (
-        <div key={key} data-testid="codex-quota-bucket" data-active-limit={key} data-freshness={observation.freshness} className="rounded border border-themed p-2 space-y-1">
+        <div key={key} data-testid="codex-quota-bucket" data-active-limit={key} data-freshness={observation.freshness} className="rounded-sm border border-themed p-2 space-y-1">
           <div className="font-medium text-themed">{key} · {t(observation.freshness === "stale" ? "dash.codexQuotaStale" : "dash.codexQuotaFresh")}</div>
           <div>{t("dash.codexQuotaPrimary")}: {percent(observation.data.primary_used_percent)} · {t("dash.codexQuotaSecondary")}: {percent(observation.data.secondary_used_percent)}</div>
           <div>{t("dash.codexQuotaCredits")}: {observation.data.credits_balance ?? unknown}</div>

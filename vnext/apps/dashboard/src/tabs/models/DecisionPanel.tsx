@@ -257,14 +257,14 @@ export function DecisionPanel({ modelId, apiKey, supportedEndpoints }: Props) {
           {dropped > 0 && <div className="pg-warn">⚠ {t("dash.playground.decisionCriteriaDropped", { n: dropped })}</div>}
 
           <div className="flex items-center gap-3">
-            <button className="btn-primary !py-2 !px-5" disabled={problem !== null || sending} onClick={() => void send()}>
+            <button className="btn-primary py-2! px-5!" disabled={problem !== null || sending} onClick={() => void send()}>
               {t("dash.playground.send")}
             </button>
             {sending && (
-              <button className="btn-ghost !py-2 !px-4" onClick={() => abortRef.current?.abort()}>{t("dash.playground.stop")}</button>
+              <button className="btn-ghost py-2! px-4!" onClick={() => abortRef.current?.abort()}>{t("dash.playground.stop")}</button>
             )}
             {problem && (
-              <span className="text-xs text-[color:var(--danger)]">
+              <span className="text-xs text-(--danger)">
                 {t(problem.key, { n: (problem.question ?? 0) + 1 })}
               </span>
             )}
@@ -315,7 +315,7 @@ function QuestionCard({ index, question, dialect, instructionsRequired, problemK
         </div>
         <input
           type="text"
-          className="pg-field flex-1 min-w-[140px] !w-auto"
+          className="pg-field flex-1 min-w-[140px] w-auto!"
           value={question.name}
           onChange={(e) => onChange({ name: e.target.value })}
           placeholder={t("dash.playground.decisionNamePlaceholder")}
@@ -349,7 +349,7 @@ function QuestionCard({ index, question, dialect, instructionsRequired, problemK
         <div className="space-y-1.5">
           {question.options.map((option, at) => (
             <div key={at} className="flex items-center gap-2">
-              <input type="text" className="pg-field !w-40 shrink-0" value={option.value}
+              <input type="text" className="pg-field w-40! shrink-0" value={option.value}
                 onChange={(e) => onChange({ options: question.options.map((o, i) => (i === at ? { ...o, value: e.target.value } : o)) })}
                 placeholder={t("dash.playground.decisionOptionValue")} />
               <input type="text" className="pg-field pg-field-sans flex-1" value={option.description}
@@ -385,7 +385,7 @@ function QuestionCard({ index, question, dialect, instructionsRequired, problemK
         </div>
       )}
 
-      {problemKey && <div className="text-xs text-[color:var(--danger)]">{t(problemKey, { n: index + 1 })}</div>}
+      {problemKey && <div className="text-xs text-(--danger)">{t(problemKey, { n: index + 1 })}</div>}
     </div>
   )
 }
@@ -406,7 +406,7 @@ function DecisionResult({ result }: { result: Result }) {
   return (
     <section className="space-y-2">
       <div className="flex items-center gap-2 flex-wrap text-xs text-themed-dim">
-        <span className="pg-label !mb-0">{t("dash.playground.decisionAnswers")}</span>
+        <span className="pg-label mb-0!">{t("dash.playground.decisionAnswers")}</span>
         <span className="font-mono">
           {t("dash.playground.decisionMeta", {
             format: dialectLabel(result.dialect),
@@ -428,7 +428,7 @@ function DecisionResult({ result }: { result: Result }) {
           {raw === "request" ? JSON.stringify(result.request, null, 2) : prettyJson(result.text)}
         </pre>
       )}
-      {result.error && <div className="pg-error !mx-0">⚠ {result.error}</div>}
+      {result.error && <div className="pg-error mx-0!">⚠ {result.error}</div>}
       {result.answers?.map((answer) => (
         <div key={answer.name} className="pg-card space-y-1.5">
           <div className="flex items-baseline gap-2 flex-wrap text-xs">
@@ -451,7 +451,7 @@ function DecisionResult({ result }: { result: Result }) {
             </>
           )}
           {(answer.kind === "choice" || answer.kind === "score") && answer.bars.map((bar) => <ProbabilityBar key={bar.label} {...bar} />)}
-          {answer.kind === "refusal" && <div className="text-xs text-[color:var(--warn)]">{t("dash.playground.decisionRefusal")}</div>}
+          {answer.kind === "refusal" && <div className="text-xs text-(--warn)">{t("dash.playground.decisionRefusal")}</div>}
         </div>
       ))}
     </section>

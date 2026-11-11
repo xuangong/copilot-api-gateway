@@ -102,7 +102,7 @@ export function ProxyChainEditor({ value, onChange, allowCreate = false }: Props
               <select
                 value={entry.id}
                 onChange={(e) => setAt(i, e.target.value)}
-                className="text-xs flex-1 min-w-0 !py-1.5 !px-2"
+                className="text-xs flex-1 min-w-0 py-1.5! px-2!"
               >
                 {options.some((o) => o.id === entry.id) ? null : (
                   <option value={entry.id}>{t("dash.proxyUnknownNode", { id: entry.id })}</option>
@@ -116,14 +116,14 @@ export function ProxyChainEditor({ value, onChange, allowCreate = false }: Props
               <button
                 onClick={() => move(i, -1)}
                 disabled={i === 0}
-                className="btn-ghost !text-xs !py-1 !px-2"
+                className="btn-ghost text-xs! py-1! px-2!"
               >
                 ↑
               </button>
               <button
                 onClick={() => move(i, 1)}
                 disabled={i === value.length - 1}
-                className="btn-ghost !text-xs !py-1 !px-2"
+                className="btn-ghost text-xs! py-1! px-2!"
               >
                 ↓
               </button>
@@ -139,11 +139,11 @@ export function ProxyChainEditor({ value, onChange, allowCreate = false }: Props
       )}
 
       <div className="flex items-center gap-2 flex-wrap">
-        <button onClick={addHop} className="btn-ghost !text-xs !py-1 !px-2">
+        <button onClick={addHop} className="btn-ghost text-xs! py-1! px-2!">
           {t("dash.proxyAddHop")}
         </button>
         {allowCreate ? (
-          <button onClick={() => setCreating((v) => !v)} className="btn-ghost !text-xs !py-1 !px-2">
+          <button onClick={() => setCreating((v) => !v)} className="btn-ghost text-xs! py-1! px-2!">
             {t("dash.proxyNewNode")}
           </button>
         ) : null}
@@ -155,22 +155,22 @@ export function ProxyChainEditor({ value, onChange, allowCreate = false }: Props
             value={draft.name}
             onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
             placeholder={t("dash.proxyNameLabel")}
-            className="w-full text-xs !py-1.5 !px-2"
+            className="w-full text-xs py-1.5! px-2!"
           />
           <input
             value={draft.url}
             onChange={(e) => setDraft((d) => ({ ...d, url: e.target.value }))}
             placeholder="trojan://password@host:443"
-            className="w-full text-xs font-mono !py-1.5 !px-2"
+            className="w-full text-xs font-mono py-1.5! px-2!"
           />
           <input
             value={draft.dialTimeoutSeconds}
             onChange={(e) => setDraft((d) => ({ ...d, dialTimeoutSeconds: e.target.value }))}
             placeholder={t("dash.proxyDialTimeoutLabel")}
             inputMode="numeric"
-            className="w-full text-xs !py-1.5 !px-2"
+            className="w-full text-xs py-1.5! px-2!"
           />
-          <button onClick={submitNewNode} className="btn-primary !text-xs !py-1 !px-3">
+          <button onClick={submitNewNode} className="btn-primary text-xs! py-1! px-3!">
             {t("dash.proxyCreateNodeBtn")}
           </button>
         </div>

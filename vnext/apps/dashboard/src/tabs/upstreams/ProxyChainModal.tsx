@@ -46,10 +46,10 @@ export function ProxyChainModal({ upstreamId, initialChain, onSaved, onClose }: 
     <div className="bg-surface-900 border border-surface-600 rounded-lg p-3 sm:p-4 space-y-3">
       <ProxyChainEditor value={chain} onChange={setChain} allowCreate />
       <div className="flex items-center gap-2 border-t border-surface-600 pt-2">
-        <button onClick={save} disabled={saving} className="btn-primary !text-xs !py-1 !px-3">
+        <button onClick={save} disabled={saving} className="btn-primary text-xs! py-1! px-3!">
           {saving ? "…" : t("dash.save")}
         </button>
-        <button onClick={onClose} className="btn-ghost !text-xs !py-1 !px-3">
+        <button onClick={onClose} className="btn-ghost text-xs! py-1! px-3!">
           {t("dash.closeBtn")}
         </button>
       </div>

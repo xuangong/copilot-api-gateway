@@ -48,7 +48,7 @@ export function KeysTab() {
                   }
                 }}
                 placeholder={t("dash.keyNamePlaceholder")}
-                className="flex-1 sm:flex-none sm:!w-40 text-sm min-w-0"
+                className="flex-1 sm:flex-none sm:w-40! text-sm min-w-0"
               />
               <button
                 type="button"
@@ -68,8 +68,8 @@ export function KeysTab() {
           ) : null}
           {store.loading && store.keys.length === 0 ? (
             <div className="space-y-3 py-2">
-              <div className="h-10 bg-surface-600 rounded animate-pulse" />
-              <div className="h-10 bg-surface-600 rounded animate-pulse" />
+              <div className="h-10 bg-surface-600 rounded-sm animate-pulse" />
+              <div className="h-10 bg-surface-600 rounded-sm animate-pulse" />
             </div>
           ) : null}
           {store.keys.length > 0 ? (

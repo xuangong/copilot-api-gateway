@@ -158,7 +158,7 @@ export function CodexImportPanel({ targetId, name, ownerId, flagOverrides, disab
         <div className="space-y-2" role="group" aria-label={t("dash.codexPreviewRows")}>
           {candidates.length === 0 ? <p className="text-xs text-themed-dim">{t("dash.codexNoCandidates")}</p> : null}
           {candidates.map(row => (
-            <label key={row.sourceIndex} className={`block rounded border p-3 text-xs ${row.importable ? "border-surface-600 text-themed" : "border-[color:var(--danger-edge)] text-themed-dim"}`}>
+            <label key={row.sourceIndex} className={`block rounded-sm border p-3 text-xs ${row.importable ? "border-surface-600 text-themed" : "border-(--danger-edge) text-themed-dim"}`}>
               <span className="flex items-center gap-2">
                 <input type="radio" name="codex-import-source" checked={selected === row.sourceIndex} disabled={!row.importable || busy !== null}
                   onChange={() => setSelected(row.sourceIndex)} />

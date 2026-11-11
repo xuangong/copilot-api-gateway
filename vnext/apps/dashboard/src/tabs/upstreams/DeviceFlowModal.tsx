@@ -66,19 +66,19 @@ function HostPicker({
       <p className="text-sm text-themed-dim">{t("dash.chooseHostSubtitle")}</p>
       <button
         onClick={() => onPick("github.com")}
-        className="w-full text-left rounded border border-themed hover:border-accent-violet bg-surface-800 hover:bg-surface-700 p-3 transition-colors"
+        className="w-full text-left rounded-sm border border-themed hover:border-accent-violet! bg-surface-800 hover:bg-surface-700 p-3 transition-colors"
       >
         <div className="font-medium text-themed">{t("dash.hostGithubDotCom")}</div>
         <div className="text-xs text-themed-dim mt-0.5">{t("dash.hostGithubDotComDesc")}</div>
       </button>
       <button
         onClick={() => onPick("ghe")}
-        className="w-full text-left rounded border border-themed hover:border-accent-violet bg-surface-800 hover:bg-surface-700 p-3 transition-colors"
+        className="w-full text-left rounded-sm border border-themed hover:border-accent-violet! bg-surface-800 hover:bg-surface-700 p-3 transition-colors"
       >
         <div className="font-medium text-themed">{t("dash.hostGhe")}</div>
         <div className="text-xs text-themed-dim mt-0.5">{t("dash.hostGheDesc")}</div>
       </button>
-      <details className="rounded border border-themed bg-surface-800/60 p-2">
+      <details className="rounded-sm border border-themed bg-surface-800/60 p-2">
         <summary className="text-xs text-themed-dim cursor-pointer select-none">
           {t("dash.egressProxyOptional")}
           {chain.length > 0 ? ` (${chain.length})` : null}
@@ -187,7 +187,7 @@ function DeviceFlowStep({
         <div className="space-y-3">
           <div>
             <div className="text-xs text-themed-dim mb-1">{t("dash.deviceFlowOneTimeCode")}</div>
-            <div className="text-2xl font-mono tracking-widest text-accent-violet bg-surface-800 rounded p-3 text-center select-all">
+            <div className="text-2xl font-mono tracking-widest text-accent-violet bg-surface-800 rounded-sm p-3 text-center select-all">
               {flow.user_code}
             </div>
           </div>
@@ -261,17 +261,17 @@ function PasteTokenStep({
           value={host}
           onChange={(e) => setHost(e.target.value)}
           placeholder={t("dash.gheHostPlaceholder")}
-          className="w-full rounded bg-surface-800 border border-themed px-2 py-1.5 text-sm text-themed"
+          className="w-full rounded-sm bg-surface-800 border border-themed px-2 py-1.5 text-sm text-themed"
           autoFocus
         />
       </div>
 
-      <details className="rounded border border-themed bg-surface-800/60 p-2">
+      <details className="rounded-sm border border-themed bg-surface-800/60 p-2">
         <summary className="text-xs text-themed-dim cursor-pointer select-none">{t("dash.pasteTokenHelp")}</summary>
         <div className="mt-2 space-y-2">
           <div className="text-xs text-themed-dim">{t("dash.pasteTokenHelpSteps")}</div>
           <div className="flex items-center gap-2">
-            <code className="flex-1 text-[11px] font-mono bg-surface-900 rounded px-2 py-1.5 text-themed overflow-x-auto whitespace-nowrap">
+            <code className="flex-1 text-[11px] font-mono bg-surface-900 rounded-sm px-2 py-1.5 text-themed overflow-x-auto whitespace-nowrap">
               {cmd}
             </code>
             <button
@@ -297,7 +297,7 @@ function PasteTokenStep({
           onChange={(e) => setToken(e.target.value)}
           placeholder={t("dash.pasteTokenPlaceholder")}
           rows={3}
-          className="w-full rounded bg-surface-800 border border-themed px-2 py-1.5 text-sm font-mono text-themed"
+          className="w-full rounded-sm bg-surface-800 border border-themed px-2 py-1.5 text-sm font-mono text-themed"
         />
       </div>
 

@@ -3,7 +3,6 @@ import { useMemo } from "react"
 import { AuthProvider, useAuth } from "./state/auth"
 import { ToastProvider, ToastHost } from "./state/toast"
 import { useHashTab } from "./state/router"
-import { Layout } from "./components/Layout"
 import { PlaceholderTab } from "./components/PlaceholderTab"
 import { UpstreamsTab } from "./tabs/upstreams/UpstreamsTab"
 import { ProxiesTab } from "./tabs/proxies/ProxiesTab"
@@ -16,51 +15,17 @@ import { UsageTab } from "./tabs/usage/UsageTab"
 import { ModelsTab } from "./tabs/models/ModelsTab"
 import { PricingTab } from "./tabs/pricing/PricingTab"
 import { useT } from "./state/i18n"
-
-interface TabDef {
-  id: string
-  labelKey: string
-  fallback: string
-  adminOnly?: boolean
-  userOk?: boolean
-}
-
-const ALL_TABS: ReadonlyArray<TabDef> = [
-  { id: "upstreams", labelKey: "dash.upstream", fallback: "Upstreams", userOk: true },
-  { id: "proxies", labelKey: "dash.proxies", fallback: "Proxies", adminOnly: true },
-  { id: "users", labelKey: "dash.users", fallback: "Users", adminOnly: true },
-  { id: "keys", labelKey: "dash.apiKeys", fallback: "API Keys", userOk: true },
-  { id: "models", labelKey: "dash.models", fallback: "Models", userOk: true },
-  { id: "pricing", labelKey: "dash.pricing", fallback: "Pricing", userOk: true },
-  { id: "usage", labelKey: "dash.usage", fallback: "Usage", userOk: true },
-  { id: "latency", labelKey: "dash.latency", fallback: "Latency", userOk: true },
-  { id: "clients", labelKey: "dash.relays", fallback: "Clients", userOk: true },
-]
-
-const HIDDEN_FROM_NAV_TABS: ReadonlyArray<TabDef> = [
-  { id: "agent-remote", labelKey: "dash.remote.title", fallback: "Agent Hosts", userOk: true },
-  { id: "settings", labelKey: "dash.settings", fallback: "Settings", userOk: true },
-]
+import { AppShell } from "./shell/AppShell"
+import { allowedTabIds, buildNavGroups, DEFAULT_TAB } from "./shell/navigation"
 
 function Shell() {
   const { loading, session, error } = useAuth()
   const t = useT()
 
-  const visibleTabs = useMemo(() => {
-    if (!session) return []
-    return ALL_TABS.filter((tab) => {
-      if (session.isAdmin) return true
-      if (tab.adminOnly) return false
-      return true
-    }).map(({ id, labelKey, fallback }) => ({ id, label: t(labelKey) || fallback }))
-  }, [session, t])
-
-  const defaultTab = visibleTabs[0]?.id ?? "keys"
-  const allowedIds = useMemo(
-    () => [...visibleTabs.map((t) => t.id), ...HIDDEN_FROM_NAV_TABS.map((t) => t.id)],
-    [visibleTabs],
-  )
-  const [tab, setTab] = useHashTab(defaultTab, allowedIds)
+  const groups = useMemo(() => (session ? buildNavGroups(t, { isAdmin: session.isAdmin === true }) : []), [session, t])
+  const allowedIds = useMemo(() => allowedTabIds(groups), [groups])
+  const [tab, setTab] = useHashTab(DEFAULT_TAB, allowedIds)
+  const offNavTitles = useMemo(() => ({ "agent-remote": t("dash.remote.title"), settings: t("dash.settings") }), [t])
 
   if (loading) {
     return <div className="min-h-screen flex items-center justify-center text-themed-dim">Loading…</div>
@@ -71,9 +36,9 @@ function Shell() {
   if (!session) return null
 
   return (
-    <Layout tabs={visibleTabs} currentTab={tab} onTabChange={setTab}>
+    <AppShell groups={groups} current={tab} onSelect={setTab} offNavTitles={offNavTitles}>
       <TabBody tab={tab} />
-    </Layout>
+    </AppShell>
   )
 }
 

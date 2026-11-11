@@ -182,7 +182,7 @@ export function SettingsTab() {
         </button>
 
         {preview ? (
-          <div className="mt-4 rounded border border-themed p-3 text-sm space-y-3">
+          <div className="mt-4 rounded-sm border border-themed p-3 text-sm space-y-3">
             <div className="text-themed">
               {t("dash.importPreviewSummary", {
                 version: String(preview.parsed.version),

@@ -43,7 +43,7 @@ export function UsageRefresh({ loading, lastUpdated, onRefresh }: Props) {
         type="button"
         onClick={onRefresh}
         disabled={loading}
-        className="tip tip-start tip-below flex items-center justify-center w-7 h-7 rounded-md bg-surface-800 border border-white/10 text-themed-dim hover:text-accent-violet hover:border-accent-violet/40 disabled:opacity-50 disabled:cursor-default transition-colors"
+        className="tip tip-start tip-below flex items-center justify-center w-7 h-7 rounded-md bg-surface-800 border border-white/10 text-themed-dim hover:text-accent-violet! hover:border-accent-violet/40 disabled:opacity-50 disabled:cursor-default transition-colors"
         data-tip={t("dash.usage.refreshTip")}
         aria-label={t("dash.usage.refreshTip")}
       >
@@ -66,7 +66,7 @@ export function UsageRefresh({ loading, lastUpdated, onRefresh }: Props) {
         value={String(Math.round(intervalMs / 60_000))}
         options={options}
         onChange={(v) => setIntervalMs(Number(v) * 60_000)}
-        buttonClassName={`w-full bg-surface-800 border rounded-md focus:outline-none flex items-center justify-between gap-2 text-left px-2.5 py-1.5 text-xs ${
+        buttonClassName={`w-full bg-surface-800 border rounded-md focus:outline-hidden flex items-center justify-between gap-2 text-left px-2.5 py-1.5 text-xs ${
           auto ? "border-accent-violet/40 text-accent-violet" : "border-white/10 text-themed-secondary"
         }`}
       />

@@ -35,8 +35,8 @@ export function KeyRow({ row, selected, canManage, busy, onSelect, onDelete, onR
   return (
     <tr
       onClick={onSelect}
-      className={`border-b border-white/[0.03] transition-colors cursor-pointer ${
-        selected ? "bg-accent-violet/5 hover:bg-accent-violet/10" : "hover:bg-white/[0.02]"
+      className={`border-b border-white/3 transition-colors cursor-pointer ${
+        selected ? "bg-accent-violet/5 hover:bg-accent-violet/10" : "hover:bg-white/2"
       }`}
     >
       <td className="py-3 pr-4 pl-2">
@@ -56,7 +56,7 @@ export function KeyRow({ row, selected, canManage, busy, onSelect, onDelete, onR
           <span className="text-xs text-themed-dim">—</span>
         ) : null}
         {isShared ? (
-          <span className="ml-1 px-1.5 py-0.5 rounded text-[10px] bg-accent-violet/10 text-accent-violet">
+          <span className="ml-1 px-1.5 py-0.5 rounded-sm text-[10px] bg-accent-violet/10 text-accent-violet">
             {t("dash.sharedBadge")}
           </span>
         ) : null}
@@ -65,14 +65,14 @@ export function KeyRow({ row, selected, canManage, busy, onSelect, onDelete, onR
             className="ml-1 text-[10px] text-themed-dim cursor-default"
             title={row.assignees!.map((a) => a.user_name || t("dash.unknown")).join(", ")}
           >
-            <span className="px-1.5 py-0.5 rounded bg-accent-teal/10 text-accent-teal">
+            <span className="px-1.5 py-0.5 rounded-sm bg-accent-teal/10 text-accent-teal">
               {t("dash.sharedWithCount", { n: assigneeCount })}
             </span>
           </span>
         ) : null}
       </td>
       <td className="py-3 pr-4">
-        <code className="text-xs font-mono text-themed-dim bg-surface-800 rounded px-2 py-1">
+        <code className="text-xs font-mono text-themed-dim bg-surface-800 rounded-sm px-2 py-1">
           {truncateKey(row.key)}
         </code>
       </td>
@@ -96,7 +96,7 @@ export function KeyRow({ row, selected, canManage, busy, onSelect, onDelete, onR
             <button
               type="button"
               onClick={(event) => { event.stopPropagation(); onRequests() }}
-              className="text-xs text-accent-violet hover:underline px-2 py-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-violet"
+              className="text-xs text-accent-violet hover:underline px-2 py-1 focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-accent-violet"
             >
               {t("dash.requests.action")}
             </button>
@@ -105,7 +105,7 @@ export function KeyRow({ row, selected, canManage, busy, onSelect, onDelete, onR
             type="button"
             onClick={handleCopy}
             title={t("dash.copyKey")}
-            className="text-themed-dim hover:text-accent-violet transition-colors p-1"
+            className="text-themed-dim hover:text-accent-violet! transition-colors p-1"
           >
             {copied ? (
               <svg
@@ -136,7 +136,7 @@ export function KeyRow({ row, selected, canManage, busy, onSelect, onDelete, onR
               onClick={handleDelete}
               disabled={busy}
               title={t("dash.deleteKey")}
-              className="text-themed-dim hover:text-accent-red transition-colors p-1 disabled:opacity-40"
+              className="text-themed-dim hover:text-accent-red! transition-colors p-1 disabled:opacity-40"
             >
               <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <polyline points="3 6 5 6 21 6" />

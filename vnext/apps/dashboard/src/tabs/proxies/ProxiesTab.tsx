@@ -172,7 +172,7 @@ export function ProxiesTab() {
             setDraft(EMPTY_DRAFT)
             invalidateTest()
           }}
-          className="btn-primary !text-xs !py-1 !px-3 shrink-0"
+          className="btn-primary text-xs! py-1! px-3! shrink-0"
         >
           {t("dash.proxyNewNode")}
         </button>
@@ -186,14 +186,14 @@ export function ProxiesTab() {
             <button
               onClick={submit}
               disabled={!draftIsValid(draft)}
-              className="btn-primary !text-xs !py-1 !px-3 disabled:opacity-40"
+              className="btn-primary text-xs! py-1! px-3! disabled:opacity-40"
             >
               {t("dash.save")}
             </button>
             <button
               onClick={runTest}
               disabled={testing || !draftIsTestable(draft)}
-              className="btn-ghost !text-xs !py-1 !px-3 disabled:opacity-40"
+              className="btn-ghost text-xs! py-1! px-3! disabled:opacity-40"
             >
               {testing ? t("dash.proxyTestRunning") : t("dash.proxyTestBtn")}
             </button>
@@ -205,13 +205,13 @@ export function ProxiesTab() {
                 if (a) { invalidateTest(); setAnchor(a) }
               }}
               title={t("dash.proxyAnchorLabel")}
-              className="bg-surface-800 border border-surface-600 rounded px-2 py-1 text-xs"
+              className="bg-surface-800 border border-surface-600 rounded-sm px-2 py-1 text-xs"
             >
               {ANCHORS.map((a) => (
                 <option key={a} value={a}>{a}</option>
               ))}
             </select>
-            <button onClick={closeForm} className="btn-ghost !text-xs !py-1 !px-3">
+            <button onClick={closeForm} className="btn-ghost text-xs! py-1! px-3!">
               {t("dash.closeBtn")}
             </button>
           </div>
@@ -258,12 +258,12 @@ export function ProxiesTab() {
                 {mine.length > 0 ? (
                   <button
                     onClick={() => setExpanded((x) => ({ ...x, [p.id]: !x[p.id] }))}
-                    className="btn-ghost !text-xs !py-1 !px-2"
+                    className="btn-ghost text-xs! py-1! px-2!"
                   >
                     {t("dash.proxyBackoffCount", { n: mine.length })}
                   </button>
                 ) : null}
-                <button onClick={() => startEdit(p)} className="btn-ghost !text-xs !py-1 !px-2">
+                <button onClick={() => startEdit(p)} className="btn-ghost text-xs! py-1! px-2!">
                   {t("dash.edit")}
                 </button>
                 <button
@@ -280,7 +280,7 @@ export function ProxiesTab() {
                     <div className="text-xs text-themed-dim">{t("dash.proxyBackoffTitle")}</div>
                     <button
                       onClick={() => resetOne(p.id)}
-                      className="btn-ghost !text-xs !py-1 !px-2"
+                      className="btn-ghost text-xs! py-1! px-2!"
                     >
                       {t("dash.proxyBackoffReset")}
                     </button>

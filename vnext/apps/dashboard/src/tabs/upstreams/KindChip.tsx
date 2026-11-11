@@ -85,7 +85,7 @@ export function ProviderAvatar({ provider, avatarUrl, title }: Props) {
         )}
       </div>
       <span
-        className={`absolute -bottom-1.5 -right-2 text-[10px] font-semibold uppercase tracking-wide leading-none px-1.5 py-0.5 rounded-md shadow ring-1 ring-black/20 ${BADGE_BG[provider]}`}
+        className={`absolute -bottom-1.5 -right-2 text-[10px] font-semibold uppercase tracking-wide leading-none px-1.5 py-0.5 rounded-md shadow-sm ring-1 ring-black/20 ${BADGE_BG[provider]}`}
       >
         {FULL_LABEL[provider]}
       </span>

@@ -48,9 +48,9 @@ export function LatencyTab() {
       </div>
     </div>
     {s.range === "week" && <div className="flex items-center gap-3 text-sm text-themed-secondary">
-      <button type="button" onClick={() => s.shiftWeek(-1)} aria-label={t("dash.previousWeekTitle")} className="p-2 rounded hover:bg-surface-700">‹</button>
+      <button type="button" onClick={() => s.shiftWeek(-1)} aria-label={t("dash.previousWeekTitle")} className="p-2 rounded-sm hover:bg-surface-700">‹</button>
       <span>{s.weekLabel}</span>
-      <button type="button" onClick={() => s.shiftWeek(1)} disabled={s.weekOffset >= 0} aria-label={t("dash.nextWeekTitle")} className="p-2 rounded hover:bg-surface-700 disabled:opacity-30">›</button>
+      <button type="button" onClick={() => s.shiftWeek(1)} disabled={s.weekOffset >= 0} aria-label={t("dash.nextWeekTitle")} className="p-2 rounded-sm hover:bg-surface-700 disabled:opacity-30">›</button>
     </div>}
     <div className="grid gap-3 grid-cols-2 sm:grid-cols-3">
       {filter("model", dynamicOptions("model"))}

@@ -76,12 +76,12 @@ export function AssignKeysModal({ userId, userName, onClose }: Props) {
                 onClick={() => toggle(k)}
                 disabled={!!pending[k.id]}
                 className={`flex items-center gap-3 py-2.5 px-1 w-full text-left cursor-pointer select-none transition-colors duration-100 rounded-md ${
-                  k.assigned ? "hover:bg-accent-violet/5" : "hover:bg-white/[0.03]"
+                  k.assigned ? "hover:bg-accent-violet/5" : "hover:bg-white/3"
                 }`}
               >
                 <span
                   className={`w-[18px] h-[18px] rounded-full shrink-0 flex items-center justify-center transition-all duration-150 ${
-                    k.assigned ? "bg-accent-violet" : ""
+                    k.assigned ? "bg-brand" : ""
                   }`}
                   style={!k.assigned ? { border: "2px solid var(--surface-600)" } : undefined}
                 >

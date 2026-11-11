@@ -80,7 +80,7 @@ function Cell({
           // Hover/focus only, no React state: the dashboard has no popover
           // primitive and this needs no interaction beyond reveal.
           <span className="relative inline-flex group">
-            <span tabIndex={0} className="cursor-help text-themed-dim hover:text-themed outline-none" aria-label={label}>
+            <span tabIndex={0} className="cursor-help text-themed-dim hover:text-themed outline-hidden" aria-label={label}>
               <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
                 <path
                   fillRule="evenodd"

@@ -526,7 +526,7 @@ export function UpstreamFormModal({ mode, flagCatalog, ensureFlagCatalog, onClos
         ) : null}
         {preset?.noteKey ? (
           <p
-            className="text-xs text-themed rounded p-2"
+            className="text-xs text-themed rounded-sm p-2"
             style={{ background: "var(--surface-700)", border: "1px solid var(--border-color)" }}
           >
             {t(preset.noteKey)}
@@ -717,7 +717,7 @@ export function UpstreamFormModal({ mode, flagCatalog, ensureFlagCatalog, onClos
         ) : null}
 
         {provider === "copilot" ? (
-          <div className="bg-surface-800 border border-surface-600 rounded p-3 text-xs space-y-1">
+          <div className="bg-surface-800 border border-surface-600 rounded-sm p-3 text-xs space-y-1">
             <div className="text-themed-dim">{t("dash.githubLoginLabel")}</div>
             <div className="text-themed font-mono">{form.copilotLogin || "(unknown)"}</div>
             <div className="text-themed-dim mt-2">
@@ -883,13 +883,13 @@ export function UpstreamFormModal({ mode, flagCatalog, ensureFlagCatalog, onClos
                 {disabledIds.map((id) => (
                   <li
                     key={id}
-                    className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded"
+                    className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-sm"
                     style={{ background: "var(--surface-700)" }}
                   >
                     <span className="font-mono">{id}</span>
                     <button
                       type="button"
-                      className="text-themed-dim hover:text-accent-red"
+                      className="text-themed-dim hover:text-accent-red!"
                       onClick={() => setDisabledIds(disabledIds.filter((x) => x !== id))}
                     >
                       ×

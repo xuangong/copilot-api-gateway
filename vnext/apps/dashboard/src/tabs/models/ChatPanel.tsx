@@ -1324,7 +1324,7 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
       {error && (
         <div className="pg-error">
           <span>⚠ {error}</span>
-          <button className="btn-ghost !py-1 !px-3 !text-xs ml-auto" onClick={retry}>{t("dash.playground.retry")}</button>
+          <button className="btn-ghost py-1! px-3! text-xs! ml-auto" onClick={retry}>{t("dash.playground.retry")}</button>
         </div>
       )}
 

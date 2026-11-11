@@ -12,7 +12,7 @@ export function PerformanceDiagnostics({ metrics, legacyRequests }: { metrics: P
   const t = useT()
   const labels = performanceLabels(t)
   return <details className="border-t border-themed pt-4">
-    <summary className="text-sm text-themed-secondary cursor-pointer w-fit focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4">{t("dash.perf.experience.diagnostics")}</summary>
+    <summary className="text-sm text-themed-secondary cursor-pointer w-fit focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-4">{t("dash.perf.experience.diagnostics")}</summary>
     <div className="mt-4 space-y-4">
       <div className="text-xs text-themed-dim space-y-2 max-w-[75ch] leading-relaxed">
         <p>{t("dash.perf.experience.samplesNote")}</p>

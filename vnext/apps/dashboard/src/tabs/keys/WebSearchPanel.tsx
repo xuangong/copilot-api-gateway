@@ -384,7 +384,7 @@ export function WebSearchPanel({
                 {edit.priority.map((eng, idx) => (
                   <div
                     key={eng}
-                    className="flex items-center gap-2 px-2 py-1 rounded bg-surface-700/50"
+                    className="flex items-center gap-2 px-2 py-1 rounded-sm bg-surface-700/50"
                   >
                     <span className="text-[10px] text-themed-dim w-4">{idx + 1}.</span>
                     <span className="text-xs font-mono text-themed flex-1">{eng}</span>
@@ -438,7 +438,7 @@ export function WebSearchPanel({
 
       {borrowPickerEngine ? (
         <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4"
+          className="fixed inset-0 z-100 flex items-center justify-center bg-black/60 p-4"
           onClick={(e) => {
             if (e.target === e.currentTarget) setBorrowPickerEngine("")
           }}
@@ -486,7 +486,7 @@ export function WebSearchPanel({
             // with the verdict and label the evidence — a bare engine name and
             // a page title read as neither.
             <div
-              className={`text-[11px] rounded px-2 py-1.5 space-y-1 ${
+              className={`text-[11px] rounded-sm px-2 py-1.5 space-y-1 ${
                 testResult.ok ? "bg-accent-teal/10 text-accent-teal" : "bg-accent-red/10 text-accent-red"
               }`}
             >
@@ -522,7 +522,7 @@ export function WebSearchPanel({
                   {engineSlots.map((slot) => (
                     <span
                       key={slot.id}
-                      className={`text-[10px] px-2 py-0.5 rounded inline-flex items-center gap-1 ${
+                      className={`text-[10px] px-2 py-0.5 rounded-sm inline-flex items-center gap-1 ${
                         slot.ref
                           ? slot.ref.broken
                             ? "bg-accent-red/15 text-accent-red"
@@ -557,7 +557,7 @@ export function WebSearchPanel({
                       key={r}
                       type="button"
                       onClick={() => onUsageRangeChange(r)}
-                      className={`px-2 py-0.5 rounded text-[10px] font-medium transition-all ${
+                      className={`px-2 py-0.5 rounded-sm text-[10px] font-medium transition-all ${
                         usageRange === r
                           ? "bg-surface-600 text-themed"
                           : "text-themed-dim hover:text-themed-secondary"
@@ -579,26 +579,26 @@ export function WebSearchPanel({
                   {usage.engines.map((eng) => (
                     <div key={eng.engineId} className="flex items-center gap-1.5 flex-wrap text-[10px]">
                       <span className="font-mono text-themed-secondary w-20 shrink-0">{eng.engineId}</span>
-                      <span className="px-1.5 py-0.5 rounded bg-accent-teal/15 text-accent-teal">
+                      <span className="px-1.5 py-0.5 rounded-sm bg-accent-teal/15 text-accent-teal">
                         {eng.successes} ok
                       </span>
                       {eng.emptyResults > 0 ? (
-                        <span className="px-1.5 py-0.5 rounded bg-accent-amber/15 text-accent-amber">
+                        <span className="px-1.5 py-0.5 rounded-sm bg-accent-amber/15 text-accent-amber">
                           {eng.emptyResults} empty · {Math.round((eng.emptyResults * 100) / Math.max(eng.successes, 1))}%
                         </span>
                       ) : null}
                       {eng.failures > 0 ? (
-                        <span className="px-1.5 py-0.5 rounded bg-accent-red/15 text-accent-red">
+                        <span className="px-1.5 py-0.5 rounded-sm bg-accent-red/15 text-accent-red">
                           {eng.failures} fail
                         </span>
                       ) : null}
                       {eng.successes > 0 ? (
-                        <span className="px-1.5 py-0.5 rounded bg-surface-700 text-themed-dim">
+                        <span className="px-1.5 py-0.5 rounded-sm bg-surface-700 text-themed-dim">
                           ok ~{eng.avgSuccessMs}ms
                         </span>
                       ) : null}
                       {eng.failures > 0 ? (
-                        <span className="px-1.5 py-0.5 rounded bg-surface-700 text-themed-dim">
+                        <span className="px-1.5 py-0.5 rounded-sm bg-surface-700 text-themed-dim">
                           fail ~{eng.avgFailureMs}ms
                         </span>
                       ) : null}

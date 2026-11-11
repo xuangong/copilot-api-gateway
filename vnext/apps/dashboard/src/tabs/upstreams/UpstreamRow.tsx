@@ -117,7 +117,7 @@ export function UpstreamRow({
         editing
           ? "border-accent-violet/60"
           : expiredAt
-            ? "border-[color:var(--danger-edge)]"
+            ? "border-(--danger-edge)"
             : "border-surface-600"
       } ${locked ? "opacity-60" : ""}`}
     >
@@ -129,7 +129,7 @@ export function UpstreamRow({
               <span className="font-medium text-themed truncate">{u.name}</span>
               {expiredAt ? (
                 <span
-                  className="inline-flex items-center shrink-0 px-2 py-0.5 rounded-full text-[11px] leading-none bg-[color:var(--danger-wash)] text-[color:var(--danger)] border border-[color:var(--danger-edge)]"
+                  className="inline-flex items-center shrink-0 px-2 py-0.5 rounded-full text-[11px] leading-none bg-(--danger-wash) text-(--danger) border border-(--danger-edge)"
                   title={t("dash.tokenExpiredTip", { at: expiredAt })}
                 >
                   {t("dash.tokenExpiredBadge")}
@@ -166,7 +166,7 @@ export function UpstreamRow({
             onKeyDown={onHandleKeyDown}
             aria-label={t("dash.reorderUpstreamHandle", { name: u.name })}
             title={t("dash.reorderUpstreamHandle", { name: u.name })}
-            className="btn-ghost text-xs px-2 py-1 cursor-grab active:cursor-grabbing touch-none"
+            className="btn-ghost text-xs px-2 py-1 cursor-grab enabled:active:cursor-grabbing! touch-none"
           >
             ⠿
           </button>
@@ -227,7 +227,7 @@ export function UpstreamRow({
             {modelList.length > 8 ? (
               <button
                 onClick={() => setExpanded((v) => !v)}
-                className="text-themed-dim hover:text-themed text-[11px] px-2 py-0.5 rounded hover:bg-surface-700"
+                className="text-themed-dim hover:text-themed text-[11px] px-2 py-0.5 rounded-sm hover:bg-surface-700"
               >
                 {expanded ? t("dash.collapseBtn") : t("dash.showAll", { n: modelList.length })}
               </button>
@@ -240,7 +240,7 @@ export function UpstreamRow({
               key={m.id}
               onClick={(e) => copy(e.shiftKey ? `${u.id}/${m.id}` : m.id)}
               title={`click: copy ${m.id}\nshift-click: copy pinned ${u.id}/${m.id}`}
-              className="px-2 py-0.5 bg-surface-700 hover:bg-surface-600 rounded text-themed font-mono transition-colors"
+              className="px-2 py-0.5 bg-surface-700 hover:bg-surface-600 rounded-sm text-themed font-mono transition-colors"
             >
               {m.id}
             </button>

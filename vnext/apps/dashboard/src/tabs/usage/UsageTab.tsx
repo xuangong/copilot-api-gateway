@@ -153,7 +153,7 @@ export function UsageTab() {
             <div className="flex items-center gap-3 ml-1">
               <button
                 onClick={() => usage.shiftPeriod(-1)}
-                className="p-1 rounded hover:bg-surface-600 text-themed-dim hover:text-themed transition-all"
+                className="p-1 rounded-sm hover:bg-surface-600 text-themed-dim hover:text-themed transition-all"
                 title={`Previous ${periodNoun}`}
               >
                 ‹
@@ -168,7 +168,7 @@ export function UsageTab() {
               <button
                 onClick={() => usage.shiftPeriod(1)}
                 disabled={usage.periodOffset >= 0}
-                className={`p-1 rounded transition-all ${
+                className={`p-1 rounded-sm transition-all ${
                   usage.periodOffset >= 0
                     ? "text-themed-dim/30 cursor-not-allowed"
                     : "hover:bg-surface-600 text-themed-dim hover:text-themed"
@@ -200,7 +200,7 @@ export function UsageTab() {
                 // A window closing in the future could only ever be part empty.
                 max={today}
                 onChange={(e) => usage.chooseEndDate(e.target.value || null)}
-                className="bg-surface-800 rounded-md px-2 py-1 text-xs text-themed border border-transparent focus:border-surface-600 outline-none"
+                className="bg-surface-800 rounded-md px-2 py-1 text-xs text-themed border border-transparent focus:border-surface-600! outline-hidden"
               />
               <span className="text-xs text-themed-secondary font-medium">{windowLabel}</span>
               {usage.endDate ? (

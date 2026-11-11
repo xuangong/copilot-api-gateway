@@ -436,7 +436,7 @@ export function ConfigurationPanel({ keyRow, catalog, catalogLoading }: Props) {
                   <div className="text-[11px] text-themed-dim mb-1">
                     <span className="font-mono">{grp.upstream}</span>
                     <span
-                      className={`ml-1 px-1.5 py-0.5 rounded text-[10px] ${
+                      className={`ml-1 px-1.5 py-0.5 rounded-sm text-[10px] ${
                         grp.provider === "azure"
                           ? "bg-blue-900/40 text-blue-300"
                           : "bg-purple-900/40 text-purple-300"
@@ -455,7 +455,7 @@ export function ConfigurationPanel({ keyRow, catalog, catalogLoading }: Props) {
                           doCopy(txt, `model-${grp.upstream}-${m.id}`, t("dash.copiedModelId"))
                         }}
                         title={`click: copy ${m.id}\nshift-click: copy pinned ${grp.upstream}/${m.id}`}
-                        className="px-2 py-0.5 bg-surface-600 hover:bg-surface-500 rounded text-themed font-mono text-xs"
+                        className="px-2 py-0.5 bg-surface-600 hover:bg-surface-500 rounded-sm text-themed font-mono text-xs"
                       >
                         {m.id}
                       </button>

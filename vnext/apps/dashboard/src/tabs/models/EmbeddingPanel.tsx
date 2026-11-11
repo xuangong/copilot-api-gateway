@@ -151,7 +151,7 @@ export function EmbeddingPanel({ modelId, apiKey }: Props) {
           <section className="space-y-1.5">
             <div className="pg-label">
               {t("dash.playground.embeddingInputs")}
-              <span className={"pg-label-hint font-mono" + (count > MAX_EMBEDDING_INPUTS ? " !text-[color:var(--danger)]" : "")}>
+              <span className={"pg-label-hint font-mono" + (count > MAX_EMBEDDING_INPUTS ? " text-(--danger)!" : "")}>
                 {count} / {MAX_EMBEDDING_INPUTS}
               </span>
             </div>
@@ -164,11 +164,11 @@ export function EmbeddingPanel({ modelId, apiKey }: Props) {
           </section>
 
           <section className="flex items-center gap-2 flex-wrap">
-            <span className="pg-label !mb-0">{t("dash.playground.embeddingDimensions")}</span>
+            <span className="pg-label mb-0!">{t("dash.playground.embeddingDimensions")}</span>
             <input
               type="text"
               inputMode="numeric"
-              className="pg-field !w-32"
+              className="pg-field w-32!"
               value={draft.dimensions}
               onChange={(e) => edit({ ...draft, dimensions: e.target.value })}
               placeholder={t("dash.playground.embeddingDimensionsPlaceholder")}
@@ -177,14 +177,14 @@ export function EmbeddingPanel({ modelId, apiKey }: Props) {
           </section>
 
           <div className="flex items-center gap-3">
-            <button className="btn-primary !py-2 !px-5" disabled={problem !== null || sending} onClick={() => void send()}>
+            <button className="btn-primary py-2! px-5!" disabled={problem !== null || sending} onClick={() => void send()}>
               {t("dash.playground.send")}
             </button>
             {sending && (
-              <button className="btn-ghost !py-2 !px-4" onClick={() => abortRef.current?.abort()}>{t("dash.playground.stop")}</button>
+              <button className="btn-ghost py-2! px-4!" onClick={() => abortRef.current?.abort()}>{t("dash.playground.stop")}</button>
             )}
             {problem && (
-              <span className="text-xs text-[color:var(--danger)]">{t(problem, { max: MAX_EMBEDDING_INPUTS })}</span>
+              <span className="text-xs text-(--danger)">{t(problem, { max: MAX_EMBEDDING_INPUTS })}</span>
             )}
           </div>
 
@@ -235,7 +235,7 @@ function EmbeddingResult({ result }: { result: Result }) {
         </span>
       </div>
       {showRequest && <pre className="pg-raw">{JSON.stringify(result.request, null, 2)}</pre>}
-      {result.error && <div className="pg-error !mx-0">⚠ {result.error}</div>}
+      {result.error && <div className="pg-error mx-0!">⚠ {result.error}</div>}
 
       {summary?.similarity && (
         <div className="space-y-1.5">

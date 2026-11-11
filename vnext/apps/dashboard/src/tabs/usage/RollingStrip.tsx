@@ -87,7 +87,7 @@ export function RollingStrip({ cells, selectedKey, highlightTail, isDark, onPick
           are always whole and none is left half-empty. aspect-square keeps them
           square at whatever width the column works out to. */}
       <div
-        className="grid gap-[2px] w-full grid-cols-[repeat(15,minmax(0,1fr))] sm:grid-cols-[repeat(30,minmax(0,1fr))] lg:grid-cols-[repeat(45,minmax(0,1fr))]"
+        className="grid gap-[2px] w-full grid-cols-15 sm:grid-cols-30 lg:grid-cols-45"
         onMouseLeave={() => setHover(null)}
       >
         {cells.map((c, i) => {

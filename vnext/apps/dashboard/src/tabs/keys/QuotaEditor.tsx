@@ -16,8 +16,8 @@ interface Props {
 
 function progressClass(percent: number): string {
   if (percent > 90) return "bg-accent-red"
-  if (percent > 70) return "bg-gradient-to-r from-accent-amber to-accent-red"
-  return "bg-gradient-to-r from-accent-violet to-accent-teal"
+  if (percent > 70) return "bg-linear-to-r from-accent-amber to-accent-red"
+  return "bg-linear-to-r from-accent-violet to-accent-teal"
 }
 
 // For unlimited quotas, scale usage logarithmically so the bar still moves
@@ -166,7 +166,7 @@ export function QuotaEditor({ keyRow, usage, load, onRetry, canEdit, busy, onSav
           <>
             <div className="progress-track">
               <div
-                className="progress-fill bg-gradient-to-r from-accent-violet/40 to-accent-teal/40"
+                className="progress-fill bg-linear-to-r from-accent-violet/40 to-accent-teal/40"
                 style={{ width: `${unlimitedFillPercent(usage.reqUsed)}%` }}
               />
             </div>
@@ -205,7 +205,7 @@ export function QuotaEditor({ keyRow, usage, load, onRetry, canEdit, busy, onSav
           <>
             <div className="progress-track">
               <div
-                className="progress-fill bg-gradient-to-r from-accent-violet/40 to-accent-teal/40"
+                className="progress-fill bg-linear-to-r from-accent-violet/40 to-accent-teal/40"
                 style={{ width: `${unlimitedFillPercent(usage.tokenUsed)}%` }}
               />
             </div>
@@ -244,7 +244,7 @@ export function QuotaEditor({ keyRow, usage, load, onRetry, canEdit, busy, onSav
           <>
             <div className="progress-track">
               <div
-                className="progress-fill bg-gradient-to-r from-accent-violet/40 to-accent-teal/40"
+                className="progress-fill bg-linear-to-r from-accent-violet/40 to-accent-teal/40"
                 style={{ width: `${unlimitedFillPercent(usage.costUsed)}%` }}
               />
             </div>
@@ -266,7 +266,7 @@ export function QuotaEditor({ keyRow, usage, load, onRetry, canEdit, busy, onSav
         <p className="text-[10px] text-themed-dim mb-3">{t("dash.quotaUnpriced", { rows: usage.unpricedDimensionRows })}</p>
       ) : null}
       <p className="text-[10px] text-themed-dim mb-3">{t("dash.quotaRecordedCost")}</p>
-      <div className="rounded-lg bg-surface-800/60 border border-white/[0.04] p-3">
+      <div className="rounded-lg bg-surface-800/60 border border-white/4 p-3">
         <p className="text-[10px] text-themed-dim leading-relaxed">
           <span className="text-themed-secondary font-medium">{t("dash.tokenQuotaFormulaLabel")}</span>
           {WEIGHTED_FORMULA_PARTS.map((part, i) => (

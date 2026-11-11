@@ -195,7 +195,7 @@ export function TimeSeriesChart({ labels, datasets, height = 300, unitLabel = ""
         plugins: {
           legend: {
             display: true,
-            labels: { color: tickC, font: { family: "Outfit, sans-serif", size: 11 } },
+            labels: { color: tickC, font: { family: "Geist, ui-sans-serif, system-ui, sans-serif", size: 11 } },
             onClick: (_event, item, legend) => {
               const index = item.datasetIndex
               if (index === undefined) return
@@ -229,11 +229,11 @@ export function TimeSeriesChart({ labels, datasets, height = 300, unitLabel = ""
         },
         scales: {
           x: {
-            ticks: { color: tickC, font: { family: "Outfit, sans-serif", size: 10 } },
+            ticks: { color: tickC, font: { family: "Geist, ui-sans-serif, system-ui, sans-serif", size: 10 } },
             grid: { display: false },
           },
           y: {
-            ticks: { color: tickC, font: { family: "IBM Plex Mono, monospace", size: 10 }, callback: (v) => tickFmt(Number(v)) },
+            ticks: { color: tickC, font: { family: "Geist Mono, ui-monospace, SFMono-Regular, monospace", size: 10 }, callback: (v) => tickFmt(Number(v)) },
             grid: { color: gridC },
           },
         },

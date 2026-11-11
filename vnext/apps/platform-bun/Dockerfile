@@ -44,7 +44,7 @@ COPY packages/translate/package.json packages/translate/
 RUN --mount=type=secret,id=npmrc,target=/root/.npmrc NODE_TLS_REJECT_UNAUTHORIZED=0 bun install --frozen-lockfile
 
 # Source
-COPY tsconfig.base.json tailwind.config.ts ./
+COPY tsconfig.base.json ./
 COPY apps ./apps
 COPY packages ./packages
 COPY scripts ./scripts

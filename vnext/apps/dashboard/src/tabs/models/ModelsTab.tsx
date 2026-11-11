@@ -194,7 +194,7 @@ export function ModelsTab() {
           <div className="text-sm text-themed-dim mb-4">{t("dash.playground.noKeyBody")}</div>
           <button
             onClick={() => { window.location.hash = "#keys" }}
-            className="px-4 py-2 bg-accent-cyan text-black text-sm rounded"
+            className="px-4 py-2 bg-accent-cyan text-black text-sm rounded-sm"
           >
             {t("dash.playground.createKey")}
           </button>
@@ -284,7 +284,7 @@ export function ModelsTab() {
             value={systemPrompt}
             onChange={(e) => setSystemPrompt(e.target.value)}
             placeholder={t("dash.playground.systemPlaceholder")}
-            className="w-full text-sm border border-themed rounded px-2 py-1 bg-transparent min-h-[60px]"
+            className="w-full text-sm border border-themed rounded-sm px-2 py-1 bg-transparent min-h-[60px]"
           />
         </div>
       )}
@@ -350,7 +350,7 @@ function MappedModelBadge({ target }: { target: string }) {
   const t = useT()
   return (
     <span
-      className="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium bg-accent-teal/10 text-accent-teal"
+      className="shrink-0 px-1.5 py-0.5 rounded-sm text-[10px] font-medium bg-accent-teal/10 text-accent-teal"
       title={t("dash.playground.mappedTo", { model: target })}
     >
       {t("dash.playground.mappedModel")}
@@ -384,7 +384,7 @@ export function ModelList({
           value={search}
           onChange={(e) => onSearch(e.target.value)}
           placeholder={t("dash.playground.searchModels")}
-          className="w-full text-xs border border-themed rounded px-2 py-1 bg-transparent"
+          className="w-full text-xs border border-themed rounded-sm px-2 py-1 bg-transparent"
         />
       </div>
       <div className="flex-1 overflow-auto">

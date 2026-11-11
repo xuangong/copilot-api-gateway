@@ -1,13 +1,47 @@
+import { Bot } from "lucide-react"
 import { useEffect, useState } from "react"
 import { api } from "../api/client"
+import { isPlainLeftClick } from "../shell/links"
 import { useAuth } from "../state/auth"
+import { cn } from "../ui/cn"
+import { Tooltip } from "../ui/tooltip"
 
-export function AgentRemoteLink({ enabled, authenticated, active = false }: { enabled: boolean; authenticated: boolean; active?: boolean }) {
-  if (!enabled || !authenticated) return null
-  return <a href="#agent-remote" aria-current={active ? "page" : undefined} className={`px-3 py-1.5 sm:px-4 sm:py-2 rounded-md text-xs sm:text-sm font-medium ${active ? "bg-surface-600 text-themed" : "text-accent-violet hover:bg-surface-700"} whitespace-nowrap`}>Agent Remote</a>
+interface LinkProps {
+  enabled: boolean
+  authenticated: boolean
+  active?: boolean
+  iconOnly?: boolean
+  /** In-app navigation, e.g. so the phone drawer can close. Without it the hash link navigates by itself. */
+  onSelect?: (id: string) => void
 }
 
-export function AgentRemoteEntry({ active = false }: { active?: boolean }) {
+export function AgentRemoteLink({ enabled, authenticated, active = false, iconOnly = false, onSelect }: LinkProps) {
+  if (!enabled || !authenticated) return null
+  return (
+    <Tooltip content="Agent Remote" disabled={!iconOnly}>
+      <a
+        href="#agent-remote"
+        aria-current={active ? "page" : undefined}
+        aria-label={iconOnly ? "Agent Remote" : undefined}
+        onClick={(e) => {
+          if (!onSelect || !isPlainLeftClick(e)) return
+          e.preventDefault()
+          onSelect("agent-remote")
+        }}
+        className={cn(
+          "flex h-8 items-center gap-2.5 rounded-md px-2 text-[13px] transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-text",
+          active ? "bg-muted font-medium text-fg" : "text-fg-muted hover:bg-muted hover:text-fg",
+          iconOnly && "justify-center px-0",
+        )}
+      >
+        <Bot className={cn("size-4 shrink-0", active ? "text-brand" : "")} aria-hidden="true" />
+        {iconOnly ? null : <span className="truncate">Agent Remote</span>}
+      </a>
+    </Tooltip>
+  )
+}
+
+export function AgentRemoteEntry({ active = false, iconOnly = false, onSelect }: { active?: boolean; iconOnly?: boolean; onSelect?: (id: string) => void }) {
   const { session } = useAuth()
   const [enabled, setEnabled] = useState(false)
   useEffect(() => {
@@ -17,5 +51,5 @@ export function AgentRemoteEntry({ active = false }: { active?: boolean }) {
       .catch(() => { if (!controller.signal.aborted) setEnabled(false) })
     return () => controller.abort()
   }, [])
-  return <AgentRemoteLink active={active} enabled={enabled} authenticated={session?.sessionToken?.startsWith("ses_") === true} />
+  return <AgentRemoteLink active={active} iconOnly={iconOnly} onSelect={onSelect} enabled={enabled} authenticated={session?.sessionToken?.startsWith("ses_") === true} />
 }

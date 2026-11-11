@@ -391,7 +391,7 @@ export function ModelMappingsPanel({
                       }}
                       aria-label={t("dash.reorderMappingHandle", { n: index + 1 })}
                       title={t("dash.reorderMappingHandle", { n: index + 1 })}
-                      className="btn-ghost text-xs px-2 cursor-grab active:cursor-grabbing touch-none"
+                      className="btn-ghost text-xs px-2 cursor-grab enabled:active:cursor-grabbing! touch-none"
                     >
                       ⠿
                     </button>

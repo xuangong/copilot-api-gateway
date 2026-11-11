@@ -58,7 +58,7 @@ export function ToastHost() {
           <button
             key={t.id}
             onClick={() => dismiss(t.id)}
-            className={`px-4 py-2 rounded border text-sm shadow-lg backdrop-blur cursor-pointer text-left max-w-md ${tone}`}
+            className={`px-4 py-2 rounded-sm border text-sm shadow-lg backdrop-blur-sm cursor-pointer text-left max-w-md ${tone}`}
           >
             {t.message}
           </button>

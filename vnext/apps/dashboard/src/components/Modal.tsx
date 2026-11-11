@@ -28,7 +28,7 @@ export function Modal({ open, onClose, title, children, footer, size = "md" }: P
   if (!open) return null
   return (
     <div
-      className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+      className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose()
       }}

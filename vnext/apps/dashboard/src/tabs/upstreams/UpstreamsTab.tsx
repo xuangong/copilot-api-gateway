@@ -147,7 +147,7 @@ export function UpstreamsTab() {
           </div>
           {/* The negative margin lets the strip scroll edge-to-edge inside the
               card's p-4 padding instead of clipping mid-button. */}
-          <div className="flex flex-nowrap items-center gap-2 whitespace-nowrap overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0 sm:overflow-visible [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>button]:shrink-0">
+          <div className="flex flex-nowrap items-center gap-2 whitespace-nowrap overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0 sm:overflow-visible scrollbar-none [&::-webkit-scrollbar]:hidden [&>button]:shrink-0">
             <button onClick={() => setDeviceFlowOpen(true)} className="btn-primary text-sm">{t("dash.addCopilot")}</button>
             <button onClick={() => openCreate("codex")} className="btn-ghost text-sm">{t("dash.addCodexImport")}</button>
             <button onClick={() => setCreateLoki(value => !value)} className="btn-ghost text-sm">{t("dash.addLoki")}</button>
@@ -235,17 +235,17 @@ export function UpstreamsTab() {
                 <button
                   type="button"
                   onClick={() => setCollapsed((c) => ({ ...c, [groupKey]: !c[groupKey] }))}
-                  className="w-full flex items-center justify-between gap-2 px-2 py-1.5 text-left rounded hover:bg-surface-700/40 transition-colors"
+                  className="w-full flex items-center justify-between gap-2 px-2 py-1.5 text-left rounded-sm hover:bg-surface-700/40 transition-colors"
                 >
                   <div className="flex items-center gap-2 min-w-0">
                     <span className="text-xs text-themed-dim">{isCollapsed ? "▶" : "▼"}</span>
                     <span className="text-sm font-medium text-themed truncate">{g.label}</span>
                     {g.isMine ? (
-                      <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-accent-violet/20 text-accent-violet">
+                      <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded-sm bg-accent-violet/20 text-accent-violet">
                         {t("dash.youBadge")}
                       </span>
                     ) : (
-                      <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-surface-700 text-themed-dim">
+                      <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded-sm bg-surface-700 text-themed-dim">
                         {t("dash.readOnlyBadge")}
                       </span>
                     )}

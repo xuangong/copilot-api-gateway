@@ -3,7 +3,7 @@ import { listRemoteHosts, listHostShares, saveHostShare, revokeHostShare, parseS
 import { useRemoteText } from "./remote-text"
 
 const fieldClass = "bg-surface-800 border border-surface-600 rounded-md px-3 py-2 text-sm text-themed w-full"
-const buttonClass = "btn-ghost !text-xs !py-2 !px-3 disabled:opacity-40"
+const buttonClass = "btn-ghost text-xs! py-2! px-3! disabled:opacity-40"
 
 export function ShareRow({ share, onSave, onRevoke, busy }: {
   share: HostShare
@@ -78,10 +78,10 @@ function HostShares({ hostId }: { hostId: string }) {
       <label className="text-xs text-themed-dim w-36">{t("dash.remote.limit")}
         <input type="number" min="0" max="10000" step="1" required value={limit} onChange={event => setLimit(event.target.value)} className={`${fieldClass} mt-1`} />
       </label>
-      <button disabled={busy || parsed === undefined || !email.trim()} className="btn-primary !text-xs !py-2 disabled:opacity-40">{t("dash.remote.share")}</button>
+      <button disabled={busy || parsed === undefined || !email.trim()} className="btn-primary text-xs! py-2! disabled:opacity-40">{t("dash.remote.share")}</button>
     </form>
     {error && <p role="alert" className="text-sm text-accent-red">{error}</p>}
-    {loginUrl && <a href={loginUrl} className="btn-primary inline-block !text-xs !py-2">{t("dash.remote.reauthenticate")}</a>}
+    {loginUrl && <a href={loginUrl} className="btn-primary inline-block text-xs! py-2!">{t("dash.remote.reauthenticate")}</a>}
     {shares === null && !error && <p role="status" className="text-xs text-themed-dim">{t("dash.remote.loadingShares")}</p>}
     {shares?.length === 0 && <p className="text-xs text-themed-dim">{t("dash.remote.noShares")}</p>}
     {shares?.map(share => <ShareRow key={`${share.subject}:${share.sessionLimit}:${share.revoked}`} share={share} busy={busy} onSave={save} onRevoke={address => mutate(() => revokeHostShare(hostId, address))} />)}
@@ -95,16 +95,16 @@ export function HostCard({ host }: { host: RemoteHost }) {
   return <article className="bg-surface-900 border border-surface-600 rounded-lg p-4 sm:p-5">
     <div className="flex items-start justify-between flex-wrap gap-4">
       <div className="min-w-0 space-y-2">
-        <h2 className="text-base font-semibold text-themed break-words">{host.name}</h2>
+        <h2 className="text-base font-semibold text-themed wrap-break-word">{host.name}</h2>
         <div className="flex flex-wrap items-center gap-2 text-xs text-themed-dim">
           <span className={`inline-flex items-center gap-1.5 ${host.online ? "text-accent-teal" : ""}`}><span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${host.online ? "bg-accent-teal" : "bg-surface-600"}`} />{host.online ? t("dash.remote.online") : t("dash.remote.offline")}</span>
           <span>·</span><span>{host.access === "owner" ? t("dash.remote.owner") : t("dash.remote.shared")}</span>
-          {host.providers.map(provider => <span key={provider.providerId} className="rounded bg-surface-800 px-2 py-0.5">{provider.displayName}</span>)}
+          {host.providers.map(provider => <span key={provider.providerId} className="rounded-sm bg-surface-800 px-2 py-0.5">{provider.displayName}</span>)}
         </div>
       </div>
       <div className="flex flex-wrap gap-2">
         {host.access === "owner" && <button type="button" className={buttonClass} aria-expanded={sharing} onClick={() => setSharing(value => !value)}>{sharing ? t("dash.remote.close") : t("dash.remote.manage")}</button>}
-        <a href={`/agent-remote?host=${encodeURIComponent(host.id)}`} className="btn-primary !text-xs !py-2 !px-3">{t("dash.remote.open")}</a>
+        <a href={`/agent-remote?host=${encodeURIComponent(host.id)}`} className="btn-primary text-xs! py-2! px-3!">{t("dash.remote.open")}</a>
       </div>
     </div>
     {quota && <div className="mt-4 space-y-1">

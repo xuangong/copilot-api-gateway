@@ -76,7 +76,7 @@ function ClientRow({ client: c, isAdmin, now }: { client: RelayClient; isAdmin: 
   const dotClass = c.isOnline ? "bg-accent-teal status-pulse" : "bg-surface-600"
 
   return (
-    <div className="flex items-center justify-between gap-3 p-4 rounded-lg bg-surface-800/50 border border-white/[0.04]">
+    <div className="flex items-center justify-between gap-3 p-4 rounded-lg bg-surface-800/50 border border-white/4">
       <div className="flex items-center gap-3 min-w-0 flex-1">
         <div className="relative shrink-0">
           <div className="w-8 h-8 rounded-lg bg-surface-700 flex items-center justify-center">

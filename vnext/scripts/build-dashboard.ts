@@ -21,25 +21,29 @@ await Bun.build({
 
 await Bun.write(`${out}/dashboard.js.txt`, Bun.file(`${out}/dashboard.js`))
 
-// The content glob is passed absolute: tailwind resolves a relative one against
-// the caller's cwd, and a glob that matches nothing yields a preflight-only
-// stylesheet with every utility purged — a silent, ship-shaped failure. It is
-// interpolated as a single value so Bun's shell hands it to tailwind intact
-// rather than expanding it itself.
+// Tailwind 4 reads its sources from styles.css (`@source`, relative to the
+// stylesheet), so no content glob or config file is passed here.
 //
-// The binary is addressed by path for the same reason: `bunx tailwindcss` from
-// a cwd that can't see the dashboard's node_modules falls through to fetching
-// tailwind v4 from the registry, which ships no CLI at all. Which node_modules
-// holds the bin depends on how bun hoisted it, so try both.
-const contentGlob = `${src}/**/*.{ts,tsx}`
-const tailwindBin = await (async () => {
-  const candidates = [`${root}/apps/dashboard/node_modules/.bin/tailwindcss`, `${root}/node_modules/.bin/tailwindcss`]
-  for (const c of candidates) if (await Bun.file(c).exists()) return c
-  throw new Error(`tailwindcss CLI not found in any of: ${candidates.join(", ")}`)
-})()
-await $`${tailwindBin} -c ${root}/tailwind.config.ts --content ${contentGlob} -i ${src}/styles.css -o ${out}/dashboard.css --minify`.quiet()
+// Which node_modules holds the bin depends on how bun laid the install out:
+// isolated installs put it under the dashboard, hoisted ones (as in the Docker
+// image) at the workspace root. Either is fine as long as it is the v4 CLI — a
+// stale v3 bin left at the root would silently mis-build a v4 stylesheet, so
+// the version is checked rather than trusted.
+const tailwindCandidates = [`${root}/apps/dashboard/node_modules/.bin/tailwindcss`, `${root}/node_modules/.bin/tailwindcss`]
+let tailwindBin: string | undefined
+for (const c of tailwindCandidates) {
+  if (!(await Bun.file(c).exists())) continue
+  const help = await $`${c} --help`.quiet().nothrow().text()
+  if (help.includes("tailwindcss v4")) { tailwindBin = c; break }
+}
+if (!tailwindBin) throw new Error(`no Tailwind 4 CLI found in any of: ${tailwindCandidates.join(", ")}; run bun install`)
+await $`${tailwindBin} -i ${src}/styles.css -o ${out}/dashboard.css --minify`.quiet()
 const css = await Bun.file(`${out}/dashboard.css`).text()
-if (css.length < 30_000) throw new Error(`dashboard.css is ${css.length} bytes — the content scan matched nothing`)
+// A source scan that matches nothing still yields a valid stylesheet (preflight,
+// theme, the hand-written classes) with every utility missing — a silent,
+// ship-shaped failure. A byte threshold would not catch it reliably now that
+// styles.css alone is large, so check for a utility only the sources produce.
+if (!css.includes(".text-accent-violet")) throw new Error("dashboard.css lacks utilities from the dashboard sources — the @source scan matched nothing")
 await Bun.write(`${out}/dashboard.css.txt`, css)
 
 console.log("[build-dashboard] wrote", `${out}/dashboard.js`, "and dashboard.css")

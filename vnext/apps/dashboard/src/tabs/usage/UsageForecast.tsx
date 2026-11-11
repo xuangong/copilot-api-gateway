@@ -43,7 +43,7 @@ export function UsageForecast({ cells, onHoverRun }: Props) {
           step="100"
           value={budget}
           onChange={(e) => setBudget(e.target.value)}
-          className="w-24 bg-surface-800 rounded-md px-2 py-1 text-xs text-themed border border-transparent focus:border-surface-600 outline-none"
+          className="w-24 bg-surface-800 rounded-md px-2 py-1 text-xs text-themed border border-transparent focus:border-surface-600! outline-hidden"
         />
       </div>
       {/* Says what a row means. Without it the three numbers read as a forecast
@@ -59,7 +59,7 @@ export function UsageForecast({ cells, onHoverRun }: Props) {
             onMouseEnter={() => onHoverRun(r.elapsed)}
             onFocus={() => onHoverRun(r.elapsed)}
             onBlur={() => onHoverRun(null)}
-            className="text-left rounded-md bg-surface-800 border border-transparent hover:border-amber-400/60 focus:border-amber-400/60 outline-none px-2.5 py-2 transition-all"
+            className="text-left rounded-md bg-surface-800 border border-transparent hover:border-amber-400/60 focus:border-amber-400/60 outline-hidden px-2.5 py-2 transition-all"
           >
             <div className="flex items-baseline justify-between gap-2">
               <span className="text-[10px] text-themed-dim">#{i + 1}</span>

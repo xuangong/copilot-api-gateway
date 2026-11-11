@@ -67,7 +67,7 @@ export function RequestsPanel({ keyId, keyName, onClose }: { keyId: string; keyN
             type="button"
             onClick={() => void dumps.openDetail(record.id)}
             aria-expanded={dumps.selectedId === record.id}
-            className="w-full text-left rounded-lg bg-surface-800/60 px-3 py-2 hover:bg-surface-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-violet"
+            className="w-full text-left rounded-lg bg-surface-800/60 px-3 py-2 hover:bg-surface-700 focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-accent-violet"
           >
             <span className="font-mono text-xs text-themed">{record.id}</span>
             <span className="ml-3 text-xs text-themed-secondary">{record.method} · {record.status ?? "—"} · {record.durationMs} ms</span>

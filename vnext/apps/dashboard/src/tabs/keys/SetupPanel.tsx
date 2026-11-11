@@ -59,9 +59,9 @@ export function SetupPanel({ keyId, client, origin, settings }: Props) {
     <p className="text-xs text-themed-dim mt-2 leading-relaxed">{t("dash.setupPrerequisite")}</p>
     <p className="text-xs text-themed-dim mt-1 leading-relaxed">{t("dash.setupTestBoundary")}</p>
     <div className="flex flex-wrap gap-4 items-center mt-4 text-xs">
-      <label>{t("dash.setupPlatform")} <select className="bg-surface-800 rounded p-2 ml-2" value={platform} disabled={busy || lease !== null} onChange={event => setPlatform(event.target.value as SetupPlatform)}><option value="posix">macOS / Linux</option><option value="windows">Windows / PowerShell</option></select></label>
+      <label>{t("dash.setupPlatform")} <select className="bg-surface-800 rounded-sm p-2 ml-2" value={platform} disabled={busy || lease !== null} onChange={event => setPlatform(event.target.value as SetupPlatform)}><option value="posix">macOS / Linux</option><option value="windows">Windows / PowerShell</option></select></label>
       {client === "claude" && <>
-        <label>{t("dash.setupEffort")} <select className="bg-surface-800 rounded p-2 ml-2" value={effort} disabled={busy || lease !== null} onChange={event => setEffort(event.target.value as SetupEffort | "")}><option value="">{t("dash.setupPreserve")}</option>{["low", "medium", "high", "xhigh", "max"].map(value => <option key={value} value={value}>{value}</option>)}</select></label>
+        <label>{t("dash.setupEffort")} <select className="bg-surface-800 rounded-sm p-2 ml-2" value={effort} disabled={busy || lease !== null} onChange={event => setEffort(event.target.value as SetupEffort | "")}><option value="">{t("dash.setupPreserve")}</option>{["low", "medium", "high", "xhigh", "max"].map(value => <option key={value} value={value}>{value}</option>)}</select></label>
         <label className="flex items-center gap-2"><input type="checkbox" checked={context1m} disabled={busy || lease !== null} onChange={event => setContext1m(event.target.checked)} />{t("dash.setupContext")}</label>
       </>}
     </div>
@@ -71,7 +71,7 @@ export function SetupPanel({ keyId, client, origin, settings }: Props) {
     {lease && <div className="mt-4 space-y-3">
       <p className="text-xs text-accent-teal">{expired ? t("dash.setupExpired") : t("dash.setupExpires", { time: new Date(lease.expiresAt).toLocaleTimeString() })}</p>
       <p className="text-xs text-themed-dim">{t("dash.setupPaste")}</p>
-      {!expired && <div className="flex gap-2"><input type="password" readOnly value={lease.leaseToken} aria-label={t("dash.setupToken")} autoComplete="off" className="bg-surface-800 rounded px-3 py-2 min-w-0 flex-1 font-mono text-xs" /><button type="button" className={button} onClick={() => void copy(lease.leaseToken)}>{t("dash.setupCopyToken")}</button></div>}
+      {!expired && <div className="flex gap-2"><input type="password" readOnly value={lease.leaseToken} aria-label={t("dash.setupToken")} autoComplete="off" className="bg-surface-800 rounded-sm px-3 py-2 min-w-0 flex-1 font-mono text-xs" /><button type="button" className={button} onClick={() => void copy(lease.leaseToken)}>{t("dash.setupCopyToken")}</button></div>}
       <pre className="code-block p-3 rounded-lg overflow-x-auto text-xs whitespace-pre-wrap break-all">{command}</pre>
       <div className="flex gap-2"><button type="button" className={button} onClick={() => void copy(command)}>{t("dash.setupCopyCommand")}</button><button type="button" className={button} disabled={busy} onClick={() => void revoke()}>{t("dash.setupRevoke")}</button></div>
     </div>}

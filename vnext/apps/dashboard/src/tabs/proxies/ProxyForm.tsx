@@ -20,7 +20,7 @@ import {
 } from './proxy-form-config'
 
 const INPUT_CLS =
-  'w-full bg-surface-800 border border-surface-600 rounded px-2 py-1 text-xs font-mono'
+  'w-full bg-surface-800 border border-surface-600 rounded-sm px-2 py-1 text-xs font-mono'
 
 /** select 的取值必须落回联合类型，所以枚举在这里各留一份运行时数组。 */
 const SS_METHODS: readonly SsMethod[] = ['aes-128-gcm', 'aes-256-gcm', 'chacha20-ietf-poly1305']

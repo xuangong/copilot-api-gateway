@@ -44,7 +44,7 @@ export function InviteCodesPanel({ invites, loading, creating, onCreate, onDelet
             if (e.key === "Enter") submit()
           }}
           placeholder={t("dash.inviteeNamePlaceholder")}
-          className="flex-1 px-3 py-2 rounded bg-surface-800/60 border border-white/[0.06] text-themed text-sm"
+          className="flex-1 px-3 py-2 rounded-sm bg-surface-800/60 border border-white/6 text-themed text-sm"
         />
         <button
           onClick={submit}
@@ -68,18 +68,18 @@ export function InviteCodesPanel({ invites, loading, creating, onCreate, onDelet
           return (
             <div
               key={inv.id}
-              className="flex items-center gap-3 p-3 rounded-lg bg-surface-800/50 border border-white/[0.04] overflow-x-auto whitespace-nowrap"
+              className="flex items-center gap-3 p-3 rounded-lg bg-surface-800/50 border border-white/4 overflow-x-auto whitespace-nowrap"
             >
               <div className="flex items-center gap-3 min-w-0">
                 <span className="text-sm font-medium text-themed shrink-0">{inv.name}</span>
                 {used ? (
-                  <span className="px-2 py-0.5 rounded text-xs bg-accent-violet/10 text-accent-violet shrink-0">
+                  <span className="px-2 py-0.5 rounded-sm text-xs bg-accent-violet/10 text-accent-violet shrink-0">
                     {t("dash.usedLabel")}
                   </span>
                 ) : (
                   <button
                     onClick={() => copy(inv.code, inv.id)}
-                    className="px-2 py-0.5 rounded text-xs font-mono bg-accent-violet/10 text-accent-violet shrink-0 cursor-pointer"
+                    className="px-2 py-0.5 rounded-sm text-xs font-mono bg-accent-violet/10 text-accent-violet shrink-0 cursor-pointer"
                     title={t("dash.clickToCopy")}
                   >
                     {copiedId === inv.id ? t("dash.copiedShort") : inv.code}
@@ -90,7 +90,7 @@ export function InviteCodesPanel({ invites, loading, creating, onCreate, onDelet
                 <span className="text-xs text-themed-dim">{timeAgo(inv.createdAt)}</span>
                 <button
                   onClick={() => onDelete(inv.id)}
-                  className="text-xs text-themed-dim hover:text-accent-red transition-colors"
+                  className="text-xs text-themed-dim hover:text-accent-red! transition-colors"
                 >
                   {t("dash.deleteLabel")}
                 </button>

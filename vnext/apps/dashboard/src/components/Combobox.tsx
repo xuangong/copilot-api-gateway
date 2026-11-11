@@ -235,7 +235,7 @@ export function Combobox({
       role="listbox"
       aria-label={ariaLabel}
       data-placement={placement.placement}
-      className="fixed z-[90] overflow-y-auto rounded-md border border-white/10 bg-surface-800 shadow-xl [scrollbar-width:thin]"
+      className="fixed z-90 overflow-y-auto rounded-md border border-white/10 bg-surface-800 shadow-xl scrollbar-thin"
       style={{
         left: placement.left,
         top: placement.top,
@@ -261,7 +261,7 @@ export function Combobox({
             <span className="flex min-w-0 items-center gap-1.5">
               <span className="min-w-0 truncate">{option.label}</span>
               {option.badge ? (
-                <span className="max-w-[45%] shrink-0 truncate rounded bg-accent-teal/10 px-1.5 py-0.5 text-[10px] text-accent-teal">
+                <span className="max-w-[45%] shrink-0 truncate rounded-sm bg-accent-teal/10 px-1.5 py-0.5 text-[10px] text-accent-teal">
                   {option.badge}
                 </span>
               ) : null}
@@ -312,7 +312,7 @@ export function Combobox({
           );
         }}
         onKeyDown={onKeyDown}
-        className="w-full rounded-md border border-white/10 bg-surface-800 px-2.5 py-1.5 text-xs text-themed-secondary outline-none focus:border-accent-violet/50 disabled:cursor-not-allowed disabled:opacity-60"
+        className="w-full rounded-md border border-white/10 bg-surface-800 px-2.5 py-1.5 text-xs text-themed-secondary outline-hidden focus:border-accent-violet/50! disabled:cursor-not-allowed disabled:opacity-60"
       />
       {popup ? createPortal(popup, document.body) : null}
     </div>

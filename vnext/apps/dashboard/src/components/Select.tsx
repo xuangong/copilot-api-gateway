@@ -57,7 +57,7 @@ export function Select({
   const btnPad = size === "md" ? "px-3 py-2 text-sm" : "px-2.5 py-1.5 text-xs"
   const itemPad = size === "md" ? "px-3 py-2.5 text-sm" : "px-3 py-2 text-xs"
 
-  const defaultBtn = `w-full bg-surface-800 border border-white/10 text-themed-secondary rounded-md focus:border-accent-violet/50 focus:outline-none flex items-center justify-between gap-2 text-left ${btnPad}`
+  const defaultBtn = `w-full bg-surface-800 border border-white/10 text-themed-secondary rounded-md focus:border-accent-violet/50 focus:outline-hidden flex items-center justify-between gap-2 text-left ${btnPad}`
 
   return (
     // `data-select-open` lets an ancestor that also handles Escape — the
@@ -77,7 +77,7 @@ export function Select({
             badge pushes text out past the button's edge instead of clipping. */}
         <span className="truncate min-w-0">{label}</span>
         {badge ? (
-          <span className="shrink-0 max-w-[45%] truncate px-1.5 py-0.5 rounded text-[10px] bg-accent-teal/10 text-accent-teal">
+          <span className="shrink-0 max-w-[45%] truncate px-1.5 py-0.5 rounded-sm text-[10px] bg-accent-teal/10 text-accent-teal">
             {badge}
           </span>
         ) : null}
@@ -86,7 +86,7 @@ export function Select({
         </svg>
       </button>
       {open ? (
-        <div className="absolute left-0 right-0 mt-1 z-50 max-h-64 overflow-y-auto rounded-md border border-white/10 bg-surface-800 shadow-xl [scrollbar-width:thin]">
+        <div className="absolute left-0 right-0 mt-1 z-50 max-h-64 overflow-y-auto rounded-md border border-white/10 bg-surface-800 shadow-xl scrollbar-thin">
           {options.map((o) => (
             <button
               key={o.value}
@@ -102,7 +102,7 @@ export function Select({
               <span className="flex items-center gap-1.5 min-w-0">
                 <span className="truncate min-w-0">{o.label}</span>
                 {o.badge ? (
-                  <span className="shrink-0 max-w-[45%] truncate px-1.5 py-0.5 rounded text-[10px] bg-accent-teal/10 text-accent-teal">
+                  <span className="shrink-0 max-w-[45%] truncate px-1.5 py-0.5 rounded-sm text-[10px] bg-accent-teal/10 text-accent-teal">
                     {o.badge}
                   </span>
                 ) : null}
