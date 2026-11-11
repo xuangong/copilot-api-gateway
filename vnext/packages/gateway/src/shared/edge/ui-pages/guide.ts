@@ -20,21 +20,21 @@ function codeBlock(text: string): string {
       <div class="flex items-start gap-3 px-4 py-3">
         <pre class="flex-1 font-mono text-xs text-themed-secondary whitespace-pre-wrap break-all m-0">${escaped}</pre>
         <button type="button"
-                class="shrink-0 text-[10px] px-2 py-1 rounded-md border border-themed text-themed-dim hover:text-accent-violet"
+                class="shrink-0 text-xs px-2 py-1 rounded-md border border-themed text-themed-dim hover:text-accent-violet focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-violet"
                 data-copy="${escaped}"
                 onclick="navigator.clipboard.writeText(this.dataset.copy); this.textContent='OK'; setTimeout(()=>{this.textContent='Copy'},1200)">Copy</button>
       </div>
     </div>`
 }
 
-function stepHeader(n: string, color: string, key: string, badgeKey?: string): string {
+function stepHeader(n: string, key: string, badgeKey?: string): string {
   return `
     <div class="flex items-center gap-3 mb-5 flex-wrap">
-      <div class="w-8 h-8 rounded-full ${color} flex items-center justify-center text-white font-bold text-sm shrink-0">${n}</div>
+      <div class="w-8 h-8 rounded-full bg-brand flex items-center justify-center text-brand-fg font-bold text-sm shrink-0">${n}</div>
       <h2 class="text-xl font-bold text-themed" x-text="t('${key}')"></h2>
       ${
         badgeKey
-          ? `<span class="text-[10px] font-semibold uppercase tracking-wider px-2 py-1 rounded-full bg-accent-amber/15 text-accent-amber" x-text="t('${badgeKey}')"></span>`
+          ? `<span class="text-xs font-semibold uppercase tracking-wider px-2 py-1 rounded-full bg-accent-amber/15 text-accent-amber" x-text="t('${badgeKey}')"></span>`
           : ""
       }
     </div>`
@@ -81,11 +81,11 @@ export function GuidePage(): string {
               <h1 class="text-lg font-semibold text-themed" x-text="t('guide.title')"></h1>
             </div>
             <div class="flex items-center">
-              <button onclick="toggleLang()" class="theme-toggle w-8 h-8 mr-2">
+              <button onclick="toggleLang()" class="theme-toggle w-8 h-8 mr-2" :aria-label="t('dash.nav.toggleLanguage') + ' (' + (window.__lang === 'zh' ? 'English' : '中文') + ')'">
                 <span class="text-xs font-semibold" id="__lang_btn"></span>
               </button>
               <script>document.getElementById('__lang_btn').textContent = window.__lang === 'zh' ? 'EN' : '中';</script>
-              <button onclick="toggleTheme()" class="theme-toggle w-8 h-8">
+              <button onclick="toggleTheme()" class="theme-toggle w-8 h-8" :aria-label="t('dash.nav.toggleTheme')">
                 <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <circle cx="12" cy="12" r="5"/>
                   <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
@@ -96,7 +96,7 @@ export function GuidePage(): string {
         </div>
 
         <!-- Content -->
-        <div class="max-w-3xl mx-auto px-6 py-10 space-y-14">
+        <div class="max-w-3xl mx-auto px-6 py-10 space-y-14" role="main">
 
           <!-- Intro -->
           <section class="animate-in">
@@ -123,14 +123,14 @@ export function GuidePage(): string {
             <div class="space-y-4">
               <p class="text-themed-secondary text-sm" x-text="t('guide.pathDesc')"></p>
               <div class="grid md:grid-cols-2 gap-4">
-                <div class="glass-card p-5 space-y-2" style="border-color: rgba(139, 92, 246, 0.35);">
+                <div class="glass-card p-5 space-y-2" style="border-color: var(--brand-edge);">
                   <div class="flex items-center gap-2">
                     <svg class="w-4 h-4 text-accent-violet" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">${ICON_LINK}</svg>
                     <h3 class="text-sm font-semibold text-themed" x-text="t('guide.pathATitle')"></h3>
                   </div>
                   <p class="text-sm text-themed-secondary" x-text="t('guide.pathADesc')"></p>
                 </div>
-                <div class="glass-card p-5 space-y-2" style="border-color: rgba(16, 185, 129, 0.35);">
+                <div class="glass-card p-5 space-y-2" style="border-color: var(--success-edge);">
                   <div class="flex items-center gap-2">
                     <svg class="w-4 h-4 text-accent-teal" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">${ICON_KEY}</svg>
                     <h3 class="text-sm font-semibold text-themed" x-text="t('guide.pathBTitle')"></h3>
@@ -144,7 +144,7 @@ export function GuidePage(): string {
 
           <!-- Step 1: account -->
           <section class="animate-in delay-2">
-            ${stepHeader("1", "bg-accent-violet", "guide.s1Title")}
+            ${stepHeader("1", "guide.s1Title")}
             <div class="glass-card p-6 space-y-4">
               <p class="text-themed-secondary text-sm" x-text="t('guide.s1Desc')"></p>
               <div class="space-y-3">
@@ -158,9 +158,9 @@ export function GuidePage(): string {
 
           <!-- Step 2: GitHub upstream -->
           <section class="animate-in delay-3">
-            ${stepHeader("2", "bg-accent-cyan", "guide.s2Title", "guide.s2Badge")}
+            ${stepHeader("2", "guide.s2Title", "guide.s2Badge")}
             <div class="glass-card p-6 space-y-4">
-              <div class="rounded-xl px-4 py-3 text-sm" style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.25);">
+              <div class="rounded-xl px-4 py-3 text-sm" style="background: var(--success-wash); border: 1px solid var(--success-edge);">
                 <span class="text-accent-teal" x-text="t('guide.s2Skip')"></span>
               </div>
               <p class="text-themed-secondary text-sm" x-html="thtml('guide.s2Desc')"></p>
@@ -173,7 +173,7 @@ export function GuidePage(): string {
               <!-- Mock: device code -->
               <div class="rounded-xl border border-themed p-5" style="background: var(--surface-800);">
                 <div class="flex flex-col items-center gap-3">
-                  <div class="text-[10px] text-themed-dim font-medium uppercase tracking-wider" x-text="t('guide.s2MockCode')"></div>
+                  <div class="text-xs text-themed-dim font-medium uppercase tracking-wider" x-text="t('guide.s2MockCode')"></div>
                   <div class="text-2xl font-bold font-mono tracking-[0.15em] text-themed px-4 py-2 rounded-lg" style="background: var(--surface-700);">
                     A1B2-C3D4
                   </div>
@@ -191,7 +191,7 @@ export function GuidePage(): string {
 
           <!-- Step 3: API key -->
           <section class="animate-in delay-4">
-            ${stepHeader("3", "bg-accent-teal", "guide.s3Title")}
+            ${stepHeader("3", "guide.s3Title")}
             <div class="glass-card p-6 space-y-4">
               <p class="text-themed-secondary text-sm" x-html="thtml('guide.s3Desc')"></p>
               <div class="space-y-3">
@@ -204,7 +204,7 @@ export function GuidePage(): string {
 
           <!-- Step 4: configure a client -->
           <section class="animate-in delay-5">
-            ${stepHeader("4", "bg-accent-amber", "guide.s4Title")}
+            ${stepHeader("4", "guide.s4Title")}
             <div class="glass-card p-6 space-y-4">
               <p class="text-themed-secondary text-sm" x-text="t('guide.s4Desc')"></p>
               <div class="space-y-3">
@@ -216,15 +216,15 @@ export function GuidePage(): string {
               <div class="grid md:grid-cols-3 gap-3 pt-1">
                 <div class="rounded-xl border border-themed p-4 space-y-1.5" style="background: var(--surface-800);">
                   <div class="text-xs font-semibold text-accent-violet" x-text="t('guide.s4ClaudeTitle')"></div>
-                  <p class="text-[11px] text-themed-secondary leading-relaxed" x-text="t('guide.s4ClaudeDesc')"></p>
+                  <p class="text-xs text-themed-secondary leading-relaxed" x-text="t('guide.s4ClaudeDesc')"></p>
                 </div>
                 <div class="rounded-xl border border-themed p-4 space-y-1.5" style="background: var(--surface-800);">
                   <div class="text-xs font-semibold text-accent-cyan" x-text="t('guide.s4CodexTitle')"></div>
-                  <p class="text-[11px] text-themed-secondary leading-relaxed" x-text="t('guide.s4CodexDesc')"></p>
+                  <p class="text-xs text-themed-secondary leading-relaxed" x-text="t('guide.s4CodexDesc')"></p>
                 </div>
                 <div class="rounded-xl border border-themed p-4 space-y-1.5" style="background: var(--surface-800);">
                   <div class="text-xs font-semibold text-accent-teal" x-text="t('guide.s4GeminiTitle')"></div>
-                  <p class="text-[11px] text-themed-secondary leading-relaxed" x-text="t('guide.s4GeminiDesc')"></p>
+                  <p class="text-xs text-themed-secondary leading-relaxed" x-text="t('guide.s4GeminiDesc')"></p>
                 </div>
               </div>
             </div>
@@ -232,7 +232,7 @@ export function GuidePage(): string {
 
           <!-- Step 5: LLM Relay -->
           <section class="animate-in delay-5">
-            ${stepHeader("5", "bg-surface-600", "guide.s5Title", "guide.s5Badge")}
+            ${stepHeader("5", "guide.s5Title", "guide.s5Badge")}
             <div class="glass-card p-6 space-y-4">
               <p class="text-themed-secondary text-sm" x-text="t('guide.s5Desc')"></p>
               <div class="space-y-3">
@@ -241,7 +241,7 @@ export function GuidePage(): string {
               </div>
 
               <!-- 5c: quarantine -->
-              <div class="rounded-xl p-5 space-y-3" style="background: rgba(245, 158, 11, 0.06); border: 1px solid rgba(245, 158, 11, 0.28);">
+              <div class="rounded-xl p-5 space-y-3" style="background: var(--warn-wash); border: 1px solid var(--warn-edge);">
                 <div class="flex items-center gap-2">
                   <svg class="w-4 h-4 text-accent-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">${ICON_TERMINAL}</svg>
                   <h3 class="text-sm font-semibold text-themed" x-text="t('guide.s5cTitle')"></h3>
@@ -252,7 +252,7 @@ export function GuidePage(): string {
                   <li x-html="thtml('guide.s5cStep2')"></li>
                 </ol>
                 ${codeBlock("xattr -cr /Applications/LLM\\ Relay.app")}
-                <p class="text-themed-dim text-xs" x-text="t('guide.s5cCmdHint')"></p>
+                <p class="text-themed-secondary text-xs" x-text="t('guide.s5cCmdHint')"></p>
                 <ol class="list-decimal list-outside pl-5 space-y-2 text-sm text-themed-secondary" start="3">
                   <li x-html="thtml('guide.s5cStep3')"></li>
                   <li x-html="thtml('guide.s5cStep4')"></li>
@@ -269,7 +269,7 @@ export function GuidePage(): string {
 
           <!-- Step 6: verify -->
           <section class="animate-in delay-5">
-            ${stepHeader("6", "bg-accent-violet", "guide.s6Title")}
+            ${stepHeader("6", "guide.s6Title")}
             <div class="glass-card p-6 space-y-4">
               <p class="text-themed-secondary text-sm" x-text="t('guide.s6Desc')"></p>
               <div class="space-y-3">

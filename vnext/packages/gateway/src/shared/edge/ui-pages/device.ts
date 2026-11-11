@@ -5,12 +5,12 @@ export function DevicePage(): string {
   return Layout({
     title: "Device Login",
     children: `
-      <div class="min-h-screen flex items-center justify-center p-4">
-        <div class="fixed top-4 right-4 flex items-center gap-2 z-50">
-          <button onclick="toggleLang()" class="theme-toggle w-8 h-8">
+      <div class="min-h-screen flex items-center justify-center p-4" role="main">
+        <div class="fixed top-4 right-4 flex items-center gap-2 z-50" x-data>
+          <button onclick="toggleLang()" class="theme-toggle w-8 h-8" :aria-label="t('dash.nav.toggleLanguage') + ' (' + (window.__lang === 'zh' ? 'English' : '中文') + ')'">
             <span class="text-xs font-semibold" id="__lang_btn"></span>
           </button>
-          <button onclick="toggleTheme()" class="theme-toggle w-8 h-8">
+          <button onclick="toggleTheme()" class="theme-toggle w-8 h-8" :aria-label="t('dash.nav.toggleTheme')">
             <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="12" cy="12" r="5"/>
               <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
@@ -18,7 +18,7 @@ export function DevicePage(): string {
           </button>
         </div>
         <script>document.getElementById('__lang_btn').textContent = window.__lang === 'zh' ? 'EN' : '中';</script>
-        <div class="fixed top-0 left-1/2 -translate-x-1/2 w-[600px] h-[400px] bg-accent-violet/5 rounded-full blur-[120px] pointer-events-none"></div>
+        <div class="fixed top-0 left-1/2 -translate-x-1/2 w-[600px] h-[400px] rounded-full pointer-events-none"></div>
 
         <div class="w-full max-w-md" x-data="deviceApp()">
           <!-- Checking session -->
@@ -73,8 +73,9 @@ export function DevicePage(): string {
 
               <div class="glass-card p-8 glow-primary animate-in delay-1">
                 <form @submit.prevent="verify()">
-                  <label class="block text-xs font-medium text-themed-secondary uppercase tracking-wider mb-3" x-text="t('device.codeLabel')"></label>
+                  <label for="device-code" class="block text-xs font-medium text-themed-secondary uppercase tracking-wider mb-3" x-text="t('device.codeLabel')"></label>
                   <input
+                    id="device-code"
                     type="text"
                     x-model="userCode"
                     placeholder="XXXX-XXXX"
@@ -86,7 +87,7 @@ export function DevicePage(): string {
                   />
 
                   <template x-if="error">
-                    <p class="text-accent-red text-sm mt-3 text-center" x-text="error"></p>
+                    <p role="alert" class="text-accent-red text-sm mt-3 text-center" x-text="error"></p>
                   </template>
 
                   <button
@@ -115,7 +116,7 @@ export function DevicePage(): string {
           <!-- Success -->
           <template x-if="verified">
             <div class="text-center animate-in">
-              <div class="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-accent-teal/10 mb-6" style="border: 1px solid rgba(16, 185, 129, 0.3);">
+              <div class="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-accent-teal/10 mb-6" style="border: 1px solid var(--success-edge);">
                 <svg class="w-8 h-8 text-accent-teal" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                   <polyline points="20 6 9 17 4 12"/>
                 </svg>

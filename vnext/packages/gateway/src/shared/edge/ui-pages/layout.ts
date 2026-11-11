@@ -1,5 +1,7 @@
-// Base HTML layout - Midnight Aurora / Clean White dual-theme
-// Tailwind CDN + Alpine.js + Outfit + IBM Plex Mono fonts
+// Base HTML layout for the server-rendered pages (login, device, guide).
+// Tailwind 3 CDN + Alpine.js + Geist fonts. Colours follow the dashboard's design
+// tokens (apps/dashboard/src/styles.css); the older class and variable names stay
+// as aliases of those tokens so the page markup barely changes.
 import { renderI18nScript } from "./i18n"
 
 export function Layout({ title, children }: { title: string; children: string }): string {
@@ -12,15 +14,9 @@ export function Layout({ title, children }: { title: string; children: string })
   <link rel="icon" type="image/png" href="/favicon.png" />
   <script src="/cdn/tailwind.js"></script>
   <script defer src="/cdn/alpine.js"></script>
-  <script src="/cdn/chart.js"></script>
-  <link href="/cdn/prism.css" rel="stylesheet" />
-  <script src="/cdn/prism.js"></script>
-  <script src="/cdn/prism-bash.js"></script>
-  <script src="/cdn/prism-toml.js"></script>
-  <script src="/cdn/prism-json.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <script>
     // Theme init - before paint
     (function() {
@@ -46,214 +42,235 @@ export function Layout({ title, children }: { title: string; children: string })
   </script>
   ${renderI18nScript()}
   <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          fontFamily: {
-            sans: ['Outfit', 'system-ui', 'sans-serif'],
-            mono: ['IBM Plex Mono', 'monospace'],
-          },
-          colors: {
-            surface: {
-              '900': 'var(--surface-900)',
-              '800': 'var(--surface-800)',
-              '700': 'var(--surface-700)',
-              '600': 'var(--surface-600)',
-              '500': 'var(--surface-500)',
+    // Tailwind 3 drops opacity modifiers (bg-x/10) on colours written as a bare
+    // var(--x), so every colour goes through its RGB channel variable.
+    (function() {
+      function rgb(name) { return 'rgb(var(--' + name + '-rgb) / <alpha-value>)'; }
+      var accent = {
+        violet: rgb('brand-text'),
+        violetDim: rgb('brand-hover'),
+        cyan: rgb('info'),
+        teal: rgb('success'),
+        amber: rgb('warn'),
+        red: rgb('danger'),
+      };
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Geist', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+              mono: ['Geist Mono', 'ui-monospace', 'SFMono-Regular', 'monospace'],
             },
-            accent: {
-              violet: '#8b5cf6',
-              violetDim: '#7c3aed',
-              violetGlow: 'rgba(139, 92, 246, 0.15)',
-              cyan: '#06b6d4',
-              teal: '#10b981',
-              amber: '#f59e0b',
-              red: '#ef4444',
-            }
-          }
-        }
-      }
-    }
+            colors: {
+              surface: {
+                '900': rgb('surface-900'),
+                '800': rgb('surface-800'),
+                '700': rgb('surface-700'),
+                '600': rgb('surface-600'),
+                '500': rgb('surface-500'),
+              },
+              accent: accent,
+              brand: {
+                DEFAULT: rgb('brand'),
+                hover: rgb('brand-hover'),
+                text: rgb('brand-text'),
+                fg: rgb('brand-foreground'),
+              },
+            },
+            // As text, the status colours use their darker *-text tokens so they
+            // reach 4.5:1 on their own tints; cyan is the info colour.
+            textColor: {
+              accent: Object.assign({}, accent, {
+                teal: rgb('success-text'),
+                amber: rgb('warn-text'),
+                red: rgb('danger-text'),
+              }),
+            },
+            borderColor: {
+              DEFAULT: 'var(--border-color)',
+            },
+          },
+        },
+      };
+    })();
   </script>
   <style>
-    /* ===== Theme CSS Variables ===== */
+    /* ===== Design tokens (copied from apps/dashboard/src/styles.css) ===== */
     :root,
     [data-theme="light"] {
+      color-scheme: light;
       --surface-900: #ffffff;
-      --surface-800: #f4f4f5;
-      --surface-700: #e4e4e7;
-      --surface-600: #d4d4d8;
-      --surface-500: #a1a1aa;
-      --text-primary: #09090b;
-      --text-secondary: #52525b;
-      --text-dim: #a1a1aa;
-      --border-color: rgba(0, 0, 0, 0.08);
-      --glass-bg: rgba(255, 255, 255, 0.85);
-      --glass-bg2: rgba(244, 244, 245, 0.9);
-      --glass-border: rgba(0, 0, 0, 0.06);
-      --glow-color: rgba(139, 92, 246, 0.08);
-      --glow-border: rgba(139, 92, 246, 0.15);
-      --card-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 4px 16px rgba(0,0,0,0.04);
-      --input-bg: rgba(0, 0, 0, 0.03);
-      --input-border: rgba(0, 0, 0, 0.12);
-      --noise-opacity: 0.015;
-      --tooltip-bg: rgba(255, 255, 255, 0.95);
-      --tooltip-border: rgba(0, 0, 0, 0.08);
-      --tooltip-text: #09090b;
-      --tooltip-text2: #52525b;
-      --grid-color: rgba(0, 0, 0, 0.05);
-      --tick-color: #71717a;
+      --surface-800: #fafafa;
+      --surface-700: #f2f2f2;
+      --surface-600: #e0e0e0;
+      --surface-500: #c4c4c4;
+      --text-primary: #0a0a0a;
+      --text-secondary: #525252;
+      --text-dim: #737373;
+      --border-color: #ebebeb;
+      --input-border: #8f8f8f;
+      --control-border: #d9d9d9;
+      --input-bg: #ffffff;
+      --brand: #7c3aed;
+      --brand-hover: #6d28d9;
+      --brand-text: #7c3aed;
+      --brand-foreground: #ffffff;
+      --ring: color-mix(in oklab, #7c3aed 35%, transparent);
+      --info: #0e7490;
+      --success: #047857;
+      --warn: #b45309;
+      --danger: #dc2626;
+      --success-text: #065f46;
+      --warn-text: #92400e;
+      --danger-text: #b91c1c;
+
+      /* RGB channels of the tokens above, for Tailwind's opacity modifiers. */
+      --surface-900-rgb: 255 255 255;
+      --surface-800-rgb: 250 250 250;
+      --surface-700-rgb: 242 242 242;
+      --surface-600-rgb: 224 224 224;
+      --surface-500-rgb: 196 196 196;
+      --brand-rgb: 124 58 237;
+      --brand-hover-rgb: 109 40 217;
+      --brand-text-rgb: 124 58 237;
+      --brand-foreground-rgb: 255 255 255;
+      --info-rgb: 14 116 144;
+      --success-rgb: 4 120 87;
+      --warn-rgb: 180 83 9;
+      --danger-rgb: 220 38 38;
+      --success-text-rgb: 6 95 70;
+      --warn-text-rgb: 146 64 14;
+      --danger-text-rgb: 185 28 28;
     }
 
     [data-theme="dark"] {
-      --surface-900: #08090d;
-      --surface-800: #0f1117;
-      --surface-700: #161922;
-      --surface-600: #1e2230;
-      --surface-500: #282d3e;
-      --text-primary: #e4e4e7;
-      --text-secondary: #a1a1aa;
-      --text-dim: #71717a;
-      --border-color: rgba(255, 255, 255, 0.07);
-      --glass-bg: linear-gradient(135deg, rgba(22, 25, 34, 0.8), rgba(15, 17, 23, 0.95));
-      --glass-bg2: rgba(15, 17, 23, 0.9);
-      --glass-border: rgba(255, 255, 255, 0.06);
-      --glow-color: rgba(139, 92, 246, 0.12);
-      --glow-border: rgba(139, 92, 246, 0.2);
-      --card-shadow: 0 2px 8px rgba(0,0,0,0.3), 0 8px 32px rgba(0,0,0,0.2);
-      --input-bg: rgba(255, 255, 255, 0.04);
-      --input-border: rgba(255, 255, 255, 0.1);
-      --noise-opacity: 0.025;
-      --tooltip-bg: rgba(12, 14, 20, 0.95);
-      --tooltip-border: rgba(255, 255, 255, 0.08);
-      --tooltip-text: #e4e4e7;
-      --tooltip-text2: #a1a1aa;
-      --grid-color: rgba(255, 255, 255, 0.04);
-      --tick-color: #71717a;
+      color-scheme: dark;
+      --surface-900: #0a0a0a;
+      --surface-800: #111111;
+      --surface-700: #1a1a1a;
+      --surface-600: #262626;
+      --surface-500: #333333;
+      --text-primary: #ededed;
+      --text-secondary: #a1a1a1;
+      --text-dim: #8f8f8f;
+      --border-color: #262626;
+      --input-border: #616161;
+      --control-border: #333333;
+      --input-bg: #0a0a0a;
+      --brand: #7c3aed;
+      --brand-hover: #6d28d9;
+      --brand-text: #a78bfa;
+      --brand-foreground: #ffffff;
+      --ring: color-mix(in oklab, #a78bfa 45%, transparent);
+      --info: #22d3ee;
+      --success: #34d399;
+      --warn: #fbbf24;
+      --danger: #f87171;
+      --success-text: var(--success);
+      --warn-text: var(--warn);
+      --danger-text: var(--danger);
+
+      --surface-900-rgb: 10 10 10;
+      --surface-800-rgb: 17 17 17;
+      --surface-700-rgb: 26 26 26;
+      --surface-600-rgb: 38 38 38;
+      --surface-500-rgb: 51 51 51;
+      --brand-rgb: 124 58 237;
+      --brand-hover-rgb: 109 40 217;
+      --brand-text-rgb: 167 139 250;
+      --brand-foreground-rgb: 255 255 255;
+      --info-rgb: 34 211 238;
+      --success-rgb: 52 211 153;
+      --warn-rgb: 251 191 36;
+      --danger-rgb: 248 113 113;
+      --success-text-rgb: 52 211 153;
+      --warn-text-rgb: 251 191 36;
+      --danger-text-rgb: 248 113 113;
+    }
+
+    :root {
+      /* Tinted boxes and borders used by inline styles on the pages. */
+      --brand-edge: color-mix(in oklab, var(--brand-text) 35%, transparent);
+      --success-wash: color-mix(in oklab, var(--success) 8%, transparent);
+      --success-edge: color-mix(in oklab, var(--success) 30%, transparent);
+      --warn-wash: color-mix(in oklab, var(--warn) 6%, transparent);
+      --warn-edge: color-mix(in oklab, var(--warn) 28%, transparent);
+
+      /* Legacy names, kept as aliases so the page markup keeps working. */
+      --glass-bg: var(--surface-900);
+      --glass-border: var(--border-color);
+      --glow-border: var(--border-color);
+      --glow-color: transparent;
+      --card-shadow: none;
+      /* One accent colour: the old teal buttons become brand buttons. */
+      --accent-teal: var(--brand);
     }
 
     body {
       background: var(--surface-900);
       color: var(--text-primary);
-      font-family: 'Outfit', system-ui, sans-serif;
-      transition: background-color 0.3s ease, color 0.3s ease;
+      font-family: 'Geist', ui-sans-serif, system-ui, sans-serif;
+      font-size: 14px;
+      font-variant-numeric: tabular-nums;
+      -webkit-font-smoothing: antialiased;
     }
 
-    /* Subtle noise texture */
-    body::before {
-      content: '';
-      position: fixed;
-      inset: 0;
-      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
-      opacity: var(--noise-opacity);
-      pointer-events: none;
-      z-index: -1;
-    }
-
-    /* Glass card - adaptive */
+    /* Cards: solid surface, hairline border, no blur or shadow. */
     .glass-card {
-      background: var(--glass-bg);
-      backdrop-filter: blur(12px);
-      border: 1px solid var(--glass-border);
-      border-radius: 16px;
-      box-shadow: var(--card-shadow);
-      transition: background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+      background: var(--surface-900);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
     }
-
-    .glow-primary {
-      box-shadow: 0 0 20px var(--glow-color),
-                  0 0 60px rgba(139, 92, 246, 0.05);
-    }
-
-    .glow-border {
-      border: 1px solid var(--glow-border);
-    }
-
-    /* Aurora gradient border effect */
-    .aurora-border {
-      position: relative;
-      border: none;
-      background: var(--glass-bg);
-    }
-    .aurora-border::before {
-      content: '';
-      position: absolute;
-      inset: -1px;
-      border-radius: 17px;
-      background: conic-gradient(from 180deg, #8b5cf6, #06b6d4, #10b981, #8b5cf6);
-      opacity: 0.3;
-      z-index: -1;
-      transition: opacity 0.3s ease;
-    }
-    .aurora-border:hover::before {
-      opacity: 0.5;
-    }
+    .glow-primary { box-shadow: none; }
+    .glow-border { border: 1px solid var(--border-color); }
 
     /* Animations */
     @keyframes fadeSlideUp {
-      from { opacity: 0; transform: translateY(16px); }
+      from { opacity: 0; transform: translateY(4px); }
       to { opacity: 1; transform: translateY(0); }
     }
-
     .animate-in {
-      animation: fadeSlideUp 0.5s ease-out forwards;
+      animation: fadeSlideUp 0.2s ease-out forwards;
       opacity: 0;
     }
-
-    .delay-1 { animation-delay: 0.1s; }
-    .delay-2 { animation-delay: 0.2s; }
-    .delay-3 { animation-delay: 0.3s; }
-    .delay-4 { animation-delay: 0.4s; }
-    .delay-5 { animation-delay: 0.5s; }
-
-    .progress-track {
-      height: 8px;
-      border-radius: 4px;
-      background: var(--input-bg);
-      overflow: hidden;
+    .delay-1 { animation-delay: 0.03s; }
+    .delay-2 { animation-delay: 0.06s; }
+    .delay-3 { animation-delay: 0.09s; }
+    .delay-4 { animation-delay: 0.12s; }
+    .delay-5 { animation-delay: 0.15s; }
+    @media (prefers-reduced-motion: reduce) {
+      .animate-in { animation: none; opacity: 1; }
     }
 
-    .progress-fill {
-      height: 100%;
-      border-radius: 4px;
-      transition: width 0.8s cubic-bezier(0.22, 1, 0.36, 1);
-    }
-
-    @keyframes pulse-dot {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.4; }
-    }
-    .status-pulse {
-      animation: pulse-dot 2s ease-in-out infinite;
-    }
-
-    .hover-lift {
-      transition: transform 0.2s ease, box-shadow 0.2s ease;
-    }
-    .hover-lift:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
-    }
-
-    /* Inputs */
+    /* Inputs: dashboard colours and focus ring; the padding stays at the old
+       size so inputs line up with the full-width buttons. */
     input[type="text"], input[type="password"], input[type="email"] {
       background: var(--input-bg);
       border: 1px solid var(--input-border);
-      border-radius: 10px;
+      border-radius: 6px;
       padding: 12px 16px;
       color: var(--text-primary);
-      font-family: 'IBM Plex Mono', monospace;
+      font-family: inherit;
       font-size: 14px;
-      transition: border-color 0.2s ease, box-shadow 0.2s ease;
+      font-variant-numeric: inherit;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
       outline: none;
       width: 100%;
     }
+    /* The device code keeps a monospace face (tells 0/O and 1/I apart); this
+       must beat the input rule above, which outranks the font-mono utility. */
+    input.font-mono {
+      font-family: 'Geist Mono', ui-monospace, SFMono-Regular, monospace;
+    }
+    input::placeholder {
+      color: var(--text-dim);
+      opacity: 1;
+    }
     input:focus {
-      border-color: rgba(139, 92, 246, 0.5);
-      box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1);
+      border-color: var(--brand-text);
+      box-shadow: 0 0 0 3px var(--ring);
     }
 
-    /* Select styling */
     select option {
       background: var(--surface-800);
       color: var(--text-primary);
@@ -261,126 +278,62 @@ export function Layout({ title, children }: { title: string; children: string })
 
     /* Buttons */
     .btn-primary {
-      background: linear-gradient(135deg, #8b5cf6, #06b6d4);
-      color: #ffffff;
-      font-weight: 600;
+      background: var(--brand);
+      color: var(--brand-foreground);
+      font-weight: 500;
       padding: 12px 24px;
-      border-radius: 10px;
+      border-radius: 6px;
       border: none;
       cursor: pointer;
-      transition: all 0.2s ease;
-      font-family: 'Outfit', system-ui, sans-serif;
+      transition: background-color 0.15s ease;
+      font-family: inherit;
       font-size: 14px;
-      letter-spacing: 0.02em;
     }
-    .btn-primary:hover {
-      filter: brightness(1.15);
-      box-shadow: 0 4px 20px rgba(139, 92, 246, 0.3);
+    .btn-primary:hover:not(:disabled) {
+      background: var(--brand-hover);
+      /* Buttons that set background: var(--accent-teal) inline pick this up too. */
+      --accent-teal: var(--brand-hover);
     }
     .btn-primary:disabled {
       opacity: 0.5;
       cursor: not-allowed;
     }
 
-    .btn-ghost {
-      background: var(--input-bg);
-      color: var(--text-secondary);
-      font-weight: 500;
-      padding: 10px 20px;
-      border-radius: 10px;
-      border: 1px solid var(--input-border);
-      cursor: pointer;
-      transition: all 0.2s ease;
-      font-family: 'Outfit', system-ui, sans-serif;
-      font-size: 13px;
-    }
-    .btn-ghost:hover {
-      background: var(--surface-700);
-      border-color: var(--glow-border);
-    }
-
-    /* Theme toggle button */
     .theme-toggle {
-      background: var(--input-bg);
-      border: 1px solid var(--input-border);
-      border-radius: 8px;
+      background: transparent;
+      border: 1px solid transparent;
+      border-radius: 6px;
       padding: 6px;
       cursor: pointer;
       color: var(--text-secondary);
-      transition: all 0.2s ease;
+      transition: background-color 0.15s ease, color 0.15s ease;
       display: flex;
       align-items: center;
       justify-content: center;
     }
-    .theme-toggle:hover {
-      color: #8b5cf6;
-      border-color: rgba(139, 92, 246, 0.3);
-    }
+    .theme-toggle:hover { background: var(--surface-700); color: var(--text-primary); }
 
-    /* Code blocks - theme aware */
-    .code-block {
-      border: 1px solid var(--border-color);
+    .btn-primary:focus-visible,
+    .theme-toggle:focus-visible {
+      /* A solid outline, not the translucent --ring halo: a focus indicator needs 3:1. */
+      outline: 2px solid var(--brand-text);
+      outline-offset: 2px;
+      box-shadow: none;
     }
-    [data-theme="dark"] .code-block {
-      background: #0f1117;
-    }
-    [data-theme="light"] .code-block {
-      background: #f4f4f5;
-    }
-    .code-block-btn {
-      color: var(--text-dim);
-    }
-    .code-block-btn:hover {
-      color: #8b5cf6;
-      background: var(--input-bg);
-    }
-
-    /* Prism code theme */
-    code[class*="language-"],
-    pre[class*="language-"] {
-      background: transparent !important;
-      text-shadow: none !important;
-      font-family: 'IBM Plex Mono', monospace !important;
-      font-size: 11px !important;
-      line-height: 1.6 !important;
-    }
-
-    /* Dark mode: light text + syntax colors */
-    [data-theme="dark"] code[class*="language-"],
-    [data-theme="dark"] pre[class*="language-"] {
-      color: #e4e4e7 !important;
-    }
-    [data-theme="dark"] .token.comment, [data-theme="dark"] .token.prolog, [data-theme="dark"] .token.doctype, [data-theme="dark"] .token.cdata { color: #71717a; }
-    [data-theme="dark"] .token.punctuation { color: #a1a1aa; }
-    [data-theme="dark"] .token.property, [data-theme="dark"] .token.tag, [data-theme="dark"] .token.boolean, [data-theme="dark"] .token.number, [data-theme="dark"] .token.constant, [data-theme="dark"] .token.symbol { color: #8b5cf6; }
-    [data-theme="dark"] .token.selector, [data-theme="dark"] .token.attr-name, [data-theme="dark"] .token.string, [data-theme="dark"] .token.char, [data-theme="dark"] .token.builtin { color: #06b6d4; }
-    [data-theme="dark"] .token.operator, [data-theme="dark"] .token.entity, [data-theme="dark"] .token.url { color: #a1a1aa; }
-    [data-theme="dark"] .token.atrule, [data-theme="dark"] .token.attr-value, [data-theme="dark"] .token.keyword { color: #ec4899; }
-    [data-theme="dark"] .token.function, [data-theme="dark"] .token.class-name { color: #a855f7; }
-    [data-theme="dark"] .token.regex, [data-theme="dark"] .token.important, [data-theme="dark"] .token.variable { color: #f59e0b; }
-    [data-theme="dark"] .token.assign-left { color: #a1a1aa; }
-
-    /* Light mode: all black text */
-    [data-theme="light"] code[class*="language-"],
-    [data-theme="light"] pre[class*="language-"] {
-      color: #1a1a1a !important;
-    }
-    [data-theme="light"] .token { color: #1a1a1a !important; }
-
-    .token.table { display: inline !important; }
-    .token.table .punctuation { display: inline !important; }
 
     /* Adaptive text utility classes */
     .text-themed { color: var(--text-primary); }
     .text-themed-secondary { color: var(--text-secondary); }
     .text-themed-dim { color: var(--text-dim); }
 
-    /* Override Tailwind white/black opacity borders for theme awareness */
     .border-themed { border-color: var(--border-color); }
 
-    /* Scrollbar hide utility */
-    .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
-    .scrollbar-hide::-webkit-scrollbar { display: none; }
+    /* Links inside running text (incl. x-html i18n strings) need more than colour */
+    :where(p, li) a[href] {
+      text-decoration-line: underline;
+      text-decoration-thickness: 1px;
+      text-underline-offset: 2px;
+    }
   </style>
 </head>
 <body class="min-h-screen">

@@ -5,12 +5,12 @@ export function LoginPage(): string {
   return Layout({
     title: "Login",
     children: `
-      <div class="min-h-screen flex items-center justify-center p-4">
-        <div class="fixed top-4 right-4 flex items-center gap-2 z-50">
-          <button onclick="toggleLang()" class="theme-toggle w-8 h-8">
+      <div class="min-h-screen flex items-center justify-center p-4" role="main">
+        <div class="fixed top-4 right-4 flex items-center gap-2 z-50" x-data>
+          <button onclick="toggleLang()" class="theme-toggle w-8 h-8" :aria-label="t('dash.nav.toggleLanguage') + ' (' + (window.__lang === 'zh' ? 'English' : '中文') + ')'">
             <span class="text-xs font-semibold" id="__lang_btn"></span>
           </button>
-          <button onclick="toggleTheme()" class="theme-toggle w-8 h-8">
+          <button onclick="toggleTheme()" class="theme-toggle w-8 h-8" :aria-label="t('dash.nav.toggleTheme')">
             <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="12" cy="12" r="5"/>
               <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
@@ -19,7 +19,7 @@ export function LoginPage(): string {
         </div>
         <script>document.getElementById('__lang_btn').textContent = window.__lang === 'zh' ? 'EN' : '中';</script>
 
-        <div class="fixed top-0 left-1/2 -translate-x-1/2 w-[600px] h-[400px] bg-accent-violet/5 rounded-full blur-[120px] pointer-events-none"></div>
+        <div class="fixed top-0 left-1/2 -translate-x-1/2 w-[600px] h-[400px] rounded-full pointer-events-none"></div>
 
         <div class="w-full max-w-md" x-data="loginApp()">
           <!-- Auto-login check (cookie session) -->
@@ -77,7 +77,7 @@ export function LoginPage(): string {
               <div class="flex-1 h-px" style="background: var(--glass-border)"></div>
             </div>
 
-            <button @click="step='email-login'" class="w-full flex items-center justify-center gap-3 py-3 px-4 rounded-xl text-sm font-medium transition-all cursor-pointer border" style="background: transparent; border-color: var(--glass-border); color: var(--text-primary)">
+            <button @click="step='email-login'" class="w-full flex items-center justify-center gap-3 py-3 px-4 rounded-xl text-sm font-medium transition-all cursor-pointer border focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-violet" style="background: transparent; border-color: var(--glass-border); color: var(--text-primary)">
               <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <rect x="2" y="4" width="20" height="16" rx="2"/>
                 <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>
@@ -85,8 +85,8 @@ export function LoginPage(): string {
               <span x-text="t('login.emailSignIn')"></span>
             </button>
 
-            <div class="mt-5 pt-5 border-t border-themed-border">
-              <button @click="step='invite'" class="w-full text-center text-sm text-themed-dim hover:text-accent-violet transition-colors cursor-pointer bg-transparent border-0">
+            <div class="mt-5 pt-5 border-t border-themed">
+              <button @click="step='invite'" class="w-full text-center text-sm text-themed-dim hover:text-accent-violet transition-colors cursor-pointer bg-transparent border-0 rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-violet">
                 <span x-text="t('login.inviteCodeLink')"></span>
               </button>
             </div>
@@ -94,7 +94,7 @@ export function LoginPage(): string {
 
           <div class="text-center mt-6 animate-in delay-2 space-y-2">
             <p>
-              <a href="/guide" class="text-xs text-accent-violet hover:underline" x-text="t('common.guideLink')"></a>
+              <a href="/guide" class="text-xs text-accent-violet hover:underline rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-violet" x-text="t('common.guideLink')"></a>
             </p>
             <p class="text-xs text-themed-dim" x-text="t('common.poweredBy')">
             </p>
@@ -120,8 +120,9 @@ export function LoginPage(): string {
           <div class="glass-card p-8 glow-primary animate-in delay-1">
             <form @submit.prevent="validateInvite()" class="space-y-5">
               <div>
-                <label class="block text-xs font-medium text-themed-secondary mb-2 uppercase tracking-widest" x-text="t('login.inviteCode')"></label>
+                <label for="login-invite-code" class="block text-xs font-medium text-themed-secondary mb-2 uppercase tracking-widest" x-text="t('login.inviteCode')"></label>
                 <input
+                  id="login-invite-code"
                   type="text"
                   x-model="inviteCode"
                   :placeholder="t('login.invitePlaceholder')"
@@ -168,7 +169,7 @@ export function LoginPage(): string {
                   <div class="flex-1 h-px" style="background: var(--glass-border)"></div>
                 </div>
 
-                <button @click="step='email-register'; regName=inviteName" class="w-full flex items-center justify-center gap-3 py-3 px-4 rounded-xl text-sm font-medium transition-all cursor-pointer border" style="background: transparent; border-color: var(--glass-border); color: var(--text-primary)">
+                <button @click="step='email-register'; regName=inviteName" class="w-full flex items-center justify-center gap-3 py-3 px-4 rounded-xl text-sm font-medium transition-all cursor-pointer border focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-violet" style="background: transparent; border-color: var(--glass-border); color: var(--text-primary)">
                   <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <rect x="2" y="4" width="20" height="16" rx="2"/>
                     <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>
@@ -178,12 +179,12 @@ export function LoginPage(): string {
                 </div>
               </template>
 
-              <button type="button" @click="step='login'; error=''; inviteValid=false; inviteCode=''" class="w-full text-center text-xs text-themed-dim hover:text-themed-secondary transition-colors cursor-pointer bg-transparent border-0">
+              <button type="button" @click="step='login'; error=''; inviteValid=false; inviteCode=''" class="w-full text-center text-xs text-themed-dim hover:text-themed-secondary transition-colors cursor-pointer bg-transparent border-0 rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-violet">
                 <span x-text="t('common.backToLogin')"></span>
               </button>
             </form>
 
-            <div x-show="error" x-transition class="mt-4 p-3 rounded-lg bg-accent-red/10 border border-accent-red/20 text-accent-red text-sm">
+            <div x-show="error" x-transition role="alert" class="mt-4 p-3 rounded-lg bg-accent-red/10 border border-accent-red/20 text-accent-red text-sm">
               <span x-text="error"></span>
             </div>
           </div>
@@ -207,12 +208,12 @@ export function LoginPage(): string {
           <div class="glass-card p-8 glow-primary animate-in delay-1">
             <form @submit.prevent="emailLogin()" class="space-y-5">
               <div>
-                <label class="block text-xs font-medium text-themed-secondary mb-2 uppercase tracking-widest" x-text="t('login.email')"></label>
-                <input type="email" x-model="loginEmail" :placeholder="t('login.emailPlaceholder')" autofocus required />
+                <label for="login-email" class="block text-xs font-medium text-themed-secondary mb-2 uppercase tracking-widest" x-text="t('login.email')"></label>
+                <input id="login-email" type="email" x-model="loginEmail" :placeholder="t('login.emailPlaceholder')" autofocus required />
               </div>
               <div>
-                <label class="block text-xs font-medium text-themed-secondary mb-2 uppercase tracking-widest" x-text="t('login.password')"></label>
-                <input type="password" x-model="loginPassword" :placeholder="t('login.passwordPlaceholder')" required />
+                <label for="login-password" class="block text-xs font-medium text-themed-secondary mb-2 uppercase tracking-widest" x-text="t('login.password')"></label>
+                <input id="login-password" type="password" x-model="loginPassword" :placeholder="t('login.passwordPlaceholder')" required />
               </div>
               <button type="submit" class="btn-primary w-full" :disabled="loading || !loginEmail.trim() || !loginPassword">
                 <span x-show="!loading" x-text="t('login.signIn')"></span>
@@ -226,11 +227,11 @@ export function LoginPage(): string {
               </button>
             </form>
 
-            <div x-show="error" x-transition class="mt-4 p-3 rounded-lg bg-accent-red/10 border border-accent-red/20 text-accent-red text-sm">
+            <div x-show="error" x-transition role="alert" class="mt-4 p-3 rounded-lg bg-accent-red/10 border border-accent-red/20 text-accent-red text-sm">
               <span x-text="error"></span>
             </div>
 
-            <button type="button" @click="step='login'; error=''; loginEmail=''; loginPassword=''" class="w-full text-center text-xs text-themed-dim hover:text-themed-secondary transition-colors cursor-pointer bg-transparent border-0 mt-5">
+            <button type="button" @click="step='login'; error=''; loginEmail=''; loginPassword=''" class="w-full text-center text-xs text-themed-dim hover:text-themed-secondary transition-colors cursor-pointer bg-transparent border-0 rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-violet mt-5">
               <span x-text="t('common.backToLogin')"></span>
             </button>
           </div>
@@ -255,16 +256,16 @@ export function LoginPage(): string {
             <template x-if="!codeSent">
             <form @submit.prevent="sendRegisterCode()" class="space-y-5">
               <div>
-                <label class="block text-xs font-medium text-themed-secondary mb-2 uppercase tracking-widest" x-text="t('login.name')"></label>
-                <input type="text" :value="regName" disabled style="opacity: 0.7; cursor: not-allowed" />
+                <label for="register-name" class="block text-xs font-medium text-themed-secondary mb-2 uppercase tracking-widest" x-text="t('login.name')"></label>
+                <input id="register-name" type="text" :value="regName" disabled style="opacity: 0.7; cursor: not-allowed" />
               </div>
               <div>
-                <label class="block text-xs font-medium text-themed-secondary mb-2 uppercase tracking-widest" x-text="t('login.email')"></label>
-                <input type="email" x-model="regEmail" :placeholder="t('login.emailPlaceholder')" autofocus required />
+                <label for="register-email" class="block text-xs font-medium text-themed-secondary mb-2 uppercase tracking-widest" x-text="t('login.email')"></label>
+                <input id="register-email" type="email" x-model="regEmail" :placeholder="t('login.emailPlaceholder')" autofocus required />
               </div>
               <div>
-                <label class="block text-xs font-medium text-themed-secondary mb-2 uppercase tracking-widest" x-text="t('login.password')"></label>
-                <input type="password" x-model="regPassword" :placeholder="t('login.passwordHint')" minlength="6" required />
+                <label for="register-password" class="block text-xs font-medium text-themed-secondary mb-2 uppercase tracking-widest" x-text="t('login.password')"></label>
+                <input id="register-password" type="password" x-model="regPassword" :placeholder="t('login.passwordHint')" minlength="6" required />
               </div>
               <button type="submit" class="btn-primary w-full" :disabled="loading || !regEmail.trim() || !regName.trim() || regPassword.length < 6" style="background: var(--accent-teal, #2dd4bf)">
                 <span x-show="!loading" x-text="t('login.sendCode')"></span>
@@ -285,8 +286,8 @@ export function LoginPage(): string {
                 <span x-text="t('login.codeSentTo')"></span><span class="font-medium" x-text="regEmail"></span>
               </div>
               <div>
-                <label class="block text-xs font-medium text-themed-secondary mb-2 uppercase tracking-widest" x-text="t('login.verificationCode')"></label>
-                <input type="text" x-model="regCode" placeholder="000000" maxlength="6" required
+                <label for="register-code" class="block text-xs font-medium text-themed-secondary mb-2 uppercase tracking-widest" x-text="t('login.verificationCode')"></label>
+                <input id="register-code" type="text" x-model="regCode" placeholder="000000" maxlength="6" required
                   style="text-align: center; letter-spacing: 0.3em; font-size: 1.25rem; font-weight: 600"
                   @input="regCode = regCode.replace(/[^0-9]/g, '')" />
               </div>
@@ -303,11 +304,11 @@ export function LoginPage(): string {
             </form>
             </template>
 
-            <div x-show="error" x-transition class="mt-4 p-3 rounded-lg bg-accent-red/10 border border-accent-red/20 text-accent-red text-sm">
+            <div x-show="error" x-transition role="alert" class="mt-4 p-3 rounded-lg bg-accent-red/10 border border-accent-red/20 text-accent-red text-sm">
               <span x-text="error"></span>
             </div>
 
-            <button type="button" @click="step='invite'; error=''; codeSent=false; regCode=''" class="w-full text-center text-xs text-themed-dim hover:text-themed-secondary transition-colors cursor-pointer bg-transparent border-0 mt-5">
+            <button type="button" @click="step='invite'; error=''; codeSent=false; regCode=''" class="w-full text-center text-xs text-themed-dim hover:text-themed-secondary transition-colors cursor-pointer bg-transparent border-0 rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-violet mt-5">
               <span x-text="t('common.back')"></span>
             </button>
           </div>
