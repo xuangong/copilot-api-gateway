@@ -55,7 +55,7 @@ export function LoginPage(): string {
               </svg>
             </div>
             <h1 class="text-2xl font-semibold tracking-tight text-themed" x-text="t('login.title')"></h1>
-            <p class="text-sm text-themed-dim mt-2 font-light" x-text="t('login.subtitle')"></p>
+            <p class="text-sm text-themed-dim mt-2" x-text="t('login.subtitle')"></p>
           </div>
 
           <div class="glass-card p-8 glow-primary animate-in delay-1">
@@ -113,7 +113,7 @@ export function LoginPage(): string {
               </svg>
             </div>
             <h1 class="text-2xl font-semibold tracking-tight text-themed" x-text="t('login.inviteTitle')"></h1>
-            <p class="text-sm text-themed-dim mt-2 font-light" x-text="t('login.inviteSubtitle')"></p>
+            <p class="text-sm text-themed-dim mt-2" x-text="t('login.inviteSubtitle')"></p>
           </div>
 
           <div class="glass-card p-8 glow-primary animate-in delay-1">
@@ -201,7 +201,7 @@ export function LoginPage(): string {
               </svg>
             </div>
             <h1 class="text-2xl font-semibold tracking-tight text-themed" x-text="t('login.emailTitle')"></h1>
-            <p class="text-sm text-themed-dim mt-2 font-light" x-text="t('login.emailSubtitle')"></p>
+            <p class="text-sm text-themed-dim mt-2" x-text="t('login.emailSubtitle')"></p>
           </div>
 
           <div class="glass-card p-8 glow-primary animate-in delay-1">
@@ -248,7 +248,7 @@ export function LoginPage(): string {
               </svg>
             </div>
             <h1 class="text-2xl font-semibold tracking-tight text-themed" x-text="t('login.registerTitle')"></h1>
-            <p class="text-sm text-themed-dim mt-2 font-light" x-text="t('login.registerSubtitle')"></p>
+            <p class="text-sm text-themed-dim mt-2" x-text="t('login.registerSubtitle')"></p>
           </div>
 
           <div class="glass-card p-8 glow-primary animate-in delay-1">

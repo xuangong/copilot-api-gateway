@@ -68,7 +68,7 @@ export function DevicePage(): string {
                   </svg>
                 </div>
                 <h1 class="text-2xl font-semibold tracking-tight text-themed" x-text="t('device.authorizeTitle')"></h1>
-                <p class="text-sm text-themed-dim mt-2 font-light" x-text="t('device.authorizeSubtitle')"></p>
+                <p class="text-sm text-themed-dim mt-2" x-text="t('device.authorizeSubtitle')"></p>
               </div>
 
               <div class="glass-card p-8 glow-primary animate-in delay-1">
