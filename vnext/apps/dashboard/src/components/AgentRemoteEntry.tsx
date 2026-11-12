@@ -29,7 +29,7 @@ export function AgentRemoteLink({ enabled, authenticated, active = false, iconOn
           onSelect("agent-remote")
         }}
         className={cn(
-          "flex h-8 items-center gap-2.5 rounded-md px-2 text-[13px] transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-text",
+          "flex h-8 items-center gap-2.5 rounded-md px-2 text-body transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-text",
           active ? "bg-muted font-medium text-fg" : "text-fg-muted hover:bg-muted hover:text-fg",
           iconOnly && "justify-center px-0",
         )}

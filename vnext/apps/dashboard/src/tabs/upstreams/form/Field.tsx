@@ -11,14 +11,14 @@ export interface FieldIds {
 /**
  * A visible label, a control and an optional hint or error below it.
  * The hint sits outside the label so it is not part of the control's name;
- * it is linked with aria-describedby instead. Use `labelledBy` (a span label)
- * for controls that are not labelable elements, such as ui/select.
+ * it is linked with aria-describedby instead. The label points at the control
+ * with htmlFor, so pass `id` to the control; ui/select also takes
+ * `labelledBy={labelId}`, which names it by label and current value.
  */
 export function Field({
   label,
   hint,
   error,
-  labelledBy = false,
   className,
   children,
 }: {
@@ -26,7 +26,6 @@ export function Field({
   hint?: ReactNode
   /** Shown in place of the hint when set. */
   error?: ReactNode
-  labelledBy?: boolean
   className?: string
   children: (ids: FieldIds) => ReactNode
 }) {
@@ -34,14 +33,9 @@ export function Field({
   const labelId = `${id}-label`
   const noteId = `${id}-note`
   const note = error || hint
-  const labelCls = "mb-1 block text-xs font-medium text-fg-muted"
   return (
     <div className={cn("block", className)}>
-      {labelledBy ? (
-        <span id={labelId} className={labelCls}>{label}</span>
-      ) : (
-        <label id={labelId} htmlFor={id} className={labelCls}>{label}</label>
-      )}
+      <label id={labelId} htmlFor={id} className="mb-1 block text-xs font-medium text-fg-muted">{label}</label>
       {children({ id, labelId, describedBy: note ? noteId : undefined })}
       {error ? (
         <p id={noteId} className="mt-1 text-xs text-danger">{error}</p>
@@ -53,7 +47,7 @@ export function Field({
 }
 
 /** Uppercase section title (h4) used by the form's sections. */
-export const sectionHeadingCls = "mb-2 text-[13px] font-medium text-fg"
+export const sectionHeadingCls = "mb-2 text-body font-medium text-fg"
 
 /**
  * Heading level of a form or panel title. A create panel sits straight under the

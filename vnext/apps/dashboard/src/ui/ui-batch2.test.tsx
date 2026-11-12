@@ -110,6 +110,11 @@ test("Select without a visible label uses ariaLabel, and shows a value missing f
   expect(html).toContain(">deleted-key</span>")
 })
 
+test("Select puts its id on the trigger, so a <label htmlFor> can focus it", () => {
+  const html = renderToStaticMarkup(<Select id="auth" labelledBy="lbl" value="" onChange={() => {}} options={[{ value: "", label: "Bearer" }]} />)
+  expect(html).toMatch(/<button[^>]*\sid="auth"/)
+})
+
 test("MultiSelect summarises the selection", () => {
   const options = [{ value: "success", label: "Success" }, { value: "error", label: "Error" }]
   expect(multiSelectSummary([], options, "All")).toBe("All")

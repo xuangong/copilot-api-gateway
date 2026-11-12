@@ -27,6 +27,16 @@ export function moveUpstream(
   return rows.map((row) => partition(row, ownerId, source.enabled) ? moved[index++] ?? row : row)
 }
 
+/** Where `id` sits among the rows it can be reordered with (same owner and enabled state): 1-based, out of how many. */
+export function partitionPosition(
+  rows: readonly UpstreamRecord[], id: string, ownerId: string,
+): { position: number; total: number } | null {
+  const row = rows.find((r) => r.id === id)
+  if (!row || !partition(row, ownerId, row.enabled)) return null
+  const group = rows.filter((r) => partition(r, ownerId, row.enabled))
+  return { position: group.findIndex((r) => r.id === id) + 1, total: group.length }
+}
+
 export function sortValueForMove(
   rows: readonly UpstreamRecord[], sourceId: string, targetId: string, ownerId: string,
 ): number | null {

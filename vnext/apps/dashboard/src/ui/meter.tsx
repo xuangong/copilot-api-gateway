@@ -1,12 +1,14 @@
 import { cn } from "./cn"
 
-export type MeterTone = "brand" | "warn" | "danger" | "muted"
+export type MeterTone = "brand" | "warn" | "danger" | "muted" | "faint"
 
 const FILL: Record<MeterTone, string> = {
   brand: "bg-brand",
   warn: "bg-warn",
   danger: "bg-danger",
   muted: "bg-fg-subtle",
+  // Quieter than muted: the options the decision panel did not pick, next to the one it did.
+  faint: "bg-fg-subtle/40",
 }
 
 /** The usage colour used by quota bars: brand up to 70%, warn above, danger above 90%. */

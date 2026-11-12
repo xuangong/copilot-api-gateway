@@ -120,7 +120,7 @@ export function AssignKeysModal({ userId, userName, onClose }: Props) {
                 >
                   {k.assigned ? <Check className="size-3" strokeWidth={3} /> : null}
                 </span>
-                <span className={cn("text-[13px]", k.assigned ? "text-fg font-medium" : "text-fg-muted")}>{k.name}</span>
+                <span className={cn("text-body", k.assigned ? "text-fg font-medium" : "text-fg-muted")}>{k.name}</span>
               </button>
             )
           })}

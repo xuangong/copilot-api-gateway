@@ -1,5 +1,5 @@
 import { CodexQuotaPanel } from "./CodexQuotaPanel"
-import { useId, useState, type DragEvent, type KeyboardEvent } from "react"
+import { useId, useState, type DragEvent, type KeyboardEvent, type PointerEvent } from "react"
 import { ChevronDown, ChevronUp, GripVertical } from "lucide-react"
 import { ProviderAvatar } from "./KindChip"
 import { useT } from "../../state/i18n"
@@ -52,6 +52,8 @@ interface Props {
   onDragOver?: (event: DragEvent<HTMLDivElement>) => void
   onDrop?: (event: DragEvent<HTMLDivElement>) => void
   onDragEnd?: () => void
+  /** Pointer down on the drag handle: starts a touch or pen drag (the native drag is mouse-only). */
+  onHandlePointerDown?: (event: PointerEvent<HTMLButtonElement>) => void
   onEdit: () => void
   onDuplicate: () => void
   onRefreshModels: () => void
@@ -79,6 +81,7 @@ export function UpstreamRow({
   onDragOver,
   onDrop,
   onDragEnd,
+  onHandlePointerDown,
   onEdit,
   onDuplicate,
   onRefreshModels,
@@ -143,6 +146,7 @@ export function UpstreamRow({
 
   return (
     <div
+      data-upstream-id={u.id}
       onDragOver={onDragOver}
       onDrop={onDrop}
       className={cn(
@@ -157,7 +161,7 @@ export function UpstreamRow({
           <ProviderAvatar provider={u.provider} avatarUrl={avatar} title={u.provider} />
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 min-w-0">
-              <h3 id={nameId} className="text-[13px] font-medium text-fg truncate">{u.name}</h3>
+              <h3 id={nameId} className="text-body font-medium text-fg truncate">{u.name}</h3>
               {expiredAt ? (
                 <span className="inline-flex shrink-0 cursor-default" title={t("dash.tokenExpiredTip", { at: expiredAt })}>
                   <Badge tone="danger">{t("dash.tokenExpiredBadge")}</Badge>
@@ -194,6 +198,7 @@ export function UpstreamRow({
             disabled={locked}
             onDragStart={onDragStart}
             onDragEnd={onDragEnd}
+            onPointerDown={onHandlePointerDown}
             onKeyDown={onHandleKeyDown}
             aria-label={t("dash.reorderUpstreamHandle", { name: u.name })}
             title={t("dash.reorderUpstreamHandle", { name: u.name })}

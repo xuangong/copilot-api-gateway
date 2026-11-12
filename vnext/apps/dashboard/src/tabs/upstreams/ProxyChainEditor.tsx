@@ -94,7 +94,7 @@ export function ProxyChainEditor({ value, onChange, allowCreate = false }: Props
   return (
     <div className="space-y-3">
       <div>
-        <h4 id={titleId} className="text-[13px] font-medium text-fg">{t("dash.proxyChainTitle")}</h4>
+        <h4 id={titleId} className="text-body font-medium text-fg">{t("dash.proxyChainTitle")}</h4>
         <p className="mt-1 text-xs text-fg-subtle">{t("dash.proxyChainHint")}</p>
       </div>
 

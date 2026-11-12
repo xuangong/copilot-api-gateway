@@ -38,7 +38,7 @@ export function WebSearchBorrowDialog({ open, candidates, onPick, onClose }: Pro
               onClick={() => onPick(c.id)}
               className="block w-full rounded-md px-3 py-2 text-left transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-text"
             >
-              <span className="block text-[13px] font-medium text-fg">{c.name || c.id}</span>
+              <span className="block text-body font-medium text-fg">{c.name || c.id}</span>
               <span className="block text-xs text-fg-subtle">{c.owner_name ?? c.owner_id ?? ""}</span>
             </button>
           ))

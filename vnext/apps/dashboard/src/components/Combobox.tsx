@@ -266,7 +266,7 @@ export function Combobox({
             onPointerDown={(event) => handleOptionPointerDown(event, option)}
             onClick={() => choose(option)}
             className={cn(
-              "w-full px-3 py-2 text-left text-[13px]",
+              "w-full px-3 py-2 text-left text-body",
               option.disabled ? "cursor-not-allowed opacity-50" : "hover:bg-muted",
               index === activeIndex && "bg-muted",
               option.value === value ? "text-brand-text" : "text-fg",

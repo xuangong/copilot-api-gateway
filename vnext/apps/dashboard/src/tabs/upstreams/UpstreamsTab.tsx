@@ -14,6 +14,7 @@ import type { UpstreamRecord } from "../../api/types"
 import { moveUpstream } from "../../state/reorder-upstreams"
 import { LokiPairingPanel } from "./LokiPairingPanel"
 import { FormHeadingLevel } from "./form/Field"
+import { useTouchReorder } from "./touch-reorder"
 import { ChevronDown, ChevronRight, RefreshCw } from "lucide-react"
 import { Badge } from "../../ui/badge"
 import { Button } from "../../ui/button"
@@ -57,15 +58,7 @@ export function UpstreamsTab() {
   const [createLoki, setCreateLoki] = useState(false)
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
   const [drag, setDrag] = useState<DragPreview | null>(null)
-
-  useEffect(() => {
-    if (!drag) return
-    const cancel = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setDrag(null)
-    }
-    document.addEventListener("keydown", cancel)
-    return () => document.removeEventListener("keydown", cancel)
-  }, [drag])
+  const [announcement, setAnnouncement] = useState("")
 
   const openCreate = (provider: "custom" | "azure" | "sdf" | "codex", presetId?: string) => {
     setEditingId(null)
@@ -101,6 +94,45 @@ export function UpstreamsTab() {
       source.ownerId === myOwnerId && target.ownerId === myOwnerId &&
       source.enabled === target.enabled
   }
+  // A move gives a screen reader user no feedback of its own; say where the row landed.
+  const announceMove = (row: UpstreamRecord, moved: boolean) => {
+    if (!moved) return
+    const at = store.positionOf(row.id, myOwnerId)
+    if (at) setAnnouncement(t("dash.reorderUpstreamAnnounce", { name: row.name, n: at.position, total: at.total }))
+  }
+
+  // Touch and pen drags drive the same preview as the mouse's native drag.
+  const touchDrag = useTouchReorder({
+    start: (sourceId) => setDrag({ sourceId, targetId: null }),
+    over: (sourceId, targetId) => {
+      const target = store.upstreams.find((row) => row.id === targetId)
+      if (!target || !canDropOn(sourceId, target)) return false
+      setDrag((d) => (d && d.sourceId === sourceId && d.targetId !== targetId ? { ...d, targetId } : d))
+      return true
+    },
+    drop: (sourceId, targetId) => {
+      setDrag(null)
+      if (!targetId) return
+      const source = store.upstreams.find((row) => row.id === sourceId)
+      const moved = store.reorderTo(sourceId, targetId, myOwnerId)
+      if (source) announceMove(source, moved)
+    },
+    cancel: () => setDrag(null),
+  })
+
+  // Esc calls a drag off. A touch gesture is ended too, so a later lift cannot
+  // drop it and its edge scrolling stops.
+  const { abort: abortTouchDrag } = touchDrag
+  useEffect(() => {
+    if (!drag) return
+    const cancel = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return
+      abortTouchDrag()
+      setDrag(null)
+    }
+    document.addEventListener("keydown", cancel)
+    return () => document.removeEventListener("keydown", cancel)
+  }, [drag, abortTouchDrag])
 
   const groups: OwnerGroup[] = useMemo(() => {
     const map = new Map<string, OwnerGroup>()
@@ -131,6 +163,7 @@ export function UpstreamsTab() {
 
   return (
     <div>
+      <div role="status" aria-live="polite" aria-atomic="true" className="sr-only">{announcement}</div>
       <PageHeader
         title={t("dash.managedUpstreams")}
         description={t("dash.managedUpstreamsDesc")}
@@ -207,7 +240,11 @@ export function UpstreamsTab() {
           <EmptyState title={t("dash.noManagedUpstreams")} />
         ) : null}
 
-        <div className="space-y-4">
+        {/* While a drag previews the new order the rows move, and the browser's
+            scroll anchoring would scroll to hold one of them still, carrying the
+            dragged row away from the pointer. Only during a drag: otherwise
+            anchoring is what keeps the page steady as rows load. */}
+        <div className={cn("space-y-4", drag && "[overflow-anchor:none]")}>
           {groups.map((g) => {
             const groupKey = g.ownerId || "__global__"
             const isCollapsed = !!collapsed[groupKey]
@@ -263,10 +300,13 @@ export function UpstreamsTab() {
                           onDrop={(event) => {
                             if (!drag || !canDropOn(drag.sourceId, u)) return
                             event.preventDefault()
-                            store.reorderTo(drag.sourceId, u.id, myOwnerId)
+                            const source = store.upstreams.find((row) => row.id === drag.sourceId)
+                            const moved = store.reorderTo(drag.sourceId, u.id, myOwnerId)
+                            if (source) announceMove(source, moved)
                             setDrag(null)
                           }}
                           onDragEnd={() => setDrag(null)}
+                          onHandlePointerDown={g.isMine ? (event) => touchDrag.begin(event, u.id) : undefined}
                           models={store.modelsByUpstream.get(u.id)}
                           editing={editingId === u.id}
                           readOnly={!g.isMine}
@@ -274,7 +314,7 @@ export function UpstreamsTab() {
                           proxyOpen={proxyId === u.id}
                           onToggleProxy={() => setProxyId((v) => (v === u.id ? null : u.id))}
                           onToggleEnabled={() => store.toggleEnabled(u)}
-                          onReorder={(d) => store.reorder(u.id, d, myOwnerId)}
+                          onReorder={(d) => announceMove(u, store.reorder(u.id, d, myOwnerId))}
                           onEdit={() => openEdit(u)}
                           onDuplicate={() => openDuplicate(u)}
                           onRefreshModels={() => store.probe(u.id)}

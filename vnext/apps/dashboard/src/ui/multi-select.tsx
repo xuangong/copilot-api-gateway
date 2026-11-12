@@ -49,7 +49,7 @@ export function MultiSelect({ value, options, onChange, allLabel, clearLabel, la
         aria-label={labelledBy ? undefined : ariaLabel}
         aria-describedby={labelledBy ? undefined : summaryId}
         className={cn(
-          "inline-flex h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md border border-input bg-background px-2.5 text-left text-[13px] text-fg transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-text",
+          "inline-flex h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md border border-input bg-background px-2.5 text-left text-body text-fg transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-text",
           className,
         )}
       >

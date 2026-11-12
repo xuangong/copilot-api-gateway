@@ -51,8 +51,9 @@ export function UsageFiltersBar({ isAdmin, filters, dimensions, onChange, onClea
     <div className="flex flex-wrap items-center gap-3">
       {isAdmin && dimensions.users.length > 0 ? (
         <FilterField label={t("dash.user")}>
-          {(labelId) => (
+          {({ id, labelId }) => (
             <Select
+              id={id}
               labelledBy={labelId}
               value={filters.user}
               onChange={(v) => onChange({ user: v })}
@@ -66,8 +67,9 @@ export function UsageFiltersBar({ isAdmin, filters, dimensions, onChange, onClea
         </FilterField>
       ) : null}
       <FilterField label={t("dash.key")}>
-        {(labelId) => (
+        {({ id, labelId }) => (
           <Select
+            id={id}
             labelledBy={labelId}
             value={filters.key}
             onChange={(v) => onChange({ key: v })}
@@ -87,8 +89,9 @@ export function UsageFiltersBar({ isAdmin, filters, dimensions, onChange, onClea
         )}
       </FilterField>
       <FilterField label={t("dash.client")}>
-        {(labelId) => (
+        {({ id, labelId }) => (
           <Select
+            id={id}
             labelledBy={labelId}
             value={filters.client}
             onChange={(v) => onChange({ client: v })}
@@ -101,8 +104,9 @@ export function UsageFiltersBar({ isAdmin, filters, dimensions, onChange, onClea
         )}
       </FilterField>
       <FilterField label={t("dash.routedModel")}>
-        {(labelId) => (
+        {({ id, labelId }) => (
           <Select
+            id={id}
             labelledBy={labelId}
             value={filters.model}
             onChange={(v) => onChange({ model: v })}
@@ -115,8 +119,9 @@ export function UsageFiltersBar({ isAdmin, filters, dimensions, onChange, onClea
         )}
       </FilterField>
       <FilterField label={t("dash.incomingModel")}>
-        {(labelId) => (
+        {({ id, labelId }) => (
           <Select
+            id={id}
             labelledBy={labelId}
             value={incomingValue}
             onChange={(value) => onChange({ incomingModel: decodeIncomingModelOption(value) })}
@@ -149,16 +154,18 @@ export function UsageFiltersBar({ isAdmin, filters, dimensions, onChange, onClea
 
 /**
  * A visible label beside its select. The label's id names the select's
- * trigger (with the current value), so what is read out matches what is shown.
+ * trigger (with the current value), so what is read out matches what is shown;
+ * htmlFor makes a click on the label focus the select.
  */
-function FilterField({ label, children }: { label: string; children: (labelId: string) => ReactNode }) {
-  const labelId = useId()
+function FilterField({ label, children }: { label: string; children: (ids: { id: string; labelId: string }) => ReactNode }) {
+  const id = useId()
+  const labelId = `${id}-label`
   return (
     <div className="flex items-center gap-2 min-w-0 w-full sm:w-auto sm:flex-none sm:min-w-[180px]">
-      <span id={labelId} className="text-xs font-medium text-fg-muted shrink-0 w-24 sm:w-auto">
+      <label id={labelId} htmlFor={id} className="text-xs font-medium text-fg-muted shrink-0 w-24 sm:w-auto">
         {label}
-      </span>
-      <div className="flex-1 min-w-0">{children(labelId)}</div>
+      </label>
+      <div className="flex-1 min-w-0">{children({ id, labelId })}</div>
     </div>
   )
 }

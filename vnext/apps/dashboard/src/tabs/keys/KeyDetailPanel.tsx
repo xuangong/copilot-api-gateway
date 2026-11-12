@@ -118,11 +118,14 @@ export function KeyDetailPanel({
         }}
       />
 
+      {/* Only the first load shows the placeholder. A background refresh keeps
+          the pickers and the setup panel mounted, or it would close an open
+          dropdown and drop an issued setup lease. */}
       <ConfigurationPanel
         key={`${keyRow.id}:configuration`}
         keyRow={keyRow}
         catalog={modelCatalogState.catalog}
-        catalogLoading={modelCatalogState.loading}
+        catalogLoading={!modelCatalogState.ready}
       />
     </div>
   )

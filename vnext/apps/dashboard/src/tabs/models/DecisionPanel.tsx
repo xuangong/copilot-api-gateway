@@ -427,7 +427,7 @@ function ProbabilityBar({ label, probability, selected }: { label: string; proba
   return (
     <div className="grid grid-cols-[minmax(80px,180px)_1fr_52px] items-center gap-2.5 text-xs">
       <span className={cn("truncate", selected ? "font-semibold text-fg" : "text-fg-muted")} title={label}>{label}</span>
-      <Meter percent={probability * 100} tone={selected ? "brand" : "muted"} className={cn("h-2", !selected && "[&>div]:bg-fg-subtle/40")} />
+      <Meter percent={probability * 100} tone={selected ? "brand" : "faint"} className="h-2" />
       <span className="text-right font-mono text-fg-muted">{percent(probability)}</span>
     </div>
   )

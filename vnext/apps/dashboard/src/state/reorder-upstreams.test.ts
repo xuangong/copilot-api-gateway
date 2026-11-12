@@ -1,12 +1,19 @@
 import { expect, test } from "bun:test"
 import type { UpstreamRecord } from "../api/types"
-import { ReorderController, moveUpstream, sortValueForMove } from "./reorder-upstreams"
+import { ReorderController, moveUpstream, partitionPosition, sortValueForMove } from "./reorder-upstreams"
 
 const row = (id: string, sortOrder: number, ownerId = "mine", enabled = true): UpstreamRecord => ({
   id, ownerId, enabled, sortOrder, name: id, provider: "custom", config: {}, createdAt: id,
 } as UpstreamRecord)
 const ids = (rows: readonly UpstreamRecord[]) => rows.map((item) => item.id)
 const initial = [row("a", 0), row("b", 10), row("c", 20), row("off", 0, "mine", false), row("foreign", 0, "other")]
+
+test("partitionPosition counts only rows with the same owner and enabled state", () => {
+  expect(partitionPosition(initial, "b", "mine")).toEqual({ position: 2, total: 3 })
+  expect(partitionPosition(initial, "off", "mine")).toEqual({ position: 1, total: 1 })
+  expect(partitionPosition(initial, "foreign", "mine")).toBeNull()
+  expect(partitionPosition(initial, "missing", "mine")).toBeNull()
+})
 
 test("moves source to destination and end while preserving row identity", () => {
   expect(ids(moveUpstream(initial, "a", "c", "mine"))).toEqual(["b", "c", "a", "off", "foreign"])

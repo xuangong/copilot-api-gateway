@@ -3,7 +3,7 @@ import { useToast } from "./toast"
 import { useT } from "./i18n"
 import * as api from "../api/upstreams"
 import type { UpstreamRecord } from "../api/types"
-import { ReorderController } from "./reorder-upstreams"
+import { ReorderController, partitionPosition } from "./reorder-upstreams"
 
 function sortUpstreams(list: UpstreamRecord[]): UpstreamRecord[] {
   return [...list].sort((a, b) => {
@@ -32,7 +32,6 @@ export function useUpstreams() {
   const controller = controllerRef.current
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState<Record<string, boolean>>({})
-  const [probeResults, setProbeResults] = useState<Record<string, api.ProbeResult>>({})
   const [modelsByUpstream, setModelsByUpstream] = useState<Map<string, api.UpstreamModelEntry[]>>(new Map())
   const [flagCatalog, setFlagCatalog] = useState<api.FlagCatalog | null>(null)
 
@@ -120,7 +119,6 @@ export function useUpstreams() {
       const name = u?.name ?? id
       try {
         const r = await api.probeUpstream(id)
-        setProbeResults((p) => ({ ...p, [id]: r }))
         if (r.ok) {
           toast(`${name}: ${r.modelCount ?? 0} models`, "success")
           // Awaited so the row's busy state covers the list refresh too: the
@@ -133,7 +131,6 @@ export function useUpstreams() {
         }
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e)
-        setProbeResults((p) => ({ ...p, [id]: { ok: false, error: msg } }))
         toast(`${name}: ${msg}`, "error")
       }
     })
@@ -184,7 +181,6 @@ export function useUpstreams() {
     upstreams,
     loading,
     busy,
-    probeResults,
     modelsByUpstream,
     flagCatalog,
     reload,
@@ -195,6 +191,7 @@ export function useUpstreams() {
     probe,
     refreshCredential,
     remove,
-    setProbeResult: (id: string, r: api.ProbeResult) => setProbeResults((p) => ({ ...p, [id]: r })),
+    /** Where a row now sits among its reorderable peers, counting moves still being saved. */
+    positionOf: (id: string, ownerId: string) => partitionPosition(controller.snapshot(), id, ownerId),
   }
 }

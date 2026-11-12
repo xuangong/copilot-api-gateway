@@ -76,7 +76,7 @@ export function JustCreatedKeyModal({ data, onClose, returnFocusTo }: Props) {
       </div>
 
       <div className="space-y-2">
-        <h3 className="text-[13px] font-medium text-fg">{t("dash.quickTestCurl")}</h3>
+        <h3 className="text-body font-medium text-fg">{t("dash.quickTestCurl")}</h3>
         <CodeBlock
           language="bash"
           text={curl}
@@ -86,7 +86,7 @@ export function JustCreatedKeyModal({ data, onClose, returnFocusTo }: Props) {
         />
       </div>
 
-      <p className="text-[13px] text-fg-muted">{t("dash.nextStepHint")}</p>
+      <p className="text-body text-fg-muted">{t("dash.nextStepHint")}</p>
     </Dialog>
   )
 }

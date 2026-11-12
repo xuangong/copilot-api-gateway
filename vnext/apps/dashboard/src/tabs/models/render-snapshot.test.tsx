@@ -20,14 +20,14 @@
  *   - images re-hydrated from IndexedDB;
  *   - DecisionPanel/EmbeddingPanel results and in-flight sending.
  */
-import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test"
+import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import { renderToStaticMarkup } from "react-dom/server"
 import type { PlaygroundModel } from "../../api/models"
-import * as fullscreenModule from "./fullscreen"
 import { ChatPanel } from "./ChatPanel"
 import { DecisionPanel } from "./DecisionPanel"
 import { EmbeddingPanel } from "./EmbeddingPanel"
 import { DEFAULT_IMAGE_PARAMS } from "./images"
+import { MarkdownSanitizer } from "./markdown"
 import { TooltipProvider } from "../../ui/tooltip"
 import { ModelList } from "./ModelsTab"
 import type { VisionSupport } from "./vision"
@@ -51,18 +51,6 @@ const hadLocalStorage = "localStorage" in g
 const originalWindow = g.window
 const originalLocalStorage = g.localStorage
 
-// Fullscreen is decided once per page load from `location.hash` captured at
-// module scope, which a shared test process can't control. Pin it instead.
-let fullscreenOn = false
-void mock.module("./fullscreen", () => ({
-  ...fullscreenModule,
-  initialFullscreen: () => fullscreenOn,
-}))
-
-// DOMPurify needs a real DOM and, without one, exports no `sanitize` at all.
-// Pass the HTML through: these snapshots pin our markup, not sanitising.
-void mock.module("dompurify", () => ({ default: { sanitize: (html: string) => html } }))
-
 beforeAll(() => {
   g.window = {}
   g.localStorage = localStorageStub
@@ -73,8 +61,11 @@ afterAll(() => {
   else delete g.window
   if (hadLocalStorage) g.localStorage = originalLocalStorage
   else delete g.localStorage
-  fullscreenOn = false
 })
+
+// DOMPurify needs a real DOM and, without one, has no `sanitize` at all. Pass
+// the HTML through: these snapshots pin our markup, not DOMPurify's.
+const passThrough = (html: string) => html
 
 // —— Seeded chat history ——
 
@@ -153,24 +144,29 @@ function renderChat(opts: {
   mode: "chat" | "image" | undefined
   vision?: VisionSupport
   contextWindow?: number
+  fullscreen?: boolean
 }) {
-  // The app shell supplies the provider the retract tooltip needs; it adds no markup.
+  // The app shell supplies the provider the retract tooltip needs; neither
+  // provider adds markup.
   return renderToStaticMarkup(
-    <TooltipProvider>
-      <ChatPanel
-        modelId="gpt-4o"
-        apiKey="sk-test"
-        systemPrompt=""
-        webSearchEnabled={false}
-        vision={opts.vision ?? "yes"}
-        contextWindow={opts.contextWindow}
-        modelOptions={MODEL_OPTIONS}
-        onPickModel={() => {}}
-        mode={opts.mode}
-        imageParams={DEFAULT_IMAGE_PARAMS}
-        onImageParamsChange={() => {}}
-      />
-    </TooltipProvider>,
+    <MarkdownSanitizer.Provider value={passThrough}>
+      <TooltipProvider>
+        <ChatPanel
+          modelId="gpt-4o"
+          apiKey="sk-test"
+          systemPrompt=""
+          webSearchEnabled={false}
+          vision={opts.vision ?? "yes"}
+          contextWindow={opts.contextWindow}
+          modelOptions={MODEL_OPTIONS}
+          onPickModel={() => {}}
+          mode={opts.mode}
+          imageParams={DEFAULT_IMAGE_PARAMS}
+          onImageParamsChange={() => {}}
+          defaultFullscreen={opts.fullscreen}
+        />
+      </TooltipProvider>
+    </MarkdownSanitizer.Provider>,
   )
 }
 
@@ -202,12 +198,7 @@ describe("ChatPanel", () => {
 
   test("fullscreen restores the overlay and the model picker", () => {
     seedChat(MESSAGES.slice(0, 2))
-    fullscreenOn = true
-    try {
-      expect(renderChat({ mode: "chat" })).toMatchSnapshot()
-    } finally {
-      fullscreenOn = false
-    }
+    expect(renderChat({ mode: "chat", fullscreen: true })).toMatchSnapshot()
   })
 })
 

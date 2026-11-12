@@ -2,7 +2,6 @@ import { useEffect, useReducer, useRef, useState } from "react"
 import { useT } from "../../state/i18n"
 import { useToast } from "../../state/toast"
 import * as api from "../../api/upstreams"
-import type { ProxyFallbackEntry } from "../../api/types"
 import { Button } from "../../ui/button"
 import { cn } from "../../ui/cn"
 import { Notice } from "../../ui/notice"
@@ -15,11 +14,10 @@ interface Props {
   ownerId?: string
   flagOverrides: Record<string, boolean>
   disabledPublicModelIds: string[]
-  proxyFallbackList?: ProxyFallbackEntry[]
   onImported: () => void
 }
 
-export function CodexImportPanel({ targetId, name, ownerId, flagOverrides, disabledPublicModelIds, proxyFallbackList, onImported }: Props) {
+export function CodexImportPanel({ targetId, name, ownerId, flagOverrides, disabledPublicModelIds, onImported }: Props) {
   const t = useT()
   const { push: toast } = useToast()
   const draft = useRef(new CodexImportDraft(targetId))
@@ -110,7 +108,7 @@ export function CodexImportPanel({ targetId, name, ownerId, flagOverrides, disab
     const body: api.CodexImportRequest = targetId
       ? { document: ticket.document, sourceIndex: source.sourceIndex, upstreamId: targetId }
       : { document: ticket.document, sourceIndex: source.sourceIndex, name: name.trim(), ownerId,
-          flagOverrides, disabledPublicModelIds, proxyFallbackList }
+          flagOverrides, disabledPublicModelIds }
     try {
       await api.importCodexDocument(body, controller.signal)
       if (!draft.current.accepts(ticket)) return
@@ -131,7 +129,7 @@ export function CodexImportPanel({ targetId, name, ownerId, flagOverrides, disab
   return (
     <div className="space-y-3 border-t border-border pt-3">
       <div>
-        <FormHeading offset={1} className="text-[13px] font-medium text-fg">{t(targetId ? "dash.codexReimportTitle" : "dash.codexImportTitle")}</FormHeading>
+        <FormHeading offset={1} className="text-body font-medium text-fg">{t(targetId ? "dash.codexReimportTitle" : "dash.codexImportTitle")}</FormHeading>
         <p className="mt-1 text-xs text-fg-subtle">{t(targetId ? "dash.codexReimportHint" : "dash.codexImportHint")}</p>
       </div>
       <label className="block text-xs font-medium text-fg-muted">
@@ -147,7 +145,7 @@ export function CodexImportPanel({ targetId, name, ownerId, flagOverrides, disab
       </label>
       <label className="block text-xs font-medium text-fg-muted">
         {t("dash.codexFileLabel")}
-        <input type="file" accept=".json,application/json" className="mt-1 block text-[13px] font-normal text-fg-muted"
+        <input type="file" accept=".json,application/json" className="mt-1 block text-body font-normal text-fg-muted"
           onChange={event => {
             const file = event.target.files?.[0]
             event.target.value = ""

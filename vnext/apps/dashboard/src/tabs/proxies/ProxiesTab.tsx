@@ -53,6 +53,8 @@ export function ProxiesTab() {
   const t = useT()
   const { push: toast } = useToast()
   const [rows, setRows] = useState<ProxyRecord[]>([])
+  // Until the first list arrives, "no proxies" would be a guess.
+  const [loaded, setLoaded] = useState(false)
   const [backoffs, setBackoffs] = useState<ProxyBackoffRow[]>([])
   const [revealed, setRevealed] = useState<Record<string, boolean>>({})
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
@@ -76,6 +78,8 @@ export function ProxiesTab() {
       setBackoffs(b.backoffs)
     } catch (e) {
       toast(e instanceof Error ? e.message : String(e), "error")
+    } finally {
+      setLoaded(true)
     }
   }, [toast])
 
@@ -198,7 +202,8 @@ export function ProxiesTab() {
       <div className="space-y-3">
         {formOpen ? (
           <div className="space-y-3 rounded-lg border border-border bg-panel p-4">
-            <ProxyForm draft={draft} nameRef={nameRef} onChange={(next) => { invalidateTest(); setDraft(next) }} />
+            {/* Keyed by the node, so a password shown for one node is hidden again for the next. */}
+            <ProxyForm key={editingId ?? "new"} draft={draft} nameRef={nameRef} onChange={(next) => { invalidateTest(); setDraft(next) }} />
 
             <div className="flex flex-wrap items-center gap-2">
               <Button variant="primary" size="sm" onClick={submit} disabled={!draftIsValid(draft)}>
@@ -235,7 +240,11 @@ export function ProxiesTab() {
           </div>
         ) : null}
 
-        {rows.length === 0 ? <EmptyState title={t("dash.proxiesEmpty")} /> : null}
+        {!loaded ? (
+          <p className="text-sm text-fg-subtle">{t("dash.loadingShort")}</p>
+        ) : rows.length === 0 ? (
+          <EmptyState title={t("dash.proxiesEmpty")} />
+        ) : null}
 
         <div className="space-y-2">
           {rows.map((p) => {

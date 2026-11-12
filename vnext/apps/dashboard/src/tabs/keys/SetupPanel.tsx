@@ -64,18 +64,18 @@ export function SetupPanel({ keyId, client, origin, settings }: Props) {
   const expired = lease !== null && Date.parse(lease.expiresAt) <= now
   const locked = busy || lease !== null
   return <section className="mt-5 border-t border-border pt-5" aria-label={t("dash.setupTitle")}>
-    <h3 className="text-[13px] font-medium text-fg">{t("dash.setupTitle")}</h3>
+    <h3 className="text-body font-medium text-fg">{t("dash.setupTitle")}</h3>
     <p className="mt-2 text-xs leading-relaxed text-fg-subtle">{t("dash.setupPrerequisite")}</p>
     <p className="mt-1 text-xs leading-relaxed text-fg-subtle">{t("dash.setupTestBoundary")}</p>
     <div className="mt-4 flex flex-wrap items-center gap-4 text-xs">
       <div className="flex items-center gap-2">
-        <span id={`${id}-platform`} className="text-xs font-medium text-fg-muted">{t("dash.setupPlatform")}</span>
-        <div className="w-48"><Select labelledBy={`${id}-platform`} value={platform} disabled={locked} onChange={value => setPlatform(value as SetupPlatform)} options={PLATFORM_OPTIONS} /></div>
+        <label id={`${id}-platform`} htmlFor={`${id}-platform-select`} className="text-xs font-medium text-fg-muted">{t("dash.setupPlatform")}</label>
+        <div className="w-48"><Select id={`${id}-platform-select`} labelledBy={`${id}-platform`} value={platform} disabled={locked} onChange={value => setPlatform(value as SetupPlatform)} options={PLATFORM_OPTIONS} /></div>
       </div>
       {client === "claude" && <>
         <div className="flex items-center gap-2">
-          <span id={`${id}-effort`} className="text-xs font-medium text-fg-muted">{t("dash.setupEffort")}</span>
-          <div className="w-40"><Select labelledBy={`${id}-effort`} value={effort} disabled={locked} onChange={value => setEffort(value as SetupEffort | "")} options={[{ value: "", label: t("dash.setupPreserve") }, ...EFFORTS.map(value => ({ value, label: value }))]} /></div>
+          <label id={`${id}-effort`} htmlFor={`${id}-effort-select`} className="text-xs font-medium text-fg-muted">{t("dash.setupEffort")}</label>
+          <div className="w-40"><Select id={`${id}-effort-select`} labelledBy={`${id}-effort`} value={effort} disabled={locked} onChange={value => setEffort(value as SetupEffort | "")} options={[{ value: "", label: t("dash.setupPreserve") }, ...EFFORTS.map(value => ({ value, label: value }))]} /></div>
         </div>
         <label className="flex items-center gap-2 text-fg-muted"><input type="checkbox" className="accent-brand" checked={context1m} disabled={locked} onChange={event => setContext1m(event.target.checked)} />{t("dash.setupContext")}</label>
       </>}

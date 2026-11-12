@@ -77,7 +77,7 @@ export function UserMenu({ onNavigate, canNavigateSettings, compact = false }: P
       {compact ? null : (
         <>
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-[13px] font-medium text-fg">{displayName}</span>
+            <span className="block truncate text-body font-medium text-fg">{displayName}</span>
             {session.email && session.email !== displayName ? (
               <span className="block truncate text-xs text-fg-subtle">{session.email}</span>
             ) : null}
@@ -101,7 +101,7 @@ export function UserMenu({ onNavigate, canNavigateSettings, compact = false }: P
           }}
         >
           <DropdownMenuLabel>
-            <div className="truncate text-[13px] font-medium text-fg">{session.userName || ""}</div>
+            <div className="truncate text-body font-medium text-fg">{session.userName || ""}</div>
             <div className="truncate text-xs text-fg-subtle">{session.email || ""}</div>
             {isAdmin ? (
               <Badge tone="brand" className="mt-1 font-medium uppercase">

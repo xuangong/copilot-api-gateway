@@ -143,9 +143,9 @@ export function ConfigurationPanel({ keyRow, catalog, catalogLoading }: Props) {
   // A visible label and the select it names; the select is wrapped because ui/select fills its container.
   const modelPicker = (id: string, label: string, value: string, onChange: (value: string) => void, options: Array<{ value: string; label: string }>) => (
     <div key={id} className="flex min-w-0 items-center gap-2">
-      <span id={id} className="whitespace-nowrap text-xs font-medium text-fg-muted">{label}</span>
+      <label id={id} htmlFor={`${id}-select`} className="whitespace-nowrap text-xs font-medium text-fg-muted">{label}</label>
       <div className="min-w-[220px]">
-        <Select value={value} onChange={onChange} labelledBy={id} options={options} />
+        <Select id={`${id}-select`} value={value} onChange={onChange} labelledBy={id} options={options} />
       </div>
     </div>
   )
@@ -155,7 +155,7 @@ export function ConfigurationPanel({ keyRow, catalog, catalogLoading }: Props) {
   return (
     <Card aria-labelledby={`${panelId}-title`}>
       <SectionHeading id={`${panelId}-title`}>{t("dash.configurationLabel")}</SectionHeading>
-      <p className="mt-2 flex items-center gap-1.5 text-[13px] text-fg-muted">
+      <p className="mt-2 flex items-center gap-1.5 text-body text-fg-muted">
         <Info className="size-3.5 shrink-0" aria-hidden="true" />
         {t("dash.configUsesSelectedKey")}
       </p>

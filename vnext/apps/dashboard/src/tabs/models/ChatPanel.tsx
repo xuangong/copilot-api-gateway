@@ -63,9 +63,15 @@ interface Props {
   mode: Extract<PlaygroundMode, "chat" | "image"> | undefined
   imageParams: ImageParams
   onImageParamsChange: (next: ImageParams) => void
+  /**
+   * Open in or out of fullscreen instead of restoring the persisted choice.
+   * For tests: the restore rule reads the page load's first URL, which a test
+   * process cannot set up.
+   */
+  defaultFullscreen?: boolean
 }
 
-export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vision, contextWindow, modelOptions, onPickModel, mode, imageParams, onImageParamsChange }: Props) {
+export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vision, contextWindow, modelOptions, onPickModel, mode, imageParams, onImageParamsChange, defaultFullscreen }: Props) {
   const t = useT()
   const [protocol, setProtocol] = useState<Protocol>(() => loadPersistedProtocol())
   const [messages, setMessages] = useState<Message[]>(() => loadPersistedMessages())
@@ -84,7 +90,7 @@ export function ChatPanel({ modelId, apiKey, systemPrompt, webSearchEnabled, vis
    * switching models, compacting — resets this alongside them.
    */
   const [expandedSources, setExpandedSources] = useState<ReadonlySet<number>>(() => new Set())
-  const [fullscreen, setFullscreen] = useState(initialFullscreen)
+  const [fullscreen, setFullscreen] = useState(() => defaultFullscreen ?? initialFullscreen())
   /** Data URL of the image shown in the zoom overlay, or null when closed. */
   const [zoomed, setZoomed] = useState<string | null>(null)
   /** Timestamp the thread was opened with — names downloads consistently. */

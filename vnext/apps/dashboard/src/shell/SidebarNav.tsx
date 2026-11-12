@@ -27,7 +27,7 @@ export function SidebarNav({ groups, current, onSelect, collapsible }: Props) {
           <div key={group.id} role="group" aria-labelledby={labelId}>
             <div
               id={labelId}
-              className={cn("px-2 pb-1 text-[11px] font-medium uppercase tracking-wider text-fg-subtle", iconOnly && "sr-only")}
+              className={cn("px-2 pb-1 text-xs font-medium uppercase tracking-wider text-fg-subtle", iconOnly && "sr-only")}
             >
               {group.label}
             </div>
@@ -59,7 +59,7 @@ export function NavLink({ item, active, iconOnly, onSelect }: { item: NavItem; a
           onSelect(item.id)
         }}
         className={cn(
-          "flex h-8 items-center gap-2.5 rounded-md px-2 text-[13px] transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-text",
+          "flex h-8 items-center gap-2.5 rounded-md px-2 text-body transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-text",
           active ? "bg-muted font-medium text-fg" : "text-fg-muted hover:bg-muted hover:text-fg",
           iconOnly && "justify-center px-0",
         )}

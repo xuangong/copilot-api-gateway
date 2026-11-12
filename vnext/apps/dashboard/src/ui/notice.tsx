@@ -11,7 +11,7 @@ const TONES = {
 /** An inline message. Danger notices are announced (role=alert) unless a role is given; the others are not. */
 export function Notice({ tone = "info", role, className, children }: { tone?: keyof typeof TONES; role?: AriaRole; className?: string; children: ReactNode }) {
   return (
-    <div role={role ?? (tone === "danger" ? "alert" : undefined)} className={cn("rounded-md border px-3 py-2 text-[13px]", TONES[tone], className)}>
+    <div role={role ?? (tone === "danger" ? "alert" : undefined)} className={cn("rounded-md border px-3 py-2 text-body", TONES[tone], className)}>
       {children}
     </div>
   )

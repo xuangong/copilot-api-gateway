@@ -50,7 +50,7 @@ export function Dialog({ open, onOpenChange, title, description, children, foote
         >
           <div className="space-y-1">
             <RadixDialog.Title className="text-base font-semibold text-fg">{title}</RadixDialog.Title>
-            {description ? <RadixDialog.Description className="text-[13px] text-fg-muted">{description}</RadixDialog.Description> : null}
+            {description ? <RadixDialog.Description className="text-body text-fg-muted">{description}</RadixDialog.Description> : null}
           </div>
           {children}
           {footer ? <div className="flex flex-wrap justify-end gap-2">{footer}</div> : null}

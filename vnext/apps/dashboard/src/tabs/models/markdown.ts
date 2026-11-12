@@ -1,6 +1,7 @@
 // Markdown rendering with safe HTML sanitization and on-demand code highlight.
 // Loads only commonly used languages to keep bundle reasonable.
-import { marked } from "marked"
+import { createContext } from "react"
+import { marked, type Token, type Tokens } from "marked"
 import hljs from "highlight.js/lib/core"
 import javascript from "highlight.js/lib/languages/javascript"
 import typescript from "highlight.js/lib/languages/typescript"
@@ -53,10 +54,60 @@ function escapeHtml(s: string): string {
     .replace(/>/g, "&gt;")
 }
 
-export function renderMarkdown(src: string): string {
-  if (!src) return ""
-  const html = marked.parse(src, { renderer, async: false }) as string
-  return DOMPurify.sanitize(html, {
-    ADD_ATTR: ["target"],
+/**
+ * Document levels for one reply's headings, in order. A reply sits under the
+ * page's h1 with nothing in between, so its first heading is an h2 (`base`)
+ * and none is more than one level below the heading before it: a skip such as
+ * h1 → h3 breaks the outline that heading navigation and Lighthouse's
+ * heading-order check rely on. Relative depth is kept where that allows.
+ */
+export function outlineLevels(depths: readonly number[], base = 2): number[] {
+  if (depths.length === 0) return []
+  const top = Math.min(...depths)
+  let previous = base - 1
+  return depths.map((depth) => {
+    const level = Math.min(base + depth - top, previous + 1, 6)
+    previous = level
+    return level
   })
+}
+
+const isHeading = (token: Token): token is Tokens.Heading => token.type === "heading"
+const headingLevels = new WeakMap<Tokens.Heading, number>()
+
+// The tag carries the outline level; the class keeps the size the markdown
+// asked for, so `# Title` still looks like a title.
+renderer.heading = (token: Tokens.Heading) => {
+  const level = headingLevels.get(token) ?? Math.min(token.depth + 1, 6)
+  return `<h${level} class="md-h${token.depth}">${renderer.parser.parseInline(token.tokens)}</h${level}>\n`
+}
+
+/** Turns rendered markdown into HTML that is safe to inject. */
+export type Sanitize = (html: string) => string
+
+export const sanitizeHtml: Sanitize = (html) => DOMPurify.sanitize(html, { ADD_ATTR: ["target"] })
+
+/**
+ * The sanitizer chat replies are rendered with. DOMPurify needs a DOM and has
+ * no `sanitize` without one, so tests that render the chat provide their own.
+ * A context keeps that substitute inside the test's render tree, where
+ * replacing the dompurify module would change it for the whole test process.
+ */
+export const MarkdownSanitizer = createContext<Sanitize>(sanitizeHtml)
+
+export function renderMarkdown(src: string, sanitize: Sanitize = sanitizeHtml): string {
+  if (!src) return ""
+  // Lexed first so the reply's whole heading outline is known before any of it
+  // renders. The parser needs marked.defaults spread in, or it loses the
+  // gfm/breaks options and the cjkStrong extension.
+  const tokens = marked.lexer(src)
+  const headings: Tokens.Heading[] = []
+  marked.walkTokens(tokens, (token) => {
+    if (isHeading(token)) headings.push(token)
+  })
+  outlineLevels(headings.map((h) => h.depth)).forEach((level, i) => {
+    const heading = headings[i]
+    if (heading) headingLevels.set(heading, level)
+  })
+  return sanitize(marked.parser(tokens, { ...marked.defaults, renderer }))
 }

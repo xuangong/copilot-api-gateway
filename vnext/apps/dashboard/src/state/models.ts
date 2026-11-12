@@ -139,14 +139,47 @@ export function buildCatalog(data: RawModel[]): ModelCatalog {
 
 const EMPTY: ModelCatalog = { claudeBig: [], claudeSmall: [], codex: [], gemini: [], byUpstream: [], rawByUpstream: [], mappedModelIds: [], mappingDestinations: [] }
 
+/** A catalog and the key it was loaded for. */
+export interface LoadedCatalog {
+  key: string | undefined
+  catalog: ModelCatalog
+}
+
+/**
+ * What to show for `keyId`: the last loaded catalog, but only if it was loaded
+ * for that key. `loaded` is null until anything has loaded.
+ */
+export function catalogFor(loaded: LoadedCatalog | null, keyId: string | undefined): { ready: boolean; catalog: ModelCatalog } {
+  return loaded !== null && loaded.key === keyId
+    ? { ready: true, catalog: loaded.catalog }
+    : { ready: false, catalog: EMPTY }
+}
+
 export function useModelCatalog(keyId?: string) {
-  const [catalog, setCatalog] = useState<ModelCatalog>(EMPTY)
+  // The last catalog that arrived, with its key. A refresh (focus, the minute
+  // timer, empty-catalog retries) keeps it on show while it runs, so `ready`
+  // tells a first load from those; another key shows an empty, not-ready
+  // catalog until its own arrives. The caller keeps this hook across key
+  // switches, hence per key.
+  const [loaded, setLoaded] = useState<LoadedCatalog | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const retryCount = useRef(0)
+  // Only the newest request for the key on show may write. Otherwise the
+  // response for a key the user has just left can land last and put its
+  // catalog, or its readiness, on the new key.
+  const latestRequest = useRef(0)
+  const shownKey = useRef(keyId)
+  // Before the effect that loads, so a key switch is recorded first.
+  useEffect(() => { shownKey.current = keyId }, [keyId])
 
   const refresh = useCallback(async () => {
+    // A refresh for a key the user has since left (a save that finished after
+    // the switch) has nothing to show, and must not cancel the new key's load.
+    if (keyId !== shownKey.current) return
+    const request = ++latestRequest.current
+    const current = () => request === latestRequest.current
     setLoading(true)
     setError(null)
     try {
@@ -154,11 +187,15 @@ export function useModelCatalog(keyId?: string) {
       // needs its own id here or the catalog comes back empty.
       const path = keyId ? `/api/models?keyId=${encodeURIComponent(keyId)}&dedupe=0` : "/api/models"
       const r = await api<{ data: RawModel[] }>(path)
-      setCatalog(buildCatalog(r.data ?? []))
+      if (current()) setLoaded({ key: keyId, catalog: buildCatalog(r.data ?? []) })
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      if (current()) {
+        setError(e instanceof Error ? e.message : String(e))
+        // A failed first load shows this key as empty, not the last key's models.
+        setLoaded((prev) => (prev?.key === keyId ? prev : { key: keyId, catalog: EMPTY }))
+      }
     } finally {
-      setLoading(false)
+      if (current()) setLoading(false)
     }
   }, [keyId])
 
@@ -166,20 +203,25 @@ export function useModelCatalog(keyId?: string) {
     refresh()
   }, [refresh])
 
+  const { ready, catalog } = catalogFor(loaded, keyId)
+  // Until this key's catalog is in, it counts as loading, so nothing judges
+  // mappings or defaults against an empty stand-in.
+  const busy = loading || !ready
+
   // Upstream model fetch can transiently fail (e.g. Copilot session token
   // refresh hits a flaky network). When that produces an empty catalog,
   // schedule a single debounced retry so the user doesn't have to refresh.
   // Cap at 3 attempts — if it's still empty, the user genuinely has no
   // upstream and further retries are pointless.
   useEffect(() => {
-    if (loading) return
+    if (busy) return
     const empty = catalog.claudeBig.length === 0 && catalog.codex.length === 0 && catalog.gemini.length === 0
     if (!empty) { retryCount.current = 0; return }
     if (retryCount.current >= 3) return
     if (retryTimer.current) clearTimeout(retryTimer.current)
     retryTimer.current = setTimeout(() => { retryCount.current += 1; refresh() }, 1500)
     return () => { if (retryTimer.current) clearTimeout(retryTimer.current) }
-  }, [loading, catalog, refresh])
+  }, [busy, catalog, refresh])
 
   // Periodic refresh to pick up upstream changes (model added/removed,
   // upstream enabled/disabled). 60s is rare enough not to spam, fast
@@ -191,5 +233,5 @@ export function useModelCatalog(keyId?: string) {
     return () => { clearInterval(id); window.removeEventListener("focus", onFocus) }
   }, [refresh])
 
-  return { catalog, loading, error, refresh }
+  return { catalog, loading: busy, ready, error, refresh }
 }

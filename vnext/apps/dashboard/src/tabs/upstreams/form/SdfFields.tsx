@@ -31,9 +31,10 @@ export function SdfFields({ form, update, editing }: { form: FormState; update: 
           <p className="text-xs text-fg-subtle">{t("dash.sdfTaxonomyHint")}</p>
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Field label={t("dash.sdfExperienceLabel")} labelledBy>
-            {({ labelId }) => (
+          <Field label={t("dash.sdfExperienceLabel")}>
+            {({ id, labelId }) => (
               <Select
+                id={id}
                 value={form.sdfExperience}
                 onChange={(v) => update("sdfExperience", v)}
                 labelledBy={labelId}
@@ -56,9 +57,10 @@ export function SdfFields({ form, update, editing }: { form: FormState; update: 
               />
             )}
           </Field>
-          <Field label={t("dash.sdfTrafficTypeLabel")} labelledBy>
-            {({ labelId }) => (
+          <Field label={t("dash.sdfTrafficTypeLabel")}>
+            {({ id, labelId }) => (
               <Select
+                id={id}
                 value={form.sdfTrafficType}
                 onChange={(v) => update("sdfTrafficType", v)}
                 labelledBy={labelId}
@@ -66,9 +68,10 @@ export function SdfFields({ form, update, editing }: { form: FormState; update: 
               />
             )}
           </Field>
-          <Field label={t("dash.sdfServiceTierLabel")} labelledBy>
-            {({ labelId }) => (
+          <Field label={t("dash.sdfServiceTierLabel")}>
+            {({ id, labelId }) => (
               <Select
+                id={id}
                 value={form.sdfServiceTier}
                 onChange={(v) => update("sdfServiceTier", v)}
                 labelledBy={labelId}

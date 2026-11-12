@@ -173,7 +173,7 @@ export function UpstreamAccessPanel({ keyRow, canEdit, busy, onSave }: Props) {
                       <label className="flex min-w-0 cursor-pointer items-center gap-3">
                         <input type="checkbox" checked={row.selected} disabled={interactionDisabled || loading || !loaded || (!row.selected && row.unavailable)} onChange={(event) => setDraft((value) => setUpstreamSelected(value, row.id, event.target.checked))} className="shrink-0 accent-brand" />
                         <span className="min-w-0 space-y-0.5">
-                          <span className="block break-all text-[13px] text-fg">{row.selected ? `${selectedIndex + 1}. ` : ""}{row.name}</span>
+                          <span className="block break-all text-body text-fg">{row.selected ? `${selectedIndex + 1}. ` : ""}{row.name}</span>
                           <span className="block break-all font-mono text-xs text-fg-subtle">{row.id}{row.provider ? ` · ${row.provider}` : ""}</span>
                           <span className="flex flex-wrap items-center gap-1.5">
                             <Badge tone={row.selected ? "success" : "neutral"}>

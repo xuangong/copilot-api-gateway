@@ -64,12 +64,14 @@ export function DisabledModelsSection({
         <p className="text-xs text-fg-subtle">{t("dash.noCachedModels")}</p>
       )}
       {editing && catalog && (
+        // Size and line height come from the global select rule (13px / 18px);
+        // its 18px is the height of each option row, which text-body's would loosen.
         <select
           multiple
           size={Math.min(8, Math.max(3, catalog.length))}
           aria-labelledby={`${id}-title`}
           aria-describedby={`${id}-hint`}
-          className="w-full rounded-md border border-input bg-background font-mono text-[13px]"
+          className="w-full rounded-md border border-input bg-background font-mono"
           value={disabledIds}
           onChange={(e) => {
             const selected = Array.from(e.target.selectedOptions).map((o) => o.value)

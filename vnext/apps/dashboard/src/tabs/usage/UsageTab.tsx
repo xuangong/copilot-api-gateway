@@ -167,7 +167,7 @@ export function UsageTab() {
             >
               <ChevronLeft aria-hidden="true" />
             </Button>
-            <span className="text-[13px] text-fg-muted font-medium tabular-nums min-w-[180px] text-center">
+            <span className="text-body text-fg-muted font-medium tabular-nums min-w-[180px] text-center">
               {usage.range === "today"
                 ? formatDayLabel(usage.periodOffset, new Date(), mode)
                 : usage.range === "week"
@@ -210,7 +210,7 @@ export function UsageTab() {
                 onChange={(e) => usage.chooseEndDate(e.target.value || null)}
               />
             </div>
-            <span className="text-[13px] text-fg-muted font-medium tabular-nums">{windowLabel}</span>
+            <span className="text-body text-fg-muted font-medium tabular-nums">{windowLabel}</span>
             <div className="flex items-center gap-1">
               {usage.endDate ? (
                 <Button variant="ghost" size="sm" onClick={() => usage.chooseEndDate(null)}>

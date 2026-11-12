@@ -71,7 +71,7 @@ export function LokiPairingPanel({ row, onChanged, onClose }: Props) {
 
   return <section className="space-y-3 rounded-lg border border-border bg-panel p-4" aria-labelledby={titleId}>
     <div className="flex items-center justify-between gap-3">
-      <FormHeading id={titleId} className="text-[13px] font-medium text-fg">{t("dash.lokiSettingsTitle")}</FormHeading>
+      <FormHeading id={titleId} className="text-body font-medium text-fg">{t("dash.lokiSettingsTitle")}</FormHeading>
       <Button variant="ghost" size="sm" disabled={busy} onClick={onClose}>{t("dash.closeBtn")}</Button>
     </div>
     <form className="space-y-3" onSubmit={event => { event.preventDefault(); void (id ? save() : pair()) }}>
@@ -95,8 +95,8 @@ export function LokiPairingPanel({ row, onChanged, onClose }: Props) {
       </Button>
       {saved ? <p role="status" className="text-xs text-fg-subtle">{t("dash.lokiSettingsSaved")}</p> : null}
     </form>
-    {id ? <FormHeading offset={1} className="border-t border-border pt-3 text-[13px] font-medium text-fg">{t("dash.lokiPairTitle")}</FormHeading> : null}
-    <p className="text-[13px] text-fg-muted">{t("dash.lokiPairDescription")}</p>
+    {id ? <FormHeading offset={1} className="border-t border-border pt-3 text-body font-medium text-fg">{t("dash.lokiPairTitle")}</FormHeading> : null}
+    <p className="text-body text-fg-muted">{t("dash.lokiPairDescription")}</p>
     {id ? <p className="text-xs text-fg-subtle">{t("dash.lokiReplaceHint")}</p> : null}
     {!secureOrigin ? <Notice tone="warn" role="status">{t("dash.lokiHttpsRequired")}</Notice> : null}
     {id ? <div className="flex flex-wrap gap-2">

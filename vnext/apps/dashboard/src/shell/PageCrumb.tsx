@@ -10,7 +10,7 @@ interface Props {
 export function PageCrumb({ group, page, fallback }: Props) {
   const t = useT()
   return (
-    <nav aria-label={t("dash.nav.breadcrumb")} className="mb-4 hidden text-[13px] md:block">
+    <nav aria-label={t("dash.nav.breadcrumb")} className="mb-4 hidden text-body md:block">
       <ol className="flex items-center gap-1.5 text-fg-subtle">
         {group ? (
           <>

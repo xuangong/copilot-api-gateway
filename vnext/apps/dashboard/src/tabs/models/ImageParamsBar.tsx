@@ -28,11 +28,12 @@ function ParamField({ label, value, options, onChange, disabled, className }: {
   className: string
 }) {
   const labelId = useId()
+  const selectId = `${labelId}-select`
   return (
     <div className="pg-img-param">
-      <span id={labelId} className={disabled ? "opacity-50" : undefined}>{label}</span>
+      <label id={labelId} htmlFor={selectId} className={disabled ? "opacity-50" : undefined}>{label}</label>
       <div className={className}>
-        <Select value={value} onChange={onChange} options={options} labelledBy={labelId} disabled={disabled} size="sm" />
+        <Select id={selectId} value={value} onChange={onChange} options={options} labelledBy={labelId} disabled={disabled} size="sm" />
       </div>
     </div>
   )

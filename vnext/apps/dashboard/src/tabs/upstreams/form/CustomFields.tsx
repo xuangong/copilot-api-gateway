@@ -34,9 +34,10 @@ export function CustomFields({ form, update, editing }: { form: FormState; updat
           />
         )}
       </Field>
-      <Field label={t("dash.authStyleLabel")} hint={t("dash.authStyleHint")} labelledBy>
-        {({ labelId, describedBy }) => (
+      <Field label={t("dash.authStyleLabel")} hint={t("dash.authStyleHint")}>
+        {({ id, labelId, describedBy }) => (
           <Select
+            id={id}
             value={form.authStyle}
             onChange={(v) => update("authStyle", v)}
             labelledBy={labelId}
@@ -105,7 +106,7 @@ export function CustomModelFields({
       </div>
 
       <details className={`group ${sectionCls}`}>
-        <summary className="mb-2 flex w-fit cursor-pointer list-none items-center gap-1 rounded-sm text-[13px] font-medium text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-text [&::-webkit-details-marker]:hidden">
+        <summary className="mb-2 flex w-fit cursor-pointer list-none items-center gap-1 rounded-sm text-body font-medium text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-text [&::-webkit-details-marker]:hidden">
           <ChevronRight className="size-3.5 shrink-0 transition-transform group-open:rotate-90" aria-hidden="true" />
           {t("dash.pathOverridesLabel")}
         </summary>

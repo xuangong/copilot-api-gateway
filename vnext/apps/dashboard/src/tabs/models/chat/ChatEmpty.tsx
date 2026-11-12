@@ -25,7 +25,7 @@ export function ChatEmpty({ modelId, onSuggest }: Props) {
             key={label}
             type="button"
             onClick={() => onSuggest(prompt)}
-            className="flex items-center gap-2 rounded-lg border border-border bg-panel px-3.5 py-3 text-left text-[13px] text-fg-muted transition-colors hover:border-control hover:bg-muted hover:text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-text"
+            className="flex items-center gap-2 rounded-lg border border-border bg-panel px-3.5 py-3 text-left text-body text-fg-muted transition-colors hover:border-control hover:bg-muted hover:text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-text"
           >
             <Icon className="size-4 shrink-0 text-brand-text" aria-hidden="true" />
             {label}

@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react"
+import { useContext, type CSSProperties } from "react"
 import { ChevronDown, ChevronUp, Download, ImageOff, Pencil, Search, Undo2 } from "lucide-react"
 import { useT } from "../../../state/i18n"
 import { Button } from "../../../ui/button"
@@ -7,7 +7,7 @@ import { Tooltip } from "../../../ui/tooltip"
 import type { Part } from "../parts"
 import type { Citation } from "../streams/openai"
 import { downloadImage, imageFilename } from "../download"
-import { renderMarkdown } from "../markdown"
+import { MarkdownSanitizer, renderMarkdown } from "../markdown"
 import { avatarAccent, avatarLabel } from "../avatar"
 import { PerformanceDetails } from "../PerformanceDetails"
 import { COLLAPSED_SOURCE_COUNT, hostOf, messageParts, type Message } from "./chat-state"
@@ -59,6 +59,7 @@ function MessageRow({
   m, i, isLast, streaming, mode, expandedSources, copiedIdx, openedAt, onRetract, onZoom, onUseAsReference, onToggleSources, onCopy,
 }: RowProps) {
   const t = useT()
+  const sanitize = useContext(MarkdownSanitizer)
   const isAssistant = m.role === "assistant"
   const showDots = isAssistant && streaming && isLast && !m.text
   return (
@@ -158,7 +159,7 @@ function MessageRow({
             )}
           </div>
         ) : isAssistant ? (
-          <div className="md-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(m.text) }} />
+          <div className="md-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(m.text, sanitize) }} />
         ) : (
           <div className="whitespace-pre-wrap">{m.text}</div>
         )}

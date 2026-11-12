@@ -72,7 +72,7 @@ export function SegmentedControl<T extends string>({ options, value, onChange, a
             onClick={() => onChange(option.value)}
             onKeyDown={(event) => onKeyDown(event, index)}
             className={cn(
-              "whitespace-nowrap rounded-[5px] px-2.5 text-[13px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-text",
+              "whitespace-nowrap rounded-[5px] px-2.5 text-body font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-text",
               size === "sm" ? "h-6" : "h-7",
               active ? "bg-background text-fg shadow-xs ring-1 ring-control" : "text-fg-muted hover:text-fg",
             )}

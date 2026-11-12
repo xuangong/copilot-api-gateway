@@ -23,7 +23,7 @@ export function DropdownMenuItem({ className, ...props }: ComponentProps<typeof 
   return (
     <Menu.Item
       className={cn(
-        "flex cursor-pointer select-none items-center gap-2 rounded-md px-2 py-1.5 text-[13px] text-fg-muted outline-none data-[highlighted]:bg-muted data-[highlighted]:text-fg data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:size-4",
+        "flex cursor-pointer select-none items-center gap-2 rounded-md px-2 py-1.5 text-body text-fg-muted outline-none data-[highlighted]:bg-muted data-[highlighted]:text-fg data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:size-4",
         className,
       )}
       {...props}
@@ -35,7 +35,7 @@ export function DropdownMenuCheckboxItem({ className, children, ...props }: Comp
   return (
     <Menu.CheckboxItem
       className={cn(
-        "relative flex cursor-pointer select-none items-center gap-2 rounded-md py-1.5 pl-7 pr-2 text-[13px] text-fg-muted outline-none data-[highlighted]:bg-muted data-[highlighted]:text-fg data-[state=checked]:text-fg data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+        "relative flex cursor-pointer select-none items-center gap-2 rounded-md py-1.5 pl-7 pr-2 text-body text-fg-muted outline-none data-[highlighted]:bg-muted data-[highlighted]:text-fg data-[state=checked]:text-fg data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
         className,
       )}
       {...props}

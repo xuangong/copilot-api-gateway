@@ -65,6 +65,7 @@ export function ModelsTab() {
   )
   const [drawerOpen, setDrawerOpen] = useState(false)
   const keyLabelId = useId()
+  const keySelectId = useId()
 
   useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth < MOBILE_BREAKPOINT)
@@ -282,9 +283,10 @@ export function ModelsTab() {
             </RadixDialog.Portal>
           </RadixDialog.Root>
         )}
-        <label id={keyLabelId} className="text-xs text-fg-subtle">{t("dash.playground.sendWithKey")}:</label>
+        <label id={keyLabelId} htmlFor={keySelectId} className="text-xs text-fg-subtle">{t("dash.playground.sendWithKey")}:</label>
         <div className="min-w-[160px]">
           <Select
+            id={keySelectId}
             value={selectedKeyId}
             onChange={pickKey}
             labelledBy={keyLabelId}

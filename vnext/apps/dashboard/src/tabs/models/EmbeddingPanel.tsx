@@ -135,7 +135,7 @@ export function EmbeddingPanel({ modelId, apiKey }: Props) {
       <div className="pg-topbar">
         <span className="text-fg-subtle">{t("dash.playground.protocol")}:</span>
         <div className="inline-flex items-center rounded-md border border-control bg-panel p-0.5">
-          <span className="flex h-6 items-center rounded-[5px] bg-background px-2.5 text-[13px] font-medium text-fg shadow-xs ring-1 ring-control">OpenAI Embeddings</span>
+          <span className="flex h-6 items-center rounded-[5px] bg-background px-2.5 text-body font-medium text-fg shadow-xs ring-1 ring-control">OpenAI Embeddings</span>
         </div>
         <span className="text-fg-subtle">{t("dash.playground.embeddingFormatHint")}</span>
         {sending && (

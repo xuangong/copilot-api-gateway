@@ -112,13 +112,13 @@ export function RequestsPanel({ keyId, keyName, onClose }: { keyId: string; keyN
           {dumps.detail ? (
             <div className="mt-4 grid grid-cols-1 gap-4 text-fg-muted lg:grid-cols-2">
               <section className="min-w-0">
-                <h4 className="mb-2 text-[13px] font-medium text-fg">{t("dash.requests.rawClient")}</h4>
+                <h4 className="mb-2 text-body font-medium text-fg">{t("dash.requests.rawClient")}</h4>
                 <p className="mb-2 break-all font-mono text-xs">{dumps.detail.request.method} {dumps.detail.request.path}</p>
                 <pre className={cn(CODE, "mb-3")}>{dumps.detail.request.headers.map(([name, value]) => `${name}: ${value}`).join("\n")}</pre>
                 <BodyView body={dumps.detail.request.body} />
               </section>
               <section className="min-w-0">
-                <h4 className="mb-2 text-[13px] font-medium text-fg">{t("dash.requests.canonicalOutput")}</h4>
+                <h4 className="mb-2 text-body font-medium text-fg">{t("dash.requests.canonicalOutput")}</h4>
                 <p className="mb-2 text-xs tabular-nums">{t("dash.requests.status", { status: dumps.detail.response.status ?? "—" })}</p>
                 <pre className={cn(CODE, "mb-3")}>{dumps.detail.response.headers.map(([name, value]) => `${name}: ${value}`).join("\n")}</pre>
                 {dumps.detail.response.body.type === "none" && !dumps.detail.meta.capture ? <p className="text-xs text-fg-subtle">{t("dash.requests.noBody")}</p> : null}

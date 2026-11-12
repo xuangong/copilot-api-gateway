@@ -138,7 +138,7 @@ export function SettingsTab() {
 
       <Card className="mb-4">
         <SectionHeading className="mb-1">{t("dash.exportDataTitle")}</SectionHeading>
-        <p className="mb-4 text-[13px] text-fg-muted">
+        <p className="mb-4 text-body text-fg-muted">
           {t("dash.exportDataDesc")}
           {!isAdmin && " " + t("dash.adminOnlyParen")}
         </p>
@@ -159,7 +159,7 @@ export function SettingsTab() {
 
       <Card className="mb-4">
         <SectionHeading className="mb-1">{t("dash.importDataTitle")}</SectionHeading>
-        <p className="mb-4 text-[13px] text-fg-muted">
+        <p className="mb-4 text-body text-fg-muted">
           {t("dash.importDataDesc")}
           {!isAdmin && " " + t("dash.adminOnlyParen")}
         </p>
@@ -184,7 +184,7 @@ export function SettingsTab() {
         </Button>
 
         {preview ? (
-          <div className="mt-4 space-y-3 rounded-md border border-border bg-panel p-3 text-[13px]">
+          <div className="mt-4 space-y-3 rounded-md border border-border bg-panel p-3 text-body">
             <div className="text-fg">
               {t("dash.importPreviewSummary", {
                 version: String(preview.parsed.version),

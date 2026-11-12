@@ -6,7 +6,7 @@ import { cn } from "./cn"
  * named, focusable region so keyboard users can scroll it.
  */
 export function Table({ className, label, ...props }: ComponentProps<"table"> & { label?: string }) {
-  const table = <table className={cn("w-full border-collapse text-[13px]", className)} {...props} />
+  const table = <table className={cn("w-full border-collapse text-body", className)} {...props} />
   if (label) {
     return (
       <div

@@ -5,9 +5,11 @@
  * （表示"以字段为准"，URL 框转为显示推导结果）；改 URL 框会存下原文，
  * 能解析就顺带覆盖字段。校验规则全部来自 proxy-form-config.ts。
  */
-import type { Ref } from 'react'
+import { useState, type Ref } from 'react'
+import { Eye, EyeOff } from 'lucide-react'
 import { useT } from '../../state/i18n'
 import type { ProxyConfig, Ss2022Method, SsMethod } from '@vibe-core/proxy/proxy-config'
+import { Button } from '../../ui/button'
 import { Select } from '../../ui/select'
 import { Field } from '../upstreams/form/Field'
 import {
@@ -47,6 +49,11 @@ function TextField(props: {
   error?: string
   placeholder?: string
   inputRef?: Ref<HTMLInputElement>
+  /**
+   * 整数（端口）：手机上弹数字键盘。不用 type="number"：聚焦时滚动页面会被滚轮
+   * 改值，空框按上箭头还会变成 1。范围照常由 draftIssues 校验。
+   */
+  numeric?: boolean
   onChange: (v: string) => void
 }) {
   const t = useT()
@@ -58,6 +65,7 @@ function TextField(props: {
             ref={props.inputRef}
             id={id}
             type="text"
+            inputMode={props.numeric ? 'numeric' : undefined}
             value={props.value}
             placeholder={props.placeholder}
             aria-invalid={props.error ? true : undefined}
@@ -72,6 +80,46 @@ function TextField(props: {
   )
 }
 
+/**
+ * 密码类字段：默认遮住，旁边的眼睛按钮切换明文（aria-pressed 表示当前是否明文）。
+ * autoComplete="new-password" 让浏览器别把本站的登录密码填进来 —— http/socks5
+ * 的"用户名 + 密码"两栏在浏览器看来就是一张登录表单。
+ */
+function SecretField(props: {
+  label: string
+  /** 读屏用的按钮名，如"显示密码"。 */
+  toggleLabel: string
+  value: string
+  error?: string
+  onChange: (v: string) => void
+}) {
+  const t = useT()
+  const [shown, setShown] = useState(false)
+  return (
+    <Field label={props.label} error={props.error ? t(props.error) : undefined}>
+      {({ id, describedBy }) => (
+        <div className="flex items-center gap-1">
+          <div className="min-w-0 flex-1 font-mono">
+            <input
+              id={id}
+              type={shown ? 'text' : 'password'}
+              value={props.value}
+              aria-invalid={props.error ? true : undefined}
+              aria-describedby={describedBy}
+              autoComplete="new-password"
+              spellCheck={false}
+              onChange={(e) => props.onChange(e.target.value)}
+            />
+          </div>
+          <Button variant="ghost" size="icon" aria-label={props.toggleLabel} aria-pressed={shown} onClick={() => setShown((v) => !v)}>
+            {shown ? <EyeOff aria-hidden="true" /> : <Eye aria-hidden="true" />}
+          </Button>
+        </div>
+      )}
+    </Field>
+  )
+}
+
 /** 选项就是取值本身（协议名、加密方法都不翻译）。 */
 function ChoiceField<T extends string>(props: {
   label: string
@@ -80,9 +128,10 @@ function ChoiceField<T extends string>(props: {
   onChange: (v: T) => void
 }) {
   return (
-    <Field label={props.label} labelledBy>
-      {({ labelId }) => (
+    <Field label={props.label}>
+      {({ id, labelId }) => (
         <Select
+          id={id}
           value={props.value}
           labelledBy={labelId}
           options={props.choices.map((c) => ({ value: c, label: c }))}
@@ -162,6 +211,7 @@ export function ProxyForm(props: {
           value={draft.config.port ? String(draft.config.port) : ''}
           error={issues.config.port}
           placeholder={String(DEFAULT_PORTS[kind])}
+          numeric
           onChange={setPort}
         />
       </div>
@@ -214,8 +264,9 @@ function KindFields(props: {
           value={config.username ?? ''}
           onChange={(v) => setConfig({ ...config, username: orUndefined(v) })}
         />
-        <TextField
+        <SecretField
           label={t('dash.proxyPasswordLabel')}
+          toggleLabel={t('dash.proxyShowPassword')}
           value={config.password ?? ''}
           onChange={(v) => setConfig({ ...config, password: orUndefined(v) })}
         />
@@ -230,8 +281,9 @@ function KindFields(props: {
           choices={SS_METHODS}
           onChange={(m) => setConfig({ ...config, method: m })}
         />
-        <TextField
+        <SecretField
           label={t('dash.proxyPasswordLabel')}
+          toggleLabel={t('dash.proxyShowPassword')}
           value={config.password}
           error={issues.password}
           onChange={(v) => setConfig({ ...config, password: v })}
@@ -247,8 +299,9 @@ function KindFields(props: {
           choices={SS2022_METHODS}
           onChange={(m) => setConfig({ ...config, method: m })}
         />
-        <TextField
+        <SecretField
           label={t('dash.proxyPskLabel')}
+          toggleLabel={t('dash.proxyShowPsk')}
           value={config.passwordBase64}
           error={issues.passwordBase64}
           onChange={(v) => setConfig({ ...config, passwordBase64: v })}
@@ -258,8 +311,9 @@ function KindFields(props: {
   case 'trojan':
     return (
       <div className="grid grid-cols-2 gap-3">
-        <TextField
+        <SecretField
           label={t('dash.proxyPasswordLabel')}
+          toggleLabel={t('dash.proxyShowPassword')}
           value={config.password}
           error={issues.password}
           onChange={(v) => setConfig({ ...config, password: v })}
@@ -273,8 +327,9 @@ function KindFields(props: {
     )
   case 'vless-tcp':
     return (
-      <TextField
+      <SecretField
         label={t('dash.proxyUuidLabel')}
+        toggleLabel={t('dash.proxyShowUuid')}
         value={config.uuid}
         error={issues.uuid}
         onChange={(v) => setConfig({ ...config, uuid: v })}
@@ -283,8 +338,9 @@ function KindFields(props: {
   case 'vless-ws':
     return (
       <div className="grid grid-cols-3 gap-3">
-        <TextField
+        <SecretField
           label={t('dash.proxyUuidLabel')}
+          toggleLabel={t('dash.proxyShowUuid')}
           value={config.uuid}
           error={issues.uuid}
           onChange={(v) => setConfig({ ...config, uuid: v })}
@@ -306,8 +362,9 @@ function KindFields(props: {
   case 'reality':
     return (
       <div className="grid grid-cols-2 gap-3">
-        <TextField
+        <SecretField
           label={t('dash.proxyUuidLabel')}
+          toggleLabel={t('dash.proxyShowUuid')}
           value={config.uuid}
           error={issues.uuid}
           onChange={(v) => setConfig({ ...config, uuid: v })}
