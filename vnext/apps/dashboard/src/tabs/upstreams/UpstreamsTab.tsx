@@ -308,6 +308,7 @@ export function UpstreamsTab() {
                           onDragEnd={() => setDrag(null)}
                           onHandlePointerDown={g.isMine ? (event) => touchDrag.begin(event, u.id) : undefined}
                           models={store.modelsByUpstream.get(u.id)}
+                          liveModels={store.liveLokiModels[u.id]}
                           editing={editingId === u.id}
                           readOnly={!g.isMine}
                           showProxy={isAdmin}

@@ -4,6 +4,7 @@ import type { ProviderRequest } from "@vibe-llm/provider-llm"
 import { LokiProvider } from "../provider"
 import { lokiModelEndpoints, normalizeLokiModels } from "../models"
 import type { LokiState } from "../state"
+import { normalizeLokiConfig, normalizeLokiStaticModels } from "../config"
 
 const catalog = { data: [
   { id: "messages-model", supported_endpoints: ["/v1/messages"], display_name: "Messages model" },
@@ -23,6 +24,44 @@ function fixture() {
 const request = (overrides: Partial<ProviderRequest> = {}): ProviderRequest => ({
   endpoint: "messages", payload: { model: "messages-model", messages: [{ role: "user", content: "hello" }], max_tokens: 10 },
   headers: new Headers({ authorization: "Bearer attacker" }), sourceApi: "anthropic", ...overrides,
+})
+
+test("static names are validated and survive configuration normalization", () => {
+  expect(normalizeLokiConfig({ profileId: "loki-df-v1", staticModels: [" claude-opus-5.5 ", "claude-opus-5.5"] }))
+    .toEqual({ profileId: "loki-df-v1", staticModels: ["claude-opus-5.5"] })
+  expect(normalizeLokiConfig({ profileId: "loki-df-v1", staticModels: [] })).toEqual({ profileId: "loki-df-v1" })
+  for (const value of [null, "claude-opus-5.5", [1], [""], ["a b"], ["a,b"], ["a\nb"], ["x".repeat(513)], Array(257).fill("x")]) {
+    expect(() => normalizeLokiStaticModels(value)).toThrow("loki_invalid_static_models")
+  }
+})
+
+test("static discovery needs no network; live probes cannot replace the inference catalog", async () => {
+  const { row } = fixture()
+  const ids = ["claude-opus-5.5", "gpt-6-luna"]
+  row.config.staticModels = ids
+  let offline = true
+  let calls = 0
+  const provider = new LokiProvider(row, async () => row, async url => {
+    calls++
+    if (url.endsWith("/models")) {
+      if (offline) throw new Error("TLS timeout")
+      return Response.json(catalog)
+    }
+    return new Response("ok")
+  })
+  const models = await provider.getModels()
+  expect(calls).toBe(0)
+  expect(models.data.map(model => model.id)).toEqual(ids)
+  expect(lokiModelEndpoints(models.data[0])).toEqual({ messages: {} })
+  expect(lokiModelEndpoints(models.data[1])).toEqual({ responses: {} })
+  expect((await provider.probe()).ok).toBe(false)
+  offline = false
+  expect(await provider.probe()).toMatchObject({ ok: true, models: ["messages-model", "responses-model"] })
+  await provider.fetch(request({ payload: { model: "claude-opus-5.5", messages: [] } }))
+  await provider.fetch(request({ endpoint: "responses", payload: { model: "gpt-6-luna", input: "hi" } }))
+  await expect(provider.fetch(request())).rejects.toThrow("loki_endpoint_unavailable")
+  expect((await provider.getModels()).data.map(model => model.id)).toEqual(ids)
+  expect(calls).toBe(4)
 })
 
 test("catalog advertises only explicit Loki endpoints", () => {

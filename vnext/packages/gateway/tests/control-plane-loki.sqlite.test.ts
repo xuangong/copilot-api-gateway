@@ -238,3 +238,37 @@ test("endpoint updates require the owning real session and reject invalid config
   expect((await request("/upstreams", { name: "invalid", baseUrl: "http://other.example" })).status).toBe(400)
   expect(await repo.upstreams.getById(p.upstreamId)).toEqual(before)
 })
+
+test("static model edits preserve credentials, fence the old catalog and round-trip through public settings and backups", async () => {
+  const p = await create()
+  await request(`/sync/${p.upstreamId}`, body(p), p.syncSecret)
+  const before = await repo.upstreams.getById(p.upstreamId)
+  if (!before) throw new Error("missing fixture")
+  const path = `/upstreams/${p.upstreamId}`
+  const payload = { baseUrl: "", staticModels: [" claude-opus-5.5 ", "gpt-6-luna", "claude-opus-5.5"] }
+  expect((await request(path, payload, "loki-inference-key", "PATCH")).status).toBe(401)
+  expect((await request(path, payload, otherSession, "PATCH")).status).toBe(404)
+  const response = await request(path, payload, session, "PATCH")
+  expect(response.status).toBe(200)
+  expect(await response.json()).toMatchObject({ upstream: { config: { staticModels: ["claude-opus-5.5", "gpt-6-luna"] } } })
+  const after = await repo.upstreams.getById(p.upstreamId)
+  if (!after) throw new Error("missing fixture")
+  expect(after.state).toEqual(before.state)
+  expect(after.credentialGeneration).toBe(before.credentialGeneration)
+  expect(after.catalogGeneration).toBeGreaterThan(before.catalogGeneration)
+  for (const redactSecrets of [true, false]) {
+    const backup = exportConfig({ apiKeys: [], githubAccounts: [], upstreams: [after] }, { redactSecrets })
+    expect(parseConfigBundle(backup).bundle.upstreams[0]?.config.staticModels).toEqual(["claude-opus-5.5", "gpt-6-luna"])
+  }
+  // Old clients editing only the URL must not erase the new setting.
+  await request(path, { baseUrl: "https://changed.example/api" }, session, "PATCH")
+  expect((await repo.upstreams.getById(p.upstreamId))?.config.staticModels).toEqual(["claude-opus-5.5", "gpt-6-luna"])
+  for (const staticModels of [["bad name"], [""], [123], "not-an-array"]) {
+    expect((await request(path, { baseUrl: "", staticModels }, session, "PATCH")).status).toBe(400)
+  }
+  expect((await request(path, { baseUrl: "", staticModels: [] }, session, "PATCH")).status).toBe(200)
+  expect((await repo.upstreams.getById(p.upstreamId))?.config.staticModels).toEqual([])
+  const created = await request("/upstreams", { name: "Static from creation", staticModels: ["gpt-6-luna"] })
+  expect(created.status).toBe(201)
+  expect(await created.json()).toMatchObject({ upstream: { config: { staticModels: ["gpt-6-luna"] } } })
+})

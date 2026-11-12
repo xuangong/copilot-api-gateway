@@ -6,14 +6,15 @@ import { Button } from "../../ui/button"
 import { Notice } from "../../ui/notice"
 import { Field, FormHeading } from "./form/Field"
 import { formatLokiPairing } from "./loki-pairing"
+import { formatLokiModelNames, parseLokiModelNames } from "./loki-static-models"
 
 interface Props { row?: UpstreamRecord; onChanged: () => void; onClose: () => void }
 const DEFAULT_ENDPOINT = "https://loki.delve.office.com/api/v1/llmapi"
 
-function endpointError(error: unknown): boolean {
-  if (!(error instanceof ApiError) || !error.body || typeof error.body !== "object" || !("error" in error.body)) return false
+function settingsError(error: unknown): string | undefined {
+  if (!(error instanceof ApiError) || !error.body || typeof error.body !== "object" || !("error" in error.body)) return undefined
   const detail = error.body.error
-  return !!detail && typeof detail === "object" && "code" in detail && detail.code === "invalid_endpoint"
+  return detail && typeof detail === "object" && "code" in detail && typeof detail.code === "string" ? detail.code : undefined
 }
 
 export function LokiPairingPanel({ row, onChanged, onClose }: Props) {
@@ -21,6 +22,8 @@ export function LokiPairingPanel({ row, onChanged, onClose }: Props) {
   const [name, setName] = useState(row?.name ?? "Microsoft Entra (Loki)")
   const [baseUrl, setBaseUrl] = useState(typeof row?.config.baseUrl === "string" ? row.config.baseUrl : DEFAULT_ENDPOINT)
   const [savedBaseUrl, setSavedBaseUrl] = useState(baseUrl)
+  const [modelsText, setModelsText] = useState(() => formatLokiModelNames(row?.config.staticModels))
+  const [savedModelsText, setSavedModelsText] = useState(modelsText)
   const [saved, setSaved] = useState(false)
   const titleId = useId()
   const [id, setId] = useState(row?.id)
@@ -29,17 +32,22 @@ export function LokiPairingPanel({ row, onChanged, onClose }: Props) {
   const [error, setError] = useState("")
   const [copied, setCopied] = useState(false)
   const secureOrigin = window.location.protocol === "https:"
+  const errorMessage = (error: unknown, pairing = false) => t(settingsError(error) === "invalid_endpoint"
+    ? "dash.lokiEndpointInvalid" : settingsError(error) === "invalid_static_models"
+      ? "dash.lokiStaticModelsInvalid" : pairing ? "dash.lokiPairError" : "dash.lokiSettingsError")
 
   const save = async () => {
     if (!id) return
     setBusy(true); setError(""); setSaved(false)
     try {
       const result = await api<{ upstream: UpstreamRecord }>(`/api/loki/upstreams/${encodeURIComponent(id)}`,
-        { method: "PATCH", body: { baseUrl: baseUrl.trim() } })
+        { method: "PATCH", body: { baseUrl: baseUrl.trim(), staticModels: parseLokiModelNames(modelsText) } })
       const next = typeof result.upstream.config.baseUrl === "string" ? result.upstream.config.baseUrl : DEFAULT_ENDPOINT
+      const nextModels = formatLokiModelNames(result.upstream.config.staticModels)
+      setModelsText(nextModels); setSavedModelsText(nextModels)
       setBaseUrl(next); setSavedBaseUrl(next); setSaved(true)
       onChanged()
-    } catch (error) { setError(t(endpointError(error) ? "dash.lokiEndpointInvalid" : "dash.lokiSettingsError")) }
+    } catch (error) { setError(errorMessage(error)) }
     finally { setBusy(false) }
   }
 
@@ -48,15 +56,17 @@ export function LokiPairingPanel({ row, onChanged, onClose }: Props) {
     try {
       const result = await api<{ upstream: UpstreamRecord; pairing: unknown }>(id
         ? `/api/loki/upstreams/${encodeURIComponent(id)}/pair` : "/api/loki/upstreams",
-      { method: "POST", body: id ? {} : { name, baseUrl: baseUrl.trim() } })
+      { method: "POST", body: id ? {} : { name, baseUrl: baseUrl.trim(), staticModels: parseLokiModelNames(modelsText) } })
       if (!id) {
         const next = typeof result.upstream.config.baseUrl === "string" ? result.upstream.config.baseUrl : DEFAULT_ENDPOINT
         setBaseUrl(next); setSavedBaseUrl(next)
+        const nextModels = formatLokiModelNames(result.upstream.config.staticModels)
+        setModelsText(nextModels); setSavedModelsText(nextModels)
       }
       setId(result.upstream.id)
       setDocument(formatLokiPairing(result.pairing, window.location.origin))
       onChanged()
-    } catch (error) { setError(t(endpointError(error) ? "dash.lokiEndpointInvalid" : "dash.lokiPairError")) }
+    } catch (error) { setError(errorMessage(error, true)) }
     finally { setBusy(false) }
   }
   const revoke = async () => {
@@ -89,8 +99,16 @@ export function LokiPairingPanel({ row, onChanged, onClose }: Props) {
           </div>
         )}
       </Field>
+      <Field label={t("dash.lokiStaticModels")} hint={t("dash.lokiStaticModelsHint")}>
+        {({ id: inputId, describedBy }) => (
+          <textarea id={inputId} value={modelsText} rows={6} maxLength={60_000} spellCheck={false}
+            className="w-full font-mono text-xs" aria-describedby={describedBy}
+            placeholder={"claude-opus-5.5\nclaude-sonnet-5.5\ngpt-6-luna"}
+            onChange={event => { setModelsText(event.target.value); setSaved(false); setError("") }} disabled={busy} />
+        )}
+      </Field>
       <Button type="submit" variant="primary" size="sm"
-        disabled={busy || (id ? baseUrl === savedBaseUrl : !secureOrigin || !name.trim())}>
+        disabled={busy || (id ? baseUrl === savedBaseUrl && modelsText === savedModelsText : !secureOrigin || !name.trim())}>
         {busy ? t("dash.savingShort") : t(id ? "dash.save" : "dash.addLoki")}
       </Button>
       {saved ? <p role="status" className="text-xs text-fg-subtle">{t("dash.lokiSettingsSaved")}</p> : null}

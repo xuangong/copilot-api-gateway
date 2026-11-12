@@ -17,6 +17,30 @@ Endpoint changes invalidate the model catalog and existing provider instances
 while retaining the Windows pairing, account binding, and synchronized token.
 Configuration backups retain the endpoint but continue stripping sync authority.
 
+### Static model names
+
+The Loki Edit form also accepts optional static model names, one per line
+(commas are accepted as separators). A nonempty list replaces automatic model
+discovery for the served catalog and routing. Clearing the field restores
+automatic discovery. Names are trimmed and deduplicated; the limit is 256
+names, each at most 512 characters without embedded whitespace or commas.
+
+The management create/PATCH bodies accept `staticModels: string[]`, stored in
+`config.staticModels`. Omitting it in a PATCH preserves the current list;
+`[]` clears it. Saving advances catalog configuration identity without changing
+Windows pairing or synchronized credentials. Backups preserve the names.
+
+Name-only catalogs route `claude-*` through Messages and other names through
+Responses, matching Loki's Claude/OpenAI model families. They do not invent
+context limits or billing rates; those metadata fields remain unknown. Static
+discovery makes no upstream HTTP request. Inference still validates the current
+credential and uses the configured proxy chain.
+
+The row's **Models** button continues to probe Loki's live `/models` endpoint.
+Its result appears separately from the served static models; success, failure,
+and background refresh cannot replace the configured names. As with other
+provider probes, the response contains at most 50 live model names.
+
 This contract connects the standalone Windows assistant to vNext. It grants authority to synchronize one upstream; it grants no inference or management access. No token or secret is placed in a URL.
 
 ## Loki request versions

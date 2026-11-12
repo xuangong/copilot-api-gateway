@@ -1,6 +1,6 @@
 import { Hono } from "hono"
 import { z } from "zod"
-import { LokiSyncError, LOKI_PROFILE_ID, lokiBaseUrl, type LokiState } from "@vibe-llm/provider-loki"
+import { LokiSyncError, LOKI_PROFILE_ID, lokiBaseUrl, normalizeLokiStaticModels, type LokiState } from "@vibe-llm/provider-loki"
 import type { Env } from "../../app"
 import { getRepo } from "../../repo"
 import type { FullAuthCtx } from "../../shared/credential-auth"
@@ -13,8 +13,12 @@ export { lokiSyncRouter } from "./sync"
 export const lokiManagementRouter = new Hono<{ Bindings: Env; Variables: { auth: FullAuthCtx } }>()
 
 const endpoint = z.string().max(2048)
-const createBody = z.object({ name: z.string().trim().min(1).max(120), baseUrl: endpoint.optional() }).strict()
-const settingsBody = z.object({ baseUrl: endpoint }).strict()
+const staticModels = z.array(z.string()).max(256).optional()
+const createBody = z.object({ name: z.string().trim().min(1).max(120), baseUrl: endpoint.optional(), staticModels }).strict()
+const settingsBody = z.object({ baseUrl: endpoint, staticModels }).strict()
+function parseStaticModels(value: unknown): string[] {
+  try { return normalizeLokiStaticModels(value) } catch { throw new LokiSyncError("invalid_static_models", 400) }
+}
 function parseEndpoint(value: unknown): string {
   try { return lokiBaseUrl(value) } catch { throw new LokiSyncError("invalid_endpoint", 400) }
 }
@@ -50,13 +54,15 @@ lokiManagementRouter.post("/upstreams", async c => {
     const parsed = createBody.safeParse(await boundedJson(c.req.raw))
     if (!parsed.success) throw new LokiSyncError("invalid_request", 400)
     const baseUrl = parseEndpoint(parsed.data.baseUrl)
+    const models = parseStaticModels(parsed.data.staticModels)
     const auth = c.get("auth")
     const { state, syncSecret } = await newBinding()
     const now = new Date().toISOString()
     const id = upstreamId.parse(`up_loki_${crypto.randomUUID().replaceAll("-", "")}`)
     const saved = await getRepo().upstreams.createIfAbsent({
       id, ownerId: auth.userId, provider: "loki", name: parsed.data.name, enabled: true, sortOrder: 0,
-      config: { profileId: LOKI_PROFILE_ID, ...(parsed.data.baseUrl === undefined ? {} : { baseUrl }) },
+      config: { profileId: LOKI_PROFILE_ID, ...(parsed.data.baseUrl === undefined ? {} : { baseUrl }),
+        ...(models.length ? { staticModels: models } : {}) },
       flagOverrides: {}, disabledPublicModelIds: [], proxyFallbackList: [],
       state, createdAt: now, updatedAt: now,
     })
@@ -75,9 +81,10 @@ lokiManagementRouter.patch("/upstreams/:id", async c => {
     const parsed = settingsBody.safeParse(await boundedJson(c.req.raw))
     if (!parsed.success) throw new LokiSyncError("invalid_request", 400)
     const baseUrl = parseEndpoint(parsed.data.baseUrl)
+    const models = parsed.data.staticModels === undefined ? undefined : parseStaticModels(parsed.data.staticModels)
     // Metadata CAS preserves concurrent token renewal and advances the catalog generation.
     const saved = await repo.upstreams.patchMetadata(row, current => ({
-      ...current, config: { ...current.config, baseUrl },
+      ...current, config: { ...current.config, baseUrl, ...(models === undefined ? {} : { staticModels: models }) },
     }))
     return json({ upstream: serializeUpstream(saved) })
   } catch (error) { return safeError(error) }

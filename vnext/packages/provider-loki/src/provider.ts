@@ -4,7 +4,7 @@ import { probeViaModels, resolveExecutionFetcher, type ExecutionFetcherForReques
 import { directFetcher, type Fetcher } from "@vibe-core/upstream"
 import type { StoredUpstreamRecord } from "@vibe-core/upstream-repo"
 import { LOKI_HEADERS, LOKI_PROFILE_ID } from "./profile"
-import { lokiBaseUrl } from "./config"
+import { lokiBaseUrl, normalizeLokiStaticModels } from "./config"
 import { isLokiEndpoint, lokiContextWindow, lokiModelEndpoints, LOKI_PATHS, normalizeLokiModels } from "./models"
 import { lokiModelPricing } from "./pricing"
 import { readLokiState } from "./state"
@@ -45,22 +45,35 @@ export class LokiProvider implements LlmModelProvider {
   }
 
   async getModels(): Promise<ProviderModelsResponse> {
+    const ids = normalizeLokiStaticModels(this.expected.config.staticModels)
+    if (ids.length) {
+      const models = normalizeLokiModels({ data: ids.map(id => ({
+        id, supported_endpoints: [id.startsWith("claude-") ? LOKI_PATHS.messages : LOKI_PATHS.responses],
+      })) })
+      this.setModelCatalog(models)
+      return models
+    }
+    const models = await this.getLiveModels()
+    this.setModelCatalog(models)
+    return models
+  }
+
+  /** Diagnostic discovery must never replace the configured routing catalog. */
+  async getLiveModels(): Promise<ProviderModelsResponse> {
     const credential = await this.credential()
     // Workers rejects redirect: "error"; manual mode keeps the bearer on the configured origin.
     const response = await this.fetcher(`${this.baseUrl}/models`, { method: "GET", redirect: "manual",
       headers: { ...LOKI_HEADERS, authorization: `Bearer ${credential.accessToken}`, accept: "application/json" },
       signal: AbortSignal.timeout(20_000) })
     if (!response.ok) { await response.body?.cancel(); throw new Error(`loki_catalog_http_${response.status}`) }
-    const models = normalizeLokiModels(await response.json())
-    this.setModelCatalog(models)
-    return models
+    return normalizeLokiModels(await response.json())
   }
 
   setModelCatalog(models: ProviderModelsResponse): void {
     this.models = new Map(normalizeLokiModels(models).data.map(model => [model.id, model]))
   }
 
-  probe() { return probeViaModels(() => this.getModels()) }
+  probe() { return probeViaModels(() => this.getLiveModels()) }
   getPricingForModelKey(model: string): ModelPricing | null { return lokiModelPricing(this.models.get(model)) }
 
   async fetch(req: ProviderRequest): Promise<ProviderResponse> {

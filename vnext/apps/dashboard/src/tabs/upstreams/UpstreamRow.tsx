@@ -39,6 +39,7 @@ interface Props {
   total: number
   busy: boolean
   models?: api.UpstreamModelEntry[]
+  liveModels?: { ids: string[]; total: number }
   editing?: boolean
   readOnly?: boolean
   showProxy?: boolean
@@ -68,6 +69,7 @@ export function UpstreamRow({
   total,
   busy,
   models,
+  liveModels,
   editing,
   readOnly = false,
   showProxy = false,
@@ -292,7 +294,8 @@ export function UpstreamRow({
 
       <div className="mt-3 text-xs">
         <div className="flex items-center justify-between mb-1.5">
-          <div className="text-fg-muted">{t("dash.modelsServedHeader", { n: modelList.length })}</div>
+          <div className="text-fg-muted">{t(u.provider === "loki" && Array.isArray(u.config.staticModels) && u.config.staticModels.length
+            ? "dash.lokiStaticModelsHeader" : "dash.modelsServedHeader", { n: modelList.length })}</div>
           <div className="flex items-center gap-1">
             {modelList.length > 8 ? (
               <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => setExpanded((v) => !v)}>
@@ -315,6 +318,12 @@ export function UpstreamRow({
           ))}
         </div>
       </div>
+      {u.provider === "loki" && liveModels !== undefined ? <div className="mt-3 text-xs" role="status">
+        <div className="mb-1.5 text-fg-muted">{t("dash.lokiLiveModelsHeader", { n: liveModels.total })}</div>
+        <div className="flex flex-wrap gap-1">{liveModels.ids.map(id => <span key={id}
+          className="rounded-md border border-control bg-background px-2 py-0.5 font-mono">{id}</span>)}</div>
+        {liveModels.total > liveModels.ids.length ? <p className="mt-1 text-fg-subtle">{t("dash.lokiLiveModelsTruncated", { n: liveModels.ids.length })}</p> : null}
+      </div> : null}
     </div>
   )
 }
