@@ -16,6 +16,10 @@ const now = 10_000_000
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), "dump-maintenance-"))
   raw = new Database(join(root, "test.sqlite"))
+  // Fixtures insert hundreds of rows one autocommit at a time; skip the per-commit
+  // fsync and journal file. File locking (which the race tests rely on) is unchanged.
+  raw.run("PRAGMA synchronous = OFF")
+  raw.run("PRAGMA journal_mode = MEMORY")
   new BunSqliteRepo(raw)
   db = new BunSqliteDatabase(raw)
   files = new FsFileProvider(join(root, "files"))

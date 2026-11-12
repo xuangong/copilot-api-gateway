@@ -16,6 +16,11 @@ const models = (id = "model") => ({ object: "list", data: [{ id }] })
 async function fixture() {
   const dir = mkdtempSync(join(tmpdir(), "coordinator-"))
   const a = new Database(join(dir, "db")), b = new Database(join(dir, "db"))
+  // Several tests loop over ~512 upstreams; with the default on-disk journal
+  // every autocommit fsyncs and rewrites a journal file (5-9s on a busy machine).
+  // The two connections still use SQLite's normal file locking, which is what
+  // these tests exercise; only durability is relaxed.
+  for (const db of [a, b]) { db.run("PRAGMA synchronous = OFF"); db.run("PRAGMA journal_mode = MEMORY") }
   const first = new BunSqliteRepo(a), second = new BunSqliteRepo(b)
   close.push(() => { a.close(); b.close(); rmSync(dir, { recursive: true, force: true }) })
   await first.upstreams.save({ id: "up", provider: "custom", ownerId: "owner", name: "up", enabled: true, sortOrder: 0,
