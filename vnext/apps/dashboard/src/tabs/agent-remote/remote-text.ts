@@ -1,7 +1,7 @@
 import { useT } from "../../state/i18n"
 
 export const remoteText = {
-  "dash.remote.title": "Agent Hosts",
+  "dash.remote.title": "Agent Remote",
   "dash.remote.hint": "Your machines and Hosts shared with you.",
   "dash.remote.open": "Open controller",
   "dash.remote.openHostAria": "Open controller for {name}",
@@ -23,7 +23,8 @@ export const remoteText = {
   "dash.remote.save": "Save limit",
   "dash.remote.grant": "Grant again",
   "dash.remote.revoke": "Revoke",
-  "dash.remote.revokeConfirm": "Revoke {label}'s access to this Host? Their used session count is kept if you grant access again.",
+  "dash.remote.revokeConfirm": "Revoke {label}'s access to this Host?",
+  "dash.remote.revokeConfirmHint": "Their used session count is kept if you grant access again.",
   "dash.remote.revoked": "Revoked",
   "dash.remote.noShares": "This Host has not been shared yet.",
   "dash.remote.loadingShares": "Loading shares…",

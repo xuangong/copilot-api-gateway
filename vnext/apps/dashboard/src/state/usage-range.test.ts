@@ -1,7 +1,8 @@
-import { describe, expect, test } from "bun:test"
+import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { computeTimeRange, formatDayLabel, formatMonthLabel, formatWeekLabel } from "./usage"
 import { buildTimeBuckets, dateKey, dayStart } from "./time-buckets"
 import { zoneOps } from "./timezone"
+import { installDictionary } from "./i18n-fixture"
 
 // These cases predate the UTC/local switch and describe the local calendar, so
 // they pass "local" explicitly. The UTC block at the bottom is the one that
@@ -95,7 +96,17 @@ describe("computeTimeRange 28d", () => {
   })
 })
 
+// Labels are words a user reads, so these load the real dictionary.
+const inLanguage = (lang: "en" | "zh") => {
+  let restore = () => {}
+  beforeEach(() => {
+    restore = installDictionary(lang)
+  })
+  afterEach(() => restore())
+}
+
 describe("formatDayLabel", () => {
+  inLanguage("en")
   test("names today and yesterday, dates the rest", () => {
     expect(formatDayLabel(0, NOW, "local")).toBe("Today (Aug 12)")
     expect(formatDayLabel(-1, NOW, "local")).toBe("Yesterday (Aug 11)")
@@ -104,11 +115,43 @@ describe("formatDayLabel", () => {
 })
 
 describe("existing labels still work", () => {
+  inLanguage("en")
   test("week and month keep their wording", () => {
     expect(formatWeekLabel(0, NOW, "local")).toStartWith("This week (")
     expect(formatWeekLabel(-1, NOW, "local")).toStartWith("Last week (")
     expect(formatMonthLabel(0, NOW, "local")).toBe("This month (August 2026)")
     expect(formatMonthLabel(-1, NOW, "local")).toBe("Last month (July 2026)")
+  })
+})
+
+describe("labels in Chinese", () => {
+  inLanguage("zh")
+
+  test("day, week and month read in Chinese", () => {
+    expect(formatDayLabel(0, NOW, "local")).toBe("今天（8月12日）")
+    expect(formatDayLabel(-1, NOW, "local")).toBe("昨天（8月11日）")
+    expect(formatDayLabel(-2, NOW, "local")).toBe("2026年8月10日")
+    expect(formatWeekLabel(0, NOW, "local")).toBe("本周（8月10日 – 8月16日）")
+    expect(formatWeekLabel(-1, NOW, "local")).toBe("上周（8月3日 – 8月9日）")
+    expect(formatWeekLabel(-2, NOW, "local")).toBe("7月27日 – 8月2日")
+    expect(formatMonthLabel(0, NOW, "local")).toBe("本月（2026年8月）")
+    expect(formatMonthLabel(-1, NOW, "local")).toBe("上月（2026年7月）")
+  })
+
+  test("week buckets name the weekday in Chinese", () => {
+    const { labels } = buildTimeBuckets("week", 0, NOW, null, "local")
+    expect(labels[0]).toBe("周一 8月10日")
+    expect(labels[6]).toBe("周日 8月16日")
+  })
+})
+
+describe("week buckets in English", () => {
+  inLanguage("en")
+
+  test("keep their weekday names", () => {
+    const { labels } = buildTimeBuckets("week", 0, NOW, null, "local")
+    expect(labels[0]).toBe("Mon Aug 10")
+    expect(labels[6]).toBe("Sun Aug 16")
   })
 })
 
@@ -266,6 +309,7 @@ describe("usageViewFromHistoryState", () => {
 // where the test runs. These do not: in UTC mode every boundary is fixed by the
 // instant alone, which is the whole point of offering the mode.
 describe("utc mode", () => {
+  inLanguage("en")
   // Late enough in the UTC day that a positive offset would already have rolled
   // the local date over — so a local-mode leak shows up as a wrong date, not as
   // an equal answer reached by accident.

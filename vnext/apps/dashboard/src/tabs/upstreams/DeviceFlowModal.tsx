@@ -297,7 +297,7 @@ function PasteTokenStep({
           <CodeBlock
             language="bash"
             text={cmd}
-            copyLabel="copy"
+            copyLabel={t("dash.copy")}
             copied={false}
             onCopy={() => {
               navigator.clipboard.writeText(cmd).then(

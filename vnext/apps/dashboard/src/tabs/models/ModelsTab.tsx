@@ -227,7 +227,7 @@ export function ModelsTab() {
   }
 
   if (keyError) return <div className="p-4">{heading}<Notice tone="danger">{keyError}</Notice></div>
-  if (!keys) return <div className="text-sm text-fg-subtle p-4">{heading}Loading…</div>
+  if (!keys) return <div className="text-sm text-fg-subtle p-4">{heading}{t("dash.loadingShort")}</div>
 
   const selectedKey = keys.find((k) => k.id === selectedKeyId)
   const selectedModel = models?.find((m) => m.id === selectedModelId)
@@ -419,7 +419,7 @@ export function ModelList({
       </div>
       <div className="flex-1 min-h-0 overflow-auto">
         {modelsError && <Notice tone="danger" className="m-2 text-xs">{modelsError}</Notice>}
-        {!modelsError && !models && <div className="text-xs text-fg-subtle p-3">Loading…</div>}
+        {!modelsError && !models && <div className="text-xs text-fg-subtle p-3">{t("dash.loadingShort")}</div>}
         {Array.from(grouped.entries()).map(([upstream, arr]) => {
           const isOpen = openGroups[upstream] !== false
           return (

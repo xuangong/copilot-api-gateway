@@ -1,3 +1,4 @@
+import { dateLocale, t } from "./i18n"
 import { zoneOps, type TimeZoneMode } from "./timezone"
 
 export type LatencyRange = "today" | "week" | "7d" | "30d"
@@ -34,8 +35,10 @@ export function formatWeekLabel(weekOffset: number, mode: TimeZoneMode): string 
   const ref = ops.make(ops.year(now), ops.month(now), ops.day(now) + weekOffset * 7)
   const monday = ops.make(ops.year(ref), ops.month(ref), ops.day(ref) - ((ops.weekday(ref) + 6) % 7))
   const sunday = ops.make(ops.year(monday), ops.month(monday), ops.day(monday) + 6)
-  const fmt = (d: Date) => d.toLocaleDateString("en-US", { month: "short", day: "numeric", ...ops.fmt })
-  if (weekOffset === 0) return `This week (${fmt(monday)} – ${fmt(sunday)})`
-  if (weekOffset === -1) return `Last week (${fmt(monday)} – ${fmt(sunday)})`
-  return `${fmt(monday)} – ${fmt(sunday)}`
+  const locale = dateLocale()
+  const fmt = (d: Date) => d.toLocaleDateString(locale, { month: "short", day: "numeric", ...ops.fmt })
+  const range = `${fmt(monday)} – ${fmt(sunday)}`
+  if (weekOffset === 0) return t("dash.periodThisWeek", { range })
+  if (weekOffset === -1) return t("dash.periodLastWeek", { range })
+  return range
 }

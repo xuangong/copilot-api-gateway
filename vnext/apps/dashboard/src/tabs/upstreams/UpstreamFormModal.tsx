@@ -267,7 +267,7 @@ export function UpstreamFormModal({ mode, flagCatalog, ensureFlagCatalog, onClos
         {provider === "copilot" ? (
           <div className="space-y-1 rounded-md border border-border bg-muted px-3 py-2 text-xs">
             <div className="text-fg-muted">{t("dash.githubLoginLabel")}</div>
-            <div className="font-mono text-fg">{form.copilotLogin || "(unknown)"}</div>
+            <div className="font-mono text-fg">{form.copilotLogin || t("dash.unknown")}</div>
             <div className="mt-2 text-fg-muted">
               {t("dash.copilotTokenHint")}
             </div>

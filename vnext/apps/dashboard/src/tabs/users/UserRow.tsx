@@ -1,4 +1,5 @@
-import { formatQuotaChip, timeAgo, type AdminUser } from "../../api/users"
+import { formatQuotaChip, type AdminUser } from "../../api/users"
+import { timeAgo } from "../../state/time-ago"
 import { useT } from "../../state/i18n"
 import type { QuotaState } from "../../state/users"
 import { Badge } from "../../ui/badge"

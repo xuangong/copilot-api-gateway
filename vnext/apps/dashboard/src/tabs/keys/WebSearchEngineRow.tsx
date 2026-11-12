@@ -1,5 +1,5 @@
 import { useId } from "react"
-import { Link2 } from "lucide-react"
+import { Link2, Link2Off } from "lucide-react"
 import type { ApiKeyDetail, KeyRefDescriptor } from "../../api/keys"
 import { useT } from "../../state/i18n"
 import { Button } from "../../ui/button"
@@ -44,7 +44,10 @@ export function WebSearchEngineRow({
       {refId ? (
         <div className="flex items-center gap-2">
           {refDescriptor?.broken ? (
-            <span className="min-w-0 truncate text-xs text-danger">{t("dash.wsLinkUnavailable")}</span>
+            <span className="flex min-w-0 items-center gap-1.5 text-xs text-danger">
+              <Link2Off className="size-3.5 shrink-0" aria-hidden="true" />
+              <span className="truncate">{t("dash.wsLinkUnavailable")}</span>
+            </span>
           ) : (
             <span className="flex min-w-0 items-center gap-1.5 text-xs text-fg-muted">
               <Link2 className="size-3.5 shrink-0 text-fg-subtle" aria-hidden="true" />

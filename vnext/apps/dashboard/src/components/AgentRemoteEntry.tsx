@@ -3,6 +3,7 @@ import { useEffect, useState } from "react"
 import { api } from "../api/client"
 import { isPlainLeftClick } from "../shell/links"
 import { useAuth } from "../state/auth"
+import { useRemoteText } from "../tabs/agent-remote/remote-text"
 import { cn } from "../ui/cn"
 import { Tooltip } from "../ui/tooltip"
 
@@ -16,13 +17,16 @@ interface LinkProps {
 }
 
 export function AgentRemoteLink({ enabled, authenticated, active = false, iconOnly = false, onSelect }: LinkProps) {
+  const t = useRemoteText()
   if (!enabled || !authenticated) return null
+  // The page's own title, so the sidebar and the page cannot drift apart again.
+  const name = t("dash.remote.title")
   return (
-    <Tooltip content="Agent Remote" disabled={!iconOnly}>
+    <Tooltip content={name} disabled={!iconOnly}>
       <a
         href="#agent-remote"
         aria-current={active ? "page" : undefined}
-        aria-label={iconOnly ? "Agent Remote" : undefined}
+        aria-label={iconOnly ? name : undefined}
         onClick={(e) => {
           if (!onSelect || !isPlainLeftClick(e)) return
           e.preventDefault()
@@ -35,7 +39,7 @@ export function AgentRemoteLink({ enabled, authenticated, active = false, iconOn
         )}
       >
         <Bot className={cn("size-4 shrink-0", active ? "text-brand" : "")} aria-hidden="true" />
-        {iconOnly ? null : <span className="truncate">Agent Remote</span>}
+        {iconOnly ? null : <span className="truncate">{name}</span>}
       </a>
     </Tooltip>
   )

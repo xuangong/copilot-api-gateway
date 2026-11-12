@@ -26,6 +26,11 @@ export function t(key: string, vars?: Record<string, string | number>): string {
   return lookup(key, vars)
 }
 
+/** Dates follow the interface language, not the browser's: "Aug 12" or "8月12日". */
+export function dateLocale(): "en-US" | "zh-CN" {
+  return typeof window !== "undefined" && window.__lang === "zh" ? "zh-CN" : "en-US"
+}
+
 export function useT(): (key: string, vars?: Record<string, string | number>) => string {
   const [, setTick] = useState(0)
   useEffect(() => {

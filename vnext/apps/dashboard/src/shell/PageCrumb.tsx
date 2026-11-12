@@ -9,12 +9,14 @@ interface Props {
 
 export function PageCrumb({ group, page, fallback }: Props) {
   const t = useT()
+  // "Models / Models" says the same thing twice: a page named like its group stands alone.
+  const shownGroup = group !== null && group !== page ? group : null
   return (
     <nav aria-label={t("dash.nav.breadcrumb")} className="mb-4 hidden text-body md:block">
       <ol className="flex items-center gap-1.5 text-fg-subtle">
-        {group ? (
+        {shownGroup ? (
           <>
-            <li>{group}</li>
+            <li>{shownGroup}</li>
             <li aria-hidden="true">/</li>
           </>
         ) : null}

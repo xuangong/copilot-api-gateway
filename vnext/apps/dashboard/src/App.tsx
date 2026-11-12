@@ -2,6 +2,7 @@ import { AgentRemoteTab } from "./tabs/agent-remote/AgentRemoteTab"
 import { useMemo } from "react"
 import { AuthProvider, useAuth } from "./state/auth"
 import { ToastProvider, ToastHost } from "./state/toast"
+import { ConfirmProvider } from "./state/confirm"
 import { useHashTab } from "./state/router"
 import { UpstreamsTab } from "./tabs/upstreams/UpstreamsTab"
 import { ProxiesTab } from "./tabs/proxies/ProxiesTab"
@@ -28,7 +29,7 @@ function Shell() {
   const offNavTitles = useMemo(() => ({ "agent-remote": t("dash.remote.title"), settings: t("dash.settings") }), [t])
 
   if (loading) {
-    return <div className="flex min-h-screen items-center justify-center text-fg-subtle">Loading…</div>
+    return <div className="flex min-h-screen items-center justify-center text-fg-subtle">{t("dash.loadingShort")}</div>
   }
   if (error) {
     return <div role="alert" className="flex min-h-screen items-center justify-center text-sm text-danger">{error}</div>
@@ -43,6 +44,7 @@ function Shell() {
 }
 
 function TabBody({ tab }: { tab: string }) {
+  const t = useT()
   switch (tab) {
     case "agent-remote":
       return <AgentRemoteTab />
@@ -67,7 +69,7 @@ function TabBody({ tab }: { tab: string }) {
     case "settings":
       return <SettingsTab />
     default:
-      return <EmptyState title="Unknown tab" />
+      return <EmptyState title={t("dash.unknownPage")} />
   }
 }
 
@@ -75,7 +77,9 @@ export function App() {
   return (
     <AuthProvider>
       <ToastProvider>
-        <Shell />
+        <ConfirmProvider>
+          <Shell />
+        </ConfirmProvider>
         <ToastHost />
       </ToastProvider>
     </AuthProvider>

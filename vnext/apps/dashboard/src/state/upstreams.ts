@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useToast } from "./toast"
+import { useConfirm } from "./confirm"
 import { useT } from "./i18n"
 import * as api from "../api/upstreams"
 import type { UpstreamRecord } from "../api/types"
@@ -14,6 +15,7 @@ function sortUpstreams(list: UpstreamRecord[]): UpstreamRecord[] {
 
 export function useUpstreams() {
   const { push: toast } = useToast()
+  const confirm = useConfirm()
   const t = useT()
   const [upstreams, setUpstreams] = useState<UpstreamRecord[]>([])
   const toastRef = useRef(toast)
@@ -120,18 +122,19 @@ export function useUpstreams() {
       try {
         const r = await api.probeUpstream(id)
         if (r.ok) {
-          toast(`${name}: ${r.modelCount ?? 0} models`, "success")
+          toast(t("dash.probeModelsToast", { name, n: r.modelCount ?? 0 }), "success")
           // Awaited so the row's busy state covers the list refresh too: the
           // probe route repopulates the server-side models cache before
           // answering, so this re-read is what makes "Models served (N)" agree
           // with the count in the toast.
           await loadModels()
         } else {
-          toast(`${name}: ${r.error ?? "probe failed"}${r.hint ? ` — ${r.hint}` : ""}`, "error")
+          const error = `${r.error ?? t("dash.probeFailed")}${r.hint ? ` — ${r.hint}` : ""}`
+          toast(t("dash.probeFailedToast", { name, error }), "error")
         }
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e)
-        toast(`${name}: ${msg}`, "error")
+        toast(t("dash.probeFailedToast", { name, error: msg }), "error")
       }
     })
 
@@ -149,28 +152,46 @@ export function useUpstreams() {
       // user attached) can't go through DELETE /auth/github/:id — fall back
       // to the generic upstream delete, which still cascade-cleans github_accounts.
       if (!userId) {
-        if (!confirm(`Delete upstream "${u.name}"? (No GitHub account attached.)`)) return false
+        const sure = await confirm({
+          title: t("dash.confirmDeleteUpstream", { name: u.name }),
+          description: t("dash.confirmDeleteUpstreamNoAccount"),
+          confirmLabel: t("dash.delete"),
+          danger: true,
+        })
+        if (!sure) return false
         const ok = await withBusy(u.id, async () => {
           await api.deleteUpstream(u.id)
-          toast(`Deleted ${u.name}`, "success")
+          toast(t("dash.deletedToast", { name: u.name }), "success")
           await reload()
           return true
         })
         return ok === true
       }
-      if (!confirm(`Sign out "${u.name}"? This removes the GitHub token from the gateway.`)) return false
+      const sure = await confirm({
+        title: t("dash.confirmSignOutUpstream", { name: u.name }),
+        description: t("dash.confirmSignOutUpstreamHint"),
+        confirmLabel: t("dash.signOut"),
+        danger: true,
+      })
+      if (!sure) return false
       const ok = await withBusy(u.id, async () => {
         await api.deleteGithubAccount(userId)
-        toast(`Signed out ${u.name}`, "success")
+        toast(t("dash.signedOutToast", { name: u.name }), "success")
         await reload()
         return true
       })
       return ok === true
     }
-    if (!confirm(`Delete upstream "${u.name}"? Existing usage rows stay attributed.`)) return false
+    const sure = await confirm({
+      title: t("dash.confirmDeleteUpstream", { name: u.name }),
+      description: t("dash.confirmDeleteUpstreamUsage"),
+      confirmLabel: t("dash.delete"),
+      danger: true,
+    })
+    if (!sure) return false
     const ok = await withBusy(u.id, async () => {
       await api.deleteUpstream(u.id)
-      toast(`Deleted ${u.name}`, "success")
+      toast(t("dash.deletedToast", { name: u.name }), "success")
       await reload()
       return true
     })

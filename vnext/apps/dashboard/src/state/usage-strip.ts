@@ -1,4 +1,5 @@
 import type { UsageRangeQuery } from "../api/usage"
+import { dateLocale } from "./i18n"
 import { dateKey } from "./time-buckets"
 import type { ZoneOps } from "./timezone"
 
@@ -138,6 +139,7 @@ export function buildRollingStrip(
     tokens.push(v?.tokens ?? 0)
   }
 
+  const locale = dateLocale()
   const out: RollingStripCell[] = []
   let runCost = 0
   let runTokens = 0
@@ -155,7 +157,7 @@ export function buildRollingStrip(
     const close = days[i]!
     out.push({
       endKey: dateKey(close, ops),
-      label: close.toLocaleDateString("en-US", { month: "short", day: "numeric", ...ops.fmt }),
+      label: close.toLocaleDateString(locale, { month: "short", day: "numeric", ...ops.fmt }),
       costUSD: runCost,
       tokens: runTokens,
       // Free: the closing day is the one just added to the running sum.

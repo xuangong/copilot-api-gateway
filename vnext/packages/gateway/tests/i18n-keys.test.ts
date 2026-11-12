@@ -13,7 +13,7 @@ const collectKeys = (dir: string, into: Set<string>) => {
     if (statSync(path).isDirectory()) {
       if (entry !== "node_modules" && entry !== "dist") collectKeys(path, into)
     } else if (/\.tsx?$/.test(entry)) {
-      for (const m of readFileSync(path, "utf8").matchAll(/\bt\(\s*"([^"]+)"/g)) into.add(m[1]!)
+      for (const m of readFileSync(path, "utf8").matchAll(/\b(?:t|tStatic)\(\s*"([^"]+)"/g)) into.add(m[1]!)
     }
   }
 }

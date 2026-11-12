@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import { installDictionary } from "./i18n-fixture"
 import {
   COST_ANCHOR_WINDOW,
   MIN_DAY_FILL,
@@ -100,6 +101,15 @@ describe("buildRollingStrip", () => {
   test("labels the cell by its closing day", () => {
     const cells = buildRollingStrip(new Map(), new Date(2026, 7, 12), LOCAL)
     expect(cells[89]!.label).toBe("Aug 12")
+  })
+
+  test("the label follows the interface language", () => {
+    const restore = installDictionary("zh")
+    try {
+      expect(buildRollingStrip(new Map(), new Date(2026, 7, 12), LOCAL)[89]!.label).toBe("8月12日")
+    } finally {
+      restore()
+    }
   })
 
   // The square carries two readings at once: the outline is the window total,

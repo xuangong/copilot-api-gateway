@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react"
+import { useConfirm } from "../../state/confirm"
 import { useT } from "../../state/i18n"
 import { useToast } from "../../state/toast"
 import { ApiError } from "../../api/client"
@@ -51,6 +52,7 @@ const EMPTY_DRAFT: ProxyDraft = {
 
 export function ProxiesTab() {
   const t = useT()
+  const confirm = useConfirm()
   const { push: toast } = useToast()
   const [rows, setRows] = useState<ProxyRecord[]>([])
   // Until the first list arrives, "no proxies" would be a guess.
@@ -149,7 +151,8 @@ export function ProxiesTab() {
   }
 
   const remove = async (p: ProxyRecord) => {
-    if (!window.confirm(t("dash.proxyDeleteConfirm", { name: p.name }))) return
+    const sure = await confirm({ title: t("dash.proxyDeleteConfirm", { name: p.name }), confirmLabel: t("dash.delete"), danger: true })
+    if (!sure) return
     try {
       await deleteProxy(p.id)
       await reload()

@@ -18,6 +18,8 @@
  * of every key they can reach, and `sharedInScope` tells the UI to say so.
  */
 
+import { t } from "../../state/i18n"
+
 export interface ParticipantBrief {
   id: string
   name: string
@@ -100,7 +102,7 @@ export function usageAttribution(
     return { id: `shared:${ids.join("+")}`, label: people.map((u) => u.name).join(", ") }
   }
   const only = people[0]
-  return only ? { id: only.id, label: only.name } : { id: "_admin", label: "Admin" }
+  return only ? { id: only.id, label: only.name } : { id: "_admin", label: t("dash.adminLabel") }
 }
 
 export const hasSharedKeyInScope = (participants: ParticipantIndex, keyIds: string[]): boolean =>

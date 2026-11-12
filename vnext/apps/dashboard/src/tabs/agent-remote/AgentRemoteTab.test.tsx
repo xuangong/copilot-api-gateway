@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test"
 import { renderToStaticMarkup } from "react-dom/server"
 import { HostCard, ShareRow } from "./AgentRemoteTab"
+import { ConfirmProvider } from "../../state/confirm"
 import { parseSessionLimit } from "../../api/agent-remote"
 
 const host = { id: "host_1", name: "Studio", online: true, providers: [{ providerId: "codex", displayName: "Codex" }], managed: true, access: "shared" as const, sessionQuota: { used: 3, limit: 3 } }
@@ -22,7 +23,7 @@ test("only owners can manage shares and offline status is explicit", () => {
 }, 5000)
 
 test("revoked grants display retained cumulative usage and can be granted again", () => {
-  const html = renderToStaticMarkup(<ShareRow share={{ subject: "user", label: "user@example.com", sessionLimit: 5, used: 3, revoked: true }} onSave={async () => {}} onRevoke={async () => {}} busy={false} />)
+  const html = renderToStaticMarkup(<ConfirmProvider><ShareRow share={{ subject: "user", label: "user@example.com", sessionLimit: 5, used: 3, revoked: true }} onSave={async () => {}} onRevoke={async () => {}} busy={false} /></ConfirmProvider>)
   expect(html).toContain("3 / 5")
   expect(html).toContain("Revoked")
   expect(html).toContain("Grant again")

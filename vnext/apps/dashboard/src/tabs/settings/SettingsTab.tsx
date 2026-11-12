@@ -1,6 +1,7 @@
 import { useRef, useState } from "react"
 import { useAuth } from "../../state/auth"
 import { useToast } from "../../state/toast"
+import { useConfirm } from "../../state/confirm"
 import { useT } from "../../state/i18n"
 import { Download, Loader2 } from "lucide-react"
 import { Button } from "../../ui/button"
@@ -31,6 +32,7 @@ export function SettingsTab() {
   const { session } = useAuth()
   const { push: toast } = useToast()
   const t = useT()
+  const confirm = useConfirm()
   const [exporting, setExporting] = useState(false)
   const [importing, setImporting] = useState(false)
   const [preview, setPreview] = useState<ImportPreview | null>(null)
@@ -95,7 +97,15 @@ export function SettingsTab() {
 
   async function onConfirmImport() {
     if (!preview) return
-    if (preview.mode === "replace" && !window.confirm(t("dash.importReplaceConfirm"))) return
+    if (preview.mode === "replace") {
+      const sure = await confirm({
+        title: t("dash.importReplaceConfirmTitle"),
+        description: t("dash.importReplaceConfirm"),
+        confirmLabel: t("dash.importReplaceAction"),
+        danger: true,
+      })
+      if (!sure) return
+    }
     setImporting(true)
     try {
       const resp = await fetch("/api/import", {

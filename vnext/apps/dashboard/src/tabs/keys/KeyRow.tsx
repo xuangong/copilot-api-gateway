@@ -6,7 +6,8 @@ import { Badge } from "../../ui/badge"
 import { Button } from "../../ui/button"
 import { cn } from "../../ui/cn"
 import { Td } from "../../ui/table"
-import { copyToClipboard, fullDateTime, timeAgo, truncateKey } from "./helpers"
+import { timeAgo } from "../../state/time-ago"
+import { copyToClipboard, fullDateTime, truncateKey } from "./helpers"
 
 interface Props {
   row: ApiKeyDetail

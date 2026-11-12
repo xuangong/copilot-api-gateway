@@ -85,7 +85,7 @@ export function UsageTab() {
     }))
     if (usage.chart.cacheData) {
       series.push({
-        label: "Cache",
+        label: t("dash.chartCache"),
         data: usage.chart.cacheData,
         color: "#a78bfa",
         dashed: true,
@@ -95,9 +95,14 @@ export function UsageTab() {
       })
     }
     return series
-  }, [usage.chart, palette])
-  const unitLabel = usage.metric === "requests" ? " req" : " tokens"
-  const periodNoun = usage.range === "today" ? "day" : usage.range === "week" ? "week" : "month"
+  }, [usage.chart, palette, t])
+  const unitLabel = usage.metric === "requests" ? ` ${t("dash.unitRequests")}` : ` ${t("dash.unitTokens")}`
+  const periodNav =
+    usage.range === "today"
+      ? { prev: t("dash.previousDay"), next: t("dash.nextDay") }
+      : usage.range === "week"
+        ? { prev: t("dash.previousWeek"), next: t("dash.nextWeek") }
+        : { prev: t("dash.previousMonth"), next: t("dash.nextMonth") }
   // Only the daily-bucket ranges have a day to open; "today" is already one,
   // and its buckets are hours.
   const bucketKeys = usage.chart.bucketKeys
@@ -162,8 +167,8 @@ export function UsageTab() {
               variant="ghost"
               size="icon"
               onClick={() => usage.shiftPeriod(-1)}
-              title={`Previous ${periodNoun}`}
-              aria-label={`Previous ${periodNoun}`}
+              title={periodNav.prev}
+              aria-label={periodNav.prev}
             >
               <ChevronLeft aria-hidden="true" />
             </Button>
@@ -179,8 +184,8 @@ export function UsageTab() {
               size="icon"
               onClick={() => usage.shiftPeriod(1)}
               disabled={usage.periodOffset >= 0}
-              title={`Next ${periodNoun}`}
-              aria-label={`Next ${periodNoun}`}
+              title={periodNav.next}
+              aria-label={periodNav.next}
             >
               <ChevronRight aria-hidden="true" />
             </Button>
@@ -283,7 +288,7 @@ export function UsageTab() {
               options={MODEL_KIND_OPTIONS}
               value={usage.modelKind}
               onChange={usage.setModelKind}
-              ariaLabel={t("dash.modelDistributionToggle")}
+              ariaLabel={t("dash.chartModelDimension")}
             />
           ) : null}
         </div>

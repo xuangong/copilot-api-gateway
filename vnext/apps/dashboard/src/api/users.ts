@@ -127,20 +127,3 @@ export function formatQuotaChip(q?: { loading?: boolean; error?: string; data?: 
   const used = (snap.entitlement ?? 0) - (snap.remaining ?? 0)
   return `${used}/${snap.entitlement ?? 0}`
 }
-
-export function timeAgo(iso: string): string {
-  const t = new Date(iso).getTime()
-  if (Number.isNaN(t)) return ""
-  const diff = Math.max(0, Date.now() - t)
-  const sec = Math.floor(diff / 1000)
-  if (sec < 60) return `${sec}s ago`
-  const min = Math.floor(sec / 60)
-  if (min < 60) return `${min}m ago`
-  const hr = Math.floor(min / 60)
-  if (hr < 24) return `${hr}h ago`
-  const days = Math.floor(hr / 24)
-  if (days < 30) return `${days}d ago`
-  const mo = Math.floor(days / 30)
-  if (mo < 12) return `${mo}mo ago`
-  return `${Math.floor(mo / 12)}y ago`
-}

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useToast } from "./toast"
-import { useT } from "./i18n"
+import { dateLocale, t as tStatic, useT } from "./i18n"
 import * as api from "../api/usage"
 import type { ParticipantRow, UsageRow } from "../api/usage"
 import {
@@ -176,10 +176,11 @@ export function dayOffsetFromKey(dateKey: string, now: Date, mode: TimeZoneMode)
 export function formatDayLabel(periodOffset: number, now: Date, mode: TimeZoneMode): string {
   const ops = zoneOps(mode)
   const day = dayStart(now, periodOffset, ops)
-  const short = day.toLocaleDateString("en-US", { month: "short", day: "numeric", ...ops.fmt })
-  if (periodOffset === 0) return `Today (${short})`
-  if (periodOffset === -1) return `Yesterday (${short})`
-  return day.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", ...ops.fmt })
+  const locale = dateLocale()
+  const short = day.toLocaleDateString(locale, { month: "short", day: "numeric", ...ops.fmt })
+  if (periodOffset === 0) return tStatic("dash.periodToday", { date: short })
+  if (periodOffset === -1) return tStatic("dash.periodYesterday", { date: short })
+  return day.toLocaleDateString(locale, { month: "short", day: "numeric", year: "numeric", ...ops.fmt })
 }
 
 export function formatWeekLabel(periodOffset: number, now: Date, mode: TimeZoneMode): string {
@@ -187,19 +188,20 @@ export function formatWeekLabel(periodOffset: number, now: Date, mode: TimeZoneM
   const ref = ops.make(ops.year(now), ops.month(now), ops.day(now) + periodOffset * 7)
   const monday = ops.make(ops.year(ref), ops.month(ref), ops.day(ref) - ((ops.weekday(ref) + 6) % 7))
   const sunday = ops.make(ops.year(monday), ops.month(monday), ops.day(monday) + 6)
-  const fmt = (d: Date) => d.toLocaleDateString("en-US", { month: "short", day: "numeric", ...ops.fmt })
+  const locale = dateLocale()
+  const fmt = (d: Date) => d.toLocaleDateString(locale, { month: "short", day: "numeric", ...ops.fmt })
   const range = `${fmt(monday)} – ${fmt(sunday)}`
-  if (periodOffset === 0) return `This week (${range})`
-  if (periodOffset === -1) return `Last week (${range})`
+  if (periodOffset === 0) return tStatic("dash.periodThisWeek", { range })
+  if (periodOffset === -1) return tStatic("dash.periodLastWeek", { range })
   return range
 }
 
 export function formatMonthLabel(periodOffset: number, now: Date, mode: TimeZoneMode): string {
   const ops = zoneOps(mode)
   const first = monthStart(now, periodOffset, ops)
-  const name = first.toLocaleDateString("en-US", { month: "long", year: "numeric", ...ops.fmt })
-  if (periodOffset === 0) return `This month (${name})`
-  if (periodOffset === -1) return `Last month (${name})`
+  const name = first.toLocaleDateString(dateLocale(), { month: "long", year: "numeric", ...ops.fmt })
+  if (periodOffset === 0) return tStatic("dash.periodThisMonth", { month: name })
+  if (periodOffset === -1) return tStatic("dash.periodLastMonth", { month: name })
   return name
 }
 

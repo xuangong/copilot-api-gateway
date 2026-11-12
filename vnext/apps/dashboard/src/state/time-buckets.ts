@@ -1,3 +1,4 @@
+import { dateLocale } from "./i18n"
 import { zoneOps, type TimeZoneMode, type ZoneOps } from "./timezone"
 
 // — Bucket helpers, originally ported from src/ui/dashboard/client.ts —
@@ -76,7 +77,8 @@ export function buildTimeBuckets(
   const keys: string[] = []
   const labels: string[] = []
   const isDaily = range !== "today"
-  const dayLabel = (d: Date) => d.toLocaleDateString("en-US", { month: "short", day: "numeric", ...ops.fmt })
+  const locale = dateLocale()
+  const dayLabel = (d: Date) => d.toLocaleDateString(locale, { month: "short", day: "numeric", ...ops.fmt })
 
   if (range === "today") {
     // Follows periodOffset for the same reason computeTimeRange does: the
@@ -90,11 +92,10 @@ export function buildTimeBuckets(
   } else if (range === "week") {
     const ref = ops.make(ops.year(now), ops.month(now), ops.day(now) + periodOffset * 7)
     const monday = ops.make(ops.year(ref), ops.month(ref), ops.day(ref) - ((ops.weekday(ref) + 6) % 7))
-    const weekdays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
     for (let i = 0; i < 7; i++) {
       const d = ops.make(ops.year(monday), ops.month(monday), ops.day(monday) + i)
       keys.push(dateKey(d, ops))
-      labels.push(`${weekdays[i]} ${dayLabel(d)}`)
+      labels.push(`${d.toLocaleDateString(locale, { weekday: "short", ...ops.fmt })} ${dayLabel(d)}`)
     }
   } else if (range === "month") {
     const first = monthStart(now, periodOffset, ops)

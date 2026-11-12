@@ -103,7 +103,7 @@ export function RollingStrip({ cells, selectedKey, highlightTail, isDark, onPick
             <button
               key={c.endKey}
               type="button"
-              aria-label={`${c.label}: ${money(c.costUSD)} over 28 days, ${money(c.dayCostUSD)} that day, ${c.tokens.toLocaleString()} tokens`}
+              aria-label={t("dash.rollingCellAria", { label: c.label, total: money(c.costUSD), day: money(c.dayCostUSD), tokens: c.tokens.toLocaleString() })}
               onMouseEnter={track(i)}
               onFocus={track(i)}
               onBlur={() => setHover(null)}
@@ -138,11 +138,11 @@ export function RollingStrip({ cells, selectedKey, highlightTail, isDark, onPick
         >
           <div className="text-fg-subtle">{shown.label}</div>
           <div className="text-fg font-medium tabular-nums">{money(shown.costUSD)}</div>
-          <div className="text-fg-muted tabular-nums">{shown.tokens.toLocaleString()} tokens</div>
+          <div className="text-fg-muted tabular-nums">{t("dash.tokensCount", { n: shown.tokens.toLocaleString() })}</div>
           {/* The fill has no legend of its own — the square only shows a height,
               so the number behind it has to be readable somewhere. */}
           <div className="text-fg-subtle tabular-nums mt-0.5 pt-0.5 border-t border-border">
-            {`${t("dash.rollingThatDay")} ${money(shown.dayCostUSD)} · ${shown.dayTokens.toLocaleString()} tokens`}
+            {`${t("dash.rollingThatDay")} ${money(shown.dayCostUSD)} · ${t("dash.tokensCount", { n: shown.dayTokens.toLocaleString() })}`}
           </div>
         </div>
       ) : null}

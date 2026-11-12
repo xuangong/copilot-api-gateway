@@ -169,7 +169,11 @@ function MessageRow({
               <div key={w.id} className={"pg-tool pg-tool-" + w.status}>
                 <Search className="size-3.5 shrink-0" aria-hidden="true" />
                 <span className="pg-tool-label">
-                  {w.status === "completed" ? "Searched" : w.status === "searching" ? "Searching" : "Preparing search"}
+                  {w.status === "completed"
+                    ? t("dash.playground.webSearchDone")
+                    : w.status === "searching"
+                      ? t("dash.playground.webSearchRunning")
+                      : t("dash.playground.webSearchPending")}
                 </span>
                 {w.query && <span className="pg-tool-query">"{w.query}"</span>}
               </div>

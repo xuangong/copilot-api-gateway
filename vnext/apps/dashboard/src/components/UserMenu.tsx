@@ -47,7 +47,7 @@ export function UserMenu({ onNavigate, canNavigateSettings, compact = false }: P
   const isAdmin = session.isAdmin === true
   const isUser = session.isUser === true
   const hasPassword = session.hasPassword === true
-  const displayName = session.userName || session.email || (isAdmin ? "Admin" : "")
+  const displayName = session.userName || session.email || (isAdmin ? t("dash.adminLabel") : "")
 
   // Compact shows only the avatar, so it needs a label; the full trigger is
   // named by its visible name and email. The open highlight keys on

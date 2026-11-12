@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from "react"
 import { useToast } from "./toast"
+import { useConfirm } from "./confirm"
+import { useT } from "./i18n"
 import * as api from "../api/users"
 
 export interface QuotaState {
@@ -10,6 +12,8 @@ export interface QuotaState {
 
 export function useUsers() {
   const { push: toast } = useToast()
+  const confirm = useConfirm()
+  const t = useT()
   const [users, setUsers] = useState<api.AdminUser[]>([])
   const [usersLoading, setUsersLoading] = useState(true)
   const [invites, setInvites] = useState<api.InviteCode[]>([])
@@ -94,7 +98,8 @@ export function useUsers() {
   }
 
   const deleteInvite = async (id: string): Promise<void> => {
-    if (!confirm("Delete this invite code?")) return
+    const sure = await confirm({ title: t("dash.confirmDeleteInvite"), confirmLabel: t("dash.delete"), danger: true })
+    if (!sure) return
     await withBusy(`inv-${id}`, async () => {
       await api.deleteInviteCode(id)
       await reloadInvites()
@@ -108,10 +113,16 @@ export function useUsers() {
     })
 
   const deleteUser = async (u: api.AdminUser): Promise<void> => {
-    if (!confirm(`Delete user "${u.name}"? This removes their keys, tokens, and assignments.`)) return
+    const sure = await confirm({
+      title: t("dash.confirmDeleteUser", { name: u.name }),
+      description: t("dash.confirmDeleteUserHint"),
+      confirmLabel: t("dash.delete"),
+      danger: true,
+    })
+    if (!sure) return
     await withBusy(u.id, async () => {
       await api.deleteAdminUser(u.id)
-      toast(`Deleted ${u.name}`, "success")
+      toast(t("dash.deletedToast", { name: u.name }), "success")
       await reloadUsers()
     })
   }

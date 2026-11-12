@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useToast } from "./toast"
+import { useConfirm } from "./confirm"
+import { useT } from "./i18n"
 import * as api from "../api/keys"
 import type { ApiKeyDetail, WebSearchRange, WebSearchUsage } from "../api/keys"
 import { beginQuotaLoad, failQuotaLoad, finishQuotaLoad, IDLE_QUOTA, projectQuotaUsage, type QuotaLoad } from "./key-quota"
@@ -22,6 +24,8 @@ export interface JustCreatedKey {
 
 export function useKeys() {
   const { push: toast } = useToast()
+  const confirm = useConfirm()
+  const t = useT()
   const [keys, setKeys] = useState<ApiKeyDetail[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedKeyId, setSelectedKeyId] = useState<string | null>(null)
@@ -113,16 +117,22 @@ export function useKeys() {
 
   const deleteKey = useCallback(
     async (id: string, name: string): Promise<boolean> => {
-      if (!confirm(`Delete API key "${name}"? This cannot be undone.`)) return false
+      const sure = await confirm({
+        title: t("dash.confirmDeleteKey", { name }),
+        description: t("dash.confirmIrreversible"),
+        confirmLabel: t("dash.delete"),
+        danger: true,
+      })
+      if (!sure) return false
       const ok = await withBusy(id, async () => {
         await api.deleteKey(id)
-        toast(`Deleted ${name}`, "success")
+        toast(t("dash.deletedToast", { name }), "success")
         await reload()
         return true
       })
       return ok === true
     },
-    [reload, toast, withBusy],
+    [confirm, reload, t, toast, withBusy],
   )
 
   const patchKey = useCallback(
@@ -141,20 +151,20 @@ export function useKeys() {
     async (id: string, sourceId: string): Promise<boolean> => {
       const ok = await withBusy(id, async () => {
         await api.copyWebSearchFrom(id, sourceId)
-        toast("Web search config copied", "success")
+        toast(t("dash.wsConfigCopiedToast"), "success")
         await reload()
         return true
       })
       return ok === true
     },
-    [reload, toast, withBusy],
+    [reload, t, toast, withBusy],
   )
 
   const assignKey = useCallback(
     async (id: string, email: string): Promise<boolean> => {
       try {
         await api.assignKey(id, { email })
-        toast(`Shared with ${email}`, "success")
+        toast(t("dash.sharedWithToast", { email }), "success")
         await reload()
         return true
       } catch (e) {
@@ -162,14 +172,14 @@ export function useKeys() {
         return false
       }
     },
-    [reload, toast],
+    [reload, t, toast],
   )
 
   const unassignKey = useCallback(
     async (id: string, userId: string): Promise<boolean> => {
       try {
         await api.unassignKey(id, userId)
-        toast("Removed share", "success")
+        toast(t("dash.unshareToast"), "success")
         await reload()
         return true
       } catch (e) {
@@ -177,7 +187,7 @@ export function useKeys() {
         return false
       }
     },
-    [reload, toast],
+    [reload, t, toast],
   )
 
   const retryQuota = useCallback(() => setQuotaRetry((n) => n + 1), [])

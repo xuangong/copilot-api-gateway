@@ -49,9 +49,9 @@ export function UsageDistributionTable({ title, rows, showRoutedModels = false, 
       </SectionHeading>
 
       <div className="space-y-3 mb-6" onMouseLeave={() => setHovered(null)}>
-        <StackedBar label="Requests" rows={rows} pct={reqPct} palette={palette} hovered={hovered} onHover={setHovered} />
-        <StackedBar label="Input" rows={rows} pct={inPct} palette={palette} hovered={hovered} onHover={setHovered} />
-        <StackedBar label="Output" rows={rows} pct={outPct} palette={palette} hovered={hovered} onHover={setHovered} />
+        <StackedBar label={t("dash.requests")} rows={rows} pct={reqPct} palette={palette} hovered={hovered} onHover={setHovered} />
+        <StackedBar label={t("dash.input")} rows={rows} pct={inPct} palette={palette} hovered={hovered} onHover={setHovered} />
+        <StackedBar label={t("dash.output")} rows={rows} pct={outPct} palette={palette} hovered={hovered} onHover={setHovered} />
 
         <div className="h-5 flex items-center">
           {hoveredRow ? (

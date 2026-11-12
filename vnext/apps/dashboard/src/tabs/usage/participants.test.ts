@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import { installDictionary } from "../../state/i18n-fixture"
 import {
   buildDimensions,
   hasSharedKeyInScope,
@@ -204,11 +205,31 @@ describe("usageAttribution", () => {
 
   test("a key with no participants row falls back to the admin bucket", async () => {
     const { usageAttribution } = await import("./participants")
-    expect(usageAttribution(m, "k_missing")).toEqual({ id: "_admin", label: "Admin" })
+    const restore = installDictionary("en")
+    try {
+      expect(usageAttribution(m, "k_missing")).toEqual({ id: "_admin", label: "Admin" })
+    } finally {
+      restore()
+    }
   })
 
   test("an ownerless unshared key is the admin bucket too", async () => {
     const { usageAttribution } = await import("./participants")
-    expect(usageAttribution(m, "k_orphan")).toEqual({ id: "_admin", label: "Admin" })
+    const restore = installDictionary("en")
+    try {
+      expect(usageAttribution(m, "k_orphan")).toEqual({ id: "_admin", label: "Admin" })
+    } finally {
+      restore()
+    }
+  })
+
+  test("the admin bucket is named in the interface language", async () => {
+    const { usageAttribution } = await import("./participants")
+    const restore = installDictionary("zh")
+    try {
+      expect(usageAttribution(m, "k_missing")).toEqual({ id: "_admin", label: "管理员" })
+    } finally {
+      restore()
+    }
   })
 })

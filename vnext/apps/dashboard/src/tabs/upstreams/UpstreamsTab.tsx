@@ -202,7 +202,7 @@ export function UpstreamsTab() {
               size="icon-sm"
               onClick={store.reload}
               disabled={store.loading}
-              title="Refresh"
+              title={t("dash.refreshLabel")}
               aria-label={t("dash.refreshLabel")}
             >
               <RefreshCw aria-hidden="true" />

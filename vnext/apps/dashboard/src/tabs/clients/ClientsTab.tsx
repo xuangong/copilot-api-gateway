@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"
 import { useAuth } from "../../state/auth"
-import { useT, t as tStatic } from "../../state/i18n"
+import { useT } from "../../state/i18n"
+import { timeAgo } from "../../state/time-ago"
 import { useClients } from "../../state/clients"
 import type { RelayClient } from "../../api/clients"
 import { KeyRound, Monitor, RefreshCw } from "lucide-react"
@@ -9,20 +10,6 @@ import { Card, SectionHeading } from "../../ui/card"
 import { cn } from "../../ui/cn"
 import { EmptyState } from "../../ui/empty-state"
 import { PageHeader } from "../../ui/page-header"
-
-function timeAgo(dateStr: string | null | undefined, now: number): string | null {
-  if (!dateStr) return null
-  const date = new Date(dateStr).getTime()
-  const seconds = Math.floor((now - date) / 1000)
-  if (seconds < 60) return tStatic("dash.justNow")
-  const minutes = Math.floor(seconds / 60)
-  if (minutes < 60) return minutes === 1 ? tStatic("dash.oneMinuteAgo") : tStatic("dash.minutesAgo", { n: minutes })
-  const hours = Math.floor(minutes / 60)
-  if (hours < 24) return hours === 1 ? tStatic("dash.oneHourAgo") : tStatic("dash.hoursAgo", { n: hours })
-  const days = Math.floor(hours / 24)
-  if (days <= 30) return days === 1 ? tStatic("dash.oneDayAgo") : tStatic("dash.daysAgo", { n: days })
-  return new Date(date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
-}
 
 export function ClientsTab() {
   const { session } = useAuth()
@@ -127,7 +114,7 @@ function ClientRow({ client: c, isAdmin, now }: { client: RelayClient; isAdmin: 
       </div>
       <div className="shrink-0 text-right">
         <span className="whitespace-nowrap text-xs text-fg-muted" title={c.lastSeenAt}>
-          {timeAgo(c.lastSeenAt, now)}
+          {timeAgo(c.lastSeenAt, now, "long")}
         </span>
       </div>
     </div>

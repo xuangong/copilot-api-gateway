@@ -1,5 +1,5 @@
 import { useId, useMemo, useState } from "react"
-import { ChevronDown, ChevronUp, Link2 } from "lucide-react"
+import { ChevronDown, ChevronUp, Link2, Link2Off } from "lucide-react"
 import type { ApiKeyDetail, KeyPatchBody, KeyRefDescriptor, WebSearchRange, WebSearchUsage } from "../../api/keys"
 import { useT } from "../../state/i18n"
 import { DEFAULT_WS_PRIORITY } from "./helpers"
@@ -310,9 +310,11 @@ export function WebSearchPanel({
             <span id={`${panelId}-passthrough`} className="block text-xs font-medium text-fg-muted">{t("dash.wsPassthrough")}</span>
             <p className="text-xs text-fg-subtle">{t("dash.wsPassthroughHint")}</p>
             <div className="flex flex-wrap items-center gap-2">
+              {/* One visible label over two pickers: each gets a name of its own. Hidden spans still name what they label. */}
               <div className="min-w-[200px]">
+                <span id={`${panelId}-passthrough-upstream`} hidden>{t("dash.wsPassthroughUpstreamAria")}</span>
                 <Select
-                  labelledBy={`${panelId}-passthrough`}
+                  labelledBy={`${panelId}-passthrough-upstream`}
                   value={edit.passthroughUpstream}
                   onChange={(v) => setEdit({ ...edit, passthroughUpstream: v, passthroughModel: "" })}
                   options={[
@@ -322,8 +324,9 @@ export function WebSearchPanel({
                 />
               </div>
               <div className="min-w-[180px]">
+                <span id={`${panelId}-passthrough-model`} hidden>{t("dash.wsPassthroughModelAria")}</span>
                 <Select
-                  labelledBy={`${panelId}-passthrough`}
+                  labelledBy={`${panelId}-passthrough-model`}
                   value={edit.passthroughModel}
                   onChange={(v) => setEdit({ ...edit, passthroughModel: v })}
                   options={[
@@ -457,7 +460,10 @@ export function WebSearchPanel({
                       <span className="font-medium">{slot.label}</span>
                       {slot.ref ? (
                         slot.ref.broken ? (
-                          <span className="font-mono opacity-80">{t("dash.wsLinkUnavailable")}</span>
+                          <span className="inline-flex items-center gap-0.5 font-mono opacity-80">
+                            <Link2Off className="size-3" aria-hidden="true" />
+                            {t("dash.wsLinkUnavailable")}
+                          </span>
                         ) : (
                           <span className="inline-flex items-center gap-0.5 font-mono opacity-80">
                             <Link2 className="size-3" aria-hidden="true" />
