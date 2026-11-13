@@ -7,7 +7,7 @@ import { parseSSEStream } from "@vibe-core/result/parse"
 import { waitUntil } from "@vibe-core/platform"
 import { eventFrame, type ProtocolFrame } from "@vibe-core/result"
 import { upstreamErrorToResponse, type LlmEventResult, type LlmExecuteResult, type EventResultMetadata } from "@vibe-llm/protocols/common"
-import { ResponsesFinalOutput, type ResponsesStreamEvent } from "@vibe-llm/protocols/responses"
+import { ResponsesFinalOutput, type ResponsesResult, type ResponsesStreamEvent } from "@vibe-llm/protocols/responses"
 import { forwardUpstreamError } from "../../errors/forward"
 import { SourceStreamState, eventResultMetadata, finalModelIdentity, normalizeStreamEventModel, performanceTargetFromTranslatorPair, recordPerformance, recordUsage } from "../shared/respond-telemetry"
 import type { TelemetryRequestContext } from "../shared/telemetry-ctx"
@@ -222,6 +222,8 @@ export interface ResponsesTurn {
   readonly wantsStream: boolean
   readonly mergedInputItems: readonly unknown[]
   recordSentPayloadBytes(byteLength: number): void
+  /** Graceful protocol interruption; transport cancellation remains an abort. */
+  interrupt(responseId: string): boolean
 }
 
 export interface PreparedResponsesTurn {
@@ -266,7 +268,26 @@ export function createResponsesTurn(
   let terminalDelivered = false
   let finalizing: Promise<void> | undefined
   let metadata: ResponsesTurnMetadata = { status: 200 }
+  const readController = new AbortController()
+  let interruptRequested = false
+  let created: ResponsesResult | undefined
+  let terminal: ResponsesStreamEvent | undefined
+  function interrupt(responseId: string): boolean {
+    if (abortController.signal.aborted || settled || created?.id !== responseId) return false
+    if (terminal) return terminal.type === "response.completed"
+    if (interruptRequested) return true
+    interruptRequested = true
+    // Stop generation, but keep the downstream alive to deliver the explicit
+    // interrupt completion and save only fully closed items for continuation.
+    if (state) state.cancelled = true
+    options.dump?.cancelled()
+    options.telemetryCtx?.metrics?.finish("cancelled")
+    readController.abort()
+    upstreamAbortController.abort()
+    return true
+  }
   const onAbort = (): void => {
+    readController.abort()
     upstreamAbortController.abort(abortController.signal.reason)
     if (state) state.cancelled = true
     options.dump?.cancelled()
@@ -437,7 +458,6 @@ export function createResponsesTurn(
 
   async function* run(): AsyncGenerator<ResponsesStreamEvent> {
     running = true
-    let terminal: ResponsesStreamEvent | undefined
     const output = new ResponsesFinalOutput()
     const tail = new StreamTail()
     try {
@@ -446,12 +466,16 @@ export function createResponsesTurn(
       source = normalized()[Symbol.asyncIterator]()
       const egress = new AffinityEgress(options.affinity)
       const origin = new OriginEgress(options.affinity)
-      while (!abortController.signal.aborted) {
-        const next = await tail.next(source, abortController.signal)
+      while (!abortController.signal.aborted && !interruptRequested) {
+        let next: IteratorResult<ProtocolFrame<ResponsesStreamEvent>>
+        try { next = await tail.next(source, readController.signal) }
+        catch (error) { if (interruptRequested && !abortController.signal.aborted) break; throw error }
+        if (interruptRequested) break
         if (next.done) break
         tail.observe(next.value)
         if (next.value.type !== "event") continue
         const event = next.value.event
+        if (event.type === "response.created" || event.type === "response.in_progress") created = event.response
         if (terminal) {
           if (event.type === "error" || event.type === "response.failed") { terminal = event; break }
           continue
@@ -469,6 +493,10 @@ export function createResponsesTurn(
         }
       }
       if (abortController.signal.aborted) return
+      if (interruptRequested && created) {
+        const response = output.complete({ ...created, status: "completed", output: [], output_text: undefined, error: null, incomplete_details: null, usage: undefined })
+        terminal = { type: "response.completed", response }
+      }
       if (!terminal) throw new Error("responses stream ended without terminal lifecycle frame")
       const projectedTerminal = await origin.responsesEvent(await egress.responseEvent(terminal))
       terminal = projectedTerminal.at(-1)
@@ -481,6 +509,12 @@ export function createResponsesTurn(
         yield prefix
       }
       if (abortController.signal.aborted) return
+      if (interruptRequested && terminal.type === "response.completed") {
+        // Filter after affinity projection, which correlates ID-less closed
+        // items by position. Added/delta-only items were never accumulated.
+        terminal = { ...terminal, response: { ...terminal.response, output: terminal.response.output.filter(item =>
+          !("status" in item) || item.status === undefined || item.status === "completed") } }
+      }
       if (terminal.type === "response.completed") {
         await persistCompleted(terminal.response, options, save => {
           pendingSave = save
@@ -530,5 +564,5 @@ export function createResponsesTurn(
   // Register the complete ownership promise now, including pre-consumption abort.
   waitUntil(completed.promise.then(() => {}))
   if (abortController.signal.aborted) onAbort()
-  return { events, abortController, completion: completed.promise, facts: facts.promise, receipts: receipts.promise, ready: ready.promise, wantsStream: initialOptions.wantsStream, get mergedInputItems() { return options.mergedInputItems ?? [] }, recordSentPayloadBytes: size => options.dump?.recordSentPayloadBytes?.(size) }
+  return { events, abortController, interrupt, completion: completed.promise, facts: facts.promise, receipts: receipts.promise, ready: ready.promise, wantsStream: initialOptions.wantsStream, get mergedInputItems() { return options.mergedInputItems ?? [] }, recordSentPayloadBytes: size => options.dump?.recordSentPayloadBytes?.(size) }
 }

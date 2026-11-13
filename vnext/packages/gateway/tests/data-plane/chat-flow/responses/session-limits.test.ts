@@ -9,7 +9,11 @@ for (const delta of [-1, 0, 1]) {
     const text = base.replace('"extension":""', `"extension":"${"x".repeat(RESPONSES_WS_MAX_INBOUND_BYTES + delta - utf8Bytes(base))}"`)
     expect(utf8Bytes(text)).toBe(RESPONSES_WS_MAX_INBOUND_BYTES + delta)
     if (delta > 0) expect(() => parseResponsesSessionMessage(text)).toThrow("byte limit")
-    else expect(parseResponsesSessionMessage(text).raw.input).toBe("你好🌍")
+    else {
+      const message = parseResponsesSessionMessage(text)
+      expect(message.type).toBe("response.create")
+      if (message.type === "response.create") expect(message.raw.input).toBe("你好🌍")
+    }
   })
   test(`full local state limit ${delta >= 0 ? "+" : ""}${delta} includes config and items`, () => {
     const local = new ResponsesLocalContinuation()

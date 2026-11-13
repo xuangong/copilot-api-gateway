@@ -34,6 +34,7 @@ async function fixture(endpoint: "responses" | "chat_completions" = "responses")
   let hold = false
   let fail = false
   let aborted = false
+  let streamNext = false
   let extraEvents: unknown[] = []
   const release = Promise.withResolvers<void>()
   const upstream = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(request) {
@@ -48,6 +49,23 @@ async function fixture(endpoint: "responses" | "chat_completions" = "responses")
       { id: "chat", model: "model", choices: [{ index: 0, delta: {}, finish_reason: "stop" }], usage: { prompt_tokens: 2, completion_tokens: 1, total_tokens: 3 } },
     ].map(event => `data: ${JSON.stringify(event)}\n\n`).join("") + "data: [DONE]\n\n", { headers: { "content-type": "text/event-stream" } })
     const response = { id: `resp_${calls.length}`, object: "response", model: "model", status: fail ? "failed" : "completed", output: [], error: fail ? { code: "invalid_prompt", message: "fixture failure" } : null, usage: { input_tokens: 2, output_tokens: 1, total_tokens: 3 } }
+    if (streamNext) {
+      streamNext = false
+      let cancelled = false
+      return new Response(new ReadableStream<Uint8Array>({
+        start(controller) {
+          const send = (event: unknown) => controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(event)}\n\n`))
+          send({ type: "response.created", response: { ...response, status: "in_progress" } })
+          for (const event of extraEvents) send(event)
+          void release.promise.then(() => {
+            if (cancelled) return
+            send({ type: "response.completed", response })
+            controller.close()
+          })
+        },
+        cancel() { cancelled = true; aborted = true },
+      }), { headers: { "content-type": "text/event-stream" } })
+    }
     return new Response([
       { type: "response.created", response: { ...response, status: "in_progress" } },
       ...extraEvents,
@@ -71,8 +89,110 @@ async function fixture(endpoint: "responses" | "chat_completions" = "responses")
     return { session, events, closes }
   }
   cleanup.push(async () => { release.resolve(); await Promise.all(sessions.map(s => s.close())); await Promise.allSettled([...pending]); await upstream.stop(true); external.close(); db.close(); rmSync(dir, { recursive: true, force: true }) })
-  return { repo, external, store, connect, calls, pending, extraEvents: (events: unknown[]) => { extraEvents = events }, hold: () => { hold = true }, fail: (value = true) => { fail = value }, release: () => release.resolve(), aborted: () => aborted }
+  return { repo, external, store, connect, calls, pending, stream: () => { streamNext = true }, extraEvents: (events: unknown[]) => { extraEvents = events }, hold: () => { hold = true }, fail: (value = true) => { fail = value }, release: () => release.resolve(), aborted: () => aborted }
 }
+
+const interrupt = (responseId: string, extra: Record<string, unknown> = {}) => JSON.stringify({ type: "response.interrupt", response_id: responseId, mode: "discard_partial_items", ...extra })
+
+for (const durable of [false, true]) {
+  test(`interrupt acknowledges, cancels upstream and continues with only closed items (store:${durable})`, async () => {
+    const f = await fixture()
+    if (durable) {
+      const key = await f.repo.apiKeys.getById(keyId)
+      if (!key) throw new Error("missing key")
+      await f.repo.apiKeys.save({ ...key, responsesRetentionSeconds: 86400 })
+    }
+    const closed = { type: "message", id: "closed", status: "completed", role: "assistant", content: [{ type: "output_text", text: "kept" }] }
+    const partial = { type: "function_call", id: "partial", status: "in_progress", name: "lookup", call_id: "call_partial", arguments: '{"unfinished":' }
+    f.extraEvents([
+      { type: "response.output_item.done", output_index: 0, item: closed },
+      { type: "response.output_item.added", output_index: 1, item: partial },
+      { type: "response.function_call_arguments.delta", output_index: 1, item_id: "partial", delta: partial.arguments },
+      { type: "response.output_item.done", output_index: 2, item: { ...partial, id: "incomplete", status: "incomplete" } },
+    ])
+    f.stream()
+    const { session, events, closes } = await f.connect()
+    session.receiveText(create({ store: durable }))
+    await until(() => events.some(e => e.type === "response.function_call_arguments.delta"))
+    const id = (events.find(e => e.type === "response.created")?.response as { id: string }).id
+    session.receiveText(interrupt("unrelated"))
+    expect(events.at(-1)).toMatchObject({ type: "response.interrupt.failed", response_id: "unrelated" })
+    expect(f.aborted()).toBe(false)
+    session.receiveText(interrupt(id))
+    expect(events.at(-1)).toMatchObject({ type: "response.interrupt.accepted", response_id: id })
+    session.receiveText(interrupt(id))
+    expect(events.at(-1)?.type).toBe("response.interrupt.accepted")
+    await until(() => events.some(e => e.type === "response.completed"))
+    const terminal = events.find(e => e.type === "response.completed")
+    expect(terminal).toMatchObject({ response: { id, status: "completed" } })
+    expect(JSON.stringify(terminal)).toContain("kept")
+    expect(JSON.stringify(terminal)).not.toContain("unfinished")
+    expect(JSON.stringify(terminal)).not.toContain("incomplete\"")
+    expect(events.filter(e => e.type === "response.completed")).toHaveLength(1)
+    session.receiveText(interrupt(id)) // completion and interruption can cross in flight
+    expect(events.at(-1)?.type).toBe("response.interrupt.accepted")
+    f.extraEvents([])
+    session.receiveText(create({ previous_response_id: id, input: "next", store: durable }))
+    await until(() => events.filter(e => e.type === "response.completed").length === 2 && f.pending.size === 0)
+    await until(f.aborted)
+    expect(closes).toEqual([])
+    expect(f.calls).toHaveLength(2)
+    expect(JSON.stringify(f.calls[1])).toContain("hello")
+    expect(JSON.stringify(f.calls[1])).toContain("kept")
+    expect(JSON.stringify(f.calls[1])).toContain("next")
+    expect(JSON.stringify(f.calls[1])).not.toContain("unfinished")
+    const saved = await f.store.load(id, keyId)
+    if (durable) {
+      expect(saved).not.toBeNull()
+      expect(JSON.stringify(saved)).toContain("kept")
+      expect(JSON.stringify(saved)).not.toContain("unfinished")
+    } else expect(saved).toBeNull()
+    const other = await f.connect()
+    other.session.receiveText(interrupt(id))
+    expect(other.events.at(-1)?.type).toBe("response.interrupt.failed")
+  })
+}
+
+test("invalid interruption cannot cancel an active response or start inference", async () => {
+  const f = await fixture()
+  const { session, events } = await f.connect()
+  session.receiveText(interrupt("unknown"))
+  expect(events.at(-1)?.type).toBe("response.interrupt.failed")
+  expect(f.calls).toHaveLength(0)
+  f.hold()
+  session.receiveText(create())
+  await until(() => f.calls.length === 1)
+  for (const extra of [{ response_id: null }, { response_id: " " }, { mode: "preserve" }, { mode: undefined }, { stream_id: "other" }]) {
+    session.receiveText(interrupt("resp_1", extra))
+    expect(events.at(-1)).toMatchObject({ type: "error", status: 400 })
+  }
+  session.receiveText(interrupt("resp_1"))
+  expect(events.at(-1)?.type).toBe("response.interrupt.failed")
+  expect(f.aborted()).toBe(false)
+  f.release()
+  await until(() => events.some(e => e.type === "response.completed"))
+  expect(f.calls).toHaveLength(1)
+})
+
+test("a late interrupt for the completed response cannot cancel its successor", async () => {
+  const f = await fixture()
+  const { session, events, closes } = await f.connect()
+  session.receiveText(create())
+  await until(() => events.some(e => e.type === "response.completed"))
+  f.stream()
+  session.receiveText(create())
+  await until(() => events.filter(e => e.type === "response.created").length === 2)
+  const ids = events.filter(e => e.type === "response.created").map(e => (e.response as { id: string }).id)
+  session.receiveText(interrupt(ids[0] ?? "missing"))
+  expect(events.at(-1)?.type).toBe("response.interrupt.accepted")
+  expect(session.state).toBe("running")
+  expect(f.aborted()).toBe(false)
+  session.receiveText(interrupt(ids[1] ?? "missing"))
+  await until(() => events.filter(e => e.type === "response.completed").length === 2)
+  await until(f.aborted)
+  expect(closes).toEqual([])
+  expect(f.calls).toHaveLength(2)
+})
 
 for (const endpoint of ["responses", "chat_completions"] as const) {
   test(`full warmup state chains through real ${endpoint} inference with zero warmup calls`, async () => {

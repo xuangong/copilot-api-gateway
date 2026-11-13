@@ -17,6 +17,7 @@ function renderBody(body: unknown, metadata: ResponsesTurnMetadata = { status: 2
     completion: Promise.resolve({ outcome: "completed", cleanupComplete: true }),
     abortController: new AbortController(), wantsStream: false, mergedInputItems: [],
     recordSentPayloadBytes() {},
+    interrupt: () => false,
   }
   return renderResponsesTurn(turn)
 }

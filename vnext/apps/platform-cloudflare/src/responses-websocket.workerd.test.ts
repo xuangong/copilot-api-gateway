@@ -349,6 +349,40 @@ workerdTest("native overlap and malformed input reject without queuing another i
   }
 }, 30_000)
 
+workerdTest("Codex interrupt acknowledges and cancels generation while keeping the workerd socket reusable", async () => {
+  const upstream = await startNodeUpstream()
+  let socket: WebSocket | undefined
+  try {
+    await fixture.db.prepare("UPDATE upstreams SET config_json = ? WHERE id = 'custom:c12-test'").bind(JSON.stringify({
+      name: "Fixture", baseUrl: `${upstream.base}/v1`, authStyle: "none", endpoints: ["responses"], models: ["gpt-5.4"],
+    })).run()
+    socket = await openSocket(fixture.port)
+    const messages = collectMessages(socket)
+    socket.send(create({ input: "interrupt me" }))
+    await until(() => messages.some(event => event.type === "response.created"), "interruptible response")
+    const id = responseId(messages.find(event => event.type === "response.created"))
+    socket.send(JSON.stringify({ type: "response.interrupt", response_id: id, mode: "discard_partial_items" }))
+    await until(() => messages.some(event => event.type === "response.completed"), "interrupt completion")
+    expect(messages.find(event => event.type === "response.interrupt.accepted")).toMatchObject({ response_id: id })
+    expect(responseId(messages.find(event => event.type === "response.completed"))).toBe(id)
+    await until(async () => (await upstream.state()).closes.length > 0, "interrupted upstream cleanup")
+    expect((await upstream.state()).closes).toContainEqual({ id, finished: false })
+    socket.send(create({ previous_response_id: id, input: "continue" }))
+    await until(() => messages.filter(event => event.type === "response.created").length === 2, "continuation after interrupt")
+    const requests = (await upstream.state()).requests
+    expect(requests).toHaveLength(2)
+    expect(JSON.stringify(requests[1])).toContain("interrupt me")
+    expect(JSON.stringify(requests[1])).toContain("continue")
+    await fetch(`${upstream.base}/__fixture/release`, { method: "POST" })
+    await until(() => messages.filter(event => event.type === "response.completed").length === 2, "continued response completion")
+    expect(messages.filter(event => event.type === "error" || event.type === "response.failed")).toEqual([])
+    expect(socket.readyState).toBe(WebSocket.OPEN)
+  } finally {
+    terminateSocket(socket)
+    await upstream.stop()
+  }
+}, 30_000)
+
 workerdTest("oversize native text frame closes before any upstream request", async () => {
   let socket: WebSocket | undefined
   try {

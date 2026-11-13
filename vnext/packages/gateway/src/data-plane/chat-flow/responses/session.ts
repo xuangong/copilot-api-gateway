@@ -7,7 +7,7 @@ import { openTransportDump } from "../../../shared/dump/accumulator.ts"
 import { startResponsesTurn } from "./serve.ts"
 import type { ResponsesTurn } from "./turn.ts"
 import { ResponsesLocalContinuation } from "./local-continuation.ts"
-import { parseResponsesSessionMessage, ResponsesSessionError, responsesSessionErrorEvent, type ResponsesSessionMessage } from "./session-protocol.ts"
+import { parseResponsesSessionMessage, ResponsesSessionError, responsesSessionErrorEvent, type ResponsesSessionMessage, type ResponsesSessionCreate } from "./session-protocol.ts"
 import {
   RESPONSES_WS_CLEANUP_TIMEOUT_MS, RESPONSES_WS_DRAIN_TIMEOUT_MS, RESPONSES_WS_MAX_CONTROL_BYTES,
   RESPONSES_WS_MAX_LOCAL_STATE_BYTES, RESPONSES_WS_MAX_OUTBOUND_FRAME_BYTES, RESPONSES_WS_MAX_TURN_EVENT_BYTES,
@@ -82,6 +82,7 @@ export function createResponsesSession(options: {
   let state: ResponsesSessionState = "idle"
   let active: Job | undefined
   let settling: Job | undefined
+  let lastCompletedId: string | undefined
   let closing: Promise<{ cleanupComplete: boolean }> | undefined
   let lifetimeBytes = 0
   let controlBytes = 0
@@ -171,7 +172,7 @@ export function createResponsesSession(options: {
     } catch (error) { void close(error) }
   }
 
-  async function run(job: Job, previous: Job | undefined, message: ResponsesSessionMessage, text: string): Promise<void> {
+  async function run(job: Job, previous: Job | undefined, message: ResponsesSessionCreate, text: string): Promise<void> {
     try {
       if (previous) {
         const finished = await timeout(previous.done.then(() => previous.cleanupComplete), RESPONSES_WS_CLEANUP_TIMEOUT_MS)
@@ -236,6 +237,7 @@ export function createResponsesSession(options: {
             const response = event.response as { id?: unknown; output?: unknown }
             if (typeof response.id === "string" && Array.isArray(response.output)) {
               completedId = response.id
+              lastCompletedId = response.id
               candidate = sourceJson ? local.candidate(response.id, JSON.parse(sourceJson) as Record<string, unknown>, response.output, compactTriggered) : undefined
             }
             delivered = true
@@ -283,6 +285,15 @@ export function createResponsesSession(options: {
         const problem = error instanceof ResponsesSessionError ? error : new ResponsesSessionError(400, "invalid_request", "Invalid response message.")
         control(responsesSessionErrorEvent(problem))
         if (problem.closeCode) void close(problem)
+        return
+      }
+      if (message.type === "response.interrupt") {
+        // A completion can cross the interrupt in flight. Acknowledge the
+        // latest delivered response without touching a subsequent inference.
+        const accepted = active?.turn?.interrupt(message.responseId) === true || message.responseId === lastCompletedId
+        control({ type: accepted ? "response.interrupt.accepted" : "response.interrupt.failed", response_id: message.responseId,
+          ...(!accepted ? { error: { code: "response_not_in_progress", message: "No matching response is in progress." } } : {}),
+        })
         return
       }
       if (active) { control(responsesSessionErrorEvent(new ResponsesSessionError(409, "response_in_progress", "A response is already in progress."))); return }

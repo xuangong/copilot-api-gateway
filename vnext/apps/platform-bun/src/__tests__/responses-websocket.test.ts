@@ -59,9 +59,18 @@ test("native Bun socket warmup is local, then same-socket continuation uses the 
   const external = new Database(dbPath)
   const repo = new BunSqliteRepo(external)
   const upstreamBodies: Record<string, unknown>[] = []
+  let holdNext = false
+  let interrupted = false
   const upstream = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(request) {
     upstreamBodies.push(await request.json() as Record<string, unknown>)
     const response = { id: `resp_native_${upstreamBodies.length}`, object: "response", model: "model", status: "completed", output: [], error: null, usage: { input_tokens: 1, output_tokens: 0, total_tokens: 1 } }
+    if (holdNext) {
+      holdNext = false
+      return new Response(new ReadableStream<Uint8Array>({
+        start(controller) { controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({ type: "response.created", response: { ...response, status: "in_progress" } })}\n\n`)) },
+        cancel() { interrupted = true },
+      }), { headers: { "content-type": "text/event-stream" } })
+    }
     return new Response([
       { type: "response.created", response: { ...response, status: "in_progress" } },
       { type: "response.completed", response },
@@ -122,10 +131,22 @@ test("native Bun socket warmup is local, then same-socket continuation uses the 
     expect(upstreamBodies).toHaveLength(1)
     expect(JSON.stringify(upstreamBodies[0])).toContain("hello")
     expect(upstreamBodies[0]).not.toHaveProperty("previous_response_id")
+    holdNext = true
+    connectedSocket.send(JSON.stringify({ type: "response.create", model: "model", input: "interrupt me", store: false }))
+    await until(() => messages.filter(message => message.type === "response.created").length === 3)
+    const interruptedId = (messages.findLast(message => message.type === "response.created")?.response as { id: string }).id
+    connectedSocket.send(JSON.stringify({ type: "response.interrupt", response_id: interruptedId, mode: "discard_partial_items" }))
+    await until(() => messages.filter(message => message.type === "response.completed").length === 3 && interrupted)
+    expect(messages.find(message => message.type === "response.interrupt.accepted")).toMatchObject({ response_id: interruptedId })
+    connectedSocket.send(JSON.stringify({ type: "response.create", model: "model", previous_response_id: interruptedId, input: "continue", store: false }))
+    await until(() => messages.filter(message => message.type === "response.completed").length === 4)
+    expect(upstreamBodies).toHaveLength(3)
+    expect(JSON.stringify(upstreamBodies[2])).toContain("interrupt me")
+    expect(JSON.stringify(upstreamBodies[2])).toContain("continue")
     external.exec("UPDATE users SET disabled = 1 WHERE id = 'owner'")
     connectedSocket.send(JSON.stringify({ type: "response.create", model: "model", input: "later", stream: true, store: false }))
     await until(() => messages.some(message => message.type === "error" && message.status === 401))
-    expect(upstreamBodies).toHaveLength(1)
+    expect(upstreamBodies).toHaveLength(3)
     await until(() => connectedSocket.readyState === WebSocket.CLOSED)
     expect(connectedSocket.readyState).toBe(WebSocket.CLOSED)
     const session = sessions.at(-1)
