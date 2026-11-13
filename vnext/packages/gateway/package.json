@@ -44,6 +44,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "4.20260602.1",
     "@vibe-llm/platform-bun": "workspace:*",
     "@vibe-llm/platform-cloudflare": "workspace:*"
   }

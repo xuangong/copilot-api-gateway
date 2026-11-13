@@ -56,6 +56,7 @@ cd vnext
 
 # 依赖
 bun install
+bun run ci:prepare      # 下载固定版本的研究测试源码,在用户缓存中安装其依赖
 
 # 单项 gate
 bun run typecheck        # 全部 workspace 的 tsc --noEmit
@@ -68,6 +69,17 @@ bun run --filter '@vibe-llm/platform-cloudflare' deploy:dry
 # 一键本地 CI
 bun run ci:local         # purity + typecheck + test + lint + build:ui + wrangler dry-run
 ```
+
+完整 CI 与 GitHub Actions 使用 Bun 1.3.0，并要求 PATH 中有 Node.js、PowerShell 7
+(`pwsh`) 和 `tar`。macOS 可用 `brew install --cask powershell` 安装 PowerShell；
+GitHub 的 Ubuntu runner 已提供它。macOS 的进程资源测试还需要 Python 3 和 Xcode
+Command Line Tools (`clang`)。
+
+`ci:prepare` 将 Floway 的固定提交下载到 `~/.cache/copilot-api-gateway-ci/`，校验
+归档 SHA-256，再用该源码声明的 pnpm 10.24.0 和 frozen lockfile 安装依赖，禁用
+安装脚本。网关自身仍使用 Bun。已有归档可通过 `REFERENCE_SOURCE_ROOT` 指定，
+该目录必须预装其固定依赖；准备步骤不会修改这个自定义目录。完整检查不跳过
+PowerShell 或历史源码集成测试。
 
 ## 入口
 

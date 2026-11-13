@@ -10,7 +10,7 @@ import { seedReference, type ReferenceInput } from "../../2026-10-07-reference-s
 import { finalResponses, frame, generationEvents, items, makeInput, object, pathFor, protocols, terminal, verifyCancellation, verifyFailure, verifyReplay, verifySuccess, type Obj, type Protocol, type SuccessKind, type Verdict, type WireInput } from "./correctness-contracts"
 
 type Arm = "B" | "R"
-type TestDatabase = Awaited<ReturnType<import("../../../../../node_modules/miniflare").Miniflare["getD1Database"]>>
+type TestDatabase = Awaited<ReturnType<import("miniflare").Miniflare["getD1Database"]>>
 type Scenario = SuccessKind | "other" | "fallback-json" | "fallback-untyped" | "fallback-plain" | "pre-failure" | "mid-failure" | "truncated" | "runaway" | "cancel"
 interface ReferenceBuild { bundle: string; migrationRoot: string; inputs: ReferenceInput[] }
 export interface CorrectnessContext { manifest: Manifest; referenceRoot: string; reference: ReferenceBuild }
@@ -243,8 +243,8 @@ async function capture(base: string, protocol: Protocol, input: Obj, id: string,
 }
 
 async function runArm(context: CorrectnessContext, arm: Arm, directory: string): Promise<CaseRow[]> {
-  const { Miniflare } = await import("../../../../../node_modules/miniflare")
-  const { unstable_splitSqlQuery } = await import("../../../../../apps/platform-cloudflare/node_modules/wrangler")
+  const { Miniflare } = await import("miniflare")
+  const { unstable_splitSqlQuery } = await import("wrangler")
   mkdirSync(directory, { recursive: true })
   const fixture = await createFixture(), rows: CaseRow[] = []
   let mf: InstanceType<typeof Miniflare> | undefined

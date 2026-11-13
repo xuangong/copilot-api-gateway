@@ -12,7 +12,8 @@
     "typecheck": "bun run build:setup && bun run --filter '*' typecheck",
     "lint": "eslint .",
     "build:ui": "bun run build:setup && bun scripts/build-dashboard.ts",
-    "ci:local": "bun run build:setup && bun run scripts/check-framework-purity.ts && bun run typecheck && bun test && bun run lint && bun run build:ui && bun run --filter '@vibe-llm/platform-cloudflare' deploy:dry",
+    "ci:prepare": "bun scripts/ci-reference.ts",
+    "ci:local": "bun run ci:prepare && bun run build:setup && bun run scripts/check-framework-purity.ts && bun run typecheck && bun test && bun run lint && bun run build:ui && bun run --filter '@vibe-llm/platform-cloudflare' deploy:dry",
     "build:setup": "bun scripts/build-setup-assets.ts"
   },
   "dependencies": {
@@ -21,14 +22,17 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@jridgewell/trace-mapping": "0.3.31",
     "@types/bun": "latest",
     "eslint": "9",
     "eslint-import-resolver-typescript": "^4.4.5",
     "eslint-plugin-import": "^2.32.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "globals": "^17.6.0",
+    "miniflare": "4.20260601.0",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.60.1"
+    "typescript-eslint": "^8.60.1",
+    "wrangler": "4.97.0"
   },
   "patchedDependencies": {
     "@reclaimprotocol/tls@0.1.5": "patches/@reclaimprotocol%2Ftls@0.1.5.patch"

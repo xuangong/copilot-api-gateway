@@ -33,7 +33,7 @@ export function referenceSinkCounts(storage: { objects: { size: number }[]; comp
 /** Execute one frozen R instance inside its fresh host child. */
 export async function runReferenceInstance(root: string, build: Awaited<ReturnType<typeof buildReference>>, directory: string, hooks: boolean): Promise<Dispatch[]> {
   const { runQualifiedInstance, API_KEY, SECRET } = await import("./runtime.ts")
-  const { unstable_splitSqlQuery } = await import("../../../../../apps/platform-cloudflare/node_modules/wrangler")
+  const { unstable_splitSqlQuery } = await import("wrangler")
   const { verifyReferenceReadback } = await import("./reference-oracle.ts")
   const migrations = referenceMigrationInputs(build)
   return runQualifiedInstance({

@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
-import { unstable_splitSqlQuery } from "../../../../../apps/platform-cloudflare/node_modules/wrangler"
+import { unstable_splitSqlQuery } from "wrangler"
 import { durableJson } from "../../2026-10-02-workerd-deployed-comparison/harness/journal"
 import { sha, type Manifest } from "../../2026-10-02-workerd-deployed-comparison/harness/manifest"
 import { deadline } from "../../2026-10-02-workerd-deployed-comparison/harness/supervisor"

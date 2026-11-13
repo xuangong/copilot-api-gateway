@@ -7,9 +7,8 @@ import { supervise } from "../../2026-10-02-workerd-deployed-comparison/harness/
 
 /** Freeze the exact Bun-loaded UMD runtime closure used by profile.ts. */
 export function freezeMappingRuntimeInputs() {
-  const libraryRoot = resolve(import.meta.dir, "../../../../../node_modules/.bun/@jridgewell+trace-mapping@0.3.31/node_modules/@jridgewell/trace-mapping")
   const resolver = createRequire(import.meta.path)
-  const trace = realpathSync(resolver.resolve(libraryRoot))
+  const trace = realpathSync(resolver.resolve("@jridgewell/trace-mapping"))
   const specifications = [
     { name: "@jridgewell/trace-mapping", version: "0.3.31", entry: trace, dependencies: ["@jridgewell/resolve-uri", "@jridgewell/sourcemap-codec"] },
     ...[{ name: "@jridgewell/resolve-uri", version: "3.1.2" }, { name: "@jridgewell/sourcemap-codec", version: "1.5.5" }].map(spec => ({ ...spec, entry: realpathSync(createRequire(trace).resolve(spec.name)), dependencies: [] as string[] })),

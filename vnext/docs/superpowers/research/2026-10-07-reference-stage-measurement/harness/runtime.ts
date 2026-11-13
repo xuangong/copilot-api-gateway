@@ -1,6 +1,6 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
-import { Miniflare, Response as LocalResponse } from "../../../../../node_modules/miniflare"
+import { Miniflare, Response as LocalResponse } from "miniflare"
 import { fileIdentity, sha } from "../../2026-10-02-workerd-deployed-comparison/harness/manifest"
 import { durableJson } from "../../2026-10-02-workerd-deployed-comparison/harness/journal"
 import { type LogicalDump, type CapturedDispatch } from "../../2026-10-02-workerd-deployed-comparison/harness/readback"
@@ -160,7 +160,7 @@ export async function runQualifiedInstance(options: QualifiedInstanceOptions, se
     if (!build.success) throw new Error(build.logs.join("\n"))
     const name=`reference-stage-${arm}-${hooks?"probe":"control"}`
     let rejected=0
-    const activeMf=(setup.createMiniflare ?? ((options: ConstructorParameters<typeof Miniflare>[0]) => new Miniflare(options)))({name,modules:[{type:"ESModule",path:join(directory,"entry/entry.mjs")}],modulesRoot:directory,host:"127.0.0.1",port:0,cf:false,compatibilityDate:"2025-06-01",compatibilityFlags:["nodejs_compat","enable_ctx_exports"],...(window && (!observerConfig || observerConfig.mode === "none") ? {} : {inspectorPort:0,inspectorHost:"127.0.0.1"}),d1Databases:{DB:`${arm}-${hooks}`},d1Persist:join(directory,"d1"),kvNamespaces:["KV","IMAGE_CACHE"],kvPersist:join(directory,"kv"),r2Buckets:["FILES"],r2Persist:join(directory,"r2"),images:{binding:"IMAGES"},...(arm==="R"?{durableObjects:{EXECUTION_DO:{className:"ExecutionDO",useSQLite:true}}}:{}),outboundService:async (request:InstanceType<typeof import("../../../../../node_modules/miniflare").Request>)=>{
+    const activeMf=(setup.createMiniflare ?? ((options: ConstructorParameters<typeof Miniflare>[0]) => new Miniflare(options)))({name,modules:[{type:"ESModule",path:join(directory,"entry/entry.mjs")}],modulesRoot:directory,host:"127.0.0.1",port:0,cf:false,compatibilityDate:"2025-06-01",compatibilityFlags:["nodejs_compat","enable_ctx_exports"],...(window && (!observerConfig || observerConfig.mode === "none") ? {} : {inspectorPort:0,inspectorHost:"127.0.0.1"}),d1Databases:{DB:`${arm}-${hooks}`},d1Persist:join(directory,"d1"),kvNamespaces:["KV","IMAGE_CACHE"],kvPersist:join(directory,"kv"),r2Buckets:["FILES"],r2Persist:join(directory,"r2"),images:{binding:"IMAGES"},...(arm==="R"?{durableObjects:{EXECUTION_DO:{className:"ExecutionDO",useSQLite:true}}}:{}),outboundService:async (request:InstanceType<typeof import("miniflare").Request>)=>{
       if (request.url!==`${upstream.base}/v1/chat/completions` || request.method!=="POST") {
         rejected++
         durableJson(join(directory,`rejected-egress-${rejected}.json`),{url:request.url,method:request.method,expectedUrl:`${upstream.base}/v1/chat/completions`},true)

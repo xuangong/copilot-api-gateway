@@ -1,7 +1,7 @@
 param([Parameter(Mandatory=$true)][string]$Origin)
 Set-PSDebug -Off
 $ErrorActionPreference = 'Stop'
-$bun = Get-Command bun -CommandType Application -ErrorAction SilentlyContinue
+$bun = Get-Command bun -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
 if (-not $bun) { throw 'Bun must already be installed; no lease was consumed.' }
 & $bun.Source -e 'const p=require("node:path"); const f=require("node:fs"); const h=f.realpathSync(require("node:os").homedir()); for(const [k,d] of [["CODEX_HOME",".codex"],["CLAUDE_CONFIG_DIR",".claude"]]) if(process.env[k] && p.resolve(process.env[k])!==p.join(h,d) && p.resolve(process.env[k])!==p.join(require("node:os").homedir(),d)) {process.stderr.write("Custom configuration home unsupported; no lease was consumed\n");process.exit(1)}; const s=process.argv[1]; const u=new URL(s); if(!/^https?:\/\/[^/?#\\@\s]+$/.test(s)||u.origin!==s) {process.stderr.write("Invalid gateway origin\n");process.exit(1)}' $Origin
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

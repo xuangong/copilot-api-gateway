@@ -12,10 +12,6 @@ import sys
 import time
 
 
-def monotonic_ms():
-    return time.monotonic_ns() / 1_000_000
-
-
 class SamplingState:
     def __init__(self, owner_pid, owner_identity):
         self.owner_pid = owner_pid
@@ -113,6 +109,7 @@ def main():
         raise RuntimeError("Sampler and coordinator require separate owned process groups")
     source = Path(__file__).resolve().parents[2] / "2026-10-07-reference-stage-measurement/harness/process-resource-probe.py"
     probe = runpy.run_path(str(source))["DarwinProbe"]()
+    monotonic_ms = probe.monotonic_ms
     owner = probe.sample(owner_pid)
     if owner["startIdentity"] != sys.argv[2]:
         raise RuntimeError("Sampler coordinator identity mismatch")

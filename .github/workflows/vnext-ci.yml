@@ -43,6 +43,9 @@ jobs:
       - name: Install (frozen lockfile)
         run: bun install --frozen-lockfile
 
+      - name: Prepare pinned reference tests
+        run: bun run ci:prepare
+
       - name: Build static assets
         run: bun run build:ui
 

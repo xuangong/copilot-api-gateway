@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test"
 import { existsSync, readFileSync, writeFileSync, symlinkSync, renameSync, mkdirSync, readdirSync } from "node:fs"
-import { join } from "node:path"
+import { delimiter, join } from "node:path"
 import { envelope, temporaryHome, credential } from "./fixtures"
 import type { Client, Platform, Envelope } from "../src/contract"
 import { canonicalJson, sha256 } from "../src/contract"
@@ -39,7 +39,9 @@ for (const platform of ["posix", "windows"] as const) for (const failure of ["do
       const result = await run(platform === "windows" ? [pwsh, "-NoProfile", "-Command", copied] : ["/bin/sh", "-c", copied], env, lease + (failure === "success" ? "\nAPPLY\n" : "\nNO\n"))
       if (failure === "success") expect(result.code).toBe(0)
       else expect(result.code).not.toBe(0)
-      expect(readdirSync(temporary)).toEqual([])
+      // PowerShell's .NET runtime creates Unix shared-memory bookkeeping;
+      // only that runtime directory may remain after the wrapper cleans up.
+      expect(readdirSync(temporary).filter(name => platform !== "windows" || name !== ".dotnet")).toEqual([])
       expect((result.stdout + result.stderr).includes(lease)).toBe(false)
       expect((result.stdout + result.stderr).includes(credential)).toBe(false)
       expect(remote.requests.filter(request => request.header === lease)).toHaveLength(failure === "cancel" || failure === "success" ? 1 : 0)
@@ -79,6 +81,26 @@ for (const previous of ["Authorization: Bearer previous-authorization-secret", "
     } finally { remote.server.stop(true); fixture.cleanup() }
   })
 }
+
+test("pwsh resolves a single Bun executable when PATH contains multiple installations", async () => {
+  const fixture = temporaryHome()
+  const remote = await fixtureServer("claude", "windows")
+  try {
+    const directories = [join(fixture.home, "bun-first"), join(fixture.home, "bun-second")]
+    for (const directory of directories) {
+      mkdirSync(directory)
+      symlinkSync(process.execPath, join(directory, process.platform === "win32" ? "bun.exe" : "bun"))
+    }
+    const script = join(fixture.home, "setup.ps1")
+    writeFileSync(script, readFileSync(join(assets, "setup.ps1.txt")))
+    const result = await run([pwsh, "-NoProfile", "-File", script, "-Origin", remote.origin], {
+      ...fixture.env, PATH: [...directories, process.env.PATH ?? ""].join(delimiter),
+    })
+    expect(result.code, result.stderr).toBe(0)
+    expect(existsSync(join(fixture.home, ".claude/settings.json"))).toBe(true)
+    expect(remote.requests.filter(request => request.header === lease)).toHaveLength(1)
+  } finally { remote.server.stop(true); fixture.cleanup() }
+})
 
 test("CLI rejects non-string protocol fields with valid digests before preview or writes", async () => {
   for (const field of ["client", "platform", "effortLevel", "ANTHROPIC_CUSTOM_HEADERS"] as const) for (const shape of ["array", "object", "null", "number"] as const) {

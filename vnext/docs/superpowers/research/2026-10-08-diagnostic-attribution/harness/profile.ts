@@ -1,8 +1,11 @@
 import { readFileSync, realpathSync } from "node:fs"
 import { dirname, resolve } from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
-import { TraceMap, originalPositionFor, decodedMappings } from "../../../../../node_modules/.bun/@jridgewell+trace-mapping@0.3.31/node_modules/@jridgewell/trace-mapping"
+import { createRequire } from "node:module"
 import { sha, type FileIdentity } from "../../2026-10-02-workerd-deployed-comparison/harness/manifest"
+
+// Match the UMD entry and dependency closure frozen by run.ts.
+const { TraceMap, originalPositionFor, decodedMappings } = createRequire(import.meta.path)("@jridgewell/trace-mapping") as typeof import("@jridgewell/trace-mapping")
 
 type Obj = Record<string, unknown>
 function object(value: unknown): Obj {

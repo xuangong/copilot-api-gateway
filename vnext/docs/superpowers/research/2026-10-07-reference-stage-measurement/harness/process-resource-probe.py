@@ -5,7 +5,6 @@ import errno
 import json
 import os
 import sys
-import time
 
 
 class RusageInfoV2(ctypes.Structure):
@@ -44,12 +43,19 @@ class DarwinProbe:
         self.system = ctypes.CDLL("/usr/lib/libSystem.B.dylib")
         self.system.mach_timebase_info.argtypes = [ctypes.POINTER(MachTimebase)]
         self.system.mach_timebase_info.restype = ctypes.c_int
+        self.system.mach_absolute_time.argtypes = []
+        self.system.mach_absolute_time.restype = ctypes.c_uint64
         self.timebase = MachTimebase()
         if self.system.mach_timebase_info(ctypes.byref(self.timebase)) != 0 or self.timebase.denom == 0:
             raise RuntimeError("Cannot read Mach CPU timebase")
 
     def cpu_us(self, absolute_time):
         return absolute_time * self.timebase.numer // (self.timebase.denom * 1_000)
+
+    def monotonic_ms(self):
+        # Python < 3.10 uses a process-relative monotonic epoch on macOS.
+        # Independent endpoint probes and the sampler need the same clock.
+        return self.system.mach_absolute_time() * self.timebase.numer / (self.timebase.denom * 1_000_000)
 
     @staticmethod
     def fail(operation, pid):
@@ -70,7 +76,7 @@ class DarwinProbe:
         if self.lib.proc_pidpath(pid, path, len(path)) <= 0:
             self.fail("proc_pidpath", pid)
         after = self.usage(pid)
-        observed_at_ms = time.monotonic_ns() / 1_000_000
+        observed_at_ms = self.monotonic_ms()
         if (
             before.ri_proc_start_abstime != after.ri_proc_start_abstime
             or bytes(before.ri_uuid) != bytes(after.ri_uuid)

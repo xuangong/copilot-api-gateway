@@ -2,8 +2,8 @@ import { createServer, type Server } from "node:http"
 import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs"
 import { dirname, join, relative, resolve } from "node:path"
 import { once } from "node:events"
-import { Miniflare, Response as LocalResponse } from "../../../../../node_modules/miniflare"
-import { unstable_splitSqlQuery } from "../../../../../apps/platform-cloudflare/node_modules/wrangler"
+import { Miniflare, Response as LocalResponse } from "miniflare"
+import { unstable_splitSqlQuery } from "wrangler"
 import { fixture } from "./upstream-fixture.ts"
 import { oracle, semantic } from "./oracle.ts"
 import { readDumps } from "./readback.ts"
@@ -102,7 +102,7 @@ export class Runtime {
     d1Databases: { DB: `architecture-${variant}-${phase}` }, d1Persist: join(directory, "d1"),
     kvNamespaces: ["KV", "IMAGE_CACHE"], kvPersist: join(directory, "kv"),
     images: { binding: "IMAGES" }, r2Buckets: ["FILES"], r2Persist: join(directory, "r2"),
-    outboundService: async (request: InstanceType<typeof import("../../../../../node_modules/miniflare").Request>) => {
+    outboundService: async (request: InstanceType<typeof import("miniflare").Request>) => {
       const url = new URL(request.url)
       if (url.origin !== upstream.base || request.method !== "POST" || !["/v1/responses", "/v1/messages", "/v1/chat/completions"].includes(url.pathname) || url.search) {
         egress.rejected.push({ origin: url.origin, pathname: url.pathname, method: request.method })

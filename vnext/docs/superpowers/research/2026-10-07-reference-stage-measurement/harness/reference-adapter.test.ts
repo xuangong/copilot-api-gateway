@@ -7,6 +7,7 @@ import { dirname, join } from "node:path"
 import { gzipSync } from "node:zlib"
 import { buildReference, readReferenceStorage, seedReference } from "./reference-adapter.ts"
 import type { ReferenceDatabase } from "./reference-adapter.ts"
+import { referenceSourceRoot as referenceRoot } from "../../../../../scripts/ci-reference.ts"
 
 const temporary: string[] = []
 afterEach(() => { for (const path of temporary.splice(0)) rmSync(path, { recursive: true, force: true }) })
@@ -36,7 +37,6 @@ function sqlFixture() {
   `)
   return { db: sqliteBoundary(sqlite), sqlite }
 }
-const referenceRoot = process.env.REFERENCE_SOURCE_ROOT ?? "/Volumes/Projects/copilot-api-gateway/.worktrees/cfw-resource-rollback-fix/.superpowers/sdd/2026-10-07-reference-stage-measurement/reference-source"
 // The reference sources are transpiled on first import, which can take several
 // seconds on a busy machine. Load them while this file loads (not timed per
 // test) instead of inside whichever test happens to import them first.
