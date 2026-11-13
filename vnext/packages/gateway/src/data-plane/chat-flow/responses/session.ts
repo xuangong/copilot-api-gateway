@@ -82,7 +82,9 @@ export function createResponsesSession(options: {
   let state: ResponsesSessionState = "idle"
   let active: Job | undefined
   let settling: Job | undefined
-  let lastCompletedId: string | undefined
+  // The latest response delivered with a completed or incomplete terminal: a
+  // late interrupt for it is acknowledged without touching its successor.
+  let lastFinishedId: string | undefined
   let closing: Promise<{ cleanupComplete: boolean }> | undefined
   let lifetimeBytes = 0
   let controlBytes = 0
@@ -237,7 +239,7 @@ export function createResponsesSession(options: {
             const response = event.response as { id?: unknown; output?: unknown }
             if (typeof response.id === "string" && Array.isArray(response.output)) {
               completedId = response.id
-              lastCompletedId = response.id
+              lastFinishedId = response.id
               candidate = sourceJson ? local.candidate(response.id, JSON.parse(sourceJson) as Record<string, unknown>, response.output, compactTriggered) : undefined
             }
             delivered = true
@@ -245,6 +247,9 @@ export function createResponsesSession(options: {
             // waits this exact completion before resolving local state.
             settling = job
             if (active === job) { active = undefined; if (state === "running") state = "idle" }
+          } else if (event.type === "response.incomplete") {
+            const response = event.response as { id?: unknown }
+            if (typeof response.id === "string") lastFinishedId = response.id
           }
         }
         const completion = await turn.completion
@@ -290,7 +295,7 @@ export function createResponsesSession(options: {
       if (message.type === "response.interrupt") {
         // A completion can cross the interrupt in flight. Acknowledge the
         // latest delivered response without touching a subsequent inference.
-        const accepted = active?.turn?.interrupt(message.responseId) === true || message.responseId === lastCompletedId
+        const accepted = active?.turn?.interrupt(message.responseId) === true || message.responseId === lastFinishedId
         control({ type: accepted ? "response.interrupt.accepted" : "response.interrupt.failed", response_id: message.responseId,
           ...(!accepted ? { error: { code: "response_not_in_progress", message: "No matching response is in progress." } } : {}),
         })

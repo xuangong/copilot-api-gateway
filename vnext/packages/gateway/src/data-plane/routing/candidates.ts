@@ -32,6 +32,8 @@ export interface EnumerateResult {
   candidates: BindingCandidate[]
   /** Discovery failed for a relevant upstream and no usable candidate remains. */
   catalogUnavailable?: boolean
+  /** Upstream IDs whose catalog failed for this request ("" when the upstream list itself failed). */
+  failedCatalogs?: readonly string[]
   sawModel: boolean
   bareModel: string
   upstreamPin?: string
@@ -84,6 +86,7 @@ export async function enumerateBindingCandidates(args: {
   const { model, pickTarget, opts = {} } = args
   const upstreamPin = opts.pin ?? parseModelRouting(model).upstreamPin
   let incomplete = false
+  const failedCatalogs = new Set<string>()
   const bindings = await listRoutingBindings(routingScope(opts.ownerId), {
     signal: opts.signal,
     upstreamIds: opts.upstreamIds,
@@ -91,7 +94,10 @@ export async function enumerateBindingCandidates(args: {
     copilot: opts.copilot,
     dump: opts.dump,
     onCatalogError: (upstreamId) => {
-      if (!upstreamPin || upstreamId === undefined || upstreamId === upstreamPin) incomplete = true
+      if (!upstreamPin || upstreamId === undefined || upstreamId === upstreamPin) {
+        incomplete = true
+        failedCatalogs.add(upstreamId ?? "")
+      }
     },
   })
   const parsed = parseModelRouting(model)
@@ -103,6 +109,7 @@ export async function enumerateBindingCandidates(args: {
     get candidates() { return current().candidates },
     get sawModel() { return current().sawModel },
     get catalogUnavailable() { return incomplete && current().candidates.length === 0 },
+    get failedCatalogs() { return [...failedCatalogs] },
     async materialize(candidate) {
       const binding = await bindings.materialize(candidate.binding)
       return binding ? { ...candidate, binding } : null

@@ -76,7 +76,7 @@ import {
 import type { TelemetryRequestContext } from '../shared/telemetry-ctx.ts'
 import type { SelectBindingAuth } from '../shared/select-binding.ts'
 import { withUpstreamTelemetry } from '../shared/upstream-telemetry'
-import { MODEL_CATALOG_UNAVAILABLE } from '../../errors/model-catalog.ts'
+import { modelCatalogUnavailableMessage } from '../../errors/model-catalog.ts'
 import { selectBindingForProtocol } from "../shared/select-binding.ts"
 import { selectPair } from '../../dispatch/pair-selector.ts'
 import { getTranslator, type PairTranslator } from '../../dispatch/translator-registry.ts'
@@ -135,7 +135,7 @@ export type { ResponsesInterceptor } from './interceptors'
 
 export type SelectResponsesBindingResult =
   | { kind: 'ok'; binding: AttemptBindingShape & { readonly provider: { readonly fetch: (req: ProviderRequest) => Promise<ProviderResponse>; readonly getPricingForModelKey: (k: string) => unknown | null; readonly responsesInterceptors?: readonly ResponsesInterceptor[] } }; targetEndpoint: EndpointKey; translator: PairTranslator; bareModel: string }
-  | { kind: 'catalog-unavailable'; bareModel: string }
+  | { kind: 'catalog-unavailable'; bareModel: string; failedCatalogs?: readonly string[] }
   | { kind: 'model-not-found'; bareModel: string }
   | { kind: 'no-eligible-binding'; bareModel: string }
   | { kind: 'no-translator'; bareModel: string; targetEndpoint: EndpointKey }
@@ -315,7 +315,7 @@ async function selectResponsesAttempt(args: ResponsesAttemptArgs) {
     throw error
   }
 
-  if (sel.kind === 'catalog-unavailable') return llmInternalErrorResult(503, new Error(MODEL_CATALOG_UNAVAILABLE))
+  if (sel.kind === 'catalog-unavailable') return llmInternalErrorResult(503, new Error(modelCatalogUnavailableMessage(sel.bareModel, sel.failedCatalogs?.length ?? 0)))
   if (sel.kind === 'model-not-found') return llmInternalErrorResult(404, new Error(`model not found: ${sel.bareModel}`))
   if (sel.kind === 'no-eligible-binding') return llmInternalErrorResult(404, new Error(`no eligible binding for: ${sel.bareModel}`))
   if (sel.kind === 'no-translator') return llmInternalErrorResult(500, new Error(`no translator for responses → ${sel.targetEndpoint}`))

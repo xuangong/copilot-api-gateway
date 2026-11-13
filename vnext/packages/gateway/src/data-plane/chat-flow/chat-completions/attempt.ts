@@ -7,7 +7,7 @@ import { invocationSourceApi } from '../shared/invocation-source-api'
 import { responsesFormatGuard, responsesFormatMismatchMessage } from '@vibe-llm/provider-llm'
 import { TranslatorValidationError } from '@vibe-llm/translate/errors'
 import { getTranslator } from '../../dispatch/translator-registry.ts'
-import { MODEL_CATALOG_UNAVAILABLE } from '../../errors/model-catalog.ts'
+import { modelCatalogUnavailableMessage } from '../../errors/model-catalog.ts'
 import { fetchWithPerformance, observeUpstreamFrames, observeUpstreamJson } from "../shared/performance-upstream"
 // vnext/packages/gateway/src/data-plane/chat-flow/chat-completions/attempt.ts
 /**
@@ -112,7 +112,7 @@ export const chatCompletionsAttempt = {
       throw error
     }
 
-    if (sel.kind === 'catalog-unavailable') return llmInternalErrorResult(503, new Error(MODEL_CATALOG_UNAVAILABLE))
+    if (sel.kind === 'catalog-unavailable') return llmInternalErrorResult(503, new Error(modelCatalogUnavailableMessage(sel.bareModel, sel.failedCatalogs?.length ?? 0)))
     if (sel.kind === 'model-not-found') return llmInternalErrorResult(404, new Error(`model not found: ${sel.bareModel}`))
     if (sel.kind === 'no-eligible-binding') return llmInternalErrorResult(404, new Error(`no eligible binding for: ${sel.bareModel}`))
     if (sel.kind === 'no-translator') return llmInternalErrorResult(500, new Error(`no translator for chat_completions → ${sel.targetEndpoint}`))

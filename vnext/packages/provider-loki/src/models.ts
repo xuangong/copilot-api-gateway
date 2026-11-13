@@ -17,6 +17,49 @@ export function lokiModelEndpoints(value: unknown): ModelEndpoints {
   return result
 }
 
+/**
+ * What Loki reported for these names on 2026-11-12. A static catalog skips
+ * discovery, so without this a configured name would route but carry no price
+ * (its usage would go unpriced) and no context window. Names not listed keep
+ * the prefix-based endpoint and stay unpriced.
+ */
+const LOKI_KNOWN_MODELS = new Map<string, Record<string, unknown>>([
+  { id: "claude-opus-5.5", display_name: "claude-opus-5.5", publisher: "Anthropic", supported_endpoints: ["/v1/messages"],
+    capabilities: { limits: { max_context_window_tokens: 1_000_000 } },
+    billing: { price_unit: "CopilotCredit", cost_per_input_token: 0.00044, cost_per_output_token: 0.0022, cache_read_cost_per_token: 0.000022, cache_write_cost_per_token: 0.00055 } },
+  { id: "claude-opus-5", display_name: "claude-opus-5", publisher: "Anthropic", supported_endpoints: ["/v1/messages"],
+    capabilities: { limits: { max_context_window_tokens: 1_000_000 } },
+    billing: { price_unit: "CopilotCredit", cost_per_input_token: 0.00055, cost_per_output_token: 0.00275, cache_read_cost_per_token: 0.000055, cache_write_cost_per_token: 0.000688 } },
+  { id: "claude-sonnet-5.5", display_name: "claude-sonnet-5.5", publisher: "Anthropic", supported_endpoints: ["/v1/messages"],
+    capabilities: { limits: { max_context_window_tokens: 1_000_000 } },
+    billing: { price_unit: "CopilotCredit", cost_per_input_token: 0.00022, cost_per_output_token: 0.0011, cache_read_cost_per_token: 0.000022, cache_write_cost_per_token: 0.000275 } },
+  { id: "claude-sonnet-5", display_name: "claude-sonnet-5", publisher: "Anthropic", supported_endpoints: ["/v1/messages"],
+    capabilities: { limits: { max_context_window_tokens: 1_000_000 } },
+    billing: { price_unit: "CopilotCredit", cost_per_input_token: 0.0002, cost_per_output_token: 0.001, cache_read_cost_per_token: 0.00002, cache_write_cost_per_token: 0.00025 } },
+  { id: "claude-haiku-5.5", display_name: "claude-haiku-5.5", publisher: "Anthropic", supported_endpoints: ["/v1/messages"],
+    capabilities: { limits: { max_context_window_tokens: 1_000_000 } },
+    billing: { price_unit: "CopilotCredit", cost_per_input_token: 0.000011, cost_per_output_token: 0.000055, cache_read_cost_per_token: 0.0000011, cache_write_cost_per_token: 0.00001375 } },
+  { id: "gpt-5.6-sol", display_name: "gpt-5.6-sol", publisher: "OpenAI", supported_endpoints: ["/responses"],
+    capabilities: { limits: { max_context_window_tokens: 1_050_000 } },
+    billing: { price_unit: "CopilotCredit", cost_per_input_token: 0.00055, cost_per_output_token: 0.0033, cache_read_cost_per_token: 0.000055, cache_write_cost_per_token: 0.000688 } },
+  { id: "gpt-5.6-luna", display_name: "gpt-5.6-luna", publisher: "OpenAI", supported_endpoints: ["/responses"],
+    capabilities: { limits: { max_context_window_tokens: 1_050_000 } },
+    billing: { price_unit: "CopilotCredit", cost_per_input_token: 0.000022, cost_per_output_token: 0.000132, cache_read_cost_per_token: 0.000002, cache_write_cost_per_token: 0.000028 } },
+  { id: "gpt-6-luna", display_name: "gpt-6-luna", publisher: "OpenAI", supported_endpoints: ["/responses"],
+    capabilities: { limits: { max_context_window_tokens: 1_050_000 } },
+    billing: { price_unit: "CopilotCredit", cost_per_input_token: 0.000011, cost_per_output_token: 0.000055, cache_read_cost_per_token: 0.0000011, cache_write_cost_per_token: 0.00001375 } },
+  { id: "gpt-61-sol", display_name: "gpt-61-sol", publisher: "OpenAI", supported_endpoints: ["/responses"],
+    capabilities: { limits: { max_context_window_tokens: 1_050_000 } },
+    billing: { price_unit: "CopilotCredit", cost_per_input_token: 0.00022, cost_per_output_token: 0.0011, cache_read_cost_per_token: 0.000011, cache_write_cost_per_token: 0.000275 } },
+].map(model => [model.id, model]))
+
+/** The catalog entry for a configured static name, in Loki's own /models shape. */
+export function lokiStaticModelEntry(id: string): Record<string, unknown> {
+  const known = LOKI_KNOWN_MODELS.get(id)
+  return known ? structuredClone(known)
+    : { id, supported_endpoints: [id.startsWith("claude-") ? LOKI_PATHS.messages : LOKI_PATHS.responses] }
+}
+
 export function normalizeLokiModels(value: unknown) {
   const entries = record(value).data
   if (!Array.isArray(entries)) throw new Error("loki_invalid_catalog")

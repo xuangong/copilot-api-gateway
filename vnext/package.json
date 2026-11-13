@@ -13,7 +13,7 @@
     "lint": "eslint .",
     "build:ui": "bun run build:setup && bun scripts/build-dashboard.ts",
     "ci:prepare": "bun scripts/ci-reference.ts",
-    "ci:local": "bun run ci:prepare && bun run build:setup && bun run scripts/check-framework-purity.ts && bun run typecheck && bun test && bun run lint && bun run build:ui && bun run --filter '@vibe-llm/platform-cloudflare' deploy:dry",
+    "ci:local": "bun run ci:prepare && bun run build:ui && bun run scripts/check-framework-purity.ts && bun run typecheck && bun test && bun run lint && bun run --filter '@vibe-llm/platform-cloudflare' deploy:dry",
     "build:setup": "bun scripts/build-setup-assets.ts"
   },
   "dependencies": {

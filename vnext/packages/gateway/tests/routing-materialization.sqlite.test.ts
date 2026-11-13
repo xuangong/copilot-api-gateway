@@ -204,7 +204,7 @@ test("no-candidate terminal reconciliation preserves absent/unsupported model ve
     return original(row, context)
   })
   restores.push(() => construction.mockRestore())
-  expect((await selectBindingForChatCompletions({ model: "absent", auth: {} })).kind).toBe("catalog-unavailable")
+  expect(await selectBindingForChatCompletions({ model: "absent", auth: {} })).toMatchObject({ kind: "catalog-unavailable", failedCatalogs: ["first"] })
   expect((await selectBindingForProtocol({ model: "shared", auth: {}, protocol: "responses", pickTarget: () => null })).kind).toBe("catalog-unavailable")
 })
 

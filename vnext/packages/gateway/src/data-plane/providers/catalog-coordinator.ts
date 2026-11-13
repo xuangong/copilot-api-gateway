@@ -5,6 +5,9 @@ import type { StoredUpstreamRecord } from "../../repo/types.ts"
 import { validCatalogModels, type CatalogErrorCode, type CatalogIdentity, type CatalogLease, type CatalogModels, type CatalogObservation, type CatalogRepo, type CatalogSnapshot } from "../../repo/catalogs.ts"
 import { CatalogOrdering, CatalogRetention } from "./catalog-retention.ts"
 
+/** Consecutive discovery failures after which requests stop waiting for a retry. */
+const CHRONIC_FAILURES = 3
+
 export class CatalogUnavailableError extends Error {
   constructor(readonly code: CatalogErrorCode | "superseded-unavailable") { super(`Model catalog ${code}`) }
 }
@@ -192,6 +195,13 @@ export class CatalogCoordinator {
             return memo.result
           }
           if (memo.freshUntil > performance.now() || observation.retryAtMs > observation.databaseNowMs) return memo.result
+        }
+        // A catalog that keeps failing (a revoked account, an unreachable host)
+        // must not hold a request for each retry: retry it in the background and
+        // answer now. The first failures are still retried inline.
+        if (request.mode === "automatic" && !refreshing && observation.failureCount >= CHRONIC_FAILURES) {
+          if (observation.retryAtMs <= observation.databaseNowMs) this.refresh({ ...request, expected: observation.upstream })
+          throw new CatalogUnavailableError(observation.lastErrorCode ?? "unavailable")
         }
         if (observation.lease && observation.lease.leaseUntilMs > observation.databaseNowMs) {
           if (request.mode === "explicit") joined = observation.lease

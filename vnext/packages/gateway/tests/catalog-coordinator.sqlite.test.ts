@@ -305,3 +305,28 @@ for (const scenario of ["cold", "cold-failing-discovery", "stale-background", "e
     expect(accepted?.lease).toBeNull()
   })
 }
+
+test("an upstream that keeps failing is retried in the background instead of holding requests", async () => {
+  const f = await fixture()
+  const failing = f.make(f.first, async () => { throw new Error("revoked") })
+  for (let i = 0; i < 3; i++) {
+    await expect(failing.read(f.request)).rejects.toThrow("upstream_error")
+    f.a.run("UPDATE model_catalogs SET retry_at_ms = 0")
+  }
+  expect((await f.second.catalogs.read("up", 5))?.failureCount).toBe(3)
+  const held = barrier()
+  let calls = 0
+  const c = f.make(f.second, async () => { calls++; await held.promise; return models("recovered") })
+  const started = performance.now()
+  await expect(c.read(f.request)).rejects.toThrow("upstream_error")
+  expect(performance.now() - started).toBeLessThan(500)
+  expect(f.background).toHaveLength(1)
+  for (let i = 0; i < 100 && calls === 0; i++) await Bun.sleep(5)
+  expect(calls).toBe(1)
+  // While that attempt runs, requests keep failing fast and start no other.
+  await expect(c.read(f.request)).rejects.toThrow("upstream_error")
+  expect(calls).toBe(1)
+  held.release()
+  await Promise.all(f.background)
+  expect((await c.read(f.request))?.snapshot.models).toEqual(models("recovered"))
+})

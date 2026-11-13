@@ -6,6 +6,13 @@ import * as api from "../api/upstreams"
 import type { UpstreamRecord } from "../api/types"
 import { ReorderController, partitionPosition } from "./reorder-upstreams"
 
+/** One upstream's live Loki preview removed; the same object when it has none. */
+export function withoutLiveModels<T>(previous: Record<string, T>, id: string): Record<string, T> {
+  if (!Object.hasOwn(previous, id)) return previous
+  const { [id]: _, ...rest } = previous
+  return rest
+}
+
 function sortUpstreams(list: UpstreamRecord[]): UpstreamRecord[] {
   return [...list].sort((a, b) => {
     if (a.enabled !== b.enabled) return a.enabled ? -1 : 1
@@ -120,10 +127,7 @@ export function useUpstreams() {
     withBusy(id, async () => {
       const u = upstreams.find((x) => x.id === id)
       const name = u?.name ?? id
-      if (u?.provider === "loki") setLiveLokiModels(previous => {
-        const { [id]: _, ...rest } = previous
-        return rest
-      })
+      if (u?.provider === "loki") setLiveLokiModels(previous => withoutLiveModels(previous, id))
       try {
         const r = await api.probeUpstream(id)
         if (r.ok) {
@@ -204,12 +208,16 @@ export function useUpstreams() {
     return ok === true
   }
 
+  // A saved endpoint, static list or pairing makes the last live preview stale.
+  const forgetLiveLokiModels = useCallback((id: string) => setLiveLokiModels(previous => withoutLiveModels(previous, id)), [])
+
   return {
     upstreams,
     loading,
     busy,
     modelsByUpstream,
     liveLokiModels,
+    forgetLiveLokiModels,
     flagCatalog,
     reload,
     ensureFlagCatalog,

@@ -327,7 +327,7 @@ export function UpstreamsTab() {
                         />
                         {editingId === u.id && g.isMine ? (
                           <Expand>
-                            {u.provider === "loki" ? <LokiPairingPanel key={u.id} row={u} onChanged={store.reload} onClose={() => setEditingId(null)} /> : <UpstreamFormModal
+                            {u.provider === "loki" ? <LokiPairingPanel key={u.id} row={u} onChanged={() => { store.forgetLiveLokiModels(u.id); void store.reload() }} onClose={() => setEditingId(null)} /> : <UpstreamFormModal
                               mode={{ kind: "edit", row: u }}
                               flagCatalog={store.flagCatalog}
                               ensureFlagCatalog={store.ensureFlagCatalog}

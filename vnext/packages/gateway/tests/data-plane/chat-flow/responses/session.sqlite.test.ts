@@ -33,6 +33,7 @@ async function fixture(endpoint: "responses" | "chat_completions" = "responses")
   const calls: Record<string, unknown>[] = []
   let hold = false
   let fail = false
+  let incomplete = false
   let aborted = false
   let streamNext = false
   let extraEvents: unknown[] = []
@@ -48,7 +49,7 @@ async function fixture(endpoint: "responses" | "chat_completions" = "responses")
       { id: "chat", model: "model", choices: [{ index: 0, delta: { role: "assistant", content: "answer" }, finish_reason: null }] },
       { id: "chat", model: "model", choices: [{ index: 0, delta: {}, finish_reason: "stop" }], usage: { prompt_tokens: 2, completion_tokens: 1, total_tokens: 3 } },
     ].map(event => `data: ${JSON.stringify(event)}\n\n`).join("") + "data: [DONE]\n\n", { headers: { "content-type": "text/event-stream" } })
-    const response = { id: `resp_${calls.length}`, object: "response", model: "model", status: fail ? "failed" : "completed", output: [], error: fail ? { code: "invalid_prompt", message: "fixture failure" } : null, usage: { input_tokens: 2, output_tokens: 1, total_tokens: 3 } }
+    const response = { id: `resp_${calls.length}`, object: "response", model: "model", status: fail ? "failed" : incomplete ? "incomplete" : "completed", output: [], error: fail ? { code: "invalid_prompt", message: "fixture failure" } : null, incomplete_details: incomplete ? { reason: "max_output_tokens" } : null, usage: { input_tokens: 2, output_tokens: 1, total_tokens: 3 } }
     if (streamNext) {
       streamNext = false
       let cancelled = false
@@ -69,7 +70,7 @@ async function fixture(endpoint: "responses" | "chat_completions" = "responses")
     return new Response([
       { type: "response.created", response: { ...response, status: "in_progress" } },
       ...extraEvents,
-      { type: fail ? "response.failed" : "response.completed", response },
+      { type: fail ? "response.failed" : incomplete ? "response.incomplete" : "response.completed", response },
     ].map(event => `data: ${JSON.stringify(event)}\n\n`).join(""), { headers: { "content-type": "text/event-stream" } })
   } })
   await repo.users.create({ id: owner, name: "Fixture", disabled: false, createdAt: "now" })
@@ -89,7 +90,7 @@ async function fixture(endpoint: "responses" | "chat_completions" = "responses")
     return { session, events, closes }
   }
   cleanup.push(async () => { release.resolve(); await Promise.all(sessions.map(s => s.close())); await Promise.allSettled([...pending]); await upstream.stop(true); external.close(); db.close(); rmSync(dir, { recursive: true, force: true }) })
-  return { repo, external, store, connect, calls, pending, stream: () => { streamNext = true }, extraEvents: (events: unknown[]) => { extraEvents = events }, hold: () => { hold = true }, fail: (value = true) => { fail = value }, release: () => release.resolve(), aborted: () => aborted }
+  return { repo, external, store, connect, calls, pending, stream: () => { streamNext = true }, extraEvents: (events: unknown[]) => { extraEvents = events }, hold: () => { hold = true }, fail: (value = true) => { fail = value }, incomplete: (value = true) => { incomplete = value }, release: () => release.resolve(), aborted: () => aborted }
 }
 
 const interrupt = (responseId: string, extra: Record<string, unknown> = {}) => JSON.stringify({ type: "response.interrupt", response_id: responseId, mode: "discard_partial_items", ...extra })
@@ -172,6 +173,18 @@ test("invalid interruption cannot cancel an active response or start inference",
   f.release()
   await until(() => events.some(e => e.type === "response.completed"))
   expect(f.calls).toHaveLength(1)
+})
+
+test("a late interrupt for a delivered incomplete response is acknowledged like one for a completion", async () => {
+  const f = await fixture()
+  f.incomplete()
+  const { session, events } = await f.connect()
+  session.receiveText(create())
+  await until(() => events.some(e => e.type === "response.incomplete"))
+  await until(() => session.state === "idle")
+  const id = (events.find(e => e.type === "response.created")?.response as { id: string }).id
+  session.receiveText(interrupt(id))
+  expect(events.at(-1)).toMatchObject({ type: "response.interrupt.accepted", response_id: id })
 })
 
 test("a late interrupt for the completed response cannot cancel its successor", async () => {

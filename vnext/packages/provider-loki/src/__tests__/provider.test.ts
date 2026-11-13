@@ -2,7 +2,7 @@ import { expect, test } from "bun:test"
 import type { StoredUpstreamRecord } from "@vibe-core/upstream-repo"
 import type { ProviderRequest } from "@vibe-llm/provider-llm"
 import { LokiProvider } from "../provider"
-import { lokiModelEndpoints, normalizeLokiModels } from "../models"
+import { lokiContextWindow, lokiModelEndpoints, normalizeLokiModels } from "../models"
 import type { LokiState } from "../state"
 import { normalizeLokiConfig, normalizeLokiStaticModels } from "../config"
 
@@ -62,6 +62,60 @@ test("static discovery needs no network; live probes cannot replace the inferenc
   await expect(provider.fetch(request())).rejects.toThrow("loki_endpoint_unavailable")
   expect((await provider.getModels()).data.map(model => model.id)).toEqual(ids)
   expect(calls).toBe(4)
+})
+
+test("static names of known Loki models keep their pricing, context window and endpoints", async () => {
+  const { row } = fixture()
+  row.config.staticModels = ["claude-opus-5.5", "gpt-61-sol", "claude-future-x", "constructor"]
+  const provider = new LokiProvider(row, async () => row, async () => { throw new Error("no network") })
+  const byId = new Map((await provider.getModels()).data.map(model => [model.id, model]))
+  const opus = provider.getPricingForModelKey("claude-opus-5.5")
+  expect(opus?.input).toBeCloseTo(4.4)
+  expect(opus?.output).toBeCloseTo(22)
+  expect(opus?.input_cache_read).toBeCloseTo(0.22)
+  expect(opus?.input_cache_write).toBeCloseTo(5.5)
+  expect(provider.getPricingForModelKey("gpt-61-sol")?.output).toBeCloseTo(11)
+  expect(lokiContextWindow(byId.get("claude-opus-5.5"))).toBe(1_000_000)
+  expect(lokiContextWindow(byId.get("gpt-61-sol"))).toBe(1_050_000)
+  expect(lokiModelEndpoints(byId.get("gpt-61-sol"))).toEqual({ responses: {} })
+  expect(byId.get("claude-opus-5.5")).toMatchObject({ vendor: "Anthropic" })
+  // An unknown name still routes by its prefix, but is never given a price.
+  expect(lokiModelEndpoints(byId.get("claude-future-x"))).toEqual({ messages: {} })
+  expect(provider.getPricingForModelKey("claude-future-x")).toBeNull()
+  expect(lokiModelEndpoints(byId.get("constructor"))).toEqual({ responses: {} })
+  expect(provider.getPricingForModelKey("constructor")).toBeNull()
+})
+
+test("a live refresh that drops names keeps what this configuration already published", () => {
+  const { row } = fixture()
+  const previous = normalizeLokiModels(catalog)
+  // Loki answering with part of its list while a backend is unreachable.
+  const partial = normalizeLokiModels({ data: [catalog.data[1], { id: "new-model", supported_endpoints: ["/responses"] }] })
+  const live = new LokiProvider(row, async () => row)
+  expect(live.reconcileCatalog(previous, partial).data.map(model => model.id)).toEqual(["responses-model", "new-model", "messages-model"])
+  // A new configuration generation has no previous catalog: publish as given.
+  expect(live.reconcileCatalog(null, partial)).toBe(partial)
+  // A static list is the operator's word; removals there are real.
+  row.config.staticModels = ["responses-model"]
+  expect(new LokiProvider(row, async () => row).reconcileCatalog(previous, partial)).toBe(partial)
+})
+
+test("a name Loki keeps leaving out is dropped after a day, and one that returns is fresh", () => {
+  const { row } = fixture()
+  const live = new LokiProvider(row, async () => row)
+  const day = 24 * 60 * 60 * 1000
+  const t0 = 1_800_000_000_000
+  const previous = normalizeLokiModels(catalog)
+  const partial = normalizeLokiModels({ data: [catalog.data[1]] })
+  const first = live.reconcileCatalog(previous, partial, t0)
+  expect(first.data.find(model => model.id === "messages-model")).toMatchObject({ _loki_missing_since: t0 })
+  // Later refreshes keep the first time it went missing.
+  const later = live.reconcileCatalog(first, partial, t0 + day - 1)
+  expect(later.data.find(model => model.id === "messages-model")).toMatchObject({ _loki_missing_since: t0 })
+  expect(live.reconcileCatalog(later, partial, t0 + day).data.map(model => model.id)).toEqual(["responses-model"])
+  // Listed again: the entry comes from Loki's answer, with no missing stamp.
+  const back = live.reconcileCatalog(later, previous, t0 + day - 1)
+  expect(back.data.find(model => model.id === "messages-model")).not.toHaveProperty("_loki_missing_since")
 })
 
 test("catalog advertises only explicit Loki endpoints", () => {

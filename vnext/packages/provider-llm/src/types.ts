@@ -129,6 +129,12 @@ export interface LlmModelProvider extends UpstreamAdapter {
   /** Seed instance-local model resolution from the shared successful catalog. */
   setModelCatalog?(models: ProviderModelsResponse): void
   /**
+   * Decide what a refresh publishes, given the catalog this configuration
+   * already published (null after a configuration change). Absent means the
+   * discovered list is published as is.
+   */
+  reconcileCatalog?(previous: ProviderModelsResponse | null, next: ProviderModelsResponse): ProviderModelsResponse
+  /**
    * Wire dialect a decision model speaks. The dialect belongs to the provider's
    * catalog, never to the caller: the gateway serializes a `decision` request
    * into it before `fetch`, translating when the caller used the other one.

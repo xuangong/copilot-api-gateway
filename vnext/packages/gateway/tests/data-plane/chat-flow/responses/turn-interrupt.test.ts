@@ -125,3 +125,36 @@ test("interrupt during the completion save barrier does not duplicate or replace
   expect(saves).toBe(1)
   expect(await turn.completion).toMatchObject({ outcome: "completed", cleanupComplete: true })
 })
+
+test("interrupt crossing a selected incomplete terminal is acknowledged and preserves it", async () => {
+  const incomplete: ResponsesStreamEvent = { type: "response.incomplete", response: { ...response, status: "incomplete", incomplete_details: { reason: "max_output_tokens" } } }
+  const source = held([created, incomplete])
+  const upstream = new AbortController()
+  const turn = createResponsesTurn(llmEventResult(source.source, identity), { wantsStream: true, upstreamAbortController: upstream })
+  const events = Array.fromAsync(turn.events)
+  await source.pending
+  expect(turn.interrupt("r")).toBe(true)
+  expect(upstream.signal.aborted).toBe(false)
+  await source.source.return?.()
+  expect((await events).at(-1)).toMatchObject({ type: "response.incomplete" })
+  expect(await turn.completion).toMatchObject({ outcome: "incomplete" })
+})
+
+test("an interrupt after the stream has failed is refused, not accepted ahead of the error", async () => {
+  let reads = 0
+  const source: AsyncIterableIterator<ProtocolFrame<ResponsesStreamEvent>> = {
+    [Symbol.asyncIterator]() { return this },
+    next: async () => {
+      if (reads++ === 0) return { done: false, value: eventFrame(created) }
+      throw new Error("upstream reset")
+    },
+    return: async () => ({ done: true, value: undefined }),
+  }
+  const turn = createResponsesTurn(llmEventResult(source, identity), { wantsStream: true })
+  const events = turn.events[Symbol.asyncIterator]()
+  expect((await events.next()).value).toMatchObject({ type: "response.created" })
+  expect((await events.next()).value).toMatchObject({ type: "error" })
+  expect(turn.interrupt("r")).toBe(false)
+  expect((await events.next()).done).toBe(true)
+  expect(await turn.completion).toMatchObject({ outcome: "failed" })
+})

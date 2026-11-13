@@ -20,10 +20,13 @@ storage uses the same filtered output. A subsequent create waits for cleanup
 before resolving `previous_response_id`. Failed cleanup closes the session.
 Disconnects remain cancellations and do not manufacture a completion.
 
-An interrupt crossing a selected completion preserves that completion and its
-usage. Repeated interrupts and a late interrupt for the latest delivered
-completion are acknowledged without sending another terminal or cancelling a
-different response. Unknown IDs receive `response.interrupt.failed`; malformed
+An interrupt crossing a selected terminal (`response.completed` or
+`response.incomplete`) preserves that terminal and its usage. Repeated
+interrupts and a late interrupt for the latest response delivered with either
+terminal are acknowledged without sending another terminal or cancelling a
+different response. A response that has already failed cannot be interrupted:
+it receives `response.interrupt.failed` rather than an acknowledgement followed
+by the error. Unknown IDs receive `response.interrupt.failed`; malformed
 IDs, unsupported modes and additional interruption fields receive protocol
 errors. These error codes are gateway choices, not a claim of full OpenAI
 WebSocket protocol support.

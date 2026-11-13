@@ -26,7 +26,7 @@ import type { ApiKeyId } from '../../../repo/branded-ids.ts'
 
 export type SelectBindingResult =
   | { kind: 'ok'; binding: LlmProviderBinding; targetEndpoint: EndpointKey; translator: PairTranslator; bareModel: string }
-  | { kind: 'catalog-unavailable'; bareModel: string }
+  | { kind: 'catalog-unavailable'; bareModel: string; failedCatalogs: readonly string[] }
   | { kind: 'model-not-found'; bareModel: string }
   | { kind: 'no-eligible-binding'; bareModel: string }
   | { kind: 'no-translator'; bareModel: string; targetEndpoint: EndpointKey }
@@ -91,8 +91,13 @@ export async function selectBindingForProtocol(
     opts: { signal: args.affinityOptions?.signal, dump: args.dump, ownerId: args.auth.ownerId, upstreamIds: args.auth.upstreamIds, copilot: args.auth.copilot, pin: args.auth.pin },
   })
   const bareModel = enumeration.bareModel
+  const catalogUnavailable = (): SelectBindingResult => {
+    const failedCatalogs = enumeration.failedCatalogs ?? []
+    console.warn(`[routing] ${bareModel} is in no catalog that loaded; failed catalogs: ${failedCatalogs.map(id => id || "(upstream list)").join(", ") || "unknown"}`)
+    return { kind: "catalog-unavailable", bareModel, failedCatalogs }
+  }
   if (enumeration.candidates.length === 0) await enumeration.reconcile?.()
-  if (enumeration.catalogUnavailable) return { kind: "catalog-unavailable", bareModel }
+  if (enumeration.catalogUnavailable) return catalogUnavailable()
   if (!enumeration.sawModel) return { kind: "model-not-found", bareModel }
 
   let first
@@ -101,11 +106,11 @@ export async function selectBindingForProtocol(
   } catch (error) {
     // Constructor failures remove catalog contributions; preparation failures
     // instead remain affinity proof errors for still-advertised candidates.
-    if (error instanceof AffinityRoutingUnavailableError && enumeration.catalogUnavailable) return { kind: "catalog-unavailable", bareModel }
+    if (error instanceof AffinityRoutingUnavailableError && enumeration.catalogUnavailable) return catalogUnavailable()
     throw error
   }
   if (!first) {
-    if (enumeration.catalogUnavailable) return { kind: "catalog-unavailable", bareModel }
+    if (enumeration.catalogUnavailable) return catalogUnavailable()
     if (!enumeration.sawModel) return { kind: "model-not-found", bareModel }
     return { kind: "no-eligible-binding", bareModel }
   }

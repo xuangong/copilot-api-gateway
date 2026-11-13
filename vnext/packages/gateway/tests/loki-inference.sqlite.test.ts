@@ -242,3 +242,62 @@ test("static Loki models survive live discovery failures, probes and cold routin
     db.close()
   }
 })
+
+test("a live Loki refresh that drops names keeps routing them until the configuration changes", async () => {
+  const { db, repo } = setupTestPlatform()
+  const originalFetch = globalThis.fetch
+  const owner = "loki-live-owner" as UserId
+  const now = new Date().toISOString()
+  const session = "ses_loki_live" as SessionToken
+  const full = [{ id: "claude-opus-5.5", supported_endpoints: ["/v1/messages"] }, { id: "gpt-6-luna", supported_endpoints: ["/responses"] }]
+  let listed = full
+  try {
+    await repo.users.create({ id: owner, name: "Fixture", disabled: false, createdAt: now })
+    await repo.sessions.create({ token: session, userId: owner, createdAt: now, expiresAt: "2099-01-01T00:00:00.000Z" })
+    await repo.apiKeys.save({ id: "live-key", name: "fixture", key: "loki-live-key", ownerId: owner,
+      modelMappingsEnabled: false, modelMappings: [], createdAt: now })
+    const account = { homeAccountId: "fixture", tenantId: "11111111-1111-4111-8111-111111111111" }
+    await repo.upstreams.save({ id: "loki-live", provider: "loki", ownerId: owner, name: "Live Loki", enabled: true,
+      sortOrder: 0, config: { profileId: "loki-df-v1", baseUrl: "https://loki.example/api" },
+      flagOverrides: {}, disabledPublicModelIds: [], proxyFallbackList: [{ id: "direct_fetch" }], createdAt: now, updatedAt: now,
+      state: { version: 1, profileId: "loki-df-v1", generation: "fixture", revision: 1, syncSecretHash: "fixture",
+        assistantStatus: "authorized", account, credential: { accessToken: "fixture-token", tokenType: "Bearer", account, expiresAt: Date.now() + 3_600_000 } } })
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.endsWith("/models")) return Response.json({ data: listed })
+      expect(url).toBe("https://loki.example/api/v1/messages")
+      return Response.json({ id: "msg_live", type: "message", role: "assistant", model: "claude-opus-5.5",
+        content: [{ type: "text", text: "live answer" }], stop_reason: "end_turn", stop_sequence: null,
+        usage: { input_tokens: 1, output_tokens: 2 } })
+    }) as typeof fetch
+    const headers = { authorization: "Bearer loki-live-key", "content-type": "application/json" }
+    const models = async () => {
+      const response = await app.request("https://gateway.example/v1/models", { headers })
+      expect(response.status).toBe(200)
+      return (await response.json() as { data: Array<{ id: string }> }).data.map(model => model.id).sort()
+    }
+    expect(await models()).toEqual(["claude-opus-5.5", "gpt-6-luna"])
+    // Loki loses a backend and answers with part of its list. The Test button's
+    // follow-up refresh publishes, and a cold isolate reads only what was published.
+    listed = [full[1]!]
+    const probe = await app.request("https://gateway.example/api/upstreams/loki-live/test", {
+      method: "POST", headers: { authorization: `Bearer ${session}` },
+    })
+    expect(await probe.json()).toMatchObject({ ok: true, models: ["gpt-6-luna"] })
+    _clearModelsMemoForTest()
+    expect(await models()).toEqual(["claude-opus-5.5", "gpt-6-luna"])
+    const response = await app.request("https://gateway.example/v1/messages", { method: "POST", headers,
+      body: JSON.stringify({ model: "claude-opus-5.5", max_tokens: 8, messages: [{ role: "user", content: "hi" }] }) })
+    expect(response.status, await response.text()).toBe(200)
+    // A configuration change starts a new catalog: the drop is now published.
+    const save = await app.request("https://gateway.example/api/loki/upstreams/loki-live", { method: "PATCH",
+      headers: { authorization: `Bearer ${session}`, "content-type": "application/json" },
+      body: JSON.stringify({ baseUrl: "https://loki.example/api/", staticModels: [] }) })
+    expect(save.status).toBe(200)
+    expect(await models()).toEqual(["gpt-6-luna"])
+  } finally {
+    globalThis.fetch = originalFetch
+    __resetPlatformForTests()
+    db.close()
+  }
+})

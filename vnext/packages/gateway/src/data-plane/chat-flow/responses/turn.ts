@@ -270,11 +270,15 @@ export function createResponsesTurn(
   let metadata: ResponsesTurnMetadata = { status: 200 }
   const readController = new AbortController()
   let interruptRequested = false
+  // Set once the turn has failed: no completion follows, so an interrupt
+  // cannot be accepted (the client would get "accepted" and then an error).
+  let failing = false
   let created: ResponsesResult | undefined
   let terminal: ResponsesStreamEvent | undefined
   function interrupt(responseId: string): boolean {
-    if (abortController.signal.aborted || settled || created?.id !== responseId) return false
-    if (terminal) return terminal.type === "response.completed"
+    if (abortController.signal.aborted || settled || failing || created?.id !== responseId) return false
+    // A completion already selected is delivered unchanged; incomplete is one too.
+    if (terminal) return terminal.type === "response.completed" || terminal.type === "response.incomplete"
     if (interruptRequested) return true
     interruptRequested = true
     // Stop generation, but keep the downstream alive to deliver the explicit
@@ -531,6 +535,7 @@ export function createResponsesTurn(
         yield terminal
       }
     } catch (error) {
+      failing = true
       upstreamAbortController.abort(error)
       if (!abortController.signal.aborted) {
         outcome = "failed"

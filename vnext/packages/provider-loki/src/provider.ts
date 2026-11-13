@@ -5,13 +5,16 @@ import { directFetcher, type Fetcher } from "@vibe-core/upstream"
 import type { StoredUpstreamRecord } from "@vibe-core/upstream-repo"
 import { LOKI_HEADERS, LOKI_PROFILE_ID } from "./profile"
 import { lokiBaseUrl, normalizeLokiStaticModels } from "./config"
-import { isLokiEndpoint, lokiContextWindow, lokiModelEndpoints, LOKI_PATHS, normalizeLokiModels } from "./models"
+import { isLokiEndpoint, lokiContextWindow, lokiModelEndpoints, lokiStaticModelEntry, LOKI_PATHS, normalizeLokiModels } from "./models"
 import { lokiModelPricing } from "./pricing"
 import { readLokiState } from "./state"
 import { LOKI_CONVERSATION_HEADERS, lokiConversationId } from "./conversation"
 import { lokiMessagesBetaHeader, normalizeLokiMessages } from "./messages"
 import { lokiRequestShape } from "./diagnostics"
 import { lokiMessagesRejection } from "./rejections"
+
+/** How long a live refresh keeps a name Loki has stopped listing. */
+const LOKI_MISSING_RETENTION_MS = 24 * 60 * 60 * 1000
 
 export class LokiProvider implements LlmModelProvider {
   readonly kind = "loki" as const
@@ -47,9 +50,7 @@ export class LokiProvider implements LlmModelProvider {
   async getModels(): Promise<ProviderModelsResponse> {
     const ids = normalizeLokiStaticModels(this.expected.config.staticModels)
     if (ids.length) {
-      const models = normalizeLokiModels({ data: ids.map(id => ({
-        id, supported_endpoints: [id.startsWith("claude-") ? LOKI_PATHS.messages : LOKI_PATHS.responses],
-      })) })
+      const models = normalizeLokiModels({ data: ids.map(lokiStaticModelEntry) })
       this.setModelCatalog(models)
       return models
     }
@@ -67,6 +68,29 @@ export class LokiProvider implements LlmModelProvider {
       signal: AbortSignal.timeout(20_000) })
     if (!response.ok) { await response.body?.cancel(); throw new Error(`loki_catalog_http_${response.status}`) }
     return normalizeLokiModels(await response.json())
+  }
+
+  /**
+   * Loki answers /models with part of its list while one of its backends is
+   * unreachable, and publishing that dropped models from routing. A live
+   * refresh therefore keeps a name it left out, stamped with when it first
+   * went missing, for up to a day; a name still missing then is really gone.
+   * A configuration change (previous is null) and a static list, which is the
+   * operator's own word, are published as given.
+   */
+  reconcileCatalog(previous: ProviderModelsResponse | null, next: ProviderModelsResponse, now = Date.now()): ProviderModelsResponse {
+    if (!previous || normalizeLokiStaticModels(this.expected.config.staticModels).length) return next
+    const listed = new Set(next.data.map(model => model.id))
+    const kept = []
+    for (const entry of previous.data) {
+      if (listed.has(entry.id)) continue
+      const stamp = (entry as { _loki_missing_since?: unknown })._loki_missing_since
+      const since = typeof stamp === "number" && Number.isFinite(stamp) && stamp <= now ? stamp : now
+      if (now - since >= LOKI_MISSING_RETENTION_MS) continue
+      const [model] = normalizeLokiModels({ data: [entry] }).data
+      if (model) kept.push({ ...model, _loki_missing_since: since })
+    }
+    return kept.length ? { ...next, data: [...next.data, ...kept] } : next
   }
 
   setModelCatalog(models: ProviderModelsResponse): void {

@@ -228,7 +228,11 @@ function coordinator(): CatalogCoordinator {
         const provider = await createProviderFromUpstream(observation.upstream, undefined,
           id => withCatalogSignal(factory(id), signal))
         if (!provider) throw new CatalogUnavailableError("unavailable")
-        const models = await provider.getModels()
+        const discovered = await provider.getModels()
+        if (!validCatalogModels(discovered)) throw new CatalogUnavailableError("invalid_catalog")
+        // The provider may keep part of what this configuration already published.
+        const previous = observation.snapshot ? observation.snapshot.models as unknown as ModelsResponse : null
+        const models = provider.reconcileCatalog?.(previous, discovered) ?? discovered
         if (!validCatalogModels(models)) throw new CatalogUnavailableError("invalid_catalog")
         return { ...models, data: models.data.map(model => ({ ...model })) }
       },
