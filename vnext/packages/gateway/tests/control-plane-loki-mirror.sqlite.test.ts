@@ -304,13 +304,18 @@ test("re-importing replaces the source and clears the bound account", async () =
   const first = await (await issue(p.upstreamId, "Old")).json() as Issued
   const created = await (await device(first.document)).json() as { upstream: { id: string } }
   const second = await (await issue(p.upstreamId, "New")).json() as Issued
-  await repo.upstreams.saveState<unknown>(created.upstream.id, current => ({ ...readLokiState(current), errorCode: "account_mismatch" }))
+  const other = { homeAccountId: "other-home", tenantId: "22222222-2222-4222-8222-222222222222" }
+  await repo.upstreams.saveState<unknown>(created.upstream.id, current => {
+    const state = readLokiState(current)
+    return { ...state, errorCode: "account_mismatch", account: other, credential: { ...state.credential!, account: other } }
+  })
   const response = await request(`/upstreams/${created.upstream.id}/mirror-source`, { mirror: second.document }, session, "PUT")
   expect(response.status).toBe(200)
   const state = readLokiState((await repo.upstreams.getById(created.upstream.id))!.state)
   expect(state.source?.mirrorId).toBe(second.mirror.id)
   expect(state.errorCode).toBeUndefined()
   expect(state.credential?.accessToken).toBe("central-token")
+  expect(state.account).toEqual(account)
   expect((await request(`/upstreams/${p.upstreamId}/mirror-source`, { mirror: second.document }, session, "PUT")).status).toBe(400)
 })
 
@@ -326,7 +331,9 @@ test("a device mirror completes inference against Loki with the central token", 
     return { ...state, credential: { ...state.credential!, accessToken: "stale-token", expiresAt: Date.now() - 1 } }
   })
   const bearers: string[] = []
-  const provider = new LokiProvider(row, () => repo.upstreams.getById(row.id), async (_url, init) => {
+  const urls: string[] = []
+  const provider = new LokiProvider(row, () => repo.upstreams.getById(row.id), async (url, init) => {
+    urls.push(String(url))
     bearers.push(new Headers(init.headers).get("authorization") ?? "")
     return Response.json({ id: "msg", type: "message", content: [] })
   }, undefined, { save: updater => repo.upstreams.saveState<unknown>(row.id, updater, row) })
@@ -335,6 +342,8 @@ test("a device mirror completes inference against Loki with the central token", 
     payload: { model: "claude-opus-5.5", messages: [{ role: "user", content: "hello" }], max_tokens: 10 } })
   expect(result.status).toBe(200)
   expect(bearers).toEqual(["Bearer central-token"])
+  expect(urls.length).toBeGreaterThan(0)
+  for (const url of urls) expect(url.startsWith("https://loki.delve.office.com/api/v1/llmapi")).toBe(true)
 })
 
 test("backups never carry mirror secrets, hashes or sources", async () => {
@@ -351,4 +360,67 @@ test("backups never carry mirror secrets, hashes or sources", async () => {
       expect(JSON.stringify(restored.state)).not.toContain("mirror")
     }
   }
+})
+
+function breakCentral(mode: "500" | "throw") {
+  const inner = globalThis.fetch
+  globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+    if (mode === "throw") return Promise.reject(new Error("network down"))
+    return Promise.resolve(new Response("boom", { status: 500 }))
+  }) as typeof fetch
+  return () => { globalThis.fetch = inner }
+}
+
+test("a create against an unreachable central returns 502 and stores nothing", async () => {
+  const p = await central()
+  const issued = await (await issue(p.upstreamId)).json() as Issued
+  for (const mode of ["500", "throw"] as const) {
+    const restore = breakCentral(mode)
+    try {
+      const response = await device(issued.document)
+      expect(response.status).toBe(502)
+      expect(await response.json()).toEqual({ error: { code: "mirror_unreachable" } })
+    } finally { restore() }
+  }
+  expect((await repo.upstreams.list({ includeDisabled: true })).filter(row => row.name === "Device Loki")).toHaveLength(0)
+})
+
+test("a failed or revoked re-import leaves the existing mirror upstream untouched", async () => {
+  const p = await central()
+  const first = await (await issue(p.upstreamId, "Old")).json() as Issued
+  const second = await (await issue(p.upstreamId, "New")).json() as Issued
+  const created = await (await device(first.document)).json() as { upstream: { id: string } }
+  const before = JSON.stringify((await repo.upstreams.getById(created.upstream.id))!.state)
+  const restore = breakCentral("500")
+  try {
+    const response = await request(`/upstreams/${created.upstream.id}/mirror-source`, { mirror: second.document }, session, "PUT")
+    expect(response.status).toBe(502)
+    expect(await response.json()).toEqual({ error: { code: "mirror_unreachable" } })
+  } finally { restore() }
+  expect(JSON.stringify((await repo.upstreams.getById(created.upstream.id))!.state)).toBe(before)
+
+  await request(`/upstreams/${p.upstreamId}/mirrors/${second.mirror.id}`, undefined, session, "DELETE")
+  const revoked = await request(`/upstreams/${created.upstream.id}/mirror-source`, { mirror: second.document }, session, "PUT")
+  expect(revoked.status).toBe(400)
+  expect(await revoked.json()).toEqual({ error: { code: "invalid_mirror" } })
+  expect(JSON.stringify((await repo.upstreams.getById(created.upstream.id))!.state)).toBe(before)
+})
+
+test("re-importing from an empty central replaces the source with a warning and no credential", async () => {
+  const p = await central()
+  const first = await (await issue(p.upstreamId, "Old")).json() as Issued
+  const created = await (await device(first.document)).json() as { upstream: { id: string } }
+  const empty = await central()
+  await repo.upstreams.saveState<unknown>(empty.upstreamId, current => {
+    const state = readLokiState(current)
+    return { ...state, credential: { ...state.credential!, expiresAt: Date.now() + 30_000 } }
+  })
+  const later = await (await issue(empty.upstreamId, "Empty")).json() as Issued
+  const response = await request(`/upstreams/${created.upstream.id}/mirror-source`, { mirror: later.document }, session, "PUT")
+  expect(response.status).toBe(200)
+  expect((await response.json() as { warning?: string }).warning).toBe("credential_unavailable")
+  const state = readLokiState((await repo.upstreams.getById(created.upstream.id))!.state)
+  expect(state.source?.mirrorId).toBe(later.mirror.id)
+  expect(state.credential).toBeUndefined()
+  expect(state.account).toBeUndefined()
 })

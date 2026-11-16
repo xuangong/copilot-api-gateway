@@ -42,12 +42,14 @@ async function ownedLoki(auth: FullAuthCtx, rawId: string) {
   if (!row || row.provider !== "loki") throw new LokiSyncError("upstream_not_found", 404)
   return { row, id: parsedId.data }
 }
-/** Validates a document and pulls once. A revoked secret is a client error; an empty central is not. */
+/** Validates a document and pulls once. A revoked secret is a client error, an unreachable or misbehaving
+ *  central creates nothing, and a central that is merely waiting for its credential is not an error. */
 async function mirrorStateFrom(document: unknown): Promise<{ state: LokiState; warning?: "credential_unavailable" }> {
   const source: LokiMirrorSource = parseLokiMirrorDocument(document)
   const now = Date.now()
   const pull = await pullLokiMirror(source, directFetcher, now)
   if (pull.kind === "revoked") throw new LokiSyncError("invalid_mirror", 400)
+  if (pull.kind === "failed") throw new LokiSyncError("mirror_unreachable", 502)
   return pull.kind === "ok" ? { state: newLokiMirrorState(source, pull.credential, now) }
     : { state: newLokiMirrorState(source, undefined, now), warning: "credential_unavailable" }
 }
@@ -83,9 +85,17 @@ lokiManagementRouter.post("/upstreams", async c => {
     const baseUrl = parseEndpoint(parsed.data.baseUrl)
     const models = parseStaticModels(parsed.data.staticModels)
     const auth = c.get("auth")
-    const fromMirror = parsed.data.mirror === undefined ? undefined : await mirrorStateFrom(parsed.data.mirror)
-    const binding = fromMirror ? undefined : await newBinding()
-    const state = fromMirror?.state ?? binding!.state
+    let state: LokiState
+    let extra: (id: string) => Record<string, unknown>
+    if (parsed.data.mirror !== undefined) {
+      const fromMirror = await mirrorStateFrom(parsed.data.mirror)
+      state = fromMirror.state
+      extra = () => (fromMirror.warning ? { warning: fromMirror.warning } : {})
+    } else {
+      const binding = await newBinding()
+      state = binding.state
+      extra = id => ({ pairing: pairing(new URL(c.req.url).origin, id, binding.state, binding.syncSecret) })
+    }
     const now = new Date().toISOString()
     const id = upstreamId.parse(`up_loki_${crypto.randomUUID().replaceAll("-", "")}`)
     const saved = await getRepo().upstreams.createIfAbsent({
@@ -96,10 +106,7 @@ lokiManagementRouter.post("/upstreams", async c => {
       state, createdAt: now, updatedAt: now,
     })
     if (!saved) throw new LokiSyncError("temporarily_unavailable", 503)
-    const created = { upstream: serializeUpstream(saved) }
-    return json(fromMirror
-      ? { ...created, ...(fromMirror.warning ? { warning: fromMirror.warning } : {}) }
-      : { ...created, pairing: pairing(new URL(c.req.url).origin, id, state, binding!.syncSecret) }, 201)
+    return json({ upstream: serializeUpstream(saved), ...extra(id) }, 201)
   } catch (error) { return safeError(error) }
 })
 
@@ -121,11 +128,15 @@ lokiManagementRouter.patch("/upstreams/:id", async c => {
 
 lokiManagementRouter.put("/upstreams/:id/mirror-source", async c => {
   try {
-    const { row } = await ownedLoki(c.get("auth"), c.req.param("id"))
-    if (!currentState(row.state)?.source) throw new LokiSyncError("mirror_unsupported", 400)
+    const auth = c.get("auth")
+    const first = await ownedLoki(auth, c.req.param("id"))
+    if (!currentState(first.row.state)?.source) throw new LokiSyncError("mirror_unsupported", 400)
     const parsed = mirrorSourceBody.safeParse(await boundedJson(c.req.raw))
     if (!parsed.success) throw new LokiSyncError("invalid_request", 400)
     const { state, warning } = await mirrorStateFrom(parsed.data.mirror)
+    // Reload so the compare-and-swap window does not span the network pull.
+    const { row } = await ownedLoki(auth, c.req.param("id"))
+    if (!currentState(row.state)?.source) throw new LokiSyncError("mirror_unsupported", 400)
     const saved = await getRepo().upstreams.replaceCredentials(row, { config: row.config, state })
     return json({ upstream: serializeUpstream(saved), ...(warning ? { warning } : {}) })
   } catch (error) { return safeError(error) }

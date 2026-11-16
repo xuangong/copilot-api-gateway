@@ -193,6 +193,9 @@ Mirror upstream:
   The server validates it and performs one pull before creating the row:
   401 → 400 `invalid_mirror`, nothing created; 503 → created, response carries
   `warning: "credential_unavailable"`; success → created with the credential.
+  A pull that fails for any other reason (network error, timeout, redirect,
+  other status, malformed or mismatched reply) returns 502 `mirror_unreachable`
+  and creates or replaces nothing.
 - `PUT /api/loki/upstreams/:id/mirror-source` `{ mirror }` replaces the source
   on an existing mirror upstream, clearing the bound account, credential and
   `errorCode`, then performs one pull with the same rules.
