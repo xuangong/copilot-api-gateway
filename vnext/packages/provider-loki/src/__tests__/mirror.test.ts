@@ -28,6 +28,7 @@ test("pull sends the secret as a bearer to the central mirror path without follo
   expect(result).toEqual({ kind: "ok", credential })
   expect(seen?.url).toBe("https://central.example/api/loki/mirror/up_loki_central")
   expect(seen?.init.redirect).toBe("manual")
+  expect(seen?.init.signal).toBeTruthy()
   expect(new Headers(seen?.init.headers).get("authorization")).toBe(`Bearer ${mirrorSecret}`)
 })
 
@@ -44,4 +45,18 @@ test("pull classifies central responses", async () => {
   expect(await reply(Response.json({ version: 1, profileId: "loki-df-v1", mirrorId: "lkmid_" + "e".repeat(32), credential }))).toEqual({ kind: "failed" })
   expect(await reply(Response.json({ version: 1, profileId: "loki-df-v1", mirrorId,
     credential: { ...credential, expiresAt: now + 30_000 } }))).toEqual({ kind: "failed" })
+})
+
+test("pull rejects malformed, non-JSON and oversized bodies and never reads a 401 body", async () => {
+  const reply = (response: Response) => pullLokiMirror(source, async () => response, now)
+  const good = { version: 1, profileId: "loki-df-v1", mirrorId, credential }
+  expect(await reply(new Response("not json", { status: 200 }))).toEqual({ kind: "failed" })
+  expect(await reply(Response.json({ ...good, credential: { ...credential, tokenType: "MAC" } }))).toEqual({ kind: "failed" })
+  expect(await reply(Response.json({ ...good, credential: { ...credential, extra: 1 } }))).toEqual({ kind: "failed" })
+  expect(await reply(new Response(JSON.stringify(good), { status: 200, headers: { "content-length": "20000" } }))).toEqual({ kind: "failed" })
+  expect(await reply(new Response(JSON.stringify({ ...good, pad: "x".repeat(17_000) }), { status: 200 }))).toEqual({ kind: "failed" })
+  let pulled = false
+  const body = new ReadableStream({ pull() { pulled = true; throw new Error("read") } }, { highWaterMark: 0 })
+  expect(await reply(new Response(body, { status: 401 }))).toEqual({ kind: "revoked" })
+  expect(pulled).toBe(false)
 })

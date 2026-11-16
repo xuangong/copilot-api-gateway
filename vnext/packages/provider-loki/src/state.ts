@@ -15,6 +15,7 @@ export type LokiErrorCode = "interaction_required" | "broker_unavailable" | "inv
 
 export type LokiMirrorErrorCode = "mirror_revoked" | "account_mismatch"
 export const LOKI_MAX_MIRRORS = 16
+export const LOKI_MIN_CREDENTIAL_TTL_MS = 60_000
 export const LOKI_MIRROR_ID_PATTERN = /^lkmid_[a-f0-9]{32}$/
 export const LOKI_MIRROR_SECRET_PATTERN = /^lkm_[a-f0-9]{64}$/
 
@@ -147,7 +148,7 @@ export function applyLokiSyncUpdate(state: LokiState, update: LokiSyncUpdate, pa
   if (state.revision !== update.expectedRevision || state.revision >= Number.MAX_SAFE_INTEGER) throw new LokiSyncError("revision_conflict", 409)
   const credential = update.credential
   if (credential) {
-    if (credential.expiresAt <= now + 60_000) throw new LokiSyncError("credential_expired", 400)
+    if (credential.expiresAt <= now + LOKI_MIN_CREDENTIAL_TTL_MS) throw new LokiSyncError("credential_expired", 400)
     if (state.account && (state.account.homeAccountId !== credential.account.homeAccountId
       || state.account.tenantId !== credential.account.tenantId)) throw new LokiSyncError("account_mismatch", 409)
   }
@@ -193,7 +194,9 @@ export function readLokiState(value: unknown): LokiState {
   if (source.mirrors !== undefined) {
     if (!Array.isArray(source.mirrors) || source.mirrors.length > LOKI_MAX_MIRRORS) return invalid()
     state.mirrors = source.mirrors.map(parseMirror)
+    if (new Set(state.mirrors.map(mirror => mirror.id)).size !== state.mirrors.length) return invalid()
   }
+  if (source.mirrors !== undefined && source.source !== undefined) return invalid()
   if (source.source !== undefined) state.source = parseLokiMirrorSource(source.source)
   if (typeof source.errorCode === "string" && STORED_ERROR_CODES.has(source.errorCode)) {
     state.errorCode = source.errorCode as LokiErrorCode | LokiMirrorErrorCode
@@ -241,6 +244,7 @@ export function applyLokiMirrorPull(state: LokiState, source: LokiMirrorSource, 
   if (!state.source || state.source.mirrorId !== source.mirrorId || state.source.mirrorSecret !== source.mirrorSecret) return state
   const { errorCode: _previous, ...rest } = state
   if (outcome.kind === "revoked") return { ...rest, errorCode: "mirror_revoked", updatedAt: now }
+  if (outcome.credential.expiresAt <= now + LOKI_MIN_CREDENTIAL_TTL_MS) return state
   if (state.account && !sameAccount(state.account, outcome.credential.account)) {
     return { ...rest, errorCode: "account_mismatch", updatedAt: now }
   }

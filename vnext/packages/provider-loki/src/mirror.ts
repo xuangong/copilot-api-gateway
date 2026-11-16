@@ -1,6 +1,6 @@
 import type { Fetcher } from "@vibe-core/upstream"
 import { LOKI_PROFILE_ID } from "./profile"
-import { LokiSyncError, parseLokiCredential, parseLokiMirrorSource, type LokiMirrorPullOutcome, type LokiMirrorSource } from "./state"
+import { LOKI_MIN_CREDENTIAL_TTL_MS, LokiSyncError, parseLokiCredential, parseLokiMirrorSource, type LokiMirrorPullOutcome, type LokiMirrorSource } from "./state"
 
 export interface LokiMirrorDocument {
   version: 1
@@ -14,6 +14,7 @@ export interface LokiMirrorDocument {
 
 export type LokiMirrorPull = LokiMirrorPullOutcome | { kind: "unavailable" } | { kind: "failed" }
 
+const MAX_BODY = 16_384
 const DOCUMENT_KEYS = ["version", "kind", "gatewayOrigin", "upstreamId", "profileId", "mirrorId", "mirrorSecret"]
 
 export function lokiMirrorDocument(gatewayOrigin: string, upstreamId: string, mirrorId: string, mirrorSecret: string): LokiMirrorDocument {
@@ -41,15 +42,19 @@ export async function pullLokiMirror(source: LokiMirrorSource, fetcher: Fetcher,
     })
   } catch { return { kind: "failed" } }
   try {
-    if (response.status === 401) return { kind: "revoked" }
-    const body = await response.json().catch(() => undefined) as Record<string, unknown> | undefined
-    if (response.status !== 200) {
+    if (response.status !== 200 && response.status !== 503) return response.status === 401 ? { kind: "revoked" } : { kind: "failed" }
+    const length = Number(response.headers.get("content-length") ?? 0)
+    if (length > MAX_BODY) return { kind: "failed" }
+    const raw = await response.text()
+    if (raw.length > MAX_BODY) return { kind: "failed" }
+    const body = JSON.parse(raw) as Record<string, unknown> | null
+    if (response.status === 503) {
       const code = (body?.error as { code?: unknown } | undefined)?.code
-      return response.status === 503 && code === "credential_unavailable" ? { kind: "unavailable" } : { kind: "failed" }
+      return code === "credential_unavailable" ? { kind: "unavailable" } : { kind: "failed" }
     }
     if (!body || body.version !== 1 || body.profileId !== LOKI_PROFILE_ID || body.mirrorId !== source.mirrorId) return { kind: "failed" }
     const credential = parseLokiCredential(body.credential)
-    return credential.expiresAt > now + 60_000 ? { kind: "ok", credential } : { kind: "failed" }
+    return credential.expiresAt > now + LOKI_MIN_CREDENTIAL_TTL_MS ? { kind: "ok", credential } : { kind: "failed" }
   } catch { return { kind: "failed" } }
-  finally { await response.body?.cancel().catch(() => {}) }
+  finally { if (!response.bodyUsed) await response.body?.cancel().catch(() => {}) }
 }

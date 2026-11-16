@@ -26,7 +26,7 @@ test("mirrors and source survive a state round-trip and reject unknown fields", 
 test("mirror source origins must be bare HTTPS origins", () => {
   expect(parseLokiMirrorSource({ ...source, origin: "https://central.example/" }).origin).toBe("https://central.example")
   for (const origin of ["http://central.example", "https://u:p@central.example", "https://central.example/path",
-    "https://central.example?q=1", "https://central.example#f", "not a url"]) {
+    "https://central.example?q=1", "https://central.example#f", "https://central.example?", "https://central.example#", "not a url"]) {
     expect(() => parseLokiMirrorSource({ ...source, origin })).toThrow("invalid_request")
   }
 })
@@ -65,4 +65,22 @@ test("usable credentials must be unexpired and match the bound account", () => {
   const bound = applyLokiMirrorPull(newLokiMirrorState(source, undefined, now), source, { kind: "ok", credential: credential() }, now)
   expect(usableLokiCredential(bound, now + 3_600_000)).toBeUndefined()
   expect(usableLokiCredential({ ...bound, account: { ...account, homeAccountId: "x" } }, now)).toBeUndefined()
+})
+
+test("state parsing rejects too many, duplicate, or mixed mirrors and sources", () => {
+  const base = central()
+  const many = Array.from({ length: LOKI_MAX_MIRRORS + 1 }, (_, n) => mirror(n))
+  expect(() => readLokiState({ ...base, mirrors: many })).toThrow("invalid_request")
+  expect(() => readLokiState({ ...base, mirrors: [mirror(1)], source })).toThrow("invalid_request")
+  expect(() => readLokiState({ ...base, mirrors: [mirror(1), mirror(1)] })).toThrow("invalid_request")
+})
+
+test("a successful pull clears a previous revocation and short-lived credentials are ignored", () => {
+  const device = newLokiMirrorState(source, undefined, now)
+  const revoked = applyLokiMirrorPull(device, source, { kind: "revoked" }, now)
+  expect(revoked.errorCode).toBe("mirror_revoked")
+  const ok = applyLokiMirrorPull(revoked, source, { kind: "ok", credential: credential() }, now + 1)
+  expect(ok.errorCode).toBeUndefined()
+  expect(ok.assistantStatus).toBe("authorized")
+  expect(applyLokiMirrorPull(device, source, { kind: "ok", credential: credential(now + 60_000) }, now)).toBe(device)
 })
