@@ -7,7 +7,8 @@ import { LOKI_HEADERS, LOKI_PROFILE_ID } from "./profile"
 import { lokiBaseUrl, normalizeLokiStaticModels } from "./config"
 import { isLokiEndpoint, lokiContextWindow, lokiModelEndpoints, lokiStaticModelEntry, LOKI_PATHS, normalizeLokiModels } from "./models"
 import { lokiModelPricing } from "./pricing"
-import { readLokiState } from "./state"
+import { applyLokiMirrorPull, readLokiState, usableLokiCredential, type LokiCredential, type LokiMirrorSource, type LokiState } from "./state"
+import { pullLokiMirror } from "./mirror"
 import { LOKI_CONVERSATION_HEADERS, lokiConversationId } from "./conversation"
 import { lokiMessagesBetaHeader, normalizeLokiMessages } from "./messages"
 import { lokiRequestShape } from "./diagnostics"
@@ -15,6 +16,21 @@ import { lokiMessagesRejection } from "./rejections"
 
 /** How long a live refresh keeps a name Loki has stopped listing. */
 const LOKI_MISSING_RETENTION_MS = 24 * 60 * 60 * 1000
+
+const LOKI_MIRROR_REFRESH_MARGIN_MS = 5 * 60 * 1000
+const LOKI_MIRROR_RETRY_MS = 30 * 1000
+/** Per-process single-flight and failure backoff, keyed by upstream and mirror. */
+const mirrorPulls = new Map<string, Promise<void>>()
+const mirrorRetryAt = new Map<string, number>()
+export function __resetLokiMirrorPullsForTests(): void { mirrorPulls.clear(); mirrorRetryAt.clear() }
+
+export interface LokiProviderOptions {
+  /** Atomic state write for this upstream; mirror pulls are not persisted without it. */
+  save?: (updater: (current: unknown) => unknown) => Promise<void>
+  /** Fetcher for the central gateway; defaults to a direct fetch, never the upstream's proxy chain. */
+  mirrorFetcher?: Fetcher
+  now?: () => number
+}
 
 export class LokiProvider implements LlmModelProvider {
   readonly kind = "loki" as const
@@ -27,24 +43,64 @@ export class LokiProvider implements LlmModelProvider {
   constructor(private readonly expected: StoredUpstreamRecord,
     private readonly load: () => Promise<StoredUpstreamRecord | null>,
     private readonly fetcher: Fetcher = directFetcher,
-    private readonly executionFetcher?: ExecutionFetcherForRequest) {
+    private readonly executionFetcher?: ExecutionFetcherForRequest,
+    private readonly options: LokiProviderOptions = {}) {
     this.name = expected.name
     if (expected.config.profileId !== LOKI_PROFILE_ID) throw new Error("loki_invalid_profile")
     this.baseUrl = lokiBaseUrl(expected.config.baseUrl)
   }
 
-  private async credential(forInference = false) {
+  private now(): number { return this.options.now?.() ?? Date.now() }
+
+  private async boundRow(forInference: boolean): Promise<StoredUpstreamRecord> {
     const row = await this.load()
     if (!row || row.provider !== "loki" || row.rowIncarnation !== this.expected.rowIncarnation
       || row.ownerId !== this.expected.ownerId || row.credentialGeneration !== this.expected.credentialGeneration
       || row.catalogGeneration !== this.expected.catalogGeneration || (forInference && !row.enabled)
       || row.config.profileId !== LOKI_PROFILE_ID
       || lokiBaseUrl(row.config.baseUrl) !== this.baseUrl) throw new Error("loki_binding_replaced")
-    const state = readLokiState(row.state)
-    if (!state.syncSecretHash || !state.credential || !state.account || state.credential.expiresAt <= Date.now()
-      || state.account.homeAccountId !== state.credential.account.homeAccountId
-      || state.account.tenantId !== state.credential.account.tenantId) throw new Error("loki_credential_unavailable")
-    return state.credential
+    return row
+  }
+
+  private async credential(forInference = false): Promise<LokiCredential> {
+    const state = readLokiState((await this.boundRow(forInference)).state)
+    if (state.source) return this.mirrorCredential(state, forInference)
+    const credential = state.syncSecretHash ? usableLokiCredential(state, this.now()) : undefined
+    if (!credential) throw new Error("loki_credential_unavailable")
+    return credential
+  }
+
+  private async mirrorCredential(state: LokiState, forInference: boolean): Promise<LokiCredential> {
+    const source = state.source as LokiMirrorSource
+    const current = usableLokiCredential(state, this.now())
+    if (current && current.expiresAt - this.now() > LOKI_MIRROR_REFRESH_MARGIN_MS) return current
+    const stopped = state.errorCode === "mirror_revoked" || state.errorCode === "account_mismatch"
+    const key = `${this.expected.id}:${source.mirrorId}`
+    if (!stopped && this.options.save && (mirrorRetryAt.get(key) ?? 0) <= this.now()) {
+      let pending = mirrorPulls.get(key)
+      if (!pending) {
+        pending = this.pullMirror(key, source).finally(() => mirrorPulls.delete(key))
+        mirrorPulls.set(key, pending)
+      }
+      await pending
+      const fresh = usableLokiCredential(readLokiState((await this.boundRow(forInference)).state), this.now())
+      if (fresh) return fresh
+    }
+    if (current) return current
+    throw new Error("loki_credential_unavailable")
+  }
+
+  private async pullMirror(key: string, source: LokiMirrorSource): Promise<void> {
+    const result = await pullLokiMirror(source, this.options.mirrorFetcher ?? directFetcher, this.now())
+    let stored = false
+    if (result.kind === "ok" || result.kind === "revoked") {
+      try {
+        await this.options.save!(current => applyLokiMirrorPull(readLokiState(current), source, result, this.now()))
+        stored = result.kind === "ok"
+      } catch { /* A failed write backs off like a failed pull. */ }
+    }
+    if (stored) mirrorRetryAt.delete(key)
+    else mirrorRetryAt.set(key, this.now() + LOKI_MIRROR_RETRY_MS)
   }
 
   async getModels(): Promise<ProviderModelsResponse> {

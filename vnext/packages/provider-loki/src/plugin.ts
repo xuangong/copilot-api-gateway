@@ -8,7 +8,9 @@ export const lokiProviderPlugin: LlmProviderPlugin = {
     const fetcher = ctx.fetcherForUpstream?.(upstream.id)
     if (!("rowIncarnation" in upstream) || typeof upstream.rowIncarnation !== "string") throw new Error("loki_binding_unavailable")
     const execution = ctx.executionFetcherForUpstream
-    return new LokiProvider(upstream as StoredUpstreamRecord, () => getAuthoritativeUpstreamRepo().getById(upstream.id), fetcher,
-      execution ? request => execution(upstream.id, request) : undefined)
+    const record = upstream as StoredUpstreamRecord
+    return new LokiProvider(record, () => getAuthoritativeUpstreamRepo().getById(upstream.id), fetcher,
+      execution ? request => execution(upstream.id, request) : undefined,
+      { save: updater => getAuthoritativeUpstreamRepo().saveState<unknown>(upstream.id, updater, record) })
   },
 }
