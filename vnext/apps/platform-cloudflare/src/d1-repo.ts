@@ -206,6 +206,8 @@ export class D1Repo implements Repo {
   webSearchEngineUsage: Repo["webSearchEngineUsage"]
   keyAssignments: Repo["keyAssignments"]
   observabilityShares: Repo["observabilityShares"]
+  syncDevices: Repo["syncDevices"]
+  syncSources: Repo["syncSources"]
   deviceCodes: Repo["deviceCodes"]
   responsesItems: Repo["responsesItems"]
   proxies: Repo["proxies"]
@@ -233,6 +235,8 @@ export class D1Repo implements Repo {
     this.webSearchEngineUsage = shared.webSearchEngineUsage
     this.keyAssignments = shared.keyAssignments
     this.observabilityShares = shared.observabilityShares
+    this.syncDevices = shared.syncDevices
+    this.syncSources = shared.syncSources
     this.deviceCodes = shared.deviceCodes
     this.responsesItems = shared.responsesItems
     this.proxies = shared.proxies

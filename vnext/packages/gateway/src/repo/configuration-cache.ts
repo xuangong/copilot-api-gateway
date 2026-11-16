@@ -295,9 +295,10 @@ const configurationMethodEffects = {
     deleteByUserId: "configuration-write", deleteExpired: "configuration-write",
   },
   upstreams: {
-    list: "read", getById: "read", saveState: "state-write", // Refreshed row-by-row below.
+    list: "read", getById: "read", listSynced: "read", saveState: "state-write", // Refreshed row-by-row below.
     save: "configuration-write", createIfAbsent: "configuration-write", replaceCredentials: "configuration-write",
-    patchMetadata: "configuration-write", delete: "configuration-write", deleteAll: "configuration-write",
+    patchMetadata: "configuration-write", applySynced: "configuration-write", deleteSynced: "configuration-write",
+    delete: "configuration-write", deleteAll: "configuration-write",
   },
   proxies: {
     list: "read", getById: "read", findUpstreamsReferencing: "read",

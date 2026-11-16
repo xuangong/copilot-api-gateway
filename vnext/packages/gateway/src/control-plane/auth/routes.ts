@@ -264,6 +264,13 @@ authRouter.delete('/admin/users/:id', async (c) => {
   await repo.keyAssignments.deleteByUser(userId)
   await repo.observabilityShares.deleteByOwner(userId)
   await repo.observabilityShares.deleteByViewer(userId)
+  await repo.syncDevices.deleteByOwner(userId)
+  // A device gateway's single sync source belongs to the user who connected it; its synced rows go with it.
+  const syncSource = await repo.syncSources.get()
+  if (syncSource && syncSource.ownerId === userId) {
+    await repo.upstreams.deleteSynced(syncSource.id)
+    await repo.syncSources.delete(syncSource.id)
+  }
   await repo.users.delete(userId)
 
   return c.json({ ok: true })

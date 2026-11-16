@@ -11,6 +11,7 @@ export type {
   UsageRecord, LatencyRecord, User, InviteCode, UserSession, ClientPresence,
   WebSearchUsageRecord, ObservabilityShare, ObservabilityShareRepo,
 } from "./types"
+export type { SyncDeviceRecord, SyncDeviceRepo, SyncSourceRecord, SyncSourceRepo } from "./sync.ts"
 export type { DataPlaneConfiguration } from "./configuration-ports.ts"
 
 let _repo: Repo | null = null

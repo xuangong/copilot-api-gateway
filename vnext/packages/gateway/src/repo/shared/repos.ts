@@ -6,6 +6,8 @@ import { queryUsageOverview, type UsageOverviewQuery } from "../usage-overview"
 import { queryUsageQuota } from "../usage-quota.ts"
 import { SharedAgentRemoteContinuationRepo } from "./agent-remote-continuations.ts"
 import { SharedSetupLeaseRepo } from "./setup-leases.ts"
+import { SharedSyncDeviceRepo, SharedSyncSourceRepo } from "./sync.ts"
+import type { SyncedUpstreamInput, SyncedUpstreamOutcome } from "../sync.ts"
 import { SharedPerformanceMetricsRepo } from "../performance-metrics"
 import type {
   ApiKey,
@@ -65,7 +67,9 @@ import type { BackoffRow, ProxyBackoffRepo, ProxyFallbackEntry, ProxyRecord, Pro
 
 const API_KEY_COLS = "id, name, key, created_at, last_used_at, owner_id, quota_requests_per_month, quota_tokens_per_month, quota_cost_per_month, web_search_enabled, web_search_langsearch_key, web_search_tavily_key, web_search_ms_grounding_key, web_search_priority, web_search_langsearch_ref, web_search_tavily_ref, web_search_ms_grounding_ref, web_search_jina_key, web_search_jina_ref, web_search_passthrough_upstream, web_search_passthrough_model, dump_retention_seconds, model_mappings_enabled, model_mappings, responses_retention_seconds, upstream_ids"
 const GITHUB_COLS = "user_id, token, account_type, login, name, avatar_url, owner_id, enabled, sort_order, flag_overrides, updated_at, github_host, source"
-const UPSTREAM_COLS = "catalog_generation, credential_generation, row_incarnation, id, owner_id, provider, name, enabled, sort_order, config_json, flag_overrides, disabled_public_model_ids, state_json, proxy_fallback_list_json, created_at, updated_at"
+const UPSTREAM_INSERT_COLS = "catalog_generation, credential_generation, row_incarnation, id, owner_id, provider, name, enabled, sort_order, config_json, flag_overrides, disabled_public_model_ids, state_json, proxy_fallback_list_json, created_at, updated_at"
+/** Everything a read returns. `sync_source_id` is written only by `applySynced`, never by the positional INSERTs. */
+const UPSTREAM_COLS = `${UPSTREAM_INSERT_COLS}, sync_source_id`
 const USAGE_DIM_COLS = "key_id, incoming_model, model, upstream, model_key, client, hour, dimension, tokens, unit_price"
 const USAGE_REQ_COLS = "key_id, incoming_model, model, upstream, model_key, client, hour, requests"
 const LATENCY_COLS = "key_id, model, hour, colo, stream, requests, total_ms, upstream_ms, ttfb_ms, token_miss"
@@ -232,6 +236,7 @@ function toUpstreamRecord(row: UpstreamSqlRow): StoredUpstreamRecord {
     proxyFallbackList: parseProxyFallbackList(row.proxy_fallback_list_json),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    ...(row.sync_source_id ? { syncSourceId: row.sync_source_id } : {}),
   }
 }
 
@@ -591,6 +596,7 @@ interface UpstreamSqlRow {
   proxy_fallback_list_json: string
   created_at: string
   updated_at: string
+  sync_source_id: string | null
 }
 
 function assertSynchronous(value: unknown): void {
@@ -636,15 +642,16 @@ class SharedUpstreamRepo implements UpstreamRepo {
 
   async save(upstream: UpstreamRecord<unknown>): Promise<void> {
     await this.x.run(
-      `INSERT INTO upstreams (${UPSTREAM_COLS}) VALUES (0, 0, lower(hex(randomblob(16))), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT (id) DO UPDATE SET catalog_generation = upstreams.catalog_generation + 1, credential_generation = upstreams.credential_generation + 1, owner_id = excluded.owner_id, provider = excluded.provider, name = excluded.name, enabled = excluded.enabled, sort_order = excluded.sort_order, config_json = excluded.config_json, flag_overrides = excluded.flag_overrides, disabled_public_model_ids = excluded.disabled_public_model_ids, state_json = excluded.state_json, proxy_fallback_list_json = excluded.proxy_fallback_list_json, updated_at = excluded.updated_at`,
+      `INSERT INTO upstreams (${UPSTREAM_INSERT_COLS}) VALUES (0, 0, lower(hex(randomblob(16))), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT (id) DO UPDATE SET catalog_generation = upstreams.catalog_generation + 1, credential_generation = upstreams.credential_generation + 1, owner_id = excluded.owner_id, provider = excluded.provider, name = excluded.name, enabled = excluded.enabled, sort_order = excluded.sort_order, config_json = excluded.config_json, flag_overrides = excluded.flag_overrides, disabled_public_model_ids = excluded.disabled_public_model_ids, state_json = excluded.state_json, proxy_fallback_list_json = excluded.proxy_fallback_list_json, updated_at = excluded.updated_at
+       WHERE upstreams.sync_source_id IS NULL`,
       this.insertBinds(upstream),
     )
   }
 
   async createIfAbsent(upstream: UpstreamRecord<unknown>): Promise<StoredUpstreamRecord | null> {
     const row = await this.x.first<UpstreamSqlRow>(
-      `INSERT INTO upstreams (${UPSTREAM_COLS}) VALUES (0, 0, lower(hex(randomblob(16))), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO upstreams (${UPSTREAM_INSERT_COLS}) VALUES (0, 0, lower(hex(randomblob(16))), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (id) DO NOTHING RETURNING ${UPSTREAM_COLS}`,
       this.insertBinds(upstream),
     )
@@ -717,6 +724,54 @@ class SharedUpstreamRepo implements UpstreamRepo {
       throw new UpstreamReplacedError(id)
     }
     return row
+  }
+
+  async listSynced(sourceId: string): Promise<StoredUpstreamRecord[]> {
+    const rows = await this.x.all<UpstreamSqlRow>(
+      `SELECT ${UPSTREAM_COLS} FROM upstreams WHERE sync_source_id = ? ORDER BY sort_order ASC, created_at ASC, id ASC`, [sourceId])
+    return rows.map(toUpstreamRecord)
+  }
+
+  async applySynced(sourceId: string, input: SyncedUpstreamInput, now: string): Promise<SyncedUpstreamOutcome> {
+    const config = JSON.stringify(input.config)
+    const flags = JSON.stringify(input.flagOverrides)
+    const disabled = JSON.stringify(input.disabledPublicModelIds)
+    const state = serializeState(input.state)
+    for (let attempt = 0; attempt < UPSTREAM_WRITE_ATTEMPTS; attempt++) {
+      // New rows sort after the owner's existing upstreams, start enabled and with no proxies.
+      const created = await this.x.first<{ id: string }>(
+        `INSERT INTO upstreams (catalog_generation, credential_generation, row_incarnation, id, owner_id, provider, name, enabled, sort_order, config_json, flag_overrides, disabled_public_model_ids, state_json, proxy_fallback_list_json, created_at, updated_at, sync_source_id)
+         VALUES (0, 0, lower(hex(randomblob(16))), ?, ?, ?, ?, 1, (SELECT COALESCE(MAX(sort_order), -1) + 1 FROM upstreams WHERE owner_id = ?), ?, ?, ?, ?, '[]', ?, ?, ?)
+         ON CONFLICT (id) DO NOTHING RETURNING id`,
+        [input.id, input.ownerId, input.provider, input.name, input.ownerId, config, flags, disabled, state, now, now, sourceId],
+      )
+      if (created) return "created"
+      const row = await this.x.first<UpstreamSqlRow>(`SELECT ${UPSTREAM_COLS} FROM upstreams WHERE id = ?`, [input.id])
+      if (!row) continue // deleted between the two statements: insert again
+      if (row.sync_source_id !== sourceId) return "conflict"
+      const configChanged = row.provider !== input.provider || row.config_json !== config
+      const metadataChanged = row.name !== input.name || row.owner_id !== input.ownerId
+        || row.flag_overrides !== flags || row.disabled_public_model_ids !== disabled
+      if (!configChanged && !metadataChanged && row.state_json === state) return "unchanged"
+      // A config change replaces the credential identity (as replaceCredentials does); state and metadata do not.
+      const bump = configChanged ? 1 : 0
+      const matched = await this.x.first<{ id: string }>(
+        `UPDATE upstreams SET owner_id = ?, provider = ?, name = ?, config_json = ?, flag_overrides = ?, disabled_public_model_ids = ?, state_json = ?, updated_at = ?,
+           catalog_generation = catalog_generation + ?, credential_generation = credential_generation + ?
+         WHERE id = ? AND sync_source_id = ? AND row_incarnation = ? AND provider = ? AND config_json IS ? AND state_json IS ? RETURNING id`,
+        [input.ownerId, input.provider, input.name, config, flags, disabled, state, now, bump, bump,
+          input.id, sourceId, row.row_incarnation, row.provider, row.config_json, row.state_json],
+      )
+      if (matched) return "updated"
+    }
+    throw new UpstreamContentionError(input.id)
+  }
+
+  async deleteSynced(sourceId: string, keepIds: readonly string[] = []): Promise<void> {
+    await this.x.run(
+      "DELETE FROM upstreams WHERE sync_source_id = ? AND id NOT IN (SELECT value FROM json_each(?))",
+      [sourceId, JSON.stringify(keepIds)],
+    )
   }
 
   async delete(id: UpstreamId): Promise<boolean> {
@@ -1390,6 +1445,8 @@ export function buildSharedRepo(x: SqlExecutor): Repo {
     keyAssignments: new SharedKeyAssignmentRepo(x),
     deviceCodes: new SharedDeviceCodeRepo(x),
     observabilityShares: new SharedObservabilityShareRepo(x),
+    syncDevices: new SharedSyncDeviceRepo(x),
+    syncSources: new SharedSyncSourceRepo(x),
     responsesItems: new SharedResponsesItemsRepo(x),
     proxies: new SharedProxyRepo(x),
     proxyBackoffs: new SharedProxyBackoffRepo(x),

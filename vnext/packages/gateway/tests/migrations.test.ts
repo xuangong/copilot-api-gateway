@@ -130,6 +130,33 @@ describe("migration corpus", () => {
     expect(offenders).toEqual([])
   })
 
+  test("gateway sync upgrade leaves upstreams unsynced and the new column never advances a generation or revision", () => {
+    const db = new Database(":memory:")
+    try {
+      db.exec("CREATE TABLE _migrations (name TEXT PRIMARY KEY)")
+      for (const file of listSql().sort().filter(file => file < "0025_")) {
+        db.exec(readFileSync(`${dir}/${file}`, "utf8"))
+        db.run("INSERT INTO _migrations (name) VALUES (?)", [file])
+      }
+      db.run("INSERT INTO upstreams (id, owner_id, provider, name, created_at, updated_at) VALUES ('u1', 'o', 'copilot', 'c', 'now', 'now')")
+      applyMigrations(db, dir)
+      applyMigrations(db, dir)
+      const row = () => db.query("SELECT sync_source_id, catalog_generation, credential_generation FROM upstreams").get()
+      const revision = () => db.query<{ revision: number }, []>("SELECT revision FROM configuration_revision WHERE id=1").get()?.revision ?? -1
+      // Earlier migrations already advance the generation once (row_incarnation backfill); 0025 must add nothing.
+      const initial = row() as { sync_source_id: string | null; catalog_generation: number; credential_generation: number }
+      expect(initial).toMatchObject({ sync_source_id: null, credential_generation: 0 })
+      const before = revision()
+      db.run("UPDATE upstreams SET sync_source_id = 'ssrc_x'")
+      expect(row()).toEqual({ ...initial, sync_source_id: "ssrc_x" })
+      expect(revision()).toBe(before)
+      db.run("INSERT INTO sync_sources (id, owner_id, origin, device_id, secret) VALUES ('a', 'o', 'https://c.example', 'sdv_x', 'sds_x')")
+      expect(() => db.run("INSERT INTO sync_sources (id, owner_id, origin, device_id, secret) VALUES ('b', 'o', 'https://c.example', 'sdv_x', 'sds_x')")).toThrow()
+      expect(() => db.run("INSERT INTO sync_devices (id, owner_id, label, secret_hash, created_at) VALUES ('short', 'o', 'x', 'h', 'now')")).toThrow()
+      expect(db.query("SELECT name FROM _migrations WHERE name = '0025_gateway_upstream_sync.sql'").all()).toHaveLength(1)
+    } finally { db.close() }
+  })
+
   // Guards against the failure this corpus already suffered once: schema
   // applied by hand to the live databases, leaving the migrations unable to
   // rebuild production. Regenerate with UPDATE_SCHEMA_BASELINE=1 only when a

@@ -13,6 +13,7 @@ export type { ApiKeyModelMapping, ApiKeyRoutingPolicy } from '../shared/api-key-
 export type { ProxyRepo, ProxyBackoffRepo, ProxyRecord, ProxyFallbackEntry, BackoffRow } from "@vibe-core/proxy-repo"
 
 import type { SharedSessionConfig } from "./shared-session-secret"
+import type { SyncDeviceRepo, SyncSourceRepo, SyncedUpstreamInput, SyncedUpstreamOutcome } from "./sync.ts"
 
 export interface ApiKey {
   readonly sharedSessionEnabled?: boolean
@@ -219,7 +220,8 @@ export interface GitHubRepo {
   clearActiveIdForUser(ownerId: UserId): Promise<void>
 }
 
-export type StoredUpstreamRecord<TState = unknown> = CoreStoredUpstreamRecord<TState, UpstreamKind> & { catalogGeneration: number }
+/** `syncSourceId` is set only on rows a device gateway created from a sync source. */
+export type StoredUpstreamRecord<TState = unknown> = CoreStoredUpstreamRecord<TState, UpstreamKind> & { catalogGeneration: number; syncSourceId?: string }
 export type UpstreamMetadata = Pick<UpstreamRecord<unknown>,
   'ownerId' | 'name' | 'enabled' | 'sortOrder' | 'config' | 'flagOverrides' | 'disabledPublicModelIds' | 'proxyFallbackList'>
 
@@ -229,7 +231,8 @@ export interface UpstreamRepo {
    *  they must narrow themselves (usually via a provider-side assertion).
    *  Typed callers pin the shape, e.g. `getById<CodexUpstreamState>(id)`. */
   getById<TState = unknown>(id: UpstreamId): Promise<StoredUpstreamRecord<TState> | null>
-  /** Explicit whole-record replacement for creation and administrative import. */
+  /** Explicit whole-record replacement for creation and administrative import. Silently skips (writes nothing for) a
+   *  row that has `sync_source_id`: synced rows are owned by their sync source. */
   save(upstream: UpstreamRecord<unknown>): Promise<void>
   createIfAbsent(upstream: UpstreamRecord<unknown>): Promise<StoredUpstreamRecord | null>
   /** Explicit import CAS against the complete prior stored snapshot. Conflicts
@@ -241,6 +244,14 @@ export interface UpstreamRepo {
   deleteAll(): Promise<void>
   /** Cross-connection CAS; pure synchronous updater may replay boundedly. */
   saveState<TState>(id: UpstreamId, updater: (current: TState) => TState, target?: UpstreamWriteTarget): Promise<void>
+  /** Device sync: rows this source created, in display order. */
+  listSynced(sourceId: string): Promise<StoredUpstreamRecord[]>
+  /** Device sync: create or overwrite one row owned by `sourceId`. Keeps enabled, sort order and the proxy list. Both
+   * generations advance when provider or config changed; a changed owner advances the catalog generation through the
+   * existing database trigger only. A change to state or other metadata advances neither. Never touches a row the source does not own. */
+  applySynced(sourceId: string, input: SyncedUpstreamInput, now: string): Promise<SyncedUpstreamOutcome>
+  /** Device sync: delete this source's rows except `keepIds`. */
+  deleteSynced(sourceId: string, keepIds?: readonly string[]): Promise<void>
 }
 
 export interface UsageKeyMetadata {
@@ -612,6 +623,8 @@ export interface Repo {
   webSearchEngineUsage: WebSearchEngineUsageRepo
   keyAssignments: KeyAssignmentRepo
   observabilityShares: ObservabilityShareRepo
+  syncDevices: SyncDeviceRepo
+  syncSources: SyncSourceRepo
   deviceCodes: DeviceCodeRepo
   responsesItems: ResponsesItemsRepo
   proxies: ProxyRepo

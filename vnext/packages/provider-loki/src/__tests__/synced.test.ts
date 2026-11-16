@@ -31,6 +31,13 @@ test("Loki is syncable and its sync view withholds the pairing authority", () =>
   expect(lokiSyncState(central())).not.toHaveProperty("syncSecretHash")
 })
 
+test("a sync view omits credential and account when the central state has no pairing secret", () => {
+  const view = lokiProviderPlugin.syncView!(row(central({ syncSecretHash: "" })) as never)
+  expect(view.state).not.toHaveProperty("credential")
+  expect(view.state).not.toHaveProperty("account")
+  expect(JSON.stringify(view.state)).not.toContain("central-token")
+})
+
 test("a synced Loki upstream uses the stored credential without a pairing secret", async () => {
   const synced = row(lokiSyncState(central()))
   const bearers: string[] = []
