@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test"
-import { formatLokiMirrorDocument, parseLokiMirrorText } from "./loki-mirror"
+import { formatLokiMirrorDocument, parseLokiMirrorText, type LokiMirrorDocument } from "./loki-mirror"
 
-const doc = { version: 1, kind: "loki-mirror", gatewayOrigin: "https://central.example", upstreamId: "up_loki_central",
+const doc: LokiMirrorDocument = { version: 1, kind: "loki-mirror", gatewayOrigin: "https://central.example", upstreamId: "up_loki_central",
   profileId: "loki-df-v1", mirrorId: `lkmid_${"b".repeat(32)}`, mirrorSecret: `lkm_${"c".repeat(64)}` }
 
 test("issued documents format only for this gateway's HTTPS origin", () => {
