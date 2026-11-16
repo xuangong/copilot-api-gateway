@@ -3,7 +3,7 @@ import { Database } from "bun:sqlite"
 import { Hono } from "hono"
 import { BunSqliteRepo } from "@vibe-llm/platform-bun/src/bun-sqlite-repo.ts"
 import { __resetPlatformForTests, initRuntimeLocation, initEnv } from "@vibe-core/platform"
-import { addLokiMirror, readLokiState } from "@vibe-llm/provider-loki"
+import { addLokiMirror, newLokiMirrorState, readLokiState } from "@vibe-llm/provider-loki"
 import { initRepo } from "../src/repo/index"
 import { sessionAuthMiddleware } from "../src/control-plane/auth/session-auth"
 import { lokiManagementRouter, lokiMirrorRouter, lokiSyncRouter } from "../src/control-plane/loki/routes"
@@ -40,7 +40,7 @@ beforeEach(async () => {
   app.route("/api/loki", lokiMirrorRouter)
   app.use("*", sessionAuthMiddleware)
   app.route("/api/loki", lokiManagementRouter)
-  // Device-side pulls reach the central gateway through global fetch; route them into this app.
+  // Serves device-side pulls in later tests; they reach the central gateway through global fetch; route them into this app.
   globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => app.request(String(input), init)) as typeof fetch
 })
 
@@ -167,4 +167,83 @@ test("re-pairing keeps mirrors; disconnecting the assistant revokes them", async
   expect((await after.json() as { credential: { accessToken: string } }).credential.accessToken).toBe("central-token-2")
   expect((await request(`/upstreams/${p.upstreamId}/pair`, undefined, session, "DELETE")).status).toBe(200)
   expect((await pull(p.upstreamId, issued.document.mirrorSecret)).status).toBe(401)
+})
+
+const SECRET = `lkm_${"1".repeat(64)}`
+const MIRROR_ID = `lkmid_${"a".repeat(32)}`
+async function seedMirror(p: Pairing, extra: { lastPulledAt?: number } = {}) {
+  const secretHash = await digest(SECRET)
+  await repo.upstreams.saveState<unknown>(p.upstreamId, current => addLokiMirror(readLokiState(current),
+    { id: MIRROR_ID, label: "Seeded", secretHash, createdAt: 1, ...extra }))
+}
+
+test("the endpoint withholds a credential bound to a different account", async () => {
+  const p = await central()
+  await seedMirror(p)
+  await repo.upstreams.saveState<unknown>(p.upstreamId, current => {
+    const state = readLokiState(current)
+    return { ...state, credential: { ...state.credential!, account: { ...account, homeAccountId: "someone-else" } } }
+  })
+  const response = await pull(p.upstreamId, SECRET)
+  expect(response.status).toBe(503)
+  expect(await response.json()).toEqual({ error: { code: "credential_unavailable" } })
+})
+
+test("disabling the central upstream does not stop mirror pulls", async () => {
+  const p = await central()
+  await seedMirror(p)
+  const row = (await repo.upstreams.getById(p.upstreamId))!
+  await repo.upstreams.patchMetadata(row, current => ({ ...current, enabled: false }))
+  expect((await repo.upstreams.getById(p.upstreamId))!.enabled).toBe(false)
+  expect((await pull(p.upstreamId, SECRET)).status).toBe(200)
+})
+
+test("a mirror upstream cannot be paired or issue mirrors", async () => {
+  const p = await central()
+  const source = { kind: "mirror" as const, origin: "https://central.example", upstreamId: "up_central",
+    mirrorId: MIRROR_ID, mirrorSecret: SECRET }
+  await repo.upstreams.saveState<unknown>(p.upstreamId, () => newLokiMirrorState(source, undefined, Date.now()))
+  for (const method of ["POST", "DELETE"]) {
+    const response = await request(`/upstreams/${p.upstreamId}/pair`, method === "POST" ? {} : undefined, session, method)
+    expect(response.status).toBe(400)
+    expect(await response.json()).toEqual({ error: { code: "mirror_unsupported" } })
+  }
+  const issued = await issue(p.upstreamId)
+  expect(issued.status).toBe(400)
+  expect(await issued.json()).toEqual({ error: { code: "mirror_unsupported" } })
+})
+
+test("a mirror secret is not accepted by the sync endpoint", async () => {
+  const p = await central()
+  await seedMirror(p)
+  const response = await app.request(`https://gateway.example/api/loki/sync/${p.upstreamId}`, { headers: { authorization: `Bearer ${SECRET}` } })
+  expect(response.status).toBe(401)
+})
+
+test("a failing pull stamp write still returns the credential", async () => {
+  const p = await central()
+  await seedMirror(p)
+  const original = repo.upstreams.saveState
+  repo.upstreams.saveState = (() => Promise.reject(new Error("write failed"))) as typeof original
+  try { expect((await pull(p.upstreamId, SECRET)).status).toBe(200) }
+  finally { repo.upstreams.saveState = original }
+})
+
+test("issuing with a row from before a re-pair is rejected and stores nothing", async () => {
+  const p = await central()
+  const stale = (await repo.upstreams.getById(p.upstreamId))!
+  expect((await request(`/upstreams/${p.upstreamId}/pair`, {})).status).toBe(200)
+  const original = repo.upstreams.getById
+  let served = false
+  repo.upstreams.getById = ((id: Parameters<typeof original>[0]) => {
+    if (!served) { served = true; return Promise.resolve(stale) }
+    return original.call(repo.upstreams, id)
+  }) as typeof original
+  try {
+    const response = await issue(p.upstreamId)
+    expect(response.status).toBe(409)
+    expect(await response.json()).toEqual({ error: { code: "binding_replaced" } })
+  } finally { repo.upstreams.getById = original }
+  const listed = await request(`/upstreams/${p.upstreamId}/mirrors`, undefined, session, "GET")
+  expect((await listed.json() as { mirrors: unknown[] }).mirrors).toEqual([])
 })

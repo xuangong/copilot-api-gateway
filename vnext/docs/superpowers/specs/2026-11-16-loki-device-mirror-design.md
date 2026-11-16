@@ -109,6 +109,7 @@ each other's place.
 - `Authorization: Bearer lkm_<64 hex>`. No secret in the URL.
 - Checks: upstream exists and is `loki`; owner exists and is not disabled;
   SHA-256 of the secret equals some `mirrors[].secretHash`.
+- Disabling the central upstream (`enabled: false`) does not stop mirror pulls; it only stops central routing. Revoking a mirror or disconnecting the assistant stops pulls.
 - Returns 200 only for a credential with more than 60 seconds remaining:
 
 ```json

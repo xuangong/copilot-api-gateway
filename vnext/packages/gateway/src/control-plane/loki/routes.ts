@@ -106,11 +106,8 @@ lokiManagementRouter.patch("/upstreams/:id", async c => {
 
 for (const method of ["POST", "DELETE"] as const) lokiManagementRouter.on(method, "/upstreams/:id/pair", async c => {
   try {
-    const parsedId = upstreamId.safeParse(c.req.param("id"))
-    if (!parsedId.success) throw new LokiSyncError("upstream_not_found", 404)
+    const { row } = await ownedLoki(c.get("auth"), c.req.param("id"))
     const repo = getRepo()
-    const row = await loadOwned(c.get("auth"), () => repo.upstreams.getById(parsedId.data))
-    if (!row || row.provider !== "loki") throw new LokiSyncError("upstream_not_found", 404)
     const previous = currentState(row.state)
     if (previous?.source) throw new LokiSyncError("mirror_unsupported", 400)
     const { state, syncSecret } = await newBinding()
@@ -124,7 +121,7 @@ for (const method of ["POST", "DELETE"] as const) lokiManagementRouter.on(method
 
 lokiManagementRouter.get("/upstreams/:id/mirrors", async c => {
   try {
-    const { row, id } = await ownedLoki(c.get("auth"), c.req.param("id"))
+    const { row } = await ownedLoki(c.get("auth"), c.req.param("id"))
     return json({ mirrors: (currentState(row.state)?.mirrors ?? []).map(publicMirror) })
   } catch (error) { return safeError(error) }
 })
@@ -133,6 +130,8 @@ lokiManagementRouter.post("/upstreams/:id/mirrors", async c => {
   try {
     const { row, id } = await ownedLoki(c.get("auth"), c.req.param("id"))
     const origin = new URL(c.req.url)
+    // Self-hosted deployments behind a TLS-terminating proxy must preserve the original scheme
+    // (same requirement as the pairing gatewayOrigin).
     if (origin.protocol !== "https:") throw new LokiSyncError("https_required", 400)
     const parsed = mirrorBody.safeParse(await boundedJson(c.req.raw))
     if (!parsed.success) throw new LokiSyncError("invalid_request", 400)
@@ -147,8 +146,12 @@ lokiManagementRouter.delete("/upstreams/:id/mirrors/:mirrorId", async c => {
     const { row, id } = await ownedLoki(c.get("auth"), c.req.param("id"))
     const parsedMirror = mirrorId.safeParse(c.req.param("mirrorId"))
     if (!parsedMirror.success) throw new LokiSyncError("mirror_not_found", 404)
-    await getRepo().upstreams.saveState<unknown>(id, current => removeLokiMirror(readLokiState(current), parsedMirror.data), row)
-    const saved = await getRepo().upstreams.getById(id)
-    return json({ mirrors: (currentState(saved?.state)?.mirrors ?? []).map(publicMirror) })
+    let remaining: LokiState["mirrors"]
+    await getRepo().upstreams.saveState<unknown>(id, current => {
+      const next = removeLokiMirror(readLokiState(current), parsedMirror.data)
+      remaining = next.mirrors
+      return next
+    }, row)
+    return json({ mirrors: (remaining ?? []).map(publicMirror) })
   } catch (error) { return safeError(error) }
 })

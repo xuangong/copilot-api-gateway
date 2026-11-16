@@ -1,16 +1,16 @@
 import { Hono } from "hono"
-import { LOKI_MIN_CREDENTIAL_TTL_MS, LokiSyncError, readLokiState, touchLokiMirror } from "@vibe-llm/provider-loki"
+import { LOKI_MIN_CREDENTIAL_TTL_MS, LokiSyncError, readLokiState, touchLokiMirror, usableLokiCredential } from "@vibe-llm/provider-loki"
 import type { Env } from "../../app"
 import { getRepo } from "../../repo"
 import { digest, json, ownerId, safeError, upstreamId } from "./common"
 
+const invalid = () => new LokiSyncError("invalid_mirror", 401)
 const PULL_STAMP_INTERVAL_MS = 10 * 60 * 1000
 
 export const lokiMirrorRouter = new Hono<{ Bindings: Env }>()
 
 lokiMirrorRouter.get("/mirror/:id", async c => {
   try {
-    const invalid = () => new LokiSyncError("invalid_mirror", 401)
     const raw = c.req.header("authorization")?.match(/^Bearer (lkm_[a-f0-9]{64})$/)?.[1]
     const parsedId = upstreamId.safeParse(c.req.param("id"))
     if (!raw || !parsedId.success) throw invalid()
@@ -25,8 +25,9 @@ lokiMirrorRouter.get("/mirror/:id", async c => {
     const owner = await repo.users.getById(ownerId.parse(row.ownerId))
     if (!owner || owner.disabled) throw invalid()
     const now = Date.now()
-    const credential = state.credential
-    if (!credential || credential.expiresAt <= now + LOKI_MIN_CREDENTIAL_TTL_MS) throw new LokiSyncError("credential_unavailable", 503)
+    // Release only what central inference would use: paired, bound to the account, with margin.
+    const credential = state.syncSecretHash ? usableLokiCredential(state, now + LOKI_MIN_CREDENTIAL_TTL_MS) : undefined
+    if (!credential) throw new LokiSyncError("credential_unavailable", 503)
     if (mirror.lastPulledAt === undefined || now - mirror.lastPulledAt >= PULL_STAMP_INTERVAL_MS) {
       await repo.upstreams.saveState<unknown>(parsedId.data, current => touchLokiMirror(readLokiState(current), mirror.id, now), row)
         .catch(() => { /* The stamp is advisory; the pull still succeeds. */ })
