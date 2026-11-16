@@ -65,7 +65,8 @@ test("callers without a usable token join one pull; a later caller starts a new 
   const gate = deferred()
   central = () => gate.promise
   const calls = [provider.getLiveModels(), provider.getLiveModels(), provider.getLiveModels()]
-  await Promise.resolve()
+  await new Promise(r => setTimeout(r, 0))
+  expect(pulls).toBe(1)
   gate.resolve(new Response(null, { status: 502 }))
   const settled = await Promise.allSettled(calls)
   expect(settled.map(r => r.status)).toEqual(["rejected", "rejected", "rejected"])

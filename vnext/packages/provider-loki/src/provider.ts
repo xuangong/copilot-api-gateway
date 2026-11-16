@@ -92,11 +92,10 @@ export class LokiProvider implements LlmModelProvider {
       throw new Error("loki_credential_unavailable")
     }
     const pull = this.joinPull(key, source, save)
-    if (current) {
-      // Stale-while-revalidate: the caller never waits for a refresh it can do without.
-      (this.options.background ?? (work => { void work }))(pull)
-      return current
-    }
+    // Keep the pull alive past this request, including when the caller waits for it.
+    ;(this.options.background ?? (work => { void work }))(pull)
+    // Stale-while-revalidate: the caller never waits for a refresh it can do without.
+    if (current) return current
     const waitMs = this.options.waitMs ?? LOKI_MIRROR_WAIT_MS
     let timer: ReturnType<typeof setTimeout> | undefined
     const stored = await Promise.race([pull,
@@ -112,13 +111,14 @@ export class LokiProvider implements LlmModelProvider {
     const existing = mirrorPulls.get(key)
     if (existing && this.now() - existing.startedAt <= (this.options.waitMs ?? LOKI_MIRROR_WAIT_MS)) return existing.promise
     const entry = { startedAt: this.now(), promise: undefined as unknown as Promise<boolean> }
-    entry.promise = this.pullMirror(key, source, save).finally(() => { if (mirrorPulls.get(key) === entry) mirrorPulls.delete(key) })
+    entry.promise = this.pullMirror(key, source, save, () => mirrorPulls.get(key) === entry).finally(() => { if (mirrorPulls.get(key) === entry) mirrorPulls.delete(key) })
     mirrorPulls.set(key, entry)
     return entry.promise
   }
 
   /** Resolves true when a credential was stored; never rejects. */
-  private async pullMirror(key: string, source: LokiMirrorSource, save: NonNullable<LokiProviderOptions["save"]>): Promise<boolean> {
+  private async pullMirror(key: string, source: LokiMirrorSource, save: NonNullable<LokiProviderOptions["save"]>,
+    isCurrent: () => boolean): Promise<boolean> {
     let stored = false
     try {
       const result = await pullLokiMirror(source, this.options.mirrorFetcher ?? directFetcher, this.now())
@@ -127,6 +127,8 @@ export class LokiProvider implements LlmModelProvider {
         stored = result.kind === "ok"
       }
     } catch { /* A failed pull or write backs off the same way. */ }
+    // A replaced stale pull settling late must not overwrite the current backoff.
+    if (!isCurrent()) return stored
     if (stored) mirrorRetryAt.delete(key)
     else mirrorRetryAt.set(key, this.now() + LOKI_MIRROR_RETRY_MS)
     return stored
