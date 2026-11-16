@@ -4,7 +4,7 @@ import { LokiSyncError, LOKI_PROFILE_ID, lokiBaseUrl, type LokiState } from "@vi
 import type { Env } from "../../app"
 import { getRepo } from "../../repo"
 import type { FullAuthCtx } from "../../shared/credential-auth"
-import type { SessionToken } from "../../repo/branded-ids"
+import { requireBrowserSession } from "../shared/session-guard"
 import { loadOwned } from "../shared/ownership"
 import { serializeUpstream } from "../upstreams/public-dto"
 import { boundedJson, json, newBinding, safeError, upstreamId } from "./common"
@@ -31,28 +31,7 @@ async function ownedLoki(auth: FullAuthCtx, rawId: string) {
   if (!row || row.provider !== "loki") throw new LokiSyncError("upstream_not_found", 404)
   return { row, id: parsedId.data }
 }
-lokiManagementRouter.use("*", async (c, next) => {
-  const auth = c.get("auth")
-  if (auth?.authKind !== "session" || !auth.userId || auth.apiKeyId) return json({ error: { code: "session_required" } }, 401)
-  const url = new URL(c.req.url)
-  const headers = c.req.raw.headers
-  const authorization = headers.get("authorization")
-  const token = authorization !== null ? /^Bearer (ses_[^\s]+)$/i.exec(authorization)?.[1]
-    : /(?:^|;\s*)session_token=(ses_[^\s;]+)/.exec(headers.get("cookie") ?? "")?.[1]
-  if (!token || token.length > 4096 || url.search || headers.has("x-api-key") || headers.has("x-goog-api-key")) {
-    return json({ error: { code: "session_required" } }, 401)
-  }
-  const origin = headers.get("origin")
-  if ((origin !== null && origin !== url.origin) || (authorization === null && origin === null)) {
-    return json({ error: { code: "origin_not_allowed" } }, 403)
-  }
-  // Legacy user keys share authKind=session; require an actual, current session record.
-  const session = await getRepo().sessions.findByToken(token as SessionToken)
-  if (!session || session.userId !== auth.userId || !(Date.parse(session.expiresAt) > Date.now())) {
-    return json({ error: { code: "session_required" } }, 401)
-  }
-  await next()
-})
+lokiManagementRouter.use("*", requireBrowserSession)
 
 lokiManagementRouter.post("/upstreams", async c => {
   try {
