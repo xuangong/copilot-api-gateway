@@ -1,5 +1,4 @@
 import { CodexQuotaPanel } from "./CodexQuotaPanel"
-import { lokiRowStatusKey } from "./loki-status"
 import { useId, useState, type DragEvent, type KeyboardEvent, type PointerEvent } from "react"
 import { ChevronDown, ChevronUp, GripVertical } from "lucide-react"
 import { ProviderAvatar } from "./KindChip"
@@ -142,8 +141,7 @@ export function UpstreamRow({
   }[credential.health] : null
 
   const lokiTone: HealthTone | null = u.provider === "loki" && u.lokiStatus
-    ? u.lokiStatus.tokenStatus === "expired" || u.lokiStatus.errorCode === "mirror_revoked"
-      || u.lokiStatus.errorCode === "account_mismatch" ? "danger" : LOKI_TONE[u.lokiStatus.assistantStatus]
+    ? u.lokiStatus.tokenStatus === "expired" ? "danger" : LOKI_TONE[u.lokiStatus.assistantStatus]
     : null
 
   return (
@@ -182,7 +180,10 @@ export function UpstreamRow({
             ) : null}
             {u.provider === "loki" && u.lokiStatus ? <div className="text-xs text-fg-muted mt-1">
               <span className={lokiTone ? TONE_TEXT[lokiTone] : undefined}>
-                {t(lokiRowStatusKey(u.lokiStatus, u.lokiSource))}
+                {t(u.lokiStatus.tokenStatus === "expired" ? "dash.lokiExpired" : {
+                  waiting: "dash.lokiWaiting", authorized: "dash.lokiAuthorized",
+                  interaction_required: "dash.lokiInteractionRequired", failed: "dash.lokiFailed",
+                }[u.lokiStatus.assistantStatus])}
               </span>
               {u.lokiStatus.expiresAt ? ` · ${t("dash.codexExpiresAt", { at: new Date(u.lokiStatus.expiresAt).toLocaleString() })}` : ""}
             </div> : null}

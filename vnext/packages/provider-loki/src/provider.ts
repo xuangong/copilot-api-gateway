@@ -7,8 +7,7 @@ import { LOKI_HEADERS, LOKI_PROFILE_ID } from "./profile"
 import { lokiBaseUrl } from "./config"
 import { isLokiEndpoint, lokiContextWindow, lokiModelEndpoints, LOKI_PATHS, normalizeLokiModels } from "./models"
 import { lokiModelPricing } from "./pricing"
-import { applyLokiMirrorPull, readLokiState, usableLokiCredential, type LokiCredential, type LokiMirrorSource, type LokiState } from "./state"
-import { pullLokiMirror } from "./mirror"
+import { readLokiState, usableLokiCredential, type LokiCredential } from "./state"
 import { LOKI_CONVERSATION_HEADERS, lokiConversationId } from "./conversation"
 import { lokiMessagesBetaHeader, normalizeLokiMessages } from "./messages"
 import { lokiRequestShape } from "./diagnostics"
@@ -17,33 +16,8 @@ import { lokiMessagesRejection } from "./rejections"
 /** How long a live refresh keeps a name Loki has stopped listing. */
 const LOKI_MISSING_RETENTION_MS = 24 * 60 * 60 * 1000
 
-const LOKI_MIRROR_REFRESH_MARGIN_MS = 5 * 60 * 1000
-const LOKI_MIRROR_RETRY_MS = 30 * 1000
-const LOKI_MIRROR_WAIT_MS = 15 * 1000
-/**
- * Single-flight and failure backoff, keyed by upstream and mirror. These maps are
- * per process on Bun and per isolate on Workers; another process or isolate may
- * pull concurrently, which is safe because the write is CAS-fenced and
- * applyLokiMirrorPull re-checks the source. An entry older than the wait
- * deadline is replaced, since a pull tied to a cancelled request may never settle.
- */
-const isNotNewer = (known: LokiCredential | undefined, next: LokiCredential) => !!known
-  && known.account.homeAccountId === next.account.homeAccountId && known.account.tenantId === next.account.tenantId
-  && next.expiresAt <= known.expiresAt
-const mirrorPulls = new Map<string, { promise: Promise<boolean>; startedAt: number }>()
-const mirrorRetryAt = new Map<string, number>()
-export function __resetLokiMirrorPullsForTests(): void { mirrorPulls.clear(); mirrorRetryAt.clear() }
-
 export interface LokiProviderOptions {
-  /** Atomic state write for this upstream; mirror pulls are not persisted without it. */
-  save?: (updater: (current: unknown) => unknown) => Promise<void>
-  /** Fetcher for the central gateway; defaults to a direct fetch, never the upstream's proxy chain. */
-  mirrorFetcher?: Fetcher
   now?: () => number
-  /** Keeps a background refresh alive after the request ends (the platform's waitUntil). */
-  background?: (work: Promise<unknown>) => void
-  /** Longest wait for a pull when no usable token exists; default 15 s. */
-  waitMs?: number
 }
 
 export class LokiProvider implements LlmModelProvider {
@@ -78,67 +52,9 @@ export class LokiProvider implements LlmModelProvider {
 
   private async credential(forInference = false): Promise<LokiCredential> {
     const state = readLokiState((await this.boundRow(forInference)).state)
-    if (state.source) return this.mirrorCredential(state, state.source, forInference)
     const credential = state.syncSecretHash ? usableLokiCredential(state, this.now()) : undefined
     if (!credential) throw new Error("loki_credential_unavailable")
     return credential
-  }
-
-  private async mirrorCredential(state: LokiState, source: LokiMirrorSource, forInference: boolean): Promise<LokiCredential> {
-    const current = usableLokiCredential(state, this.now())
-    if (current && current.expiresAt - this.now() > LOKI_MIRROR_REFRESH_MARGIN_MS) return current
-    const save = this.options.save
-    const stopped = state.errorCode === "mirror_revoked" || state.errorCode === "account_mismatch"
-    const key = `${this.expected.id}:${source.mirrorId}`
-    if (stopped || !save || (mirrorRetryAt.get(key) ?? 0) > this.now()) {
-      if (current) return current
-      throw new Error("loki_credential_unavailable")
-    }
-    const pull = this.joinPull(key, source, save, current)
-    // Keep the pull alive past this request, including when the caller waits for it.
-    ;(this.options.background ?? (work => { void work }))(pull)
-    // Stale-while-revalidate: the caller never waits for a refresh it can do without.
-    if (current) return current
-    const waitMs = this.options.waitMs ?? LOKI_MIRROR_WAIT_MS
-    let timer: ReturnType<typeof setTimeout> | undefined
-    const stored = await Promise.race([pull,
-      new Promise<boolean>(resolve => { timer = setTimeout(() => resolve(false), waitMs) })]).finally(() => clearTimeout(timer))
-    if (stored) {
-      const fresh = usableLokiCredential(readLokiState((await this.boundRow(forInference)).state), this.now())
-      if (fresh) return fresh
-    }
-    throw new Error("loki_credential_unavailable")
-  }
-
-  private joinPull(key: string, source: LokiMirrorSource, save: NonNullable<LokiProviderOptions["save"]>, known: LokiCredential | undefined): Promise<boolean> {
-    const existing = mirrorPulls.get(key)
-    if (existing && this.now() - existing.startedAt <= (this.options.waitMs ?? LOKI_MIRROR_WAIT_MS)) return existing.promise
-    const entry = { startedAt: this.now(), promise: undefined as unknown as Promise<boolean> }
-    entry.promise = this.pullMirror(key, source, save, known, () => mirrorPulls.get(key) === entry).finally(() => { if (mirrorPulls.get(key) === entry) mirrorPulls.delete(key) })
-    mirrorPulls.set(key, entry)
-    return entry.promise
-  }
-
-  /** Resolves true when a credential was stored; never rejects. */
-  private async pullMirror(key: string, source: LokiMirrorSource, save: NonNullable<LokiProviderOptions["save"]>,
-    known: LokiCredential | undefined, isCurrent: () => boolean): Promise<boolean> {
-    let stored = false
-    try {
-      const result = await pullLokiMirror(source, this.options.mirrorFetcher ?? directFetcher, this.now())
-      if (result.kind === "revoked" || (result.kind === "ok" && !isNotNewer(known, result.credential))) {
-        await save(current => applyLokiMirrorPull(readLokiState(current), source, result, this.now()))
-        stored = result.kind === "ok"
-      }
-      // A token that is not newer is "nothing to store": back off like a failure, without a write.
-      if (result.kind !== "ok") {
-        console.warn("[loki.mirror_pull]", JSON.stringify({ upstreamId: this.expected.id, outcome: result.kind, status: result.status }))
-      }
-    } catch { /* A failed pull or write backs off the same way. */ }
-    // A replaced stale pull settling late must not overwrite the current backoff.
-    if (!isCurrent()) return stored
-    if (stored) mirrorRetryAt.delete(key)
-    else mirrorRetryAt.set(key, this.now() + LOKI_MIRROR_RETRY_MS)
-    return stored
   }
 
   async getModels(): Promise<ProviderModelsResponse> {

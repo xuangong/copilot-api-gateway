@@ -5,9 +5,7 @@ import { useT } from "../../state/i18n"
 import { Button } from "../../ui/button"
 import { Notice } from "../../ui/notice"
 import { Field, FormHeading } from "./form/Field"
-import { mirrorImportErrorKey, settingsError } from "./loki-errors"
-import { LokiMirrorsSection } from "./LokiMirrorsSection"
-import { parseLokiMirrorText } from "./loki-mirror"
+import { settingsError } from "./loki-errors"
 import { formatLokiPairing } from "./loki-pairing"
 
 interface Props { row?: UpstreamRecord; onChanged: () => void; onClose: () => void }
@@ -26,12 +24,6 @@ export function LokiPairingPanel({ row, onChanged, onClose }: Props) {
   const [error, setError] = useState("")
   const [copied, setCopied] = useState(false)
   const secureOrigin = window.location.protocol === "https:"
-  const [isMirror, setIsMirror] = useState(row?.lokiSource?.kind === "mirror")
-  const [source, setSource] = useState<"pairing" | "mirror">(secureOrigin ? "pairing" : "mirror")
-  const [mirrorOrigin, setMirrorOrigin] = useState(row?.lokiSource?.origin ?? "")
-  const [mirrorText, setMirrorText] = useState("")
-  const [notice, setNotice] = useState("")
-  const mirrorError = (error: unknown) => t(mirrorImportErrorKey(settingsError(error)))
   const errorMessage = (error: unknown, pairing = false) => t(settingsError(error) === "invalid_endpoint"
     ? "dash.lokiEndpointInvalid" : pairing ? "dash.lokiPairError" : "dash.lokiSettingsError")
 
@@ -74,39 +66,12 @@ export function LokiPairingPanel({ row, onChanged, onClose }: Props) {
     finally { setBusy(false) }
   }
 
-  const importMirror = async () => {
-    const parsedDoc = parseLokiMirrorText(mirrorText)
-    if (!parsedDoc) { setError(t("dash.lokiMirrorDocumentInvalid")); return }
-    setBusy(true); setError(""); setNotice("")
-    try {
-      const result = await api<{ upstream: UpstreamRecord; warning?: string }>(id
-        ? `/api/loki/upstreams/${encodeURIComponent(id)}/mirror-source` : "/api/loki/upstreams",
-      { method: id ? "PUT" : "POST", body: id ? { mirror: parsedDoc }
-        : { name, baseUrl: baseUrl.trim(), mirror: parsedDoc } })
-      setId(result.upstream.id); setIsMirror(true); setMirrorOrigin(parsedDoc.gatewayOrigin); setMirrorText("")
-      setNotice(t(result.warning === "credential_unavailable" ? "dash.lokiMirrorPending" : "dash.lokiMirrorImported"))
-      onChanged()
-    } catch (error) { setError(mirrorError(error)) }
-    finally { setBusy(false) }
-  }
-  const mirrorInput = (inputId?: string, describedBy?: string) => <textarea id={inputId} value={mirrorText} rows={8} spellCheck={false}
-    className="w-full font-mono text-xs" aria-describedby={describedBy}
-    aria-label={inputId ? undefined : t("dash.lokiMirrorDocument")} placeholder={'{ "kind": "loki-mirror", … }'}
-    onChange={event => { setMirrorText(event.target.value); setError("") }} disabled={busy} />
-
   return <section className="space-y-3 rounded-lg border border-border bg-panel p-4" aria-labelledby={titleId}>
     <div className="flex items-center justify-between gap-3">
       <FormHeading id={titleId} className="text-body font-medium text-fg">{t("dash.lokiSettingsTitle")}</FormHeading>
       <Button variant="ghost" size="sm" disabled={busy} onClick={onClose}>{t("dash.closeBtn")}</Button>
     </div>
-    <form className="space-y-3" onSubmit={event => { event.preventDefault(); void (id ? save() : source === "mirror" ? importMirror() : pair()) }}>
-      {!id ? <fieldset className="flex flex-wrap gap-4 text-body">
-        <legend className="sr-only">{t("dash.lokiSource")}</legend>
-        <label><input type="radio" name="loki-source" checked={source === "pairing"} disabled={busy || !secureOrigin}
-          onChange={() => { setSource("pairing"); setMirrorText("") }} /> {t("dash.lokiSourcePairing")}</label>
-        <label><input type="radio" name="loki-source" checked={source === "mirror"} disabled={busy}
-          onChange={() => { setSource("mirror"); setMirrorText("") }} /> {t("dash.lokiSourceMirror")}</label>
-      </fieldset> : null}
+    <form className="space-y-3" onSubmit={event => { event.preventDefault(); void (id ? save() : pair()) }}>
       {!id && !secureOrigin ? <Notice tone="warn" role="status">{t("dash.lokiHttpsRequired")}</Notice> : null}
       {!id ? <Field label={t("dash.lokiName")}>
         {({ id: inputId }) => (
@@ -122,34 +87,22 @@ export function LokiPairingPanel({ row, onChanged, onClose }: Props) {
           </div>
         )}
       </Field>
-      {!id && source === "mirror" ? <Field label={t("dash.lokiMirrorDocument")} hint={t("dash.lokiMirrorPasteHint")}>
-        {({ id: inputId, describedBy }) => mirrorInput(inputId, describedBy)}
-      </Field> : null}
       <Button type="submit" variant="primary" size="sm"
-        disabled={busy || (id ? baseUrl === savedBaseUrl
-          : !name.trim() || (source === "mirror" ? !mirrorText.trim() : !secureOrigin))}>
+        disabled={busy || (id ? baseUrl === savedBaseUrl : !name.trim() || !secureOrigin)}>
         {busy ? t("dash.savingShort") : t(id ? "dash.save" : "dash.addLoki")}
       </Button>
       {saved ? <p role="status" className="text-xs text-fg-subtle">{t("dash.lokiSettingsSaved")}</p> : null}
     </form>
-    {isMirror ? <div className="space-y-2 border-t border-border pt-3">
-      <FormHeading offset={1} className="text-body font-medium text-fg">{t("dash.lokiMirrorSourceTitle")}</FormHeading>
-      <p className="text-body text-fg-muted">{t("dash.lokiMirrorSourceFrom", { origin: mirrorOrigin })}</p>
-      {mirrorInput()}
-      <Button variant="primary" size="sm" disabled={busy || !mirrorText.trim()} onClick={importMirror}>{t("dash.lokiMirrorReimport")}</Button>
-    </div> : !id && source === "mirror" ? null : <>
-      {id ? <FormHeading offset={1} className="border-t border-border pt-3 text-body font-medium text-fg">{t("dash.lokiPairTitle")}</FormHeading> : null}
-      <p className="text-body text-fg-muted">{t("dash.lokiPairDescription")}</p>
-      {id ? <p className="text-xs text-fg-subtle">{t("dash.lokiReplaceHint")}</p> : null}
-      {!secureOrigin ? <Notice tone="warn" role="status">{t("dash.lokiHttpsRequired")}</Notice> : null}
-      {id ? <div className="flex flex-wrap gap-2">
-        <Button variant="primary" size="sm" disabled={busy || !secureOrigin || !name.trim()} onClick={pair}>
-          {busy ? "…" : t("dash.lokiNewPairing")}
-        </Button>
-        <Button variant="ghost" size="sm" disabled={busy} onClick={revoke}>{t("dash.lokiRevoke")}</Button>
-      </div> : null}
-    </>}
-    {notice ? <p role="status" className="text-xs text-fg-subtle">{notice}</p> : null}
+    {id ? <FormHeading offset={1} className="border-t border-border pt-3 text-body font-medium text-fg">{t("dash.lokiPairTitle")}</FormHeading> : null}
+    <p className="text-body text-fg-muted">{t("dash.lokiPairDescription")}</p>
+    {id ? <p className="text-xs text-fg-subtle">{t("dash.lokiReplaceHint")}</p> : null}
+    {!secureOrigin ? <Notice tone="warn" role="status">{t("dash.lokiHttpsRequired")}</Notice> : null}
+    {id ? <div className="flex flex-wrap gap-2">
+      <Button variant="primary" size="sm" disabled={busy || !secureOrigin || !name.trim()} onClick={pair}>
+        {busy ? "…" : t("dash.lokiNewPairing")}
+      </Button>
+      <Button variant="ghost" size="sm" disabled={busy} onClick={revoke}>{t("dash.lokiRevoke")}</Button>
+    </div> : null}
     {error ? <Notice tone="danger">{error}</Notice> : null}
     {document ? <div className="space-y-2">
       <p className="text-xs text-fg-subtle">{t("dash.lokiPairSecretHint")}</p>
@@ -172,6 +125,5 @@ export function LokiPairingPanel({ row, onChanged, onClose }: Props) {
         }}>{t(copied ? "dash.lokiCopied" : "dash.lokiCopy")}</Button>
       </div>
     </div> : null}
-    {id && !isMirror ? <LokiMirrorsSection upstreamId={id} /> : null}
   </section>
 }

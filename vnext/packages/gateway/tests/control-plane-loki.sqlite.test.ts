@@ -10,6 +10,7 @@ import type { SessionToken, UserId } from "../src/repo/branded-ids"
 import { app as gateway } from "../src/app"
 import { exportConfig, parseConfigBundle } from "../src/control-plane/lib/import-export"
 import { LokiProvider } from "@vibe-llm/provider-loki"
+import { serializeUpstream } from "../src/control-plane/upstreams/public-dto"
 
 const owner = "loki-owner" as UserId
 const other = "loki-other" as UserId
@@ -277,4 +278,17 @@ test("settings edits preserve credentials, fence the old catalog, strip legacy s
   expect(createdBody.upstream.config).not.toHaveProperty("staticModels")
   expect((await repo.upstreams.getById(createdBody.upstream.id))?.config).not.toHaveProperty("staticModels")
   expect((await request("/upstreams", { name: "Static from creation", staticModels: ["gpt-6-luna"] })).status).toBe(400)
+})
+
+test("rows written by the removed device mirror still serialize and drop the mirror fields", async () => {
+  await repo.upstreams.save({
+    id: "up_loki_legacy_mirror", ownerId: owner, provider: "loki", name: "Legacy", enabled: true, sortOrder: 0,
+    config: { profileId: "loki-df-v1" }, flagOverrides: {}, disabledPublicModelIds: [], proxyFallbackList: [],
+    createdAt: stamp, updatedAt: stamp,
+    state: { version: 1, profileId: "loki-df-v1", generation: "g", syncSecretHash: "h", revision: 0, assistantStatus: "waiting",
+      mirrors: [{ id: `lkmid_${"a".repeat(32)}`, label: "old", secretHash: "b".repeat(64), createdAt: 1 }], errorCode: "mirror_revoked" },
+  })
+  const dto = serializeUpstream((await repo.upstreams.getById("up_loki_legacy_mirror" as never))!)
+  expect(dto).not.toHaveProperty("lokiSource")
+  expect(dto.lokiStatus).toEqual({ assistantStatus: "waiting", tokenStatus: "missing", expiresAt: null, updatedAt: null })
 })

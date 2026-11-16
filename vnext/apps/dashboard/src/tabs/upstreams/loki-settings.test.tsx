@@ -27,40 +27,16 @@ function withWindow<T>(protocol: string, run: () => T): T {
   }
 }
 
-test("a paired Loki upstream shows device mirror management", () => {
+test("a paired Loki upstream offers pairing controls and no device mirrors", () => {
   const html = withWindow("https:", () => renderToStaticMarkup(<LokiPairingPanel row={row} onChanged={noop} onClose={noop} />))
-  expect(html).toContain("dash.lokiMirrorsTitle")
-  expect(html).toContain("dash.lokiMirrorIssue")
+  expect(html).toContain("dash.lokiNewPairing")
+  expect(html).toContain("dash.lokiRevoke")
+  expect(html).not.toContain("dash.lokiMirror")
 })
 
-test("a mirror upstream shows its source and re-import, not pairing or mirror issuance", () => {
-  const mirrorRow: UpstreamRecord = { ...row, lokiSource: { kind: "mirror", origin: "https://central.example" } }
-  const html = withWindow("http:", () => renderToStaticMarkup(<LokiPairingPanel row={mirrorRow} onChanged={noop} onClose={noop} />))
-  expect(html).toContain("dash.lokiMirrorSourceFrom")
-  expect(html).toContain("dash.lokiMirrorReimport")
-  expect(html).not.toContain("dash.lokiNewPairing")
-  expect(html).not.toContain("dash.lokiMirrorsTitle")
-})
-
-test("creating Loki over plain HTTP offers only the mirror source", () => {
+test("creating Loki over plain HTTP explains that pairing needs HTTPS and offers no other source", () => {
   const html = withWindow("http:", () => renderToStaticMarkup(<LokiPairingPanel onChanged={noop} onClose={noop} />))
-  expect(html).toContain("dash.lokiSourceMirror")
-  expect(html).toContain("dash.lokiMirrorDocument")
   expect(html).toContain("dash.lokiHttpsRequired")
-  expect(html).not.toContain("dash.lokiPairDescription")
-  const radios = html.match(/<input[^>]*type="radio"[^>]*>/g) ?? []
-  expect(radios).toHaveLength(2)
-  expect(radios[0]).toContain("disabled")
-  expect(radios[0]).not.toContain("checked")
-  expect(radios[1]).toContain("checked")
-  expect(radios[1]).not.toContain("disabled")
-})
-
-test("rows describe a revoked mirror", () => {
-  const revoked: UpstreamRecord = { ...row, lokiSource: { kind: "mirror", origin: "https://central.example" },
-    lokiStatus: { assistantStatus: "authorized", tokenStatus: "valid", expiresAt: null, updatedAt: null, errorCode: "mirror_revoked" } }
-  const html = renderToStaticMarkup(<ToastProvider><UpstreamRow row={revoked} index={0} total={1} busy={false} models={[]}
-    onToggleEnabled={noop} onReorder={noop} onEdit={noop} onDuplicate={noop} onRefreshModels={noop}
-    onRefreshCredential={noop} onReauth={noop} onDelete={noop} /></ToastProvider>)
-  expect(html).toContain("dash.lokiMirrorRevoked")
+  expect(html).not.toContain('type="radio"')
+  expect(html).not.toContain("dash.lokiMirrorDocument")
 })

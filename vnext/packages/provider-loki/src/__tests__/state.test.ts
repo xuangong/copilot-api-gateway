@@ -79,3 +79,18 @@ describe("Loki synchronization state", () => {
     }
   })
 })
+
+test("stored state from the removed device mirror reads without error and drops the mirror fields", () => {
+  const legacy = {
+    ...empty(),
+    mirrors: [{ id: "lkmid_x", label: "old", secretHash: "z", createdAt: 1, unexpected: true }],
+    source: { kind: "mirror", origin: "http://not-https.example", mirrorSecret: "junk" },
+    errorCode: "mirror_revoked",
+  }
+  const state = readLokiState(legacy)
+  expect(state).not.toHaveProperty("mirrors")
+  expect(state).not.toHaveProperty("source")
+  expect(state.errorCode).toBeUndefined()
+  expect(readLokiState({ ...empty(), errorCode: "account_mismatch" }).errorCode).toBeUndefined()
+  expect(readLokiState({ ...empty(), errorCode: "broker_unavailable" }).errorCode).toBe("broker_unavailable")
+})

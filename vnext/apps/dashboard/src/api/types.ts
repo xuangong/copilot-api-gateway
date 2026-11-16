@@ -52,9 +52,7 @@ export interface UpstreamRecord {
     tokenStatus: "missing" | "valid" | "expired"
     expiresAt: number | null
     updatedAt: number | null
-    errorCode?: string
   }
-  lokiSource?: { kind: "mirror"; origin: string }
   credentialStatus?: {
     health: "active" | "access_rejected" | "session_terminated" | "refresh_failed" | "credential_expired"
     renewable: boolean

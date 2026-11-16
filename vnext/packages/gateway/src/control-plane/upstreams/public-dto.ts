@@ -12,7 +12,6 @@ export type PublicUpstream = Pick<UpstreamRecord<unknown>,
     tokenExpiredAt?: string
     credentialStatus?: PublicCodexCredentialStatus
     lokiStatus?: ReturnType<typeof publicLokiStatus>
-    lokiSource?: { kind: "mirror"; origin: string }
   }
 
 export interface PublicCodexCredentialStatus {
@@ -147,7 +146,6 @@ export function serializeUpstream(upstream: UpstreamRecord<unknown>): PublicUpst
     try {
       const state = readLokiState(upstream.state)
       dto.lokiStatus = publicLokiStatus(state)
-      if (state.source) dto.lokiSource = { kind: "mirror", origin: state.source.origin }
     } catch { /* Invalid private state grants no public data. */ }
   }
   return dto
