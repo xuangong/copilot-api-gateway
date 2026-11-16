@@ -1,7 +1,9 @@
 import { Hono } from "hono"
 import { z } from "zod"
-import { addLokiMirror, LokiSyncError, LOKI_PROFILE_ID, lokiBaseUrl, lokiMirrorDocument, normalizeLokiStaticModels,
-  readLokiState, removeLokiMirror, type LokiState } from "@vibe-llm/provider-loki"
+import { directFetcher } from "@vibe-core/upstream"
+import { addLokiMirror, LokiSyncError, LOKI_PROFILE_ID, lokiBaseUrl, lokiMirrorDocument, newLokiMirrorState,
+  normalizeLokiStaticModels, parseLokiMirrorDocument, pullLokiMirror, readLokiState, removeLokiMirror,
+  type LokiMirrorSource, type LokiState } from "@vibe-llm/provider-loki"
 import type { Env } from "../../app"
 import { getRepo } from "../../repo"
 import type { FullAuthCtx } from "../../shared/credential-auth"
@@ -16,7 +18,9 @@ export const lokiManagementRouter = new Hono<{ Bindings: Env; Variables: { auth:
 
 const endpoint = z.string().max(2048)
 const staticModels = z.array(z.string()).max(256).optional()
-const createBody = z.object({ name: z.string().trim().min(1).max(120), baseUrl: endpoint.optional(), staticModels }).strict()
+const createBody = z.object({ name: z.string().trim().min(1).max(120), baseUrl: endpoint.optional(), staticModels,
+  mirror: z.unknown().optional() }).strict()
+const mirrorSourceBody = z.object({ mirror: z.unknown() }).strict()
 const settingsBody = z.object({ baseUrl: endpoint, staticModels }).strict()
 function parseStaticModels(value: unknown): string[] {
   try { return normalizeLokiStaticModels(value) } catch { throw new LokiSyncError("invalid_static_models", 400) }
@@ -37,6 +41,15 @@ async function ownedLoki(auth: FullAuthCtx, rawId: string) {
   const row = await loadOwned(auth, () => getRepo().upstreams.getById(parsedId.data))
   if (!row || row.provider !== "loki") throw new LokiSyncError("upstream_not_found", 404)
   return { row, id: parsedId.data }
+}
+/** Validates a document and pulls once. A revoked secret is a client error; an empty central is not. */
+async function mirrorStateFrom(document: unknown): Promise<{ state: LokiState; warning?: "credential_unavailable" }> {
+  const source: LokiMirrorSource = parseLokiMirrorDocument(document)
+  const now = Date.now()
+  const pull = await pullLokiMirror(source, directFetcher, now)
+  if (pull.kind === "revoked") throw new LokiSyncError("invalid_mirror", 400)
+  return pull.kind === "ok" ? { state: newLokiMirrorState(source, pull.credential, now) }
+    : { state: newLokiMirrorState(source, undefined, now), warning: "credential_unavailable" }
 }
 const currentState = (state: unknown): LokiState | undefined => { try { return readLokiState(state) } catch { return undefined } }
 
@@ -70,7 +83,9 @@ lokiManagementRouter.post("/upstreams", async c => {
     const baseUrl = parseEndpoint(parsed.data.baseUrl)
     const models = parseStaticModels(parsed.data.staticModels)
     const auth = c.get("auth")
-    const { state, syncSecret } = await newBinding()
+    const fromMirror = parsed.data.mirror === undefined ? undefined : await mirrorStateFrom(parsed.data.mirror)
+    const binding = fromMirror ? undefined : await newBinding()
+    const state = fromMirror?.state ?? binding!.state
     const now = new Date().toISOString()
     const id = upstreamId.parse(`up_loki_${crypto.randomUUID().replaceAll("-", "")}`)
     const saved = await getRepo().upstreams.createIfAbsent({
@@ -81,17 +96,17 @@ lokiManagementRouter.post("/upstreams", async c => {
       state, createdAt: now, updatedAt: now,
     })
     if (!saved) throw new LokiSyncError("temporarily_unavailable", 503)
-    return json({ upstream: serializeUpstream(saved), pairing: pairing(new URL(c.req.url).origin, id, state, syncSecret) }, 201)
+    const created = { upstream: serializeUpstream(saved) }
+    return json(fromMirror
+      ? { ...created, ...(fromMirror.warning ? { warning: fromMirror.warning } : {}) }
+      : { ...created, pairing: pairing(new URL(c.req.url).origin, id, state, binding!.syncSecret) }, 201)
   } catch (error) { return safeError(error) }
 })
 
 lokiManagementRouter.patch("/upstreams/:id", async c => {
   try {
-    const parsedId = upstreamId.safeParse(c.req.param("id"))
-    if (!parsedId.success) throw new LokiSyncError("upstream_not_found", 404)
+    const { row } = await ownedLoki(c.get("auth"), c.req.param("id"))
     const repo = getRepo()
-    const row = await loadOwned(c.get("auth"), () => repo.upstreams.getById(parsedId.data))
-    if (!row || row.provider !== "loki") throw new LokiSyncError("upstream_not_found", 404)
     const parsed = settingsBody.safeParse(await boundedJson(c.req.raw))
     if (!parsed.success) throw new LokiSyncError("invalid_request", 400)
     const baseUrl = parseEndpoint(parsed.data.baseUrl)
@@ -101,6 +116,18 @@ lokiManagementRouter.patch("/upstreams/:id", async c => {
       ...current, config: { ...current.config, baseUrl, ...(models === undefined ? {} : { staticModels: models }) },
     }))
     return json({ upstream: serializeUpstream(saved) })
+  } catch (error) { return safeError(error) }
+})
+
+lokiManagementRouter.put("/upstreams/:id/mirror-source", async c => {
+  try {
+    const { row } = await ownedLoki(c.get("auth"), c.req.param("id"))
+    if (!currentState(row.state)?.source) throw new LokiSyncError("mirror_unsupported", 400)
+    const parsed = mirrorSourceBody.safeParse(await boundedJson(c.req.raw))
+    if (!parsed.success) throw new LokiSyncError("invalid_request", 400)
+    const { state, warning } = await mirrorStateFrom(parsed.data.mirror)
+    const saved = await getRepo().upstreams.replaceCredentials(row, { config: row.config, state })
+    return json({ upstream: serializeUpstream(saved), ...(warning ? { warning } : {}) })
   } catch (error) { return safeError(error) }
 })
 

@@ -224,8 +224,9 @@ test("a failing pull stamp write still returns the credential", async () => {
   const p = await central()
   await seedMirror(p)
   const original = repo.upstreams.saveState
-  repo.upstreams.saveState = (() => Promise.reject(new Error("write failed"))) as typeof original
-  try { expect((await pull(p.upstreamId, SECRET)).status).toBe(200) }
+  let calls = 0
+  repo.upstreams.saveState = (() => { calls++; return Promise.reject(new Error("write failed")) }) as typeof original
+  try { expect((await pull(p.upstreamId, SECRET)).status).toBe(200); expect(calls).toBe(1) }
   finally { repo.upstreams.saveState = original }
 })
 
@@ -246,4 +247,67 @@ test("issuing with a row from before a re-pair is rejected and stores nothing", 
   } finally { repo.upstreams.getById = original }
   const listed = await request(`/upstreams/${p.upstreamId}/mirrors`, undefined, session, "GET")
   expect((await listed.json() as { mirrors: unknown[] }).mirrors).toEqual([])
+})
+
+async function device(document: unknown, extra: Record<string, unknown> = {}) {
+  // Devices run over plain HTTP on localhost; creation must not require HTTPS.
+  return app.request("http://localhost:41414/api/loki/upstreams", { method: "POST",
+    headers: { authorization: `Bearer ${session}`, "content-type": "application/json" },
+    body: JSON.stringify({ name: "Device Loki", mirror: document, ...extra }) })
+}
+
+test("a device creates a mirror upstream from a document and pulls immediately", async () => {
+  const p = await central()
+  const issued = await (await issue(p.upstreamId)).json() as Issued
+  const response = await device(issued.document)
+  expect(response.status).toBe(201)
+  const body = await response.json() as { upstream: { id: string; lokiStatus: { tokenStatus: string }; lokiSource: unknown }; pairing?: unknown; warning?: string }
+  expect(body.pairing).toBeUndefined()
+  expect(body.warning).toBeUndefined()
+  expect(body.upstream.lokiStatus.tokenStatus).toBe("valid")
+  expect(body.upstream.lokiSource).toEqual({ kind: "mirror", origin: "https://gateway.example" })
+  const state = readLokiState((await repo.upstreams.getById(body.upstream.id))!.state)
+  expect(state.credential?.accessToken).toBe("central-token")
+  expect(state.syncSecretHash).toBe("")
+  expect(JSON.stringify(body)).not.toContain(issued.document.mirrorSecret)
+  expect((await request(`/upstreams/${body.upstream.id}/pair`, {})).status).toBe(400)
+  expect((await issue(body.upstream.id)).status).toBe(400)
+})
+
+test("invalid or revoked documents create nothing; an empty central still creates with a warning", async () => {
+  const p = await central()
+  const issued = await (await issue(p.upstreamId)).json() as Issued
+  const bad = await device({ ...issued.document, mirrorSecret: "lks_" + "0".repeat(64) })
+  expect(bad.status).toBe(400)
+  expect(await bad.json()).toEqual({ error: { code: "invalid_mirror_document" } })
+  await request(`/upstreams/${p.upstreamId}/mirrors/${issued.mirror.id}`, undefined, session, "DELETE")
+  const revoked = await device(issued.document)
+  expect(revoked.status).toBe(400)
+  expect(await revoked.json()).toEqual({ error: { code: "invalid_mirror" } })
+  expect((await repo.upstreams.list({ includeDisabled: true })).filter(row => row.name === "Device Loki")).toHaveLength(0)
+
+  const empty = await central()
+  await repo.upstreams.saveState<unknown>(empty.upstreamId, current => {
+    const state = readLokiState(current)
+    return { ...state, credential: { ...state.credential!, expiresAt: Date.now() + 30_000 } }
+  })
+  const later = await (await issue(empty.upstreamId)).json() as Issued
+  const pending = await device(later.document)
+  expect(pending.status).toBe(201)
+  expect((await pending.json() as { warning?: string }).warning).toBe("credential_unavailable")
+})
+
+test("re-importing replaces the source and clears the bound account", async () => {
+  const p = await central()
+  const first = await (await issue(p.upstreamId, "Old")).json() as Issued
+  const created = await (await device(first.document)).json() as { upstream: { id: string } }
+  const second = await (await issue(p.upstreamId, "New")).json() as Issued
+  await repo.upstreams.saveState<unknown>(created.upstream.id, current => ({ ...readLokiState(current), errorCode: "account_mismatch" }))
+  const response = await request(`/upstreams/${created.upstream.id}/mirror-source`, { mirror: second.document }, session, "PUT")
+  expect(response.status).toBe(200)
+  const state = readLokiState((await repo.upstreams.getById(created.upstream.id))!.state)
+  expect(state.source?.mirrorId).toBe(second.mirror.id)
+  expect(state.errorCode).toBeUndefined()
+  expect(state.credential?.accessToken).toBe("central-token")
+  expect((await request(`/upstreams/${p.upstreamId}/mirror-source`, { mirror: second.document }, session, "PUT")).status).toBe(400)
 })
