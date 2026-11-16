@@ -1,13 +1,14 @@
 import { Hono } from "hono"
 import { z } from "zod"
-import { LokiSyncError, LOKI_PROFILE_ID, lokiBaseUrl, normalizeLokiStaticModels, type LokiState } from "@vibe-llm/provider-loki"
+import { addLokiMirror, LokiSyncError, LOKI_PROFILE_ID, lokiBaseUrl, lokiMirrorDocument, normalizeLokiStaticModels,
+  readLokiState, removeLokiMirror, type LokiState } from "@vibe-llm/provider-loki"
 import type { Env } from "../../app"
 import { getRepo } from "../../repo"
 import type { FullAuthCtx } from "../../shared/credential-auth"
 import type { SessionToken } from "../../repo/branded-ids"
 import { loadOwned } from "../shared/ownership"
 import { serializeUpstream } from "../upstreams/public-dto"
-import { boundedJson, json, newBinding, safeError, upstreamId } from "./common"
+import { boundedJson, json, newBinding, newMirror, publicMirror, safeError, upstreamId } from "./common"
 export { lokiSyncRouter } from "./sync"
 export { lokiMirrorRouter } from "./mirror"
 
@@ -26,6 +27,18 @@ function parseEndpoint(value: unknown): string {
 const pairing = (origin: string, id: string, state: LokiState, syncSecret: string) => ({
   version: 1, gatewayOrigin: origin, upstreamId: id, profileId: LOKI_PROFILE_ID, generation: state.generation, syncSecret,
 })
+
+const mirrorBody = z.object({ label: z.string().trim().min(1).max(64) }).strict()
+const mirrorId = z.string().regex(/^lkmid_[a-f0-9]{32}$/)
+
+async function ownedLoki(auth: FullAuthCtx, rawId: string) {
+  const parsedId = upstreamId.safeParse(rawId)
+  if (!parsedId.success) throw new LokiSyncError("upstream_not_found", 404)
+  const row = await loadOwned(auth, () => getRepo().upstreams.getById(parsedId.data))
+  if (!row || row.provider !== "loki") throw new LokiSyncError("upstream_not_found", 404)
+  return { row, id: parsedId.data }
+}
+const currentState = (state: unknown): LokiState | undefined => { try { return readLokiState(state) } catch { return undefined } }
 
 lokiManagementRouter.use("*", async (c, next) => {
   const auth = c.get("auth")
@@ -98,10 +111,44 @@ for (const method of ["POST", "DELETE"] as const) lokiManagementRouter.on(method
     const repo = getRepo()
     const row = await loadOwned(c.get("auth"), () => repo.upstreams.getById(parsedId.data))
     if (!row || row.provider !== "loki") throw new LokiSyncError("upstream_not_found", 404)
+    const previous = currentState(row.state)
+    if (previous?.source) throw new LokiSyncError("mirror_unsupported", 400)
     const { state, syncSecret } = await newBinding()
     if (method === "DELETE") state.syncSecretHash = ""
+    else if (previous?.mirrors?.length) state.mirrors = previous.mirrors
     const saved = await repo.upstreams.replaceCredentials(row, { config: row.config, state })
     return json({ upstream: serializeUpstream(saved), ...(method === "POST"
       ? { pairing: pairing(new URL(c.req.url).origin, row.id, state, syncSecret) } : {}) })
+  } catch (error) { return safeError(error) }
+})
+
+lokiManagementRouter.get("/upstreams/:id/mirrors", async c => {
+  try {
+    const { row, id } = await ownedLoki(c.get("auth"), c.req.param("id"))
+    return json({ mirrors: (currentState(row.state)?.mirrors ?? []).map(publicMirror) })
+  } catch (error) { return safeError(error) }
+})
+
+lokiManagementRouter.post("/upstreams/:id/mirrors", async c => {
+  try {
+    const { row, id } = await ownedLoki(c.get("auth"), c.req.param("id"))
+    const origin = new URL(c.req.url)
+    if (origin.protocol !== "https:") throw new LokiSyncError("https_required", 400)
+    const parsed = mirrorBody.safeParse(await boundedJson(c.req.raw))
+    if (!parsed.success) throw new LokiSyncError("invalid_request", 400)
+    const { mirror, mirrorSecret } = await newMirror(parsed.data.label, Date.now())
+    await getRepo().upstreams.saveState<unknown>(id, current => addLokiMirror(readLokiState(current), mirror), row)
+    return json({ mirror: publicMirror(mirror), document: lokiMirrorDocument(origin.origin, id, mirror.id, mirrorSecret) }, 201)
+  } catch (error) { return safeError(error) }
+})
+
+lokiManagementRouter.delete("/upstreams/:id/mirrors/:mirrorId", async c => {
+  try {
+    const { row, id } = await ownedLoki(c.get("auth"), c.req.param("id"))
+    const parsedMirror = mirrorId.safeParse(c.req.param("mirrorId"))
+    if (!parsedMirror.success) throw new LokiSyncError("mirror_not_found", 404)
+    await getRepo().upstreams.saveState<unknown>(id, current => removeLokiMirror(readLokiState(current), parsedMirror.data), row)
+    const saved = await getRepo().upstreams.getById(id)
+    return json({ mirrors: (currentState(saved?.state)?.mirrors ?? []).map(publicMirror) })
   } catch (error) { return safeError(error) }
 })

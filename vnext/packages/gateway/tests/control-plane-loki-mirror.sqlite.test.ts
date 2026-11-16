@@ -111,3 +111,60 @@ test("the mirror endpoint reports an unusable central credential and throttles p
   expect((await pull(q.upstreamId, secret)).status).toBe(200)
   expect(readLokiState((await repo.upstreams.getById(q.upstreamId))!.state).mirrors?.[0]?.lastPulledAt).toBeGreaterThan(stale)
 })
+
+async function issue(upstreamId: string, label = "MacBook", bearer: string = session) {
+  return request(`/upstreams/${upstreamId}/mirrors`, { label }, bearer)
+}
+
+test("owners issue, list and revoke mirrors; secrets appear once and are never stored", async () => {
+  const p = await central()
+  expect((await issue(p.upstreamId, "MacBook", otherSession)).status).toBe(404)
+  const response = await issue(p.upstreamId)
+  expect(response.status).toBe(201)
+  const issued = await response.json() as Issued
+  expect(issued.document).toMatchObject({ version: 1, kind: "loki-mirror", gatewayOrigin: "https://gateway.example",
+    upstreamId: p.upstreamId, profileId: "loki-df-v1", mirrorId: issued.mirror.id })
+  expect(issued.document.mirrorSecret).toMatch(/^lkm_[a-f0-9]{64}$/)
+  expect(JSON.stringify(await repo.upstreams.list({ includeDisabled: true }))).not.toContain(issued.document.mirrorSecret)
+  expect((await pull(p.upstreamId, issued.document.mirrorSecret)).status).toBe(200)
+
+  const listed = await request(`/upstreams/${p.upstreamId}/mirrors`, undefined, session, "GET")
+  const raw = await listed.text()
+  expect(JSON.parse(raw).mirrors).toHaveLength(1)
+  expect(raw).not.toContain("secretHash")
+  expect(JSON.parse(raw).mirrors[0].lastPulledAt).toBeGreaterThan(0)
+
+  expect((await request(`/upstreams/${p.upstreamId}/mirrors/lkmid_${"f".repeat(32)}`, undefined, session, "DELETE")).status).toBe(404)
+  const revoked = await request(`/upstreams/${p.upstreamId}/mirrors/${issued.mirror.id}`, undefined, session, "DELETE")
+  expect(revoked.status).toBe(200)
+  expect((await revoked.json() as { mirrors: unknown[] }).mirrors).toEqual([])
+  expect((await pull(p.upstreamId, issued.document.mirrorSecret)).status).toBe(401)
+})
+
+test("labels are validated, issuance is limited and needs HTTPS", async () => {
+  const p = await central()
+  for (const label of ["", " ", "x".repeat(65)]) expect((await issue(p.upstreamId, label)).status).toBe(400)
+  for (let n = 0; n < 16; n++) expect((await issue(p.upstreamId, `Device ${n}`)).status).toBe(201)
+  const full = await issue(p.upstreamId, "One too many")
+  expect(full.status).toBe(409)
+  expect(await full.json()).toEqual({ error: { code: "mirror_limit" } })
+  const http = await app.request(`http://gateway.example/api/loki/upstreams/${p.upstreamId}/mirrors`, { method: "POST",
+    headers: { authorization: `Bearer ${session}`, "content-type": "application/json" }, body: JSON.stringify({ label: "Plain" }) })
+  expect(http.status).toBe(400)
+  expect(await http.json()).toEqual({ error: { code: "https_required" } })
+})
+
+test("re-pairing keeps mirrors; disconnecting the assistant revokes them", async () => {
+  const p = await central()
+  const issued = await (await issue(p.upstreamId)).json() as Issued
+  const repaired = await request(`/upstreams/${p.upstreamId}/pair`, {})
+  expect(repaired.status).toBe(200)
+  const next = ((await repaired.json()) as { pairing: Pairing }).pairing
+  await request(`/sync/${p.upstreamId}`, { version: 1, generation: next.generation, expectedRevision: 0, requestId: "after-repair",
+    status: "authorized", credential: { accessToken: "central-token-2", tokenType: "Bearer", expiresAt: Date.now() + 3_600_000, account } }, next.syncSecret)
+  const after = await pull(p.upstreamId, issued.document.mirrorSecret)
+  expect(after.status).toBe(200)
+  expect((await after.json() as { credential: { accessToken: string } }).credential.accessToken).toBe("central-token-2")
+  expect((await request(`/upstreams/${p.upstreamId}/pair`, undefined, session, "DELETE")).status).toBe(200)
+  expect((await pull(p.upstreamId, issued.document.mirrorSecret)).status).toBe(401)
+})
