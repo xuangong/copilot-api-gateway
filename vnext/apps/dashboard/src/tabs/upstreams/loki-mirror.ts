@@ -1,3 +1,4 @@
+// Client-side validation mirroring `parseLokiMirrorDocument` in @vibe-llm/provider-loki; the server re-validates.
 export interface LokiMirrorDocument {
   version: 1
   kind: "loki-mirror"

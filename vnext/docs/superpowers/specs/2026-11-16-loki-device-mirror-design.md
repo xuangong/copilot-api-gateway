@@ -1,6 +1,6 @@
 # Loki device mirror: local gateways pull credentials from the central gateway
 
-Status: design approved in conversation on 2026-11-16; not yet implemented.
+Status: implemented on branch `feat/loki-device-mirror` (2026-11-16).
 
 ## Motivation
 

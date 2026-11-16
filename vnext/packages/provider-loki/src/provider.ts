@@ -131,8 +131,7 @@ export class LokiProvider implements LlmModelProvider {
       }
       // A token that is not newer is "nothing to store": back off like a failure, without a write.
       if (result.kind !== "ok") {
-        console.warn("[loki.mirror_pull]", JSON.stringify({ upstreamId: this.expected.id, outcome: result.kind,
-          ...("status" in result && result.status ? { status: result.status } : {}) }))
+        console.warn("[loki.mirror_pull]", JSON.stringify({ upstreamId: this.expected.id, outcome: result.kind, status: result.status }))
       }
     } catch { /* A failed pull or write backs off the same way. */ }
     // A replaced stale pull settling late must not overwrite the current backoff.

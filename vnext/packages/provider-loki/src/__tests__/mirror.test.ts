@@ -37,26 +37,39 @@ test("pull classifies central responses", async () => {
     if (response instanceof Error) throw response
     return response
   }, now)
-  expect(await reply(Response.json({ error: { code: "invalid_mirror" } }, { status: 401 }))).toEqual({ kind: "revoked" })
-  expect(await reply(Response.json({ error: { code: "credential_unavailable" } }, { status: 503 }))).toEqual({ kind: "unavailable" })
-  expect(await reply(Response.json({ error: { code: "temporarily_unavailable" } }, { status: 503 }))).toEqual({ kind: "failed" })
-  expect(await reply(new Response(null, { status: 302, headers: { location: "https://evil.example" } }))).toEqual({ kind: "failed" })
-  expect(await reply(new Error("network"))).toEqual({ kind: "failed" })
-  expect(await reply(Response.json({ version: 1, profileId: "loki-df-v1", mirrorId: "lkmid_" + "e".repeat(32), credential }))).toEqual({ kind: "failed" })
+  expect(await reply(Response.json({ error: { code: "invalid_mirror" } }, { status: 401 }))).toMatchObject({ kind: "revoked" })
+  expect(await reply(Response.json({ error: { code: "credential_unavailable" } }, { status: 503 }))).toMatchObject({ kind: "unavailable" })
+  expect(await reply(Response.json({ error: { code: "temporarily_unavailable" } }, { status: 503 }))).toMatchObject({ kind: "failed" })
+  expect(await reply(new Response(null, { status: 302, headers: { location: "https://evil.example" } }))).toMatchObject({ kind: "failed" })
+  expect(await reply(new Error("network"))).toMatchObject({ kind: "failed" })
+  expect(await reply(Response.json({ version: 1, profileId: "loki-df-v1", mirrorId: "lkmid_" + "e".repeat(32), credential }))).toMatchObject({ kind: "failed" })
   expect(await reply(Response.json({ version: 1, profileId: "loki-df-v1", mirrorId,
-    credential: { ...credential, expiresAt: now + 30_000 } }))).toEqual({ kind: "failed" })
+    credential: { ...credential, expiresAt: now + 30_000 } }))).toMatchObject({ kind: "failed" })
 })
 
 test("pull rejects malformed, non-JSON and oversized bodies and never reads a 401 body", async () => {
   const reply = (response: Response) => pullLokiMirror(source, async () => response, now)
   const good = { version: 1, profileId: "loki-df-v1", mirrorId, credential }
-  expect(await reply(new Response("not json", { status: 200 }))).toEqual({ kind: "failed" })
-  expect(await reply(Response.json({ ...good, credential: { ...credential, tokenType: "MAC" } }))).toEqual({ kind: "failed" })
-  expect(await reply(Response.json({ ...good, credential: { ...credential, extra: 1 } }))).toEqual({ kind: "failed" })
-  expect(await reply(new Response(JSON.stringify(good), { status: 200, headers: { "content-length": "20000" } }))).toEqual({ kind: "failed" })
-  expect(await reply(new Response(JSON.stringify({ ...good, pad: "x".repeat(17_000) }), { status: 200 }))).toEqual({ kind: "failed" })
+  expect(await reply(new Response("not json", { status: 200 }))).toMatchObject({ kind: "failed" })
+  expect(await reply(Response.json({ ...good, credential: { ...credential, tokenType: "MAC" } }))).toMatchObject({ kind: "failed" })
+  expect(await reply(Response.json({ ...good, credential: { ...credential, extra: 1 } }))).toMatchObject({ kind: "failed" })
+  expect(await reply(new Response(JSON.stringify(good), { status: 200, headers: { "content-length": "20000" } }))).toMatchObject({ kind: "failed" })
+  expect(await reply(new Response(JSON.stringify({ ...good, pad: "x".repeat(17_000) }), { status: 200 }))).toMatchObject({ kind: "failed" })
   let pulled = false
   const body = new ReadableStream({ pull() { pulled = true; throw new Error("read") } }, { highWaterMark: 0 })
-  expect(await reply(new Response(body, { status: 401 }))).toEqual({ kind: "revoked" })
+  expect(await reply(new Response(body, { status: 401 }))).toMatchObject({ kind: "revoked" })
   expect(pulled).toBe(false)
+})
+
+test("pull stops reading and cancels a body that exceeds the cap without content-length", async () => {
+  let cancelled = false
+  let chunks = 0
+  const body = new ReadableStream<Uint8Array>({
+    pull(controller) { chunks += 1; controller.enqueue(new Uint8Array(4096).fill(120)) },
+    cancel() { cancelled = true },
+  }, { highWaterMark: 0 })
+  const result = await pullLokiMirror(source, async () => new Response(body, { status: 200 }), now)
+  expect(result).toEqual({ kind: "failed", status: 200 })
+  expect(cancelled).toBe(true)
+  expect(chunks).toBeLessThan(10)
 })

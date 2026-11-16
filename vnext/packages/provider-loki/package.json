@@ -6,10 +6,10 @@
   "exports": { ".": "./src/index.ts" },
   "scripts": { "typecheck": "tsc --noEmit" },
   "dependencies": {
-    "@vibe-llm/protocols": "workspace:*",
-    "@vibe-llm/provider-llm": "workspace:*",
     "@vibe-core/platform": "workspace:*",
     "@vibe-core/upstream": "workspace:*",
-    "@vibe-core/upstream-repo": "workspace:*"
+    "@vibe-core/upstream-repo": "workspace:*",
+    "@vibe-llm/protocols": "workspace:*",
+    "@vibe-llm/provider-llm": "workspace:*"
   }
 }
