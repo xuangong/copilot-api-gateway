@@ -9,6 +9,7 @@ import { loadOwned } from "../shared/ownership"
 import { serializeUpstream } from "../upstreams/public-dto"
 import { boundedJson, json, newBinding, safeError, upstreamId } from "./common"
 export { lokiSyncRouter } from "./sync"
+export { lokiMirrorRouter } from "./mirror"
 
 export const lokiManagementRouter = new Hono<{ Bindings: Env; Variables: { auth: FullAuthCtx } }>()
 

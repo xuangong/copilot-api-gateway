@@ -1,5 +1,5 @@
 import { z } from "zod"
-import { LokiSyncError, LOKI_PROFILE_ID, type LokiState, publicLokiStatus } from "@vibe-llm/provider-loki"
+import { LokiSyncError, LOKI_PROFILE_ID, type LokiMirror, type LokiState, publicLokiStatus } from "@vibe-llm/provider-loki"
 import { UpstreamGoneError, UpstreamReplacedError, UpstreamContentionError } from "@vibe-core/upstream-repo"
 import type { UpstreamId, UserId } from "../../repo/branded-ids"
 
@@ -38,8 +38,16 @@ export async function digest(value: string): Promise<string> {
   const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value))
   return Array.from(new Uint8Array(bytes), byte => byte.toString(16).padStart(2, "0")).join("")
 }
+export const randomHex = (bytes: number) =>
+  Array.from(crypto.getRandomValues(new Uint8Array(bytes)), byte => byte.toString(16).padStart(2, "0")).join("")
+export async function newMirror(label: string, now: number): Promise<{ mirror: LokiMirror; mirrorSecret: string }> {
+  const mirrorSecret = `lkm_${randomHex(32)}`
+  return { mirrorSecret, mirror: { id: `lkmid_${randomHex(16)}`, label, secretHash: await digest(mirrorSecret), createdAt: now } }
+}
+export const publicMirror = (mirror: LokiMirror) =>
+  ({ id: mirror.id, label: mirror.label, createdAt: mirror.createdAt, lastPulledAt: mirror.lastPulledAt ?? null })
 export async function newBinding(): Promise<{ state: LokiState; syncSecret: string }> {
-  const syncSecret = `lks_${Array.from(crypto.getRandomValues(new Uint8Array(32)), byte => byte.toString(16).padStart(2, "0")).join("")}`
+  const syncSecret = `lks_${randomHex(32)}`
   return { syncSecret, state: { version: 1, profileId: LOKI_PROFILE_ID, generation: crypto.randomUUID(),
     syncSecretHash: await digest(syncSecret), revision: 0, assistantStatus: "waiting" } }
 }
