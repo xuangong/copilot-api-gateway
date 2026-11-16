@@ -143,7 +143,8 @@ export function UpstreamRow({
   }[credential.health] : null
 
   const lokiTone: HealthTone | null = u.provider === "loki" && u.lokiStatus
-    ? u.lokiStatus.tokenStatus === "expired" ? "danger" : LOKI_TONE[u.lokiStatus.assistantStatus]
+    ? u.lokiStatus.tokenStatus === "expired" || u.lokiStatus.errorCode === "mirror_revoked"
+      || u.lokiStatus.errorCode === "account_mismatch" ? "danger" : LOKI_TONE[u.lokiStatus.assistantStatus]
     : null
 
   return (
@@ -182,7 +183,9 @@ export function UpstreamRow({
             ) : null}
             {u.provider === "loki" && u.lokiStatus ? <div className="text-xs text-fg-muted mt-1">
               <span className={lokiTone ? TONE_TEXT[lokiTone] : undefined}>
-                {t(u.lokiStatus.tokenStatus === "expired" ? "dash.lokiExpired" : {
+                {t(u.lokiStatus.errorCode === "mirror_revoked" ? "dash.lokiMirrorRevoked"
+                  : u.lokiStatus.errorCode === "account_mismatch" ? "dash.lokiMirrorAccountMismatch"
+                  : u.lokiStatus.tokenStatus === "expired" ? (u.lokiSource ? "dash.lokiMirrorExpired" : "dash.lokiExpired") : {
                   waiting: "dash.lokiWaiting", authorized: "dash.lokiAuthorized",
                   interaction_required: "dash.lokiInteractionRequired", failed: "dash.lokiFailed",
                 }[u.lokiStatus.assistantStatus])}
