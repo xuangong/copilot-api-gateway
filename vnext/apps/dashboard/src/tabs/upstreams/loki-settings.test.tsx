@@ -68,6 +68,14 @@ test("creating Loki over plain HTTP offers only the mirror source", () => {
   const html = withWindow("http:", () => renderToStaticMarkup(<LokiPairingPanel onChanged={noop} onClose={noop} />))
   expect(html).toContain("dash.lokiSourceMirror")
   expect(html).toContain("dash.lokiMirrorDocument")
+  expect(html).toContain("dash.lokiHttpsRequired")
+  expect(html).not.toContain("dash.lokiPairDescription")
+  const radios = html.match(/<input[^>]*type="radio"[^>]*>/g) ?? []
+  expect(radios).toHaveLength(2)
+  expect(radios[0]).toContain("disabled")
+  expect(radios[0]).not.toContain("checked")
+  expect(radios[1]).toContain("checked")
+  expect(radios[1]).not.toContain("disabled")
 })
 
 test("rows describe a revoked mirror", () => {

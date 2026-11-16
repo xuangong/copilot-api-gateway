@@ -1,10 +1,11 @@
 import { useId, useState } from "react"
-import { api, ApiError } from "../../api/client"
+import { api } from "../../api/client"
 import type { UpstreamRecord } from "../../api/types"
 import { useT } from "../../state/i18n"
 import { Button } from "../../ui/button"
 import { Notice } from "../../ui/notice"
 import { Field, FormHeading } from "./form/Field"
+import { mirrorImportErrorKey, settingsError } from "./loki-errors"
 import { LokiMirrorsSection } from "./LokiMirrorsSection"
 import { parseLokiMirrorText } from "./loki-mirror"
 import { formatLokiPairing } from "./loki-pairing"
@@ -12,12 +13,6 @@ import { formatLokiModelNames, parseLokiModelNames } from "./loki-static-models"
 
 interface Props { row?: UpstreamRecord; onChanged: () => void; onClose: () => void }
 const DEFAULT_ENDPOINT = "https://loki.delve.office.com/api/v1/llmapi"
-
-function settingsError(error: unknown): string | undefined {
-  if (!(error instanceof ApiError) || !error.body || typeof error.body !== "object" || !("error" in error.body)) return undefined
-  const detail = error.body.error
-  return detail && typeof detail === "object" && "code" in detail && typeof detail.code === "string" ? detail.code : undefined
-}
 
 export function LokiPairingPanel({ row, onChanged, onClose }: Props) {
   const t = useT()
@@ -39,12 +34,7 @@ export function LokiPairingPanel({ row, onChanged, onClose }: Props) {
   const [mirrorOrigin, setMirrorOrigin] = useState(row?.lokiSource?.origin ?? "")
   const [mirrorText, setMirrorText] = useState("")
   const [notice, setNotice] = useState("")
-  const mirrorError = (error: unknown) => {
-    const code = settingsError(error)
-    return t(code === "invalid_mirror" ? "dash.lokiMirrorInvalid"
-      : code === "invalid_mirror_document" ? "dash.lokiMirrorDocumentInvalid"
-        : code === "mirror_unreachable" ? "dash.lokiMirrorUnreachable" : "dash.lokiMirrorError")
-  }
+  const mirrorError = (error: unknown) => t(mirrorImportErrorKey(settingsError(error)))
   const errorMessage = (error: unknown, pairing = false) => t(settingsError(error) === "invalid_endpoint"
     ? "dash.lokiEndpointInvalid" : settingsError(error) === "invalid_static_models"
       ? "dash.lokiStaticModelsInvalid" : pairing ? "dash.lokiPairError" : "dash.lokiSettingsError")
@@ -121,10 +111,11 @@ export function LokiPairingPanel({ row, onChanged, onClose }: Props) {
       {!id ? <fieldset className="flex flex-wrap gap-4 text-body">
         <legend className="sr-only">{t("dash.lokiSource")}</legend>
         <label><input type="radio" name="loki-source" checked={source === "pairing"} disabled={busy || !secureOrigin}
-          onChange={() => setSource("pairing")} /> {t("dash.lokiSourcePairing")}</label>
+          onChange={() => { setSource("pairing"); setMirrorText("") }} /> {t("dash.lokiSourcePairing")}</label>
         <label><input type="radio" name="loki-source" checked={source === "mirror"} disabled={busy}
-          onChange={() => setSource("mirror")} /> {t("dash.lokiSourceMirror")}</label>
+          onChange={() => { setSource("mirror"); setMirrorText("") }} /> {t("dash.lokiSourceMirror")}</label>
       </fieldset> : null}
+      {!id && !secureOrigin ? <Notice tone="warn" role="status">{t("dash.lokiHttpsRequired")}</Notice> : null}
       {!id ? <Field label={t("dash.lokiName")}>
         {({ id: inputId }) => (
           <input id={inputId} type="text" value={name} maxLength={120} required onChange={event => setName(event.target.value)} disabled={busy} />

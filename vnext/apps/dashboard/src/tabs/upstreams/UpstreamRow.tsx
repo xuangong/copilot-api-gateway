@@ -1,4 +1,5 @@
 import { CodexQuotaPanel } from "./CodexQuotaPanel"
+import { lokiRowStatusKey } from "./loki-status"
 import { useId, useState, type DragEvent, type KeyboardEvent, type PointerEvent } from "react"
 import { ChevronDown, ChevronUp, GripVertical } from "lucide-react"
 import { ProviderAvatar } from "./KindChip"
@@ -183,12 +184,7 @@ export function UpstreamRow({
             ) : null}
             {u.provider === "loki" && u.lokiStatus ? <div className="text-xs text-fg-muted mt-1">
               <span className={lokiTone ? TONE_TEXT[lokiTone] : undefined}>
-                {t(u.lokiStatus.errorCode === "mirror_revoked" ? "dash.lokiMirrorRevoked"
-                  : u.lokiStatus.errorCode === "account_mismatch" ? "dash.lokiMirrorAccountMismatch"
-                  : u.lokiStatus.tokenStatus === "expired" ? (u.lokiSource ? "dash.lokiMirrorExpired" : "dash.lokiExpired") : {
-                  waiting: "dash.lokiWaiting", authorized: "dash.lokiAuthorized",
-                  interaction_required: "dash.lokiInteractionRequired", failed: "dash.lokiFailed",
-                }[u.lokiStatus.assistantStatus])}
+                {t(lokiRowStatusKey(u.lokiStatus, u.lokiSource))}
               </span>
               {u.lokiStatus.expiresAt ? ` · ${t("dash.codexExpiresAt", { at: new Date(u.lokiStatus.expiresAt).toLocaleString() })}` : ""}
             </div> : null}

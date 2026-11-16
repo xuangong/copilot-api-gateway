@@ -15,3 +15,16 @@ test("pasted text parses to a document or a null for invalid input", () => {
   for (const text of ["", "{", "[]", JSON.stringify({ ...doc, kind: "pairing" }), JSON.stringify({ ...doc, extra: 1 }),
     JSON.stringify({ ...doc, gatewayOrigin: "http://central.example" })]) expect(parseLokiMirrorText(text)).toBeNull()
 })
+
+test("origins are normalized like the server and unsafe forms are rejected", () => {
+  expect(parseLokiMirrorText(JSON.stringify({ ...doc, gatewayOrigin: "https://central.example/" }))?.gatewayOrigin)
+    .toBe("https://central.example")
+  expect(parseLokiMirrorText(JSON.stringify({ ...doc, gatewayOrigin: "https://CENTRAL.example" }))?.gatewayOrigin)
+    .toBe("https://central.example")
+  expect(JSON.parse(formatLokiMirrorDocument({ ...doc, gatewayOrigin: "https://CENTRAL.example/" }, "https://central.example")).gatewayOrigin)
+    .toBe("https://central.example")
+  for (const gatewayOrigin of ["https://central.example/path", "https://central.example?x=1", "https://central.example/#f",
+    "https://user:pw@central.example"]) expect(parseLokiMirrorText(JSON.stringify({ ...doc, gatewayOrigin }))).toBeNull()
+  expect(parseLokiMirrorText(JSON.stringify({ ...doc, mirrorId: `lkmid_${"B".repeat(32)}` }))).toBeNull()
+  expect(parseLokiMirrorText(JSON.stringify({ ...doc, mirrorSecret: `lkm_${"C".repeat(64)}` }))).toBeNull()
+})
