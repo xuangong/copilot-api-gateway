@@ -161,3 +161,15 @@ test("an upstream synced from another gateway cannot be selected", async () => {
   const { device } = await issue()
   expect((await call(`/devices/${device.id}`, "PATCH", { upstreamIds: ["up_synced"] })).status).toBe(400)
 })
+
+test("upstreams whose id or name do not fit the sync wire format cannot be selected", async () => {
+  await seed("up.dotted", owner, "copilot")
+  await repo.upstreams.save({ id: "up_blank", ownerId: owner, provider: "copilot", name: "", enabled: true, sortOrder: 0, config: {},
+    flagOverrides: {}, disabledPublicModelIds: [], state: null, proxyFallbackList: [], createdAt: stamp, updatedAt: stamp })
+  const { device } = await issue()
+  for (const id of ["up.dotted", "up_blank"]) {
+    const created = await call("/devices", "POST", { label: "x", upstreamIds: [id] })
+    expect([created.status, (await created.json() as { error: { code: string } }).error.code]).toEqual([400, "invalid_upstreams"])
+    expect((await call(`/devices/${device.id}`, "PATCH", { upstreamIds: [id] })).status).toBe(400)
+  }
+})

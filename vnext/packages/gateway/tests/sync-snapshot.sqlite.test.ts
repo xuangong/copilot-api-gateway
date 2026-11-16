@@ -199,3 +199,13 @@ test("the Bearer scheme is case-insensitive but the secret stays strict", async 
   const bad = await app.request("https://central.example/api/sync/snapshot", { headers: { authorization: `bearer ${device.secret.toUpperCase()}` } })
   expect(bad.status).toBe(401)
 })
+
+test("entries outside the sync wire format are omitted and the device still parses the rest", async () => {
+  await seed("up.dotted", owner, "copilot")
+  await seed("up_blank", owner, "copilot", { name: "" })
+  const device = await issue()
+  db.run("UPDATE sync_devices SET upstream_ids_json = ? WHERE id = ?", [JSON.stringify(["up_copilot_a", "up.dotted", "up_blank"]), device.id])
+  const text = await (await snapshot(device.secret)).text()
+  const { parseSyncSnapshot } = await import("../src/sync/protocol")
+  expect(parseSyncSnapshot(text, device.id).upstreams.map(u => u.id)).toEqual(["up_copilot_a"])
+})

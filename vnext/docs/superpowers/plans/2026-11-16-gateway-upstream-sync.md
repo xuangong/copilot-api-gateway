@@ -44,6 +44,7 @@ All paths below are relative to `vnext/`. Run commands from `vnext/` (`/Users/xi
 | D15 | If applying a snapshot throws after the source row was stored by `POST`, the source stays, `last_error = apply_failed`, and the route answers `503 temporarily_unavailable`; the next tick retries. | The fetch already proved the document valid; the failure is local. |
 | D16 | Device-side snapshot parsing ignores unknown fields on upstream entries (forward compatibility) but requires every known field to validate; sync documents reject unknown fields as the spec requires. | An older device must keep working against a newer central. |
 | D17 | A synced row's "Refetch models" button is hidden along with Edit/Duplicate/Re-auth/Delete/Refresh credential. | Spec: synced rows keep only enable, reorder and proxy settings. |
+| D18 | A row this source already synced whose provider becomes unknown to the device is deleted (not just skipped); it is re-created if the provider becomes supported again, losing device-local enabled/order/proxy. | Skipped entries are not "kept", so the delete pass removes them; a stale copy of an unsupported provider must not linger. |
 
 ## File structure
 

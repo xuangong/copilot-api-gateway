@@ -3,7 +3,7 @@ import type { Env } from "../../app"
 import { providerPlugin } from "../../data-plane/providers/registry"
 import { getRepo } from "../../repo"
 import type { StoredUpstreamRecord } from "../../repo/types"
-import { SYNC_LAST_SYNC_STAMP_MS, SYNC_VERSION, type SyncedUpstream } from "../../sync/protocol"
+import { SYNC_LAST_SYNC_STAMP_MS, SYNC_VERSION, isSyncableWireUpstream, type SyncedUpstream } from "../../sync/protocol"
 import { SyncError, sha256Hex, syncFailure } from "./common"
 
 /** Mounted before session auth: the device secret is the only credential this route knows. */
@@ -14,7 +14,7 @@ const invalidDevice = () => new SyncError("invalid_device", 401)
 /** What one upstream contributes, or null when it must not leave this gateway. A throwing sync view omits the upstream. */
 function entry(row: StoredUpstreamRecord): SyncedUpstream | null {
   const plugin = providerPlugin(row.provider)
-  if (!plugin?.syncable) return null
+  if (!plugin?.syncable || !isSyncableWireUpstream(row)) return null
   try {
     const view = plugin.syncView ? plugin.syncView(row) : { config: row.config, state: row.state }
     return { id: row.id, provider: row.provider, name: row.name, config: view.config, state: view.state ?? null,

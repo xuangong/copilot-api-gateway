@@ -120,7 +120,7 @@ Shown once when a device is issued:
 Session-guarded routes with the existing Origin rules. Only the owner may manage their devices; administrators get no override (non-owners receive `404 device_not_found`).
 
 - `GET /api/sync/devices` → `{ devices: [{ id, label, upstreamIds, createdAt, lastSyncAt }] }`
-- `POST /api/sync/devices` `{ label, upstreamIds }` → `201 { device, document }`. Requires an HTTPS request origin (`400 https_required`); at most 16 devices per owner (`409 device_limit`); every id must be an upstream owned by the caller with a `syncable` provider (`400 invalid_upstreams`); duplicates are removed. An upstream that was itself synced from another gateway (`syncSourceId` set) cannot be selected and is never served in a snapshot.
+- `POST /api/sync/devices` `{ label, upstreamIds }` → `201 { device, document }`. Requires an HTTPS request origin (`400 https_required`); at most 16 devices per owner (`409 device_limit`); every id must be an upstream owned by the caller with a `syncable` provider (`400 invalid_upstreams`); duplicates are removed. An upstream that was itself synced from another gateway (`syncSourceId` set) cannot be selected and is never served in a snapshot. An upstream whose id does not match `^[a-zA-Z0-9_-]{1,256}$` or whose name is empty or longer than 256 characters does not fit the sync wire format: it cannot be selected (`400 invalid_upstreams`) and is omitted from snapshots.
 - `PATCH /api/sync/devices/:id` `{ label?, upstreamIds? }` → `{ device }`, same validation. The secret is unchanged.
 - `DELETE /api/sync/devices/:id` → `{ devices }` (revoke).
 
@@ -152,7 +152,7 @@ Applied in one pass per snapshot:
 - Local synced row with the same id and this source: overwrite `provider`, `name`, `config`, `state`, `flagOverrides`, `disabledPublicModelIds`; keep `enabled`, `sort_order`, proxy list. Writes go through the repository methods that advance credential/catalog generations so providers and catalogs refresh.
 - No local row: create it with `enabled: true`, sorted after existing upstreams, empty proxy list, `sync_source_id` set.
 - Local row with the same id that is not synced from this source: skip; record `id_conflict`.
-- Provider unknown to this gateway's code: skip; record `unsupported_provider`.
+- Provider unknown to this gateway's code: skip; record `unsupported_provider`. A row this source already synced whose provider becomes unknown is deleted (not just skipped); it is re-created if the provider becomes supported again, losing device-local enabled/order/proxy.
 - Local synced rows absent from the snapshot: delete.
 - Store the new ETag only after the whole snapshot applied.
 
