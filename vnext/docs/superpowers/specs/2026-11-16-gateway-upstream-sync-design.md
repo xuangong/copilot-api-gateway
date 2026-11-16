@@ -1,6 +1,6 @@
 # Gateway upstream sync: devices mirror selected upstreams from a central gateway
 
-Status: design approved in conversation on 2026-11-16; not yet implemented. Implementation decisions not covered here are listed in `../plans/2026-11-16-gateway-upstream-sync.md` ("Decisions").
+Status: implemented on branch `feat/gateway-upstream-sync` (2026-11-16). Implementation decisions not covered here are listed in `../plans/2026-11-16-gateway-upstream-sync.md` ("Decisions").
 Supersedes: `2026-11-16-loki-device-mirror-design.md` (Loki-only device mirror, merged to `vNext` but never deployed). This design generalizes it into one pattern and removes the Loki-specific code.
 
 ## Motivation

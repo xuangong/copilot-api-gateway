@@ -1,6 +1,6 @@
 # Loki device mirror: local gateways pull credentials from the central gateway
 
-Status: implemented on branch `feat/loki-device-mirror` (2026-11-16).
+Status: superseded by `2026-11-16-gateway-upstream-sync-design.md` (the code was removed on branch `feat/gateway-upstream-sync`).
 
 ## Motivation
 
