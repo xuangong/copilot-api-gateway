@@ -120,7 +120,7 @@ Shown once when a device is issued:
 Session-guarded routes with the existing Origin rules. Only the owner may manage their devices; administrators get no override (non-owners receive `404 device_not_found`).
 
 - `GET /api/sync/devices` → `{ devices: [{ id, label, upstreamIds, createdAt, lastSyncAt }] }`
-- `POST /api/sync/devices` `{ label, upstreamIds }` → `201 { device, document }`. Requires an HTTPS request origin (`400 https_required`); at most 16 devices per owner (`409 device_limit`); every id must be an upstream owned by the caller with a `syncable` provider (`400 invalid_upstreams`); duplicates are removed.
+- `POST /api/sync/devices` `{ label, upstreamIds }` → `201 { device, document }`. Requires an HTTPS request origin (`400 https_required`); at most 16 devices per owner (`409 device_limit`); every id must be an upstream owned by the caller with a `syncable` provider (`400 invalid_upstreams`); duplicates are removed. An upstream that was itself synced from another gateway (`syncSourceId` set) cannot be selected and is never served in a snapshot.
 - `PATCH /api/sync/devices/:id` `{ label?, upstreamIds? }` → `{ device }`, same validation. The secret is unchanged.
 - `DELETE /api/sync/devices/:id` → `{ devices }` (revoke).
 
@@ -211,5 +211,6 @@ Remove `mirrors`/`source` from `LokiState` (tolerate and drop on read), `src/mir
 
 - Push-based sync, multiple sync sources per gateway, device-to-central write-back.
 - Syncing proxies or proxy definitions.
+- Re-sharing synced upstreams (no chaining).
 - Providers other than `copilot` and `loki` (added later by declaring `syncable`).
 - Device sync on Cloudflare Workers.

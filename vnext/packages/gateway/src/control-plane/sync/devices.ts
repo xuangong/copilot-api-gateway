@@ -3,7 +3,7 @@ import { z } from "zod"
 import type { Env } from "../../app"
 import { isSyncableProvider } from "../../data-plane/providers/registry"
 import { getRepo } from "../../repo"
-import type { UpstreamId, UserId } from "../../repo/branded-ids"
+import type { UserId } from "../../repo/branded-ids"
 import type { SyncDeviceRecord } from "../../repo/sync"
 import type { FullAuthCtx } from "../../shared/credential-auth"
 import { SYNC_DEVICE_ID_PATTERN, SYNC_MAX_DEVICES_PER_OWNER, SYNC_MAX_DEVICE_UPSTREAMS, syncDocument } from "../../sync/protocol"
@@ -30,10 +30,10 @@ async function parseBody<S extends z.ZodType>(request: Request, schema: S): Prom
 /** Every id must be an upstream the caller owns whose provider is syncable. Administrators get no override. */
 async function selection(ownerId: UserId, ids: readonly string[]): Promise<string[]> {
   const unique = [...new Set(ids)]
-  for (const id of unique) {
-    const row = await getRepo().upstreams.getById(id as UpstreamId)
-    if (!row || row.ownerId !== ownerId || !isSyncableProvider(row.provider)) throw new SyncError("invalid_upstreams", 400)
-  }
+  // Owned, syncable and not itself synced from another gateway (no chaining).
+  const eligible = new Set((await getRepo().upstreams.list({ ownerId, includeDisabled: true }))
+    .filter(row => isSyncableProvider(row.provider) && !row.syncSourceId).map(row => row.id as string))
+  if (unique.some(id => !eligible.has(id))) throw new SyncError("invalid_upstreams", 400)
   return unique
 }
 

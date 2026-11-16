@@ -152,3 +152,12 @@ test("management needs a real session and, for cookies, a matching Origin on mut
   expect(same.status).toBe(201)
   expect((await app.request("https://central.example/api/sync/devices", { headers: { cookie } })).status).toBe(200)
 })
+
+test("an upstream synced from another gateway cannot be selected", async () => {
+  await seed("up_synced", owner, "copilot")
+  db.run("UPDATE upstreams SET sync_source_id = 'src_x' WHERE id = 'up_synced'")
+  const response = await call("/devices", "POST", { label: "x", upstreamIds: ["up_synced"] })
+  expect([response.status, (await response.json() as { error: { code: string } }).error.code]).toEqual([400, "invalid_upstreams"])
+  const { device } = await issue()
+  expect((await call(`/devices/${device.id}`, "PATCH", { upstreamIds: ["up_synced"] })).status).toBe(400)
+})

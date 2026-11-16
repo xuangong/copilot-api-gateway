@@ -18,3 +18,20 @@ export interface SyncDocument {
 export function syncDocument(gatewayOrigin: string, deviceId: string, deviceSecret: string): SyncDocument {
   return { version: SYNC_VERSION, kind: "gateway-sync", gatewayOrigin, deviceId, deviceSecret }
 }
+
+/** One upstream as it travels. `config` and `state` are the provider's `syncView` output. */
+export interface SyncedUpstream {
+  id: string
+  provider: string
+  name: string
+  config: Record<string, unknown>
+  state: unknown
+  flagOverrides: Record<string, boolean>
+  disabledPublicModelIds: string[]
+}
+
+export interface SyncSnapshot {
+  version: typeof SYNC_VERSION
+  deviceId: string
+  upstreams: SyncedUpstream[]
+}

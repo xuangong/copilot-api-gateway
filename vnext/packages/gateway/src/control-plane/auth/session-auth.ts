@@ -54,6 +54,10 @@ export const sessionAuthMiddleware: MiddlewareHandler = async (c, next) => {
   if (key?.startsWith('lks_')) {
     return c.json({ error: { code: 'invalid_binding' } }, 401, { 'Cache-Control': 'no-store' })
   }
+  // Device sync secrets are accepted only by the snapshot endpoint, which is mounted before this middleware.
+  if (key?.startsWith('sds_')) {
+    return c.json({ error: { code: 'invalid_device' } }, 401, { 'Cache-Control': 'no-store' })
+  }
   if (c.req.header('x-setup-lease') !== undefined || key?.startsWith('stl_')) {
     return c.json({ error: 'Setup leases are only accepted by setup exchange' }, 401, { 'Cache-Control': 'no-store' })
   }
