@@ -20,6 +20,7 @@ import {
   unredactWithLive,
 } from '../lib/import-export.ts'
 import { notifyConfigurationImported } from '../../sync/hooks.ts'
+import { withSyncLock } from '../../sync/lock.ts'
 
 export interface DataTransferAuthCtx {
   isAdmin?: boolean
@@ -75,23 +76,42 @@ dataTransferRouter.post('/import', zValidator('json', importBody), async (c) => 
     upstreams: liveUpstreams,
   })
 
-  if (mode === 'replace') {
-    await Promise.all([
-      repo.apiKeys.deleteAll(),
-      repo.github.deleteAllAccounts(),
-      repo.upstreams.deleteAll(),
-    ])
-  }
+  // Synced upstreams belong to the sync source. A bundle never overrides them (not even by id), and replace keeps them.
+  const syncedIds = new Set(liveUpstreams.filter((u) => u.syncSourceId).map((u) => u.id))
+  const importable = merged.upstreams.filter((u) => !syncedIds.has(u.id))
 
-  for (const key of merged.apiKeys) await repo.apiKeys.save(key)
-  for (const account of merged.githubAccounts) {
-    await repo.github.saveAccount(account.user.id, account)
-  }
-  for (const upstream of merged.upstreams) {
-    await repo.upstreams.save(upstream)
-  }
+  // May wait for an in-flight sync tick (bounded by the 15 s fetch timeout).
+  // Under the sync lock so a scheduled tick cannot interleave with the writes or reuse the stored ETag afterwards.
+  await withSyncLock(async () => {
+    if (mode === 'replace') {
+      await Promise.all([
+        repo.apiKeys.deleteAll(),
+        repo.github.deleteAllAccounts(),
+        repo.upstreams.deleteAll(), // keeps rows that have sync_source_id
+      ])
+    }
 
-  // Device gateways re-sync right away after an import. Replace mode deleting synced rows is handled in Task 10.
+    for (const key of merged.apiKeys) await repo.apiKeys.save(key)
+    for (const account of merged.githubAccounts) {
+      await repo.github.saveAccount(account.user.id, account)
+    }
+    for (const upstream of importable) {
+      await repo.upstreams.save(upstream)
+    }
+
+    // Forget the stored ETag so the sync after an import gets a full 200 snapshot and re-applies synced rows
+    // (status and last_error stay as they were).
+    const source = await repo.syncSources.get()
+    if (source) {
+      await repo.syncSources.recordResult(source.id, source.secret, {
+        attemptAt: source.lastAttemptAt ?? new Date().toISOString(),
+        etag: null,
+        error: source.lastError,
+      })
+    }
+  })
+
+  // Device gateways re-sync right away after an import (see the ETag reset above).
   notifyConfigurationImported()
 
   return c.json({
@@ -100,7 +120,7 @@ dataTransferRouter.post('/import', zValidator('json', importBody), async (c) => 
     imported: {
       apiKeys: merged.apiKeys.length,
       githubAccounts: merged.githubAccounts.length,
-      upstreams: merged.upstreams.length,
+      upstreams: importable.length,
     },
     redactedCount: parsed.redactedCount,
   })

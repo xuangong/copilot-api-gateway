@@ -17,6 +17,7 @@ import type { UpstreamId, UserId } from "../../repo/branded-ids.ts"
 import { getRequestSignal } from "../../shared/request-signal.ts"
 import { loadOwned } from "../shared/ownership.ts"
 import { serializeUpstream } from "./public-dto.ts"
+import { isSynced, syncedReadOnlyResponse } from "../sync/read-only.ts"
 import { resolveControlPlaneFetcher } from "./proxy-resolution.ts"
 
 interface AuthCtx {
@@ -251,6 +252,7 @@ codexCredentialsRouter.post("/:id/credentials/refresh", async c => {
   const id = c.req.param("id") as UpstreamId
   const row = await loadOwned(auth, () => getRepo().upstreams.getById(id))
   if (!row) return errorResponse("upstream not found", 404)
+  if (isSynced(row)) return syncedReadOnlyResponse()
   const account = targetAccount(row)
   if (!account) return errorResponse("Credential target changed", 409)
   if (account.refreshToken === null) return errorResponse("Codex credential cannot be refreshed", 409)

@@ -11,6 +11,7 @@ import { parseAzureOpaqueCompatibility } from '@vibe-llm/provider-azure'
 import { LOKI_PROFILE_ID, normalizeLokiConfig, type LokiState } from '@vibe-llm/provider-loki'
 import type { UpstreamKind } from '@vibe-llm/protocols/common'
 import type { ApiKey, GitHubAccount, UpstreamRecord } from '../../repo/types.ts'
+import { isSynced } from '../sync/read-only.ts'
 
 export const CONFIG_BUNDLE_VERSION = 2 as const
 export const REDACTED = '__REDACTED__'
@@ -114,7 +115,8 @@ export function exportConfig(input: BundleInput, options: ExportOptions = {}): C
   const githubAccounts = options.redactSecrets
     ? input.githubAccounts.map(redactGithubAccount)
     : [...input.githubAccounts]
-  const upstreamsIn = (input.upstreams ?? []).map(withoutLokiAuthority)
+  // Synced upstreams are rebuilt by sync and must not enter a backup (nor any credential they carry).
+  const upstreamsIn = (input.upstreams ?? []).filter(u => !isSynced(u)).map(withoutLokiAuthority)
   const upstreams = options.redactSecrets ? upstreamsIn.map(redactUpstream) : [...upstreamsIn]
   const bundle: ConfigBundle = {
     version: CONFIG_BUNDLE_VERSION,

@@ -63,6 +63,7 @@ import { BILLING_DIMENSIONS, unitPriceForDimension } from "@vibe-llm/protocols/c
 import type { BillingDimension, ModelPricing } from "@vibe-llm/protocols/common"
 import { UpstreamGoneError, UpstreamReplacedError, UpstreamContentionError } from "@vibe-core/upstream-repo"
 import type { UpstreamWriteTarget } from "@vibe-core/upstream-repo"
+import { SyncedUpstreamReadOnlyError } from "../synced-read-only-error.ts"
 import type { BackoffRow, ProxyBackoffRepo, ProxyFallbackEntry, ProxyRecord, ProxyRepo } from "@vibe-core/proxy-repo"
 
 const API_KEY_COLS = "id, name, key, created_at, last_used_at, owner_id, quota_requests_per_month, quota_tokens_per_month, quota_cost_per_month, web_search_enabled, web_search_langsearch_key, web_search_tavily_key, web_search_ms_grounding_key, web_search_priority, web_search_langsearch_ref, web_search_tavily_ref, web_search_ms_grounding_ref, web_search_jina_key, web_search_jina_ref, web_search_passthrough_upstream, web_search_passthrough_model, dump_retention_seconds, model_mappings_enabled, model_mappings, responses_retention_seconds, upstream_ids"
@@ -688,6 +689,8 @@ class SharedUpstreamRepo implements UpstreamRepo {
 
   async replaceCredentials(target: StoredUpstreamRecord, replacement: { config: Record<string, unknown>; state: unknown }): Promise<StoredUpstreamRecord> {
     const row = await this.readWriteTarget(target.id, target)
+    // Credentials of a synced row come only from its source (applySynced).
+    if (row.sync_source_id) throw new SyncedUpstreamReadOnlyError()
     const current = toUpstreamRecord(row)
     if (current.catalogGeneration !== target.catalogGeneration
       || JSON.stringify(current.config) !== JSON.stringify(target.config)
@@ -697,7 +700,7 @@ class SharedUpstreamRepo implements UpstreamRepo {
     const matched = await this.x.first<{ id: string }>(`UPDATE upstreams
       SET config_json = ?, state_json = ?, catalog_generation = catalog_generation + 1, credential_generation = credential_generation + 1, updated_at = ?
       WHERE id = ? AND row_incarnation = ? AND owner_id IS ? AND provider = ?
-        AND catalog_generation = ? AND config_json IS ? AND state_json IS ? RETURNING id`,
+        AND catalog_generation = ? AND config_json IS ? AND state_json IS ? AND sync_source_id IS NULL RETURNING id`,
     [JSON.stringify(replacement.config), serializeState(replacement.state), new Date().toISOString(),
       target.id, target.rowIncarnation, row.owner_id, row.provider, target.catalogGeneration, row.config_json, row.state_json])
     if (!matched) {
@@ -775,12 +778,14 @@ class SharedUpstreamRepo implements UpstreamRepo {
   }
 
   async delete(id: UpstreamId): Promise<boolean> {
-    const r = await this.x.run("DELETE FROM upstreams WHERE id = ?", [id])
+    // Synced rows are removed only by deleteSynced.
+    const r = await this.x.run("DELETE FROM upstreams WHERE id = ? AND sync_source_id IS NULL", [id])
     return r.changes > 0
   }
 
+  /** Deletes every local upstream; rows owned by a sync source survive (sync rebuilds them, never an import). */
   async deleteAll(): Promise<void> {
-    await this.x.run("DELETE FROM upstreams", [])
+    await this.x.run("DELETE FROM upstreams WHERE sync_source_id IS NULL", [])
   }
 
   async saveState<TState>(id: UpstreamId, updater: (current: TState) => TState, expected?: UpstreamWriteTarget): Promise<void> {

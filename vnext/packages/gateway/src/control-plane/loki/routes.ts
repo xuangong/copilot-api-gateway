@@ -29,6 +29,7 @@ async function ownedLoki(auth: FullAuthCtx, rawId: string) {
   if (!parsedId.success) throw new LokiSyncError("upstream_not_found", 404)
   const row = await loadOwned(auth, () => getRepo().upstreams.getById(parsedId.data))
   if (!row || row.provider !== "loki") throw new LokiSyncError("upstream_not_found", 404)
+  if (row.syncSourceId) throw new LokiSyncError("synced_upstream_read_only", 409)
   return { row, id: parsedId.data }
 }
 lokiManagementRouter.use("*", requireBrowserSession)

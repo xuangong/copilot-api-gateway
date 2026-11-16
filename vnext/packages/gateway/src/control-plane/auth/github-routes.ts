@@ -29,6 +29,16 @@ import {
   setActiveGithubAccount,
   type GitHubUser,
 } from '../lib/github.ts'
+import { syncedReadOnlyResponseFor } from '../sync/read-only.ts'
+
+/** Runs a library write; a synced-row refusal becomes the 409 response, anything else rethrows. */
+async function blockedIfSynced(run: () => Promise<unknown>): Promise<Response | null> {
+  try { await run(); return null } catch (error) {
+    const blocked = syncedReadOnlyResponseFor(error)
+    if (blocked) return blocked
+    throw error
+  }
+}
 import { GITHUB_CLIENT_ID } from '../../shared/config/constants.ts'
 import {
   githubApiOrigin,
@@ -203,13 +213,15 @@ githubAuthRouter.post('/github/poll', zValidator('json', pollBody), async (c) =>
     }
     const user = (await userResp.json()) as GitHubUser
     const accountType = await detectAccountType(data.access_token, GITHUB_DOTCOM_HOST, doFetch)
-    await addGithubAccount(data.access_token, user, accountType, userId as UserId | undefined, {
+    const accessToken = data.access_token
+    const blocked = await blockedIfSynced(() => addGithubAccount(accessToken, user, accountType, userId as UserId | undefined, {
       githubHost: GITHUB_DOTCOM_HOST,
       source: 'device-flow',
       // Passed through as-is, not `?? []`: absent means "keep whatever chain
       // the row already has", so a re-login cannot wipe a later edit.
       proxyFallbackList: proxy_fallback_list,
-    })
+    }))
+    if (blocked) return blocked
     return c.json({ status: 'complete', user })
   }
 
@@ -292,14 +304,15 @@ githubAuthRouter.post('/github/paste-token', zValidator('json', pasteTokenBody),
     )
   }
 
-  await addGithubAccount(github_token, user, accountType, userId as UserId | undefined, {
+  const blocked = await blockedIfSynced(() => addGithubAccount(github_token, user, accountType, userId as UserId | undefined, {
     githubHost: host,
     source: 'paste',
     copilotApiEndpoint,
     // Passed through as-is, not `?? []`: absent means "keep whatever chain
     // the row already has", so a re-paste cannot wipe a later edit.
     proxyFallbackList: proxy_fallback_list,
-  })
+  }))
+  if (blocked) return blocked
   return c.json({ status: 'complete', user, github_host: host, account_type: accountType })
 })
 
@@ -336,7 +349,8 @@ githubAuthRouter.delete('/github/:id', async (c) => {
   // Always scope to the caller's ownerId — the Sign-out button targets a
   // specific upstream row (`up_copilot_{ownerId}_{ghUserId}`), and dropping
   // ownerId here would build the wrong row id and silently skip the delete.
-  await removeGithubAccount(ghUserId as GitHubAccountId, userId as UserId)
+  const blocked = await blockedIfSynced(() => removeGithubAccount(ghUserId as GitHubAccountId, userId as UserId))
+  if (blocked) return blocked
   return c.json({ ok: true })
 })
 

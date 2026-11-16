@@ -15,6 +15,7 @@ import type {
 import type { GitHubAccountId, UpstreamId, UserId } from '../../repo/branded-ids.ts'
 import { UpstreamGoneError, UpstreamReplacedError } from '@vibe-core/upstream-repo'
 import { normalizeProxyFallbackList } from '@vibe-core/proxy-repo'
+import { SyncedUpstreamReadOnlyError } from '../sync/read-only.ts'
 
 export type { GitHubAccount, GitHubUser }
 
@@ -72,6 +73,8 @@ async function mirrorCopilotUpstream(
     existing = await repo.getById(id)
     if (!existing) throw new UpstreamGoneError(id)
   }
+  // A synced row may have appeared since the caller's check: never touch it.
+  if (existing.syncSourceId) throw new SyncedUpstreamReadOnlyError()
   if (existing.provider !== 'copilot' || (existing.ownerId || '') !== ownerId) throw new UpstreamReplacedError(id)
   const updated = await repo.patchMetadata(existing, current => ({
     ...current, config, proxyFallbackList: chain ?? current.proxyFallbackList,
@@ -96,6 +99,10 @@ export async function addGithubAccount(
   opts: AddGithubAccountOpts = {},
 ): Promise<void> {
   const repo = getRepo().github
+  // A row synced from another gateway is read-only: refuse before any credential is stored.
+  if ((await getRepo().upstreams.getById(copilotUpstreamRowId(ownerId ?? '', user.id)))?.syncSourceId) {
+    throw new SyncedUpstreamReadOnlyError()
+  }
   await repo.saveAccount(user.id, {
     token,
     accountType,
@@ -121,6 +128,9 @@ export async function removeGithubAccount(
   ownerId?: UserId,
 ): Promise<void> {
   const repo = getRepo().github
+  if ((await getRepo().upstreams.getById(copilotUpstreamRowId(ownerId ?? '', userId)))?.syncSourceId) {
+    throw new SyncedUpstreamReadOnlyError()
+  }
   await repo.deleteAccount(userId, ownerId)
   await getRepo().upstreams.delete(copilotUpstreamRowId(ownerId ?? '', userId))
   if (ownerId) {

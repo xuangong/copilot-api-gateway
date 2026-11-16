@@ -238,8 +238,10 @@ export interface UpstreamRepo {
   /** Explicit import CAS against the complete prior stored snapshot. Conflicts
    * never replay: callers must re-read and validate their credential revision. */
   replaceCredentials(target: StoredUpstreamRecord, replacement: { config: Record<string, unknown>; state: unknown }): Promise<StoredUpstreamRecord>
-  /** Pure synchronous updater may replay; never writes the private state column. */
+  /** Pure synchronous updater may replay; never writes the private state column. Does NOT fence synced rows:
+   * callers must keep synced rows read-only except for device-local fields (enabled, sortOrder, proxies). */
   patchMetadata(target: UpstreamWriteTarget & { id: string }, updater: (current: UpstreamMetadata) => UpstreamMetadata): Promise<StoredUpstreamRecord>
+  /** Never deletes a synced row (use deleteSynced); returns false for one. */
   delete(id: UpstreamId): Promise<boolean>
   deleteAll(): Promise<void>
   /** Cross-connection CAS; pure synchronous updater may replay boundedly. */

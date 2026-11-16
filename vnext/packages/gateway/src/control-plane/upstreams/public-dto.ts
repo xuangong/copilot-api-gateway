@@ -4,6 +4,8 @@ import type { UpstreamRecord } from "../../repo/types.ts"
 import { BILLING_DIMENSIONS } from "@vibe-llm/protocols/common"
 import { parseCustomChatMetadata } from "@vibe-llm/provider-custom"
 import { substrateTokenExpiry } from "@vibe-llm/provider-sdf"
+import { isSynced } from "../sync/read-only.ts"
+import { isSyncableProvider } from "../../data-plane/providers/registry.ts"
 import { readLokiState, publicLokiStatus } from "@vibe-llm/provider-loki"
 
 export type PublicUpstream = Pick<UpstreamRecord<unknown>,
@@ -12,6 +14,10 @@ export type PublicUpstream = Pick<UpstreamRecord<unknown>,
     tokenExpiredAt?: string
     credentialStatus?: PublicCodexCredentialStatus
     lokiStatus?: ReturnType<typeof publicLokiStatus>
+    /** The provider may be selected for gateway sync. */
+    syncable?: true
+    /** Present on rows created by a sync source; `origin` is null when the source row is gone. */
+    syncedFrom?: { origin: string | null }
   }
 
 export interface PublicCodexCredentialStatus {
@@ -129,7 +135,7 @@ export function publicUpstreamConfig(upstream: UpstreamRecord<unknown>): Record<
   return out
 }
 
-export function serializeUpstream(upstream: UpstreamRecord<unknown>): PublicUpstream {
+export function serializeUpstream(upstream: UpstreamRecord<unknown>, options: { syncOrigin?: string | null } = {}): PublicUpstream {
   const dto: PublicUpstream = {
     id: upstream.id, ownerId: upstream.ownerId, provider: upstream.provider, name: upstream.name,
     enabled: upstream.enabled, sortOrder: upstream.sortOrder, config: publicUpstreamConfig(upstream),
@@ -148,5 +154,7 @@ export function serializeUpstream(upstream: UpstreamRecord<unknown>): PublicUpst
       dto.lokiStatus = publicLokiStatus(state)
     } catch { /* Invalid private state grants no public data. */ }
   }
+  if (isSyncableProvider(upstream.provider)) dto.syncable = true
+  if (isSynced(upstream)) dto.syncedFrom = { origin: options.syncOrigin ?? null }
   return dto
 }

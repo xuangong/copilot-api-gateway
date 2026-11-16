@@ -42,6 +42,7 @@ function inMemoryRepo() {
       save: async (u: UpstreamRecord) => { upstreams.set(u.id, u) },
       deleteAll: async () => { upstreams.clear() },
     },
+    syncSources: { get: async () => null },
   } as unknown as Repo
 
   return { repo, apiKeys, accounts, upstreams }

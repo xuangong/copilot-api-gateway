@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, test } from "bun:test"
 import { Database } from "bun:sqlite"
 import { BunSqliteRepo } from "@vibe-llm/platform-bun/src/bun-sqlite-repo.ts"
 import type { UserId } from "../src/repo/branded-ids"
+import { SyncedUpstreamReadOnlyError } from "../src/repo/synced-read-only-error"
 import type { SyncDeviceRecord, SyncedUpstreamInput } from "../src/repo/sync"
 
 let db: Database
@@ -150,4 +151,17 @@ test("synced writes advance the configuration revision so routing caches refresh
   const settled = await repo.configurationRevision!()
   db.run("UPDATE upstreams SET sync_source_id = 'ssrc_9' WHERE id = 'up_copilot_c1'")
   expect(await repo.configurationRevision!()).toBe(settled)
+})
+
+test("delete refuses a synced row and replaceCredentials throws for it, while local rows keep working", async () => {
+  await repo.upstreams.applySynced("ssrc_1", input(), stamp)
+  await repo.upstreams.save(local("up_local"))
+  expect(await repo.upstreams.delete("up_copilot_c1" as never)).toBe(false)
+  expect(await repo.upstreams.getById("up_copilot_c1" as never)).not.toBeNull()
+  const synced = (await repo.upstreams.getById("up_copilot_c1" as never))!
+  await expect(repo.upstreams.replaceCredentials(synced, { config: { githubToken: "stolen" }, state: null })).rejects.toBeInstanceOf(SyncedUpstreamReadOnlyError)
+  expect(await repo.upstreams.getById("up_copilot_c1" as never)).toMatchObject({ config: { githubToken: "ghp_a" } })
+  const plain = (await repo.upstreams.getById("up_local" as never))!
+  expect((await repo.upstreams.replaceCredentials(plain, { config: { a: 1 }, state: null })).config).toEqual({ a: 1 })
+  expect(await repo.upstreams.delete("up_local" as never)).toBe(true)
 })

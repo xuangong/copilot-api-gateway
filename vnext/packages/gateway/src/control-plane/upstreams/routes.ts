@@ -52,6 +52,7 @@ import { SdfProvider } from '@vibe-llm/provider-sdf'
 import type { SdfProviderConfig as PkgSdfConfig } from '@vibe-llm/provider-sdf'
 
 import { serializeUpstream } from './public-dto.ts'
+import { SYNCED_LOCKED_FIELDS, isSynced, syncOriginFor, syncedReadOnlyResponse } from '../sync/read-only.ts'
 import { codexQuotaRouter } from './codex-quota-routes.ts'
 import { codexCredentialsRouter } from './codex-credentials-routes.ts'
 import { UpstreamGoneError, UpstreamReplacedError, UpstreamContentionError } from '@vibe-core/upstream-repo'
@@ -408,7 +409,8 @@ upstreamsRouter.get('/', async (c) => {
   const ownerId = admin ? ((url.searchParams.get('ownerId') ?? undefined) as UserId | undefined) : userId
   const includeDisabled = url.searchParams.get('includeDisabled') === '1'
   const upstreams = await getRepo().upstreams.list({ ownerId, includeDisabled })
-  return c.json({ upstreams: upstreams.map(serializeUpstream) })
+  const syncOrigin = await syncOriginFor(upstreams)
+  return c.json({ upstreams: upstreams.map((upstream) => serializeUpstream(upstream, { syncOrigin })) })
 })
 
 upstreamsRouter.post('/', zValidator('json', upstreamBody), async (c) => {
@@ -444,6 +446,7 @@ upstreamsRouter.post('/', zValidator('json', upstreamBody), async (c) => {
       createdAt: now,
       updatedAt: now,
     }))
+    if (isSynced(await getRepo().upstreams.getById(upstream.id as UpstreamId))) return syncedReadOnlyResponse()
     await getRepo().upstreams.save(upstream)
     await invalidateUpstreamCaches(null, upstream)
     return new Response(JSON.stringify({ upstream: serializeUpstream(upstream) }), {
@@ -461,6 +464,10 @@ upstreamsRouter.patch('/:id', zValidator('json', upstreamBody), async (c) => {
   const id = c.req.param('id') as UpstreamId
   const existing = await loadOwned(c.get('auth'), () => getRepo().upstreams.getById(id))
   if (!existing) return jsonError('upstream not found', 404)
+  if (isSynced(existing)) {
+    const requested = c.req.valid('json')
+    if (SYNCED_LOCKED_FIELDS.some((field) => requested[field] !== undefined)) return syncedReadOnlyResponse()
+  }
   try {
     const body = c.req.valid('json')
     if (body.provider !== undefined && body.provider !== existing.provider) {
@@ -492,7 +499,7 @@ upstreamsRouter.patch('/:id', zValidator('json', upstreamBody), async (c) => {
       }
     }))
     await invalidateUpstreamCaches(existing, next)
-    return c.json({ upstream: serializeUpstream(next) })
+    return c.json({ upstream: serializeUpstream(next, { syncOrigin: await syncOriginFor([next]) }) })
   } catch (err) {
     return writeError(err)
   }
@@ -503,6 +510,7 @@ upstreamsRouter.delete('/:id', async (c) => {
   const id = c.req.param('id') as UpstreamId
   const existing = await loadOwned(c.get('auth'), () => getRepo().upstreams.getById(id))
   if (!existing) return jsonError('upstream not found', 404)
+  if (isSynced(existing)) return syncedReadOnlyResponse()
   // For copilot upstreams, cascade-delete the github_accounts row so the
   // legacy token store doesn't keep a now-orphan account around.
   if (existing.provider === 'copilot') {
