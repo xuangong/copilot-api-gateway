@@ -6,6 +6,7 @@ import { parseCustomChatMetadata } from "@vibe-llm/provider-custom"
 import { substrateTokenExpiry } from "@vibe-llm/provider-sdf"
 import { isSynced } from "../sync/read-only.ts"
 import { isSyncableProvider } from "../../data-plane/providers/registry.ts"
+import { isSyncableWireUpstream } from "../../sync/protocol.ts"
 import { readLokiState, publicLokiStatus } from "@vibe-llm/provider-loki"
 
 export type PublicUpstream = Pick<UpstreamRecord<unknown>,
@@ -14,8 +15,10 @@ export type PublicUpstream = Pick<UpstreamRecord<unknown>,
     tokenExpiredAt?: string
     credentialStatus?: PublicCodexCredentialStatus
     lokiStatus?: ReturnType<typeof publicLokiStatus>
-    /** The provider may be selected for gateway sync. */
-    syncable?: true
+    /** The server would accept this row in a device selection. */
+    syncable: boolean
+    /** Why `syncable` is false: provider not supported, row synced from another gateway, or id/name not valid on the wire. */
+    syncBlocked?: "provider" | "synced" | "wire"
     /** Present on rows created by a sync source; `origin` is null when the source row is gone. */
     syncedFrom?: { origin: string | null }
   }
@@ -140,7 +143,7 @@ export function serializeUpstream(upstream: UpstreamRecord<unknown>, options: { 
     id: upstream.id, ownerId: upstream.ownerId, provider: upstream.provider, name: upstream.name,
     enabled: upstream.enabled, sortOrder: upstream.sortOrder, config: publicUpstreamConfig(upstream),
     flagOverrides: upstream.flagOverrides, disabledPublicModelIds: upstream.disabledPublicModelIds,
-    proxyFallbackList: upstream.proxyFallbackList, createdAt: upstream.createdAt, updatedAt: upstream.updatedAt,
+    proxyFallbackList: upstream.proxyFallbackList, createdAt: upstream.createdAt, updatedAt: upstream.updatedAt, syncable: false,
   }
   if (upstream.provider === "sdf") {
     const token = record(upstream.config).substrateToken
@@ -154,7 +157,11 @@ export function serializeUpstream(upstream: UpstreamRecord<unknown>, options: { 
       dto.lokiStatus = publicLokiStatus(state)
     } catch { /* Invalid private state grants no public data. */ }
   }
-  if (isSyncableProvider(upstream.provider)) dto.syncable = true
+  // Mirrors the device selection check in control-plane/sync/devices.ts.
+  const blocked = !isSyncableProvider(upstream.provider) ? "provider" : isSynced(upstream) ? "synced"
+    : !isSyncableWireUpstream(upstream) ? "wire" : undefined
+  dto.syncable = blocked === undefined
+  if (blocked) dto.syncBlocked = blocked
   if (isSynced(upstream)) dto.syncedFrom = { origin: options.syncOrigin ?? null }
   return dto
 }

@@ -1,4 +1,5 @@
 import { CodexQuotaPanel } from "./CodexQuotaPanel"
+import { lokiRowStatusKey } from "./loki-status"
 import { useId, useState, type DragEvent, type KeyboardEvent, type PointerEvent } from "react"
 import { ChevronDown, ChevronUp, GripVertical } from "lucide-react"
 import { ProviderAvatar } from "./KindChip"
@@ -91,6 +92,7 @@ export function UpstreamRow({
 }: Props) {
   const locked = readOnly
   const u = row
+  const synced = !!u.syncedFrom
   const ghUser = u.provider === "copilot" ? u.config?.user : undefined
   const avatar = ghUser
     ? ghUser.avatar_url || `https://avatars.githubusercontent.com/u/${ghUser.id}?v=4`
@@ -162,6 +164,11 @@ export function UpstreamRow({
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 min-w-0">
               <h3 id={nameId} className="text-body font-medium text-fg truncate">{u.name}</h3>
+              {synced ? (
+                <span className="inline-flex shrink-0 cursor-default" title={t("dash.syncedHint")}>
+                  <Badge tone="brand">{u.syncedFrom?.origin ? t("dash.syncedBadge", { origin: u.syncedFrom.origin }) : t("dash.syncedBadgeUnknown")}</Badge>
+                </span>
+              ) : null}
               {expiredAt ? (
                 <span className="inline-flex shrink-0 cursor-default" title={t("dash.tokenExpiredTip", { at: expiredAt })}>
                   <Badge tone="danger">{t("dash.tokenExpiredBadge")}</Badge>
@@ -180,10 +187,7 @@ export function UpstreamRow({
             ) : null}
             {u.provider === "loki" && u.lokiStatus ? <div className="text-xs text-fg-muted mt-1">
               <span className={lokiTone ? TONE_TEXT[lokiTone] : undefined}>
-                {t(u.lokiStatus.tokenStatus === "expired" ? "dash.lokiExpired" : {
-                  waiting: "dash.lokiWaiting", authorized: "dash.lokiAuthorized",
-                  interaction_required: "dash.lokiInteractionRequired", failed: "dash.lokiFailed",
-                }[u.lokiStatus.assistantStatus])}
+                {t(lokiRowStatusKey(u.lokiStatus, synced))}
               </span>
               {u.lokiStatus.expiresAt ? ` · ${t("dash.codexExpiresAt", { at: new Date(u.lokiStatus.expiresAt).toLocaleString() })}` : ""}
             </div> : null}
@@ -238,33 +242,35 @@ export function UpstreamRow({
             />
             <span>{u.enabled ? t("dash.onLabel") : t("dash.offLabel")}</span>
           </label>
-          <Button variant="ghost" size="sm" onClick={onEdit} disabled={locked || busy} aria-expanded={!!editing}>
-            {editing ? t("dash.closeBtn") : t("dash.edit")}
-          </Button>
-          {u.provider === "custom" || u.provider === "azure" || u.provider === "sdf" ? (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onDuplicate}
-              disabled={locked || busy}
-              aria-label={`${t("dash.duplicateUpstream")} ${u.name}`}
-            >
-              {t("dash.duplicateUpstream")}
+          {!synced ? <>
+            <Button variant="ghost" size="sm" onClick={onEdit} disabled={locked || busy} aria-expanded={!!editing}>
+              {editing ? t("dash.closeBtn") : t("dash.edit")}
             </Button>
-          ) : null}
-          <Button variant="ghost" size="sm" onClick={onRefreshModels} disabled={locked || busy} title={t("dash.refetchModelsTip")}>
-            {busy ? "…" : t("dash.refetchModelsLabel")}
-          </Button>
-          {credential?.renewable ? (
-            <Button variant="ghost" size="sm" onClick={onRefreshCredential} disabled={locked || busy}>
-              {t("dash.codexRefreshCredential")}
+            {u.provider === "custom" || u.provider === "azure" || u.provider === "sdf" ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onDuplicate}
+                disabled={locked || busy}
+                aria-label={`${t("dash.duplicateUpstream")} ${u.name}`}
+              >
+                {t("dash.duplicateUpstream")}
+              </Button>
+            ) : null}
+            <Button variant="ghost" size="sm" onClick={onRefreshModels} disabled={locked || busy} title={t("dash.refetchModelsTip")}>
+              {busy ? "…" : t("dash.refetchModelsLabel")}
             </Button>
-          ) : null}
-          {u.provider === "copilot" ? (
-            <Button variant="ghost" size="sm" onClick={onReauth} disabled={locked} title={t("dash.reauthTip")}>
-              {t("dash.reauthBtn")}
-            </Button>
-          ) : null}
+            {credential?.renewable ? (
+              <Button variant="ghost" size="sm" onClick={onRefreshCredential} disabled={locked || busy}>
+                {t("dash.codexRefreshCredential")}
+              </Button>
+            ) : null}
+            {u.provider === "copilot" ? (
+              <Button variant="ghost" size="sm" onClick={onReauth} disabled={locked} title={t("dash.reauthTip")}>
+                {t("dash.reauthBtn")}
+              </Button>
+            ) : null}
+          </> : null}
           {showProxy ? (
             <Button
               variant="ghost"
@@ -276,15 +282,17 @@ export function UpstreamRow({
               {proxyOpen ? t("dash.closeBtn") : t("dash.proxyBtn")}
             </Button>
           ) : null}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onDelete}
-            disabled={locked || busy}
-            className="text-danger hover:text-danger"
-          >
-            {u.provider === "copilot" ? t("dash.signOutBtn") : t("dash.delete")}
-          </Button>
+          {!synced ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onDelete}
+              disabled={locked || busy}
+              className="text-danger hover:text-danger"
+            >
+              {u.provider === "copilot" ? t("dash.signOutBtn") : t("dash.delete")}
+            </Button>
+          ) : null}
         </div>
       </div>
 

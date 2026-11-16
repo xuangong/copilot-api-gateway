@@ -30,19 +30,19 @@ let device: Repo
 let current: Repo
 const traffic = { central: 0, copilot: [] as string[], loki: [] as string[], exchange: [] as string[] }
 
-const use = (repo: Repo) => { current = repo; initRepo(repo) }
+const switchRepo = (repo: Repo) => { current = repo; initRepo(repo) }
 async function onCentral<T>(run: () => Promise<T>): Promise<T> {
   const previous = current
-  use(central)
-  try { return await run() } finally { use(previous) }
+  switchRepo(central)
+  try { return await run() } finally { switchRepo(previous) }
 }
 const call = (host: "central" | "device", path: string, method = "GET", body?: unknown) => {
-  use(host === "central" ? central : device)
+  switchRepo(host === "central" ? central : device)
   return app.request(`https://${host}.example${path}`, { method, headers: { authorization: `Bearer ${host === "central" ? centralSession : deviceSession}`,
     "content-type": "application/json" }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) })
 }
 const inference = (path: string, body: unknown) => {
-  use(device)
+  switchRepo(device)
   return app.request(`https://device.example${path}`, { method: "POST",
     headers: { authorization: "Bearer device-inference-key", "content-type": "application/json", "X-ConversationId": "e2e-conversation" }, body: JSON.stringify(body) })
 }
@@ -139,11 +139,11 @@ test("issue, import, serve with synced credentials, follow central edits and tok
   expect(writes).toEqual([])
 
   // 4. Central edits the selection: drop Loki, add the second Copilot. The next sync removes and adds.
-  use(device)
+  switchRepo(device)
   expect(await runScheduledSync()).toBe("not_modified")
   const edited = await call("central", `/api/sync/devices/${issuedDevice.id}`, "PATCH", { upstreamIds: ["up_copilot_c", "up_copilot_d"] })
   expect(edited.status).toBe(200)
-  use(device)
+  switchRepo(device)
   expect(await runScheduledSync()).toBe("applied")
   expect((await deviceUpstreams()).map(row => row.id)).toEqual(["up_copilot_c", "up_copilot_d"])
 
@@ -151,13 +151,13 @@ test("issue, import, serve with synced credentials, follow central edits and tok
   //    without advancing generations.
   await call("device", "/api/upstreams/up_copilot_c", "PATCH", { enabled: false })
   expect((await call("central", `/api/sync/devices/${issuedDevice.id}`, "PATCH", { upstreamIds: ["up_copilot_c", "up_loki_c"] })).status).toBe(200)
-  use(device)
+  switchRepo(device)
   expect(await runScheduledSync()).toBe("applied")
   expect((await deviceUpstreams()).map(row => [row.id, row.enabled])).toEqual([["up_copilot_c", false], ["up_loki_c", true]])
   await direct("up_loki_c") // re-created on the device, so its device-local proxy list is empty again
   const before = (await device.upstreams.getById("up_loki_c" as UpstreamId))!
   await central.upstreams.saveState<unknown>("up_loki_c" as UpstreamId, () => lokiState("rotated-loki-token"))
-  use(device)
+  switchRepo(device)
   expect(await runScheduledSync()).toBe("applied")
   const after = (await device.upstreams.getById("up_loki_c" as UpstreamId))!
   expect([after.catalogGeneration, after.credentialGeneration]).toEqual([before.catalogGeneration, before.credentialGeneration])
@@ -168,7 +168,7 @@ test("issue, import, serve with synced credentials, follow central edits and tok
   // 6. Revoking on central removes every synced upstream from the device on its next sync, then polling stops.
   const revoked = await call("central", `/api/sync/devices/${issuedDevice.id}`, "DELETE")
   expect(revoked.status).toBe(200)
-  use(device)
+  switchRepo(device)
   expect(await runScheduledSync()).toBe("revoked")
   expect(await deviceUpstreams()).toEqual([])
   expect(await device.syncSources.get()).toMatchObject({ status: "revoked" })

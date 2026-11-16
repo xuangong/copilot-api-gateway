@@ -31,14 +31,6 @@ import {
 } from '../lib/github.ts'
 import { syncedReadOnlyResponseFor } from '../sync/read-only.ts'
 
-/** Runs a library write; a synced-row refusal becomes the 409 response, anything else rethrows. */
-async function blockedIfSynced(run: () => Promise<unknown>): Promise<Response | null> {
-  try { await run(); return null } catch (error) {
-    const blocked = syncedReadOnlyResponseFor(error)
-    if (blocked) return blocked
-    throw error
-  }
-}
 import { GITHUB_CLIENT_ID } from '../../shared/config/constants.ts'
 import {
   githubApiOrigin,
@@ -53,6 +45,15 @@ import { resolveControlPlaneFetcher } from '../upstreams/proxy-resolution.ts'
 import { getRuntimeLocation } from '@vibe-core/platform'
 import type { ProxyFallbackEntry } from '@vibe-core/proxy-repo'
 import type { Fetcher } from '@vibe-core/upstream'
+
+/** Runs a library write; a synced-row refusal becomes the 409 response, anything else rethrows. */
+async function blockedIfSynced(run: () => Promise<unknown>): Promise<Response | null> {
+  try { await run(); return null } catch (error) {
+    const blocked = syncedReadOnlyResponseFor(error)
+    if (blocked) return blocked
+    throw error
+  }
+}
 
 type Vars = { auth: AuthCtx }
 

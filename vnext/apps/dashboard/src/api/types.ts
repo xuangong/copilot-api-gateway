@@ -47,6 +47,12 @@ export interface UpstreamRecord {
   // here. Present means expired; absent means "not expired, or unknowable", and
   // deliberately not a health signal (a live-looking token can still be revoked).
   tokenExpiredAt?: string
+  /** The server would accept this row in a device selection. */
+  syncable?: boolean
+  /** Why `syncable` is false. */
+  syncBlocked?: "provider" | "synced" | "wire"
+  /** Set on rows created by a sync source; `origin` is null when the source is gone. */
+  syncedFrom?: { origin: string | null }
   lokiStatus?: {
     assistantStatus: "waiting" | "authorized" | "interaction_required" | "failed"
     tokenStatus: "missing" | "valid" | "expired"

@@ -13,6 +13,8 @@ import type { PortableUpstreamDraft } from "./duplicate-draft"
 import type { UpstreamRecord } from "../../api/types"
 import { moveUpstream } from "../../state/reorder-upstreams"
 import { LokiPairingPanel } from "./LokiPairingPanel"
+import { SyncDevicesSection } from "./SyncDevicesSection"
+import { SyncSourceSection } from "./SyncSourceSection"
 import { FormHeadingLevel } from "./form/Field"
 import { useTouchReorder } from "./touch-reorder"
 import { ChevronDown, ChevronRight, RefreshCw } from "lucide-react"
@@ -360,6 +362,9 @@ export function UpstreamsTab() {
           })}
         </div>
       </Card>
+
+      <SyncDevicesSection upstreams={store.upstreams} myOwnerId={myOwnerId} />
+      <SyncSourceSection onChanged={store.reload} />
 
       {deviceFlowOpen ? (
         <DeviceFlowModal

@@ -119,14 +119,19 @@ test("signing in or out of the Copilot account behind a synced row is refused be
   expect([route.status, await route.json()]).toEqual([409, readOnly])
 })
 
-test("the upstream list marks syncable providers and shows where synced rows come from", async () => {
+test("the upstream list marks which rows a device selection would accept and shows where synced rows come from", async () => {
   await synced("up_copilot_s", "copilot")
   await repo.upstreams.save({ id: "up_custom_l", ownerId: owner, provider: "custom", name: "Local", enabled: true, sortOrder: 0, config: {},
     flagOverrides: {}, disabledPublicModelIds: [], state: null, proxyFallbackList: [], createdAt: stamp, updatedAt: stamp })
+  for (const id of ["up_copilot_ok", "up bad id"]) await repo.upstreams.save({ id: id as UpstreamId, ownerId: owner, provider: "copilot", name: "Local", enabled: true,
+    sortOrder: 1, config: {}, flagOverrides: {}, disabledPublicModelIds: [], state: null, proxyFallbackList: [], createdAt: stamp, updatedAt: stamp })
   const listed = await (await send(upstreams, "/api/upstreams?includeDisabled=1", "GET")).json() as { upstreams: Array<Record<string, unknown>> }
   const byId = Object.fromEntries(listed.upstreams.map(upstream => [upstream.id as string, upstream]))
-  expect(byId.up_copilot_s).toMatchObject({ syncable: true, syncedFrom: { origin: "https://central.example" } })
-  expect(byId.up_custom_l).not.toHaveProperty("syncable")
+  expect(byId.up_copilot_s).toMatchObject({ syncable: false, syncBlocked: "synced", syncedFrom: { origin: "https://central.example" } })
+  expect(byId.up_custom_l).toMatchObject({ syncable: false, syncBlocked: "provider" })
+  expect(byId.up_copilot_ok).toMatchObject({ syncable: true })
+  expect(byId.up_copilot_ok).not.toHaveProperty("syncBlocked")
+  expect(byId["up bad id"]).toMatchObject({ syncable: false, syncBlocked: "wire" })
   expect(byId.up_custom_l).not.toHaveProperty("syncedFrom")
   expect(JSON.stringify(listed)).not.toContain("syncSourceId")
 })
