@@ -37,13 +37,22 @@ test("the stored ETag is sent as If-None-Match and a 304 means nothing changed",
 
 test("status codes map to outcomes", async () => {
   const cases: Array<[number, unknown]> = [
-    [401, { kind: "revoked" }], [302, { kind: "failed", code: "http_error" }], [403, { kind: "failed", code: "http_error" }],
+    [401, { kind: "failed", code: "http_error" }], [302, { kind: "failed", code: "http_error" }], [403, { kind: "failed", code: "http_error" }],
     [404, { kind: "failed", code: "http_error" }], [500, { kind: "failed", code: "http_error" }], [503, { kind: "failed", code: "http_error" }],
   ]
   for (const [status, expected] of cases) {
     expect(await fetchSnapshot({ ...source, etag: null }, async () => new Response("x", { status }))).toEqual(expected)
   }
   expect(await fetchSnapshot({ ...source, etag: null }, async () => { throw new Error("network down") })).toEqual({ kind: "failed", code: "unreachable" })
+})
+
+test("only a 401 whose body is code invalid_device means revoked", async () => {
+  const at = (body: BodyInit | null) => fetchSnapshot({ ...source, etag: null }, async () => new Response(body, { status: 401 }))
+  expect(await at('{"error":{"code":"invalid_device"}}')).toEqual({ kind: "revoked" })
+  const generic = { kind: "failed", code: "http_error" }
+  for (const body of [null, "", "{}", "not json", '{"error":{"code":"other"}}', '{"error":"invalid_device"}', `{"error":{"code":"invalid_device"},"pad":"${"x".repeat(5000)}"}`]) {
+    expect(await at(body)).toEqual(generic)
+  }
 })
 
 test("malformed, mismatched and oversized bodies are bad responses", async () => {

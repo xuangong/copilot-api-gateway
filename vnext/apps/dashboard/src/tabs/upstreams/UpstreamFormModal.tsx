@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useT } from "../../state/i18n"
+import { upstreamErrorText } from "./upstream-error"
 import { useToast } from "../../state/toast"
 import { useAuth } from "../../state/auth"
 import * as api from "../../api/upstreams"
@@ -213,7 +214,7 @@ export function UpstreamFormModal({ mode, flagCatalog, ensureFlagCatalog, onClos
       }
       onSaved()
     } catch (e) {
-      toast(e instanceof Error ? e.message : String(e), "error")
+      toast(upstreamErrorText(e, t), "error")
     } finally {
       setSaving(false)
     }

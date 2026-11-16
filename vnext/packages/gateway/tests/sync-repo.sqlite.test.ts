@@ -165,3 +165,14 @@ test("delete refuses a synced row and replaceCredentials throws for it, while lo
   expect((await repo.upstreams.replaceCredentials(plain, { config: { a: 1 }, state: null })).config).toEqual({ a: 1 })
   expect(await repo.upstreams.delete("up_local" as never)).toBe(true)
 })
+
+test("saveState refuses a synced row and leaves its state untouched, but still writes local rows", async () => {
+  await repo.upstreams.applySynced("ssrc_1", input({ state: { token: "central" } }), stamp)
+  await repo.upstreams.save(local("up_local"))
+  let calls = 0
+  await expect(repo.upstreams.saveState("up_copilot_c1" as never, () => { calls++; return { token: "device" } })).rejects.toBeInstanceOf(SyncedUpstreamReadOnlyError)
+  expect(calls).toBe(0)
+  expect((await repo.upstreams.getById("up_copilot_c1" as never))!.state).toEqual({ token: "central" })
+  await repo.upstreams.saveState("up_local" as never, () => ({ ok: true }))
+  expect((await repo.upstreams.getById("up_local" as never))!.state).toEqual({ ok: true })
+})

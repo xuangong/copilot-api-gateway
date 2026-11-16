@@ -48,7 +48,7 @@ Selection validation (`invalid_upstreams`): every id must be an upstream the cal
 Session-guarded. The connecting user owns the synced upstreams (stored as `sync_sources.owner_id`; ownership never changes on `PUT`). At most one source exists.
 
 - `GET /api/sync/source` returns `{ available, source }`. `source` is `{ origin, deviceId, status, lastAttemptAt, lastSuccessAt, lastError, upstreamCount }` (never the secret), or `null` when none exists or the caller is neither the source owner nor an administrator. `available` is true only on the Bun runtime.
-- `POST /api/sync/source` with `{ document }`: any session user may call it. Errors: `501 device_sync_unavailable` (not Bun; Cloudflare Workers do not run device sync), `400 invalid_request` (body is not exactly `{ document }`), `400 invalid_sync_document`, `409 sync_source_exists`, `502 sync_unreachable`, `503 temporarily_unavailable` (applying the fetched snapshot failed; the source stays with `last_error = apply_failed` and the next tick retries). One snapshot is fetched before anything is stored; a central `401` gives `400 invalid_sync_document`; a network failure, timeout, redirect, other status or malformed body gives `502 sync_unreachable`. Plain HTTP is accepted for the device's own address. Success is `201 { source }`.
+- `POST /api/sync/source` with `{ document }`: any session user may call it. Errors: `501 device_sync_unavailable` (not Bun; Cloudflare Workers do not run device sync), `400 invalid_request` (body is not exactly `{ document }`), `400 invalid_sync_document`, `409 sync_source_exists`, `502 sync_unreachable`, `503 temporarily_unavailable` (applying the fetched snapshot failed; the source stays with `last_error = apply_failed` and the next tick retries). One snapshot is fetched before anything is stored; a central `401` whose body is `{"error":{"code":"invalid_device"}}` gives `400 invalid_sync_document`, any other `401` (no body, another code, non-JSON, body over 4 KiB) gives `502 sync_unreachable`; a network failure, timeout, redirect, other status or malformed body gives `502 sync_unreachable`. Plain HTTP is accepted for the device's own address. Success is `201 { source }`.
 - `PUT /api/sync/source` replaces the document of the existing source in place (same id, same owner) with the same checks, and applies the new snapshot, deleting upstreams it lacks. `404 sync_source_not_found` when there is no source or the caller is neither owner nor administrator. `501` as above. Success is `200 { source }`.
 - `DELETE /api/sync/source` removes the source and every upstream it created and returns `{ source: null }`; `404 sync_source_not_found` under the same rule as `PUT`.
 
@@ -61,8 +61,8 @@ A fetch is direct (never an upstream's proxy chain), never follows redirects, ti
 | Result | Effect |
 | --- | --- |
 | `304` | nothing changes; `lastSuccessAt` advances |
-| network failure, timeout, redirect, other non-200, malformed body | the last applied snapshot stays; `lastError` is `unreachable`, `http_error` or `bad_response`; retried next tick |
-| `401` | every synced upstream of the source is deleted, the source is marked `revoked`, the ETag is cleared and polling stops until a document is re-imported with `PUT` |
+| network failure, timeout, redirect, other non-200 (including a `401` without the `invalid_device` code, e.g. from a proxy or a rolled-back central), malformed body | the last applied snapshot stays; `lastError` is `unreachable`, `http_error` or `bad_response`; retried next tick |
+| `401` with body code `invalid_device` | every synced upstream of the source is deleted, the source is marked `revoked`, the ETag is cleared and polling stops until a document is re-imported with `PUT`; the source is re-checked first, so a source replaced mid-request loses nothing |
 | `200` | applied (below) |
 | apply throws | `lastError = apply_failed`, the stored ETag is cleared so the next tick refetches |
 
@@ -111,3 +111,10 @@ See also [loki-sync-v1.md](loki-sync-v1.md).
 2. On the central gateway, issue a device with the Copilot and Loki upstreams selected.
 3. Rebuild the local container, paste the document under Upstreams, Sync source, and confirm the upstreams appear and serve inference.
 4. Copilot upstreams that the central gateway reaches through a proxy may need a device-local proxy if direct access fails.
+
+### Rollback and downgrade
+
+- Do not roll the central Worker back to a version without `/api/sync/snapshot` while devices exist, unless devices already run the build in which only a `401` with code `invalid_device` revokes a source. Older device builds treat any `401` as a revocation and delete every synced upstream.
+- Disconnect the sync source before downgrading a device image. Older images treat synced rows as normal rows (they can edit and export their credentials) and cannot read synced Loki state.
+- Migration `0025` is additive (new tables and `upstreams.sync_source_id`) and safe for older central code.
+- On a multi-user local gateway any session user can connect the single sync source; this is by design for single-owner devices.

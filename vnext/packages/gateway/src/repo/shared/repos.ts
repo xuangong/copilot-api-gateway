@@ -790,6 +790,9 @@ class SharedUpstreamRepo implements UpstreamRepo {
 
   async saveState<TState>(id: UpstreamId, updater: (current: TState) => TState, expected?: UpstreamWriteTarget): Promise<void> {
     let row = await this.readStateTarget(id, expected)
+    // State of a synced row comes only from its source (applySynced). No device-side caller writes it: the providers that
+    // refresh credentials (codex, claude-code) are not syncable, and the Loki receipt endpoint cannot authenticate a synced row.
+    if (row.sync_source_id) throw new SyncedUpstreamReadOnlyError()
     const target = expected ?? { rowIncarnation: row.row_incarnation, ownerId: row.owner_id || undefined, provider: row.provider }
     for (let attempt = 0; attempt < UPSTREAM_WRITE_ATTEMPTS; attempt++) {
       const next = updater(parseState(row.state_json) as TState)
@@ -810,6 +813,7 @@ class SharedUpstreamRepo implements UpstreamRepo {
       // make the driver's affected-row count exceed one.
       if (matched) return
       row = await this.readStateTarget(id, target)
+      if (row.sync_source_id) throw new SyncedUpstreamReadOnlyError()
     }
     throw new UpstreamContentionError(id)
   }

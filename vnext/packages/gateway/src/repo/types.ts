@@ -244,7 +244,10 @@ export interface UpstreamRepo {
   /** Never deletes a synced row (use deleteSynced); returns false for one. */
   delete(id: UpstreamId): Promise<boolean>
   deleteAll(): Promise<void>
-  /** Cross-connection CAS; pure synchronous updater may replay boundedly. */
+  /**
+   * Cross-connection CAS; pure synchronous updater may replay boundedly. Throws `SyncedUpstreamReadOnlyError` for a row owned
+   * by a sync source: its state comes only from the source (no device-side caller writes it).
+   */
   saveState<TState>(id: UpstreamId, updater: (current: TState) => TState, target?: UpstreamWriteTarget): Promise<void>
   /** Device sync: rows this source created, in display order. */
   listSynced(sourceId: string): Promise<StoredUpstreamRecord[]>

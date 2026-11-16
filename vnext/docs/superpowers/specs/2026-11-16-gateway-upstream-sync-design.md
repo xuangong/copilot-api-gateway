@@ -132,7 +132,7 @@ Upstreams later deleted on the central gateway simply drop out of snapshots; sta
 
 Session-guarded, on the local gateway:
 
-- `POST /api/sync/source` `{ document }`: validates the document (`400 invalid_sync_document`), rejects if a source exists (`409 sync_source_exists`), then performs one sync before storing the source. Central `401` → `400 invalid_sync_document`, nothing stored. Network failure, timeout, redirect, non-200/304, or malformed body → `502 sync_unreachable`, nothing stored. Plain HTTP local origins are allowed.
+- `POST /api/sync/source` `{ document }`: validates the document (`400 invalid_sync_document`), rejects if a source exists (`409 sync_source_exists`), then performs one sync before storing the source. Central `401 invalid_device` → `400 invalid_sync_document`, nothing stored; any other `401` → `502 sync_unreachable`. Network failure, timeout, redirect, non-200/304, or malformed body → `502 sync_unreachable`, nothing stored. Plain HTTP local origins are allowed.
 - `GET /api/sync/source` → `{ source: { origin, deviceId, status, lastAttemptAt, lastSuccessAt, lastError, upstreamCount } | null }` (never the secret).
 - `PUT /api/sync/source` `{ document }`: same validation and first sync; on success replaces the source and applies the new snapshot (upstreams not in it are removed).
 - `DELETE /api/sync/source`: removes the source and every upstream with its `sync_source_id`.
@@ -159,8 +159,8 @@ Applied in one pass per snapshot:
 ### Errors
 
 - `304`: no change.
-- Network failure, timeout, 5xx, malformed body: keep the last applied snapshot; record the error; retry next tick.
-- `401`: delete every synced upstream of this source, mark the source `revoked`, stop polling until a document is re-imported.
+- Network failure, timeout, 5xx, malformed body, or a `401` without code `invalid_device` (proxy, rolled-back central): keep the last applied snapshot; record the error; retry next tick.
+- `401` with body `{"error":{"code":"invalid_device"}}` only: delete every synced upstream of this source, mark the source `revoked`, stop polling until a document is re-imported.
 
 ### Read-only synced upstreams
 
@@ -206,6 +206,8 @@ Remove `mirrors`/`source` from `LokiState` (tolerate and drop on read), `src/mir
 4. Add `DOMAIN-SUFFIX,delve.office.com,DIRECT` to Shadowrocket.
 5. Repeat for other devices. Copilot upstreams that the central gateway routes through a proxy may need a device-local proxy if direct access fails.
 6. Re-measure trojan logs after one to two days.
+
+Rollback: do not roll the central Worker back to a version without `/api/sync/snapshot` while devices exist unless devices run the build where only `401 invalid_device` revokes. Disconnect the sync source before downgrading a device image (older images treat synced rows as normal rows, export their credentials and cannot read synced Loki state). Migration `0025` is additive and safe for older central code. On a multi-user local gateway any session user can connect the single sync source (by design for single-owner devices).
 
 ## Out of scope
 

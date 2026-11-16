@@ -23,7 +23,7 @@ const doc = syncDocument("https://central.example", deviceId, secret)
 let db: Database
 let repo: BunSqliteRepo
 let app: Hono
-let central: { entries: unknown[]; mode: "ok" | "down" | "revoked" | "error" | "redirect"; calls: number }
+let central: { entries: unknown[]; mode: "ok" | "down" | "revoked" | "generic401" | "error" | "redirect"; calls: number }
 
 const entry = (id: string) => ({ id, provider: "copilot", name: id, config: { githubToken: `token-${id}` }, state: null,
   flagOverrides: {}, disabledPublicModelIds: [] })
@@ -46,7 +46,8 @@ beforeEach(async () => {
     if (central.mode === "down") throw new Error("network down")
     if (central.mode === "redirect") return new Response(null, { status: 302, headers: { location: "https://evil.example/" } })
     if (central.mode === "error") return new Response("boom", { status: 500 })
-    if (central.mode === "revoked" || new Headers(init?.headers).get("authorization") !== `Bearer ${secret}`) return new Response("{}", { status: 401 })
+    if (central.mode === "generic401") return new Response(null, { status: 401 })
+    if (central.mode === "revoked" || new Headers(init?.headers).get("authorization") !== `Bearer ${secret}`) return new Response('{"error":{"code":"invalid_device"}}', { status: 401 })
     return Response.json({ version: 1, deviceId, upstreams: central.entries })
   })
   app = new Hono()
@@ -86,6 +87,14 @@ test("invalid documents are refused before any request and store nothing", async
   expect(await code(await call("POST", { document: doc, extra: true }))).toBe("invalid_request")
   expect(central.calls).toBe(0)
   expect(await repo.syncSources.get()).toBeNull()
+})
+
+test("a generic 401 (proxy or rolled-back central) is unreachable, not a rejected document", async () => {
+  central.mode = "generic401"
+  const response = await call("POST", { document: doc })
+  expect([response.status, await code(response)]).toEqual([502, "sync_unreachable"])
+  expect(await repo.syncSources.get()).toBeNull()
+  expect(await ids()).toEqual([])
 })
 
 test("a rejected or unreachable central creates nothing", async () => {

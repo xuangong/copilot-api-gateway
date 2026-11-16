@@ -6,7 +6,7 @@ import { useT } from "../../state/i18n"
 import { Button } from "../../ui/button"
 import { Card, SectionHeading } from "../../ui/card"
 import { Notice } from "../../ui/notice"
-import { formatSyncDocument } from "./sync-document"
+import { presentIssuedDocument } from "./sync-document"
 import { canSubmitDevice, initialSelection, selectableUpstreams, syncedCount, toggleSelection, type SelectableUpstream } from "./sync-devices"
 import { syncDeviceErrorKey } from "./sync-errors"
 
@@ -120,9 +120,10 @@ export function SyncDevicesSection({ upstreams, myOwnerId }: { upstreams: Upstre
     try {
       if (form.id === null) {
         const result = await issueSyncDevice({ label: form.label.trim(), upstreamIds: form.selected })
-        setDevices(list => [...list, result.device])
-        try { setIssued({ text: formatSyncDocument(result.document, window.location.origin) }) }
-        catch { setError(t("dash.syncDeviceOriginMismatch")) }
+        const shown = await presentIssuedDocument(result, window.location.origin, revokeSyncDevice)
+        if (shown.kind === "shown") { setDevices(list => [...list, result.device]); setIssued({ text: shown.text }) }
+        else if (shown.revoked) { setDevices(shown.devices); setError(t("dash.syncDeviceOriginMismatch")) }
+        else { setDevices(list => [...list, result.device]); setError(t("dash.syncDeviceOriginMismatchKept")) }
       } else {
         const result = await updateSyncDevice(form.id, { label: form.label.trim(), upstreamIds: form.selected })
         setDevices(list => list.map(device => device.id === result.device.id ? result.device : device))

@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test"
 import type { SyncDocument } from "../../api/sync"
-import { formatSyncDocument, httpsOrigin, parseSyncDocumentText } from "./sync-document"
+import { formatSyncDocument, presentIssuedDocument, httpsOrigin, parseSyncDocumentText } from "./sync-document"
 
 const doc: SyncDocument = { version: 1, kind: "gateway-sync", gatewayOrigin: "https://central.example", deviceId: `sdv_${"1".repeat(32)}`,
   deviceSecret: `sds_${"2".repeat(64)}` }
@@ -27,4 +27,17 @@ test("origins are normalized like the server and unsafe forms are rejected", () 
     expect(parseSyncDocumentText(JSON.stringify({ ...doc, gatewayOrigin }))).toBeNull()
     expect(httpsOrigin(gatewayOrigin)).toBeNull()
   }
+})
+
+test("an issued document naming another gateway revokes the new device at once", async () => {
+  const revoked: string[] = []
+  const revoke = async (id: string) => { revoked.push(id); return { devices: [] as string[] } }
+  expect(await presentIssuedDocument({ device: { id: "sdv_a" }, document: doc }, "https://central.example", revoke))
+    .toEqual({ kind: "shown", text: JSON.stringify(doc, null, 2) })
+  expect(revoked).toEqual([])
+  expect(await presentIssuedDocument({ device: { id: "sdv_a" }, document: doc }, "https://other.example", revoke))
+    .toEqual({ kind: "mismatch", revoked: true, devices: [] })
+  expect(revoked).toEqual(["sdv_a"])
+  expect(await presentIssuedDocument({ device: { id: "sdv_b" }, document: doc }, "https://other.example", async () => { throw new Error("down") }))
+    .toEqual({ kind: "mismatch", revoked: false })
 })

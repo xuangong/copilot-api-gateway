@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { useToast } from "./toast"
 import { useConfirm } from "./confirm"
 import { useT } from "./i18n"
+import { upstreamErrorText } from "../tabs/upstreams/upstream-error"
 import * as api from "../api/upstreams"
 import type { UpstreamRecord } from "../api/types"
 import { ReorderController, partitionPosition } from "./reorder-upstreams"
@@ -20,13 +21,15 @@ export function useUpstreams() {
   const [upstreams, setUpstreams] = useState<UpstreamRecord[]>([])
   const toastRef = useRef(toast)
   toastRef.current = toast
+  const tRef = useRef(t)
+  tRef.current = t
   const reloadRef = useRef<() => Promise<void>>(async () => {})
   const controllerRef = useRef<ReorderController | null>(null)
   if (!controllerRef.current) {
     controllerRef.current = new ReorderController(
       [],
       (id, sortOrder) => api.patchUpstream(id, { sortOrder }).then(() => {}),
-      (error) => toastRef.current(error instanceof Error ? error.message : String(error), "error"),
+      (error) => toastRef.current(upstreamErrorText(error, tRef.current), "error"),
       () => { void reloadRef.current() },
       async () => sortUpstreams((await api.listUpstreams()).upstreams),
     )
@@ -95,7 +98,7 @@ export function useUpstreams() {
     try {
       return await fn()
     } catch (e) {
-      toast(e instanceof Error ? e.message : String(e), "error")
+      toast(upstreamErrorText(e, t), "error")
       return null
     } finally {
       setBusy((b) => {

@@ -24,8 +24,8 @@ export function LokiPairingPanel({ row, onChanged, onClose }: Props) {
   const [error, setError] = useState("")
   const [copied, setCopied] = useState(false)
   const secureOrigin = window.location.protocol === "https:"
-  const errorMessage = (error: unknown, pairing = false) => t(settingsError(error) === "invalid_endpoint"
-    ? "dash.lokiEndpointInvalid" : pairing ? "dash.lokiPairError" : "dash.lokiSettingsError")
+  const errorMessage = (error: unknown, pairing = false) => t(settingsError(error) === "invalid_endpoint" ? "dash.lokiEndpointInvalid"
+    : settingsError(error) === "synced_upstream_read_only" ? "dash.syncedUpstreamReadOnly" : pairing ? "dash.lokiPairError" : "dash.lokiSettingsError")
 
   const save = async () => {
     if (!id) return

@@ -33,3 +33,16 @@ export function formatSyncDocument(value: unknown, expectedOrigin: string): stri
   if (!doc || doc.gatewayOrigin !== httpsOrigin(expectedOrigin)) throw new Error("Invalid sync document")
   return JSON.stringify(doc, null, 2)
 }
+
+/**
+ * Formats a just-issued document. When it names another gateway it can never be used, so the new device is revoked at once
+ * (`revoke` is the DELETE call) rather than left behind; `revoked` is false when that cleanup itself failed.
+ */
+export async function presentIssuedDocument<D>(
+  issued: { device: { id: string }; document: unknown }, expectedOrigin: string,
+  revoke: (deviceId: string) => Promise<{ devices: D[] }>,
+): Promise<{ kind: "shown"; text: string } | { kind: "mismatch"; revoked: true; devices: D[] } | { kind: "mismatch"; revoked: false }> {
+  try { return { kind: "shown", text: formatSyncDocument(issued.document, expectedOrigin) } } catch { /* mismatch */ }
+  try { return { kind: "mismatch", revoked: true, devices: (await revoke(issued.device.id)).devices } }
+  catch { return { kind: "mismatch", revoked: false } }
+}

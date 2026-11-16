@@ -1,6 +1,6 @@
 import { getRuntimeLocation } from "@vibe-core/platform"
 import { directFetcher, type Fetcher } from "@vibe-core/upstream"
-import { providerPlugin } from "../data-plane/providers/registry"
+import { isSyncableProvider } from "../data-plane/providers/registry"
 import { getRepo } from "../repo"
 import type { UserId } from "../repo/branded-ids"
 import type { SyncSourceRecord } from "../repo/sync"
@@ -29,7 +29,7 @@ function resolveDeps(deps: SyncDeps) {
     repo: deps.repo ?? getRepo(),
     fetcher: deps.fetcher ?? directFetcher,
     now: deps.now ?? Date.now,
-    isKnownProvider: deps.isKnownProvider ?? ((kind: string) => providerPlugin(kind) !== undefined),
+    isKnownProvider: deps.isKnownProvider ?? isSyncableProvider,
   }
 }
 
@@ -59,6 +59,8 @@ export async function syncSource(deps: SyncDeps = {}): Promise<SyncRunResult> {
       await repo.syncSources.recordResult(source.id, source.secret, { attemptAt: stamp, successAt: stamp, error: null })
       return "not_modified"
     case "revoked":
+      // Same guard as applying: a source replaced while the request was in flight must not lose its rows to the old one's 401.
+      if (!(await sourceUnchanged(repo, source))) return "idle"
       await repo.upstreams.deleteSynced(source.id)
       await repo.syncSources.recordResult(source.id, source.secret, { attemptAt: stamp, etag: null, error: null, status: "revoked" })
       return "revoked"

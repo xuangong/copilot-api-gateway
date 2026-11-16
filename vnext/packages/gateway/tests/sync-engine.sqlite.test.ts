@@ -24,13 +24,14 @@ const entry = (id: string, over: Partial<SyncedUpstream> = {}): SyncedUpstream =
 
 /** A scripted central gateway. */
 function central(entries: SyncedUpstream[] = [], forDevice = deviceId) {
-  const script = { entries, mode: "ok" as "ok" | "revoked" | "down" | "error" | "garbage", calls: 0, sentEtags: [] as Array<string | null> }
+  const script = { entries, mode: "ok" as "ok" | "revoked" | "generic401" | "down" | "error" | "garbage", calls: 0, sentEtags: [] as Array<string | null> }
   const fetcher = async (_url: string, init: RequestInit) => {
     script.calls++
     const sent = new Headers(init.headers).get("if-none-match")
     script.sentEtags.push(sent)
     if (script.mode === "down") throw new Error("network down")
     if (script.mode === "revoked") return new Response('{"error":{"code":"invalid_device"}}', { status: 401 })
+    if (script.mode === "generic401") return new Response(null, { status: 401 })
     if (script.mode === "error") return new Response("boom", { status: 500 })
     if (script.mode === "garbage") return new Response("not json")
     const body = JSON.stringify({ version: 1, deviceId: forDevice, upstreams: script.entries })
@@ -124,6 +125,44 @@ test("a 401 removes the synced upstreams, marks the source revoked and stops pol
   expect(replaced.kind).toBe("connected")
   expect(await repo.syncSources.get()).toMatchObject({ status: "active", lastError: null })
   expect(await ids()).toEqual(["up_a", "up_local"])
+})
+
+test("a generic 401 without invalid_device keeps the synced upstreams and the source active", async () => {
+  const { script, fetcher } = central([entry("up_a")])
+  await connect(fetcher)
+  script.mode = "generic401"
+  expect(await syncSource(deps(fetcher))).toBe("failed")
+  expect(await ids()).toEqual(["up_a"])
+  expect(await repo.syncSources.get()).toMatchObject({ status: "active", lastError: "http_error" })
+})
+
+test("a 401 for a source replaced in flight deletes nothing", async () => {
+  const { script, fetcher } = central([entry("up_a")])
+  await connect(fetcher)
+  script.mode = "revoked"
+  const swapping: typeof fetcher = async (url, init) => {
+    const response = await fetcher(url, init)
+    await repo.syncSources.replaceDocument((await repo.syncSources.get())!.id, { origin: "https://central.example", deviceId: `sdv_${"9".repeat(32)}`, secret: `sds_${"9".repeat(64)}` }, stamp)
+    return response
+  }
+  expect(await syncSource(deps(swapping))).toBe("idle")
+  expect(await ids()).toEqual(["up_a"])
+  expect(await repo.syncSources.get()).toMatchObject({ status: "active" })
+})
+
+test("the default provider check accepts only syncable providers; a previously synced row of another provider is deleted", async () => {
+  const { script, fetcher } = central([entry("up_a"), entry("up_codex", { provider: "codex", config: {} }), entry("up_custom", { provider: "custom", config: {} })])
+  const real: SyncDeps = { repo, fetcher, now: () => clock }
+  expect((await connectSource({ mode: "create", ownerId: owner, document: doc }, real)).kind).toBe("connected")
+  expect(await ids()).toEqual(["up_a"])
+  expect(await repo.syncSources.get()).toMatchObject({ lastError: "unsupported_provider", etag: null })
+  // D18: a row of a provider that is known but not syncable is removed on the next sync.
+  const id = (await repo.syncSources.get())!.id
+  await repo.upstreams.applySynced(id, { id: "up_old", ownerId: owner, provider: "custom", name: "old", config: {}, state: null, flagOverrides: {}, disabledPublicModelIds: [] }, stamp)
+  expect(await ids()).toEqual(["up_a", "up_old"])
+  script.entries = [entry("up_a"), entry("up_custom", { provider: "custom", config: {} })]
+  expect(await syncSource(real)).toBe("applied")
+  expect(await ids()).toEqual(["up_a"])
 })
 
 test("skipped entries are recorded and the ETag is withheld so they are retried", async () => {

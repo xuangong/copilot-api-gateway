@@ -33,6 +33,18 @@ async function readBounded(response: Response, max: number): Promise<Uint8Array<
   return bytes
 }
 
+const SYNC_MAX_ERROR_BYTES = 4096
+
+/** Only central's explicit `{"error":{"code":"invalid_device"}}` proves the device was revoked; a proxy or older central's bare 401 does not. */
+async function isInvalidDevice(response: Response): Promise<boolean> {
+  try {
+    const bytes = await readBounded(response, SYNC_MAX_ERROR_BYTES)
+    if (!bytes) return false
+    const body = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)) as { error?: { code?: unknown } } | null
+    return body?.error?.code === "invalid_device"
+  } catch { return false }
+}
+
 async function quotedSha256(bytes: Uint8Array<ArrayBuffer>): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", bytes)
   return `"${Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("")}"`
@@ -53,7 +65,7 @@ export async function fetchSnapshot(source: SnapshotSource, fetcher: Fetcher = d
   const bad = { kind: "failed" as const, code: "bad_response" as const }
   try {
     const { status } = response
-    if (status === 401) return { kind: "revoked" }
+    if (status === 401) return (await isInvalidDevice(response)) ? { kind: "revoked" } : { kind: "failed", code: "http_error" }
     if (status === 304) return source.etag ? { kind: "not_modified" } : bad
     if (status !== 200) return { kind: "failed", code: "http_error" }
     if (Number(response.headers.get("content-length") ?? 0) > SYNC_MAX_SNAPSHOT_BYTES) return bad
