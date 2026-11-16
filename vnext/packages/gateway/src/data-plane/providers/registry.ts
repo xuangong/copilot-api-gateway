@@ -91,6 +91,21 @@ const BUNDLED_PROVIDER_PLUGINS = {
 
 const PROVIDER_PLUGINS: ReadonlyMap<string, LlmProviderPlugin> = new Map(Object.entries(BUNDLED_PROVIDER_PLUGINS))
 
+export function providerPlugin(kind: string): LlmProviderPlugin | undefined {
+  return PROVIDER_PLUGINS.get(kind)
+}
+
+/** True when the provider declared that it may be mirrored to another gateway. */
+export function isSyncableProvider(kind: string): boolean {
+  return PROVIDER_PLUGINS.get(kind)?.syncable === true
+}
+
+/** A row that a sync source created on this gateway; its providers must not rewrite stored credentials. */
+function isSyncedUpstream(upstream: UpstreamRecord<unknown>): boolean {
+  const source = (upstream as { syncSourceId?: unknown }).syncSourceId
+  return typeof source === "string" && source.length > 0
+}
+
 export async function createProviderFromUpstream(
   upstream: UpstreamRecord<unknown>,
   copilot?: CreateProviderOptions,
@@ -102,6 +117,7 @@ export async function createProviderFromUpstream(
   return plugin.createFromUpstream(upstream, {
     getCachedCopilotToken,
     deferCredentials: true,
+    credentialsReadOnly: isSyncedUpstream(upstream),
     ...((upstream.provider === "custom" || upstream.provider === "azure" || upstream.provider === "copilot")
       && "rowIncarnation" in upstream && "catalogGeneration" in upstream
       ? { affinityAuthority: configurationAffinityAuthority(upstream as StoredUpstreamRecord, getAuthoritativeRepo().upstreams) } : {}),

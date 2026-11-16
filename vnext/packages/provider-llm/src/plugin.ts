@@ -63,9 +63,23 @@ export interface ProviderPluginContext {
   fetcherForUpstream?: (upstreamId: string) => Fetcher
   /** Selected application call only. Discovery, OAuth and session refresh keep fetcherForUpstream. */
   executionFetcherForUpstream?: (upstreamId: string, request: Pick<ProviderRequest, 'endpoint' | 'action'>) => Fetcher
+  /** Set for an upstream synced from another gateway. The provider must never rewrite its stored
+   *  credentials. Deriving a short-lived token from them (Copilot's GitHub-token exchange) is allowed. */
+  credentialsReadOnly?: boolean
+}
+
+/** What may leave the central gateway for one synced upstream. */
+export interface SyncView {
+  config: Record<string, unknown>
+  state: unknown
 }
 
 export interface LlmProviderPlugin
   extends UpstreamPlugin<UpstreamRecord<unknown>, ProviderPluginContext, LlmModelProvider> {
   readonly kind: UpstreamKind
+  /** The provider may be selected for gateway sync. Declare it only if the provider never rewrites its
+   *  stored credentials when created with `credentialsReadOnly: true`. */
+  readonly syncable?: true
+  /** What may leave the central gateway. Absent means config and state unchanged. */
+  syncView?(record: UpstreamRecord<unknown>): SyncView
 }

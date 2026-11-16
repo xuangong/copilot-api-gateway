@@ -127,10 +127,10 @@ export function readLokiState(value: unknown): LokiState {
   const source = record(value)
   if (source.version !== 1 || source.profileId !== "loki-df-v1"
     || (source.assistantStatus !== "waiting" && source.assistantStatus !== "authorized" && source.assistantStatus !== "interaction_required" && source.assistantStatus !== "failed")
-    || typeof source.syncSecretHash !== "string") return invalid()
+    || (source.syncSecretHash !== undefined && typeof source.syncSecretHash !== "string")) return invalid()
   const state: LokiState = {
     version: 1, profileId: "loki-df-v1", generation: text(source.generation, 128),
-    syncSecretHash: source.syncSecretHash, revision: integer(source.revision),
+    syncSecretHash: typeof source.syncSecretHash === "string" ? source.syncSecretHash : "", revision: integer(source.revision),
     assistantStatus: source.assistantStatus as LokiAssistantStatus,
     ...(source.account === undefined ? {} : { account: parseAccount(source.account) }),
     ...(source.credential === undefined ? {} : { credential: parseLokiCredential(source.credential) }),
@@ -153,4 +153,10 @@ export function usableLokiCredential(state: LokiState, now: number): LokiCredent
   const credential = state.credential
   return credential && state.account && credential.expiresAt > now && sameAccount(credential.account, state.account)
     ? credential : undefined
+}
+
+/** State that may leave the central gateway: the pairing authority and the upload receipt stay behind. */
+export function lokiSyncState(state: LokiState): Omit<LokiState, "syncSecretHash" | "lastReceipt"> {
+  const { syncSecretHash: _hash, lastReceipt: _receipt, ...rest } = state
+  return rest
 }

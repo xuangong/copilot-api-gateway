@@ -18,6 +18,8 @@ const LOKI_MISSING_RETENTION_MS = 24 * 60 * 60 * 1000
 
 export interface LokiProviderOptions {
   now?: () => number
+  /** A synced upstream: the stored credential is used without requiring the central pairing secret. */
+  credentialsReadOnly?: boolean
 }
 
 export class LokiProvider implements LlmModelProvider {
@@ -52,7 +54,7 @@ export class LokiProvider implements LlmModelProvider {
 
   private async credential(forInference = false): Promise<LokiCredential> {
     const state = readLokiState((await this.boundRow(forInference)).state)
-    const credential = state.syncSecretHash ? usableLokiCredential(state, this.now()) : undefined
+    const credential = state.syncSecretHash || this.options.credentialsReadOnly ? usableLokiCredential(state, this.now()) : undefined
     if (!credential) throw new Error("loki_credential_unavailable")
     return credential
   }

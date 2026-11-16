@@ -24,6 +24,9 @@ import { CopilotProvider } from './provider'
 
 export const copilotProviderPlugin: LlmProviderPlugin = {
   kind: 'copilot',
+  // The GitHub token in `config` is exactly what a synced device needs. The provider never rewrites it: it
+  // exchanges it for a session token cached in memory (see ctx.getCachedCopilotToken).
+  syncable: true,
   async createFromUpstream(upstream, ctx) {
     const config = upstream.config
     const accountType = (config.accountType as AccountType | undefined) ?? 'individual'
