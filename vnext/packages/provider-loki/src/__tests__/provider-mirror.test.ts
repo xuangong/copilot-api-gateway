@@ -174,3 +174,19 @@ test("a token for another account is refused and stops automatic pulls", async (
   await provider.getLiveModels()
   expect(pulls).toBe(1)
 })
+
+test("a central token that is not newer is not stored and backs off", async () => {
+  let saves = 0
+  const { provider, row } = device(credential("stored", start + 120_000),
+    { save: async updater => { saves++; row.state = updater(row.state) as LokiState } })
+  central = ok("stored", start + 120_000)
+  for (let i = 0; i < 5; i++) { await provider.getLiveModels(); await Promise.all(background) }
+  expect(pulls).toBe(1)
+  expect(saves).toBe(0)
+  expect(lokiBearers).toEqual(Array(5).fill("Bearer stored"))
+  clock += 31_000
+  central = ok("stored", start + 120_000 + 31_000)
+  await provider.getLiveModels()
+  await Promise.all(background)
+  expect(pulls).toBe(2)
+})

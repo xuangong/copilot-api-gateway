@@ -243,6 +243,8 @@ export function newLokiMirrorState(source: LokiMirrorSource, credential: LokiCre
 export function applyLokiMirrorPull(state: LokiState, source: LokiMirrorSource, outcome: LokiMirrorPullOutcome, now: number): LokiState {
   if (!state.source || state.source.mirrorId !== source.mirrorId || state.source.mirrorSecret !== source.mirrorSecret) return state
   const { errorCode: _previous, ...rest } = state
+  if (outcome.kind === "ok" && state.credential && sameAccount(state.credential.account, outcome.credential.account)
+    && outcome.credential.expiresAt <= state.credential.expiresAt) return state
   if (outcome.kind === "revoked") return { ...rest, errorCode: "mirror_revoked", updatedAt: now }
   if (outcome.credential.expiresAt <= now + LOKI_MIN_CREDENTIAL_TTL_MS) return state
   if (state.account && !sameAccount(state.account, outcome.credential.account)) {

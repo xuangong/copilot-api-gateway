@@ -84,3 +84,9 @@ test("a successful pull clears a previous revocation and short-lived credentials
   expect(ok.assistantStatus).toBe("authorized")
   expect(applyLokiMirrorPull(device, source, { kind: "ok", credential: credential(now + 60_000) }, now)).toBe(device)
 })
+
+test("a pull whose credential is not newer returns the identical state", () => {
+  const bound = applyLokiMirrorPull(newLokiMirrorState(source, undefined, now), source, { kind: "ok", credential: credential() }, now)
+  expect(applyLokiMirrorPull(bound, source, { kind: "ok", credential: credential() }, now + 1)).toBe(bound)
+  expect(applyLokiMirrorPull(bound, source, { kind: "ok", credential: credential(now + 3_600_001) }, now + 1)).not.toBe(bound)
+})
