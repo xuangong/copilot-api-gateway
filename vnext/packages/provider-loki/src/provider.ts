@@ -4,8 +4,8 @@ import { probeViaModels, resolveExecutionFetcher, type ExecutionFetcherForReques
 import { directFetcher, type Fetcher } from "@vibe-core/upstream"
 import type { StoredUpstreamRecord } from "@vibe-core/upstream-repo"
 import { LOKI_HEADERS, LOKI_PROFILE_ID } from "./profile"
-import { lokiBaseUrl, normalizeLokiStaticModels } from "./config"
-import { isLokiEndpoint, lokiContextWindow, lokiModelEndpoints, lokiStaticModelEntry, LOKI_PATHS, normalizeLokiModels } from "./models"
+import { lokiBaseUrl } from "./config"
+import { isLokiEndpoint, lokiContextWindow, lokiModelEndpoints, LOKI_PATHS, normalizeLokiModels } from "./models"
 import { lokiModelPricing } from "./pricing"
 import { applyLokiMirrorPull, readLokiState, usableLokiCredential, type LokiCredential, type LokiMirrorSource, type LokiState } from "./state"
 import { pullLokiMirror } from "./mirror"
@@ -142,26 +142,15 @@ export class LokiProvider implements LlmModelProvider {
   }
 
   async getModels(): Promise<ProviderModelsResponse> {
-    const ids = normalizeLokiStaticModels(this.expected.config.staticModels)
-    if (ids.length) {
-      const models = normalizeLokiModels({ data: ids.map(lokiStaticModelEntry) })
-      this.setModelCatalog(models)
-      return models
-    }
-    const models = await this.getLiveModels()
-    this.setModelCatalog(models)
-    return models
-  }
-
-  /** Diagnostic discovery must never replace the configured routing catalog. */
-  async getLiveModels(): Promise<ProviderModelsResponse> {
     const credential = await this.credential()
     // Workers rejects redirect: "error"; manual mode keeps the bearer on the configured origin.
     const response = await this.fetcher(`${this.baseUrl}/models`, { method: "GET", redirect: "manual",
       headers: { ...LOKI_HEADERS, authorization: `Bearer ${credential.accessToken}`, accept: "application/json" },
       signal: AbortSignal.timeout(20_000) })
     if (!response.ok) { await response.body?.cancel(); throw new Error(`loki_catalog_http_${response.status}`) }
-    return normalizeLokiModels(await response.json())
+    const models = normalizeLokiModels(await response.json())
+    this.setModelCatalog(models)
+    return models
   }
 
   /**
@@ -169,11 +158,13 @@ export class LokiProvider implements LlmModelProvider {
    * unreachable, and publishing that dropped models from routing. A live
    * refresh therefore keeps a name it left out, stamped with when it first
    * went missing, for up to a day; a name still missing then is really gone.
-   * A configuration change (previous is null) and a static list, which is the
-   * operator's own word, are published as given.
+   * A configuration change (previous is null) is published as given.
    */
   reconcileCatalog(previous: ProviderModelsResponse | null, next: ProviderModelsResponse, now = Date.now()): ProviderModelsResponse {
-    if (!previous || normalizeLokiStaticModels(this.expected.config.staticModels).length) return next
+    // Legacy shim: a row that still stores a non-empty static list published that list, not a live
+    // catalog, so what it lacks says nothing about Loki dropping models.
+    const legacy = this.expected.config.staticModels
+    if (!previous || (Array.isArray(legacy) && legacy.length)) return next
     const listed = new Set(next.data.map(model => model.id))
     const kept = []
     for (const entry of previous.data) {
@@ -191,7 +182,7 @@ export class LokiProvider implements LlmModelProvider {
     this.models = new Map(normalizeLokiModels(models).data.map(model => [model.id, model]))
   }
 
-  probe() { return probeViaModels(() => this.getLiveModels()) }
+  probe() { return probeViaModels(() => this.getModels()) }
   getPricingForModelKey(model: string): ModelPricing | null { return lokiModelPricing(this.models.get(model)) }
 
   async fetch(req: ProviderRequest): Promise<ProviderResponse> {

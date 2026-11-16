@@ -22,7 +22,6 @@ export function mirrorImportErrorKey(code: string | undefined): string {
     case "invalid_mirror_document": return "dash.lokiMirrorDocumentInvalid"
     case "mirror_unreachable": return "dash.lokiMirrorUnreachable"
     case "invalid_endpoint": return "dash.lokiEndpointInvalid"
-    case "invalid_static_models": return "dash.lokiStaticModelsInvalid"
     default: return "dash.lokiMirrorImportError"
   }
 }

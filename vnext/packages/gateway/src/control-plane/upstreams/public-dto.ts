@@ -86,8 +86,7 @@ export function publicUpstreamConfig(upstream: UpstreamRecord<unknown>): Record<
   let out: Record<string, unknown>
   switch (upstream.provider) {
     case "loki":
-      return { ...scalars(source, ["profileId", "baseUrl"]),
-        ...(Array.isArray(source.staticModels) ? { staticModels: source.staticModels.filter(id => typeof id === "string") } : {}) }
+      return scalars(source, ["profileId", "baseUrl"])
     case "copilot":
       out = scalars(source, ["accountType", "githubHost", "source"])
       secret(out, source, "githubToken")

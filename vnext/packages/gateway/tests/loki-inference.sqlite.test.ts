@@ -171,78 +171,6 @@ test("persisted Loki credentials drive catalog discovery and all three native in
   }
 })
 
-test("static Loki models survive live discovery failures, probes and cold routing; clearing restores discovery", async () => {
-  const { db, repo } = setupTestPlatform()
-  const originalFetch = globalThis.fetch
-  const owner = "loki-static-owner" as UserId
-  const now = new Date().toISOString()
-  const session = "ses_loki_static" as SessionToken
-  let modelCalls = 0
-  let unavailable = true
-  const ids = ["claude-opus-5.5", "gpt-6-luna"]
-  try {
-    await repo.users.create({ id: owner, name: "Fixture", disabled: false, createdAt: now })
-    await repo.sessions.create({ token: session, userId: owner, createdAt: now, expiresAt: "2099-01-01T00:00:00.000Z" })
-    await repo.apiKeys.save({ id: "static-key", name: "fixture", key: "loki-static-key", ownerId: owner,
-      modelMappingsEnabled: false, modelMappings: [], createdAt: now })
-    const account = { homeAccountId: "fixture", tenantId: "11111111-1111-4111-8111-111111111111" }
-    await repo.upstreams.save({ id: "loki-static", provider: "loki", ownerId: owner, name: "Static Loki", enabled: true,
-      sortOrder: 0, config: { profileId: "loki-df-v1", baseUrl: "https://loki.example/api", staticModels: ids },
-      flagOverrides: {}, disabledPublicModelIds: [], proxyFallbackList: [{ id: "direct_fetch" }], createdAt: now, updatedAt: now,
-      state: { version: 1, profileId: "loki-df-v1", generation: "fixture", revision: 1, syncSecretHash: "fixture",
-        assistantStatus: "authorized", account, credential: { accessToken: "fixture-token", tokenType: "Bearer", account, expiresAt: Date.now() + 3_600_000 } } })
-    globalThis.fetch = (async (input: RequestInfo | URL) => {
-      const url = String(input)
-      expect(url.startsWith("https://loki.example/api/")).toBe(true)
-      if (url.endsWith("/models")) {
-        modelCalls++
-        if (unavailable) return new Response(null, { status: 503 })
-        return Response.json({ data: [{ id: "live-only", supported_endpoints: ["/responses"] }] })
-      }
-      expect(url).toBe("https://loki.example/api/v1/messages")
-      return Response.json({ id: "msg_static", type: "message", role: "assistant", model: ids[0],
-        content: [{ type: "text", text: "static answer" }], stop_reason: "end_turn", stop_sequence: null,
-        usage: { input_tokens: 1, output_tokens: 2 } })
-    }) as typeof fetch
-    const headers = { authorization: "Bearer loki-static-key", "content-type": "application/json" }
-    const models = async () => {
-      const response = await app.request("https://gateway.example/v1/models", { headers })
-      expect(response.status).toBe(200)
-      return (await response.json() as { data: Array<{ id: string }> }).data.map(model => model.id)
-    }
-    const probe = async () => {
-      const response = await app.request("https://gateway.example/api/upstreams/loki-static/test", {
-        method: "POST", headers: { authorization: `Bearer ${session}` },
-      })
-      expect(response.status).toBe(200)
-      return response.json() as Promise<{ ok: boolean; models?: string[] }>
-    }
-    expect(await models()).toEqual(ids)
-    expect(modelCalls).toBe(0)
-    expect((await probe()).ok).toBe(false)
-    expect(await models()).toEqual(ids)
-    unavailable = false
-    expect(await probe()).toMatchObject({ ok: true, models: ["live-only"] })
-    expect(modelCalls).toBe(2)
-    _clearModelsMemoForTest()
-    expect(await models()).toEqual(ids)
-    const response = await app.request("https://gateway.example/v1/messages", { method: "POST", headers,
-      body: JSON.stringify({ model: ids[0], max_tokens: 8, messages: [{ role: "user", content: "hi" }] }) })
-    expect(response.status, await response.text()).toBe(200)
-    expect(modelCalls).toBe(2)
-    const clear = await app.request("https://gateway.example/api/loki/upstreams/loki-static", { method: "PATCH",
-      headers: { authorization: `Bearer ${session}`, "content-type": "application/json" },
-      body: JSON.stringify({ baseUrl: "https://loki.example/api", staticModels: [] }) })
-    expect(clear.status).toBe(200)
-    expect(await models()).toEqual(["live-only"])
-    expect(modelCalls).toBe(3)
-  } finally {
-    globalThis.fetch = originalFetch
-    __resetPlatformForTests()
-    db.close()
-  }
-})
-
 test("a live Loki refresh that drops names keeps routing them until the configuration changes", async () => {
   const { db, repo } = setupTestPlatform()
   const originalFetch = globalThis.fetch
@@ -289,10 +217,11 @@ test("a live Loki refresh that drops names keeps routing them until the configur
     const response = await app.request("https://gateway.example/v1/messages", { method: "POST", headers,
       body: JSON.stringify({ model: "claude-opus-5.5", max_tokens: 8, messages: [{ role: "user", content: "hi" }] }) })
     expect(response.status, await response.text()).toBe(200)
-    // A configuration change starts a new catalog: the drop is now published.
+    // A configuration change starts a new catalog: the drop is now published. (Saving an identical
+    // config does not bump the generation, so the endpoint must really change.)
     const save = await app.request("https://gateway.example/api/loki/upstreams/loki-live", { method: "PATCH",
       headers: { authorization: `Bearer ${session}`, "content-type": "application/json" },
-      body: JSON.stringify({ baseUrl: "https://loki.example/api/", staticModels: [] }) })
+      body: JSON.stringify({ baseUrl: "https://loki.example/api-moved" }) })
     expect(save.status).toBe(200)
     expect(await models()).toEqual(["gpt-6-luna"])
   } finally {

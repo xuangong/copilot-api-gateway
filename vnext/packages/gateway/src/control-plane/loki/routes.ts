@@ -2,7 +2,7 @@ import { Hono } from "hono"
 import { z } from "zod"
 import { directFetcher } from "@vibe-core/upstream"
 import { addLokiMirror, LokiSyncError, LOKI_MIRROR_ID_PATTERN, LOKI_PROFILE_ID, lokiBaseUrl, lokiMirrorDocument, newLokiMirrorState,
-  normalizeLokiStaticModels, parseLokiMirrorDocument, pullLokiMirror, readLokiState, removeLokiMirror,
+  parseLokiMirrorDocument, pullLokiMirror, readLokiState, removeLokiMirror,
   type LokiMirrorSource, type LokiState } from "@vibe-llm/provider-loki"
 import type { Env } from "../../app"
 import { getRepo } from "../../repo"
@@ -17,14 +17,12 @@ export { lokiMirrorRouter } from "./mirror"
 export const lokiManagementRouter = new Hono<{ Bindings: Env; Variables: { auth: FullAuthCtx } }>()
 
 const endpoint = z.string().max(2048)
-const staticModels = z.array(z.string()).max(256).optional()
-const createBody = z.object({ name: z.string().trim().min(1).max(120), baseUrl: endpoint.optional(), staticModels,
+// Dashboards from before static models were removed always send `staticModels: []`; accept and ignore it.
+const legacyStaticModels = z.array(z.string()).max(0).optional()
+const createBody = z.object({ name: z.string().trim().min(1).max(120), baseUrl: endpoint.optional(), staticModels: legacyStaticModels,
   mirror: z.unknown().optional() }).strict()
 const mirrorSourceBody = z.object({ mirror: z.unknown() }).strict()
-const settingsBody = z.object({ baseUrl: endpoint, staticModels }).strict()
-function parseStaticModels(value: unknown): string[] {
-  try { return normalizeLokiStaticModels(value) } catch { throw new LokiSyncError("invalid_static_models", 400) }
-}
+const settingsBody = z.object({ baseUrl: endpoint, staticModels: legacyStaticModels }).strict()
 function parseEndpoint(value: unknown): string {
   try { return lokiBaseUrl(value) } catch { throw new LokiSyncError("invalid_endpoint", 400) }
 }
@@ -89,7 +87,6 @@ lokiManagementRouter.post("/upstreams", async c => {
     const parsed = createBody.safeParse(await boundedJson(c.req.raw))
     if (!parsed.success) throw new LokiSyncError("invalid_request", 400)
     const baseUrl = parseEndpoint(parsed.data.baseUrl)
-    const models = parseStaticModels(parsed.data.staticModels)
     const auth = c.get("auth")
     let state: LokiState
     let extra: (id: string) => Record<string, unknown>
@@ -106,8 +103,7 @@ lokiManagementRouter.post("/upstreams", async c => {
     const id = upstreamId.parse(`up_loki_${crypto.randomUUID().replaceAll("-", "")}`)
     const saved = await getRepo().upstreams.createIfAbsent({
       id, ownerId: auth.userId, provider: "loki", name: parsed.data.name, enabled: true, sortOrder: 0,
-      config: { profileId: LOKI_PROFILE_ID, ...(parsed.data.baseUrl === undefined ? {} : { baseUrl }),
-        ...(models.length ? { staticModels: models } : {}) },
+      config: { profileId: LOKI_PROFILE_ID, ...(parsed.data.baseUrl === undefined ? {} : { baseUrl }) },
       flagOverrides: {}, disabledPublicModelIds: [], proxyFallbackList: [],
       state, createdAt: now, updatedAt: now,
     })
@@ -123,11 +119,12 @@ lokiManagementRouter.patch("/upstreams/:id", async c => {
     const parsed = settingsBody.safeParse(await boundedJson(c.req.raw))
     if (!parsed.success) throw new LokiSyncError("invalid_request", 400)
     const baseUrl = parseEndpoint(parsed.data.baseUrl)
-    const models = parsed.data.staticModels === undefined ? undefined : parseStaticModels(parsed.data.staticModels)
     // Metadata CAS preserves concurrent token renewal and advances the catalog generation.
-    const saved = await repo.upstreams.patchMetadata(row, current => ({
-      ...current, config: { ...current.config, baseUrl, ...(models === undefined ? {} : { staticModels: models }) },
-    }))
+    const saved = await repo.upstreams.patchMetadata(row, current => {
+      // A legacy staticModels field is dropped on the next write.
+      const { staticModels: _legacy, ...config } = current.config
+      return { ...current, config: { ...config, baseUrl } }
+    })
     return json({ upstream: serializeUpstream(saved) })
   } catch (error) { return safeError(error) }
 })

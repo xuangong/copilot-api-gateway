@@ -308,7 +308,6 @@ export function UpstreamsTab() {
                           onDragEnd={() => setDrag(null)}
                           onHandlePointerDown={g.isMine ? (event) => touchDrag.begin(event, u.id) : undefined}
                           models={store.modelsByUpstream.get(u.id)}
-                          liveModels={store.liveLokiModels[u.id]}
                           editing={editingId === u.id}
                           readOnly={!g.isMine}
                           showProxy={isAdmin}
@@ -327,7 +326,7 @@ export function UpstreamsTab() {
                         />
                         {editingId === u.id && g.isMine ? (
                           <Expand>
-                            {u.provider === "loki" ? <LokiPairingPanel key={u.id} row={u} onChanged={() => { store.forgetLiveLokiModels(u.id); void store.reload() }} onClose={() => setEditingId(null)} /> : <UpstreamFormModal
+                            {u.provider === "loki" ? <LokiPairingPanel key={u.id} row={u} onChanged={() => { void store.reload() }} onClose={() => setEditingId(null)} /> : <UpstreamFormModal
                               mode={{ kind: "edit", row: u }}
                               flagCatalog={store.flagCatalog}
                               ensureFlagCatalog={store.ensureFlagCatalog}

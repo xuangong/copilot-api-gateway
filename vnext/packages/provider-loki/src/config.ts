@@ -1,19 +1,5 @@
 import { LOKI_BASE_URL, LOKI_PROFILE_ID } from "./profile"
 
-export function normalizeLokiStaticModels(value: unknown): string[] {
-  if (value === undefined) return []
-  if (!Array.isArray(value) || value.length > 256) throw new Error("loki_invalid_static_models")
-  const models = new Set<string>()
-  for (const id of value) {
-    if (typeof id !== "string" || !id.trim() || id.trim().length > 512 || /[\s,]/.test(id.trim())
-      || Array.from(id.trim()).some(char => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127)) {
-      throw new Error("loki_invalid_static_models")
-    }
-    models.add(id.trim())
-  }
-  return [...models]
-}
-
 export function lokiBaseUrl(value: unknown): string {
   if (value === undefined || value === "") return LOKI_BASE_URL
   if (typeof value !== "string") throw new Error("loki_invalid_endpoint")
@@ -30,8 +16,7 @@ export function lokiBaseUrl(value: unknown): string {
 
 export function normalizeLokiConfig(config: Record<string, unknown>) {
   if (config.profileId !== LOKI_PROFILE_ID) throw new Error("loki_invalid_profile")
-  const staticModels = normalizeLokiStaticModels(config.staticModels)
+  // A legacy `staticModels` field is ignored and dropped here, so it disappears the next time the endpoint is saved or the configuration is exported/imported.
   return { profileId: LOKI_PROFILE_ID,
-    ...(staticModels.length ? { staticModels } : {}),
     ...(config.baseUrl === undefined ? {} : { baseUrl: lokiBaseUrl(config.baseUrl) }) }
 }

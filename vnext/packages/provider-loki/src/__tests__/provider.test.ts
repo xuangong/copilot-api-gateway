@@ -4,7 +4,7 @@ import type { ProviderRequest } from "@vibe-llm/provider-llm"
 import { LokiProvider } from "../provider"
 import { lokiContextWindow, lokiModelEndpoints, normalizeLokiModels } from "../models"
 import type { LokiState } from "../state"
-import { normalizeLokiConfig, normalizeLokiStaticModels } from "../config"
+import { normalizeLokiConfig } from "../config"
 
 const catalog = { data: [
   { id: "messages-model", supported_endpoints: ["/v1/messages"], display_name: "Messages model" },
@@ -26,64 +26,51 @@ const request = (overrides: Partial<ProviderRequest> = {}): ProviderRequest => (
   headers: new Headers({ authorization: "Bearer attacker" }), sourceApi: "anthropic", ...overrides,
 })
 
-test("static names are validated and survive configuration normalization", () => {
-  expect(normalizeLokiConfig({ profileId: "loki-df-v1", staticModels: [" claude-opus-5.5 ", "claude-opus-5.5"] }))
-    .toEqual({ profileId: "loki-df-v1", staticModels: ["claude-opus-5.5"] })
-  expect(normalizeLokiConfig({ profileId: "loki-df-v1", staticModels: [] })).toEqual({ profileId: "loki-df-v1" })
-  for (const value of [null, "claude-opus-5.5", [1], [""], ["a b"], ["a,b"], ["a\nb"], ["x".repeat(513)], Array(257).fill("x")]) {
-    expect(() => normalizeLokiStaticModels(value)).toThrow("loki_invalid_static_models")
-  }
+test("legacy staticModels in a stored config is ignored, stripped on normalization, and discovery stays live", async () => {
+  const { row } = fixture()
+  row.config.staticModels = ["claude-opus-5.5", "not a valid name", 7]
+  expect(normalizeLokiConfig({ profileId: "loki-df-v1", staticModels: ["claude-opus-5.5"] })).toEqual({ profileId: "loki-df-v1" })
+  expect(normalizeLokiConfig({ profileId: "loki-df-v1", staticModels: "junk", baseUrl: "https://loki.example/api/" }))
+    .toEqual({ profileId: "loki-df-v1", baseUrl: "https://loki.example/api" })
+  let calls = 0
+  const provider = new LokiProvider(row, async () => row, async url => { calls++; return url.endsWith("/models") ? Response.json(catalog) : new Response("ok") })
+  expect((await provider.getModels()).data.map(model => model.id)).toEqual(["messages-model", "responses-model"])
+  expect(calls).toBe(1)
 })
 
-test("static discovery needs no network; live probes cannot replace the inference catalog", async () => {
+test("live discovery drives routing and a failed probe reports not ok", async () => {
   const { row } = fixture()
-  const ids = ["claude-opus-5.5", "gpt-6-luna"]
-  row.config.staticModels = ids
   let offline = true
-  let calls = 0
   const provider = new LokiProvider(row, async () => row, async url => {
-    calls++
     if (url.endsWith("/models")) {
       if (offline) throw new Error("TLS timeout")
       return Response.json(catalog)
     }
     return new Response("ok")
   })
-  const models = await provider.getModels()
-  expect(calls).toBe(0)
-  expect(models.data.map(model => model.id)).toEqual(ids)
-  expect(lokiModelEndpoints(models.data[0])).toEqual({ messages: {} })
-  expect(lokiModelEndpoints(models.data[1])).toEqual({ responses: {} })
   expect((await provider.probe()).ok).toBe(false)
   offline = false
   expect(await provider.probe()).toMatchObject({ ok: true, models: ["messages-model", "responses-model"] })
-  await provider.fetch(request({ payload: { model: "claude-opus-5.5", messages: [] } }))
-  await provider.fetch(request({ endpoint: "responses", payload: { model: "gpt-6-luna", input: "hi" } }))
-  await expect(provider.fetch(request())).rejects.toThrow("loki_endpoint_unavailable")
-  expect((await provider.getModels()).data.map(model => model.id)).toEqual(ids)
-  expect(calls).toBe(4)
+  await provider.fetch(request())
+  await provider.fetch(request({ endpoint: "responses", payload: { model: "responses-model", input: "hi" } }))
+  await expect(provider.fetch(request({ payload: { model: "responses-model", messages: [] } }))).rejects.toThrow("loki_endpoint_unavailable")
 })
 
-test("static names of known Loki models keep their pricing, context window and endpoints", async () => {
+test("live catalog entries keep their pricing and context window", async () => {
   const { row } = fixture()
-  row.config.staticModels = ["claude-opus-5.5", "gpt-61-sol", "claude-future-x", "constructor"]
-  const provider = new LokiProvider(row, async () => row, async () => { throw new Error("no network") })
+  const live = { data: [{ id: "claude-opus-5.5", publisher: "Anthropic", supported_endpoints: ["/v1/messages"],
+    capabilities: { limits: { max_context_window_tokens: 1_000_000 } },
+    billing: { price_unit: "CopilotCredit", cost_per_input_token: 0.00044, cost_per_output_token: 0.0022, cache_read_cost_per_token: 0.000022, cache_write_cost_per_token: 0.00055 } },
+  { id: "claude-future-x", supported_endpoints: ["/v1/messages"] }] }
+  const provider = new LokiProvider(row, async () => row, async () => Response.json(live))
   const byId = new Map((await provider.getModels()).data.map(model => [model.id, model]))
   const opus = provider.getPricingForModelKey("claude-opus-5.5")
   expect(opus?.input).toBeCloseTo(4.4)
   expect(opus?.output).toBeCloseTo(22)
   expect(opus?.input_cache_read).toBeCloseTo(0.22)
   expect(opus?.input_cache_write).toBeCloseTo(5.5)
-  expect(provider.getPricingForModelKey("gpt-61-sol")?.output).toBeCloseTo(11)
   expect(lokiContextWindow(byId.get("claude-opus-5.5"))).toBe(1_000_000)
-  expect(lokiContextWindow(byId.get("gpt-61-sol"))).toBe(1_050_000)
-  expect(lokiModelEndpoints(byId.get("gpt-61-sol"))).toEqual({ responses: {} })
-  expect(byId.get("claude-opus-5.5")).toMatchObject({ vendor: "Anthropic" })
-  // An unknown name still routes by its prefix, but is never given a price.
-  expect(lokiModelEndpoints(byId.get("claude-future-x"))).toEqual({ messages: {} })
   expect(provider.getPricingForModelKey("claude-future-x")).toBeNull()
-  expect(lokiModelEndpoints(byId.get("constructor"))).toEqual({ responses: {} })
-  expect(provider.getPricingForModelKey("constructor")).toBeNull()
 })
 
 test("a live refresh that drops names keeps what this configuration already published", () => {
@@ -95,9 +82,18 @@ test("a live refresh that drops names keeps what this configuration already publ
   expect(live.reconcileCatalog(previous, partial).data.map(model => model.id)).toEqual(["responses-model", "new-model", "messages-model"])
   // A new configuration generation has no previous catalog: publish as given.
   expect(live.reconcileCatalog(null, partial)).toBe(partial)
-  // A static list is the operator's word; removals there are real.
-  row.config.staticModels = ["responses-model"]
-  expect(new LokiProvider(row, async () => row).reconcileCatalog(previous, partial)).toBe(partial)
+})
+
+test("a legacy non-empty staticModels row publishes the live catalog as given; [] and absent keep retention", () => {
+  const previous = normalizeLokiModels(catalog)
+  const partial = normalizeLokiModels({ data: [catalog.data[1]] })
+  const legacy = fixture().row
+  legacy.config.staticModels = ["messages-model"]
+  expect(new LokiProvider(legacy, async () => legacy).reconcileCatalog(previous, partial)).toBe(partial)
+  const empty = fixture().row
+  empty.config.staticModels = []
+  expect(new LokiProvider(empty, async () => empty).reconcileCatalog(previous, partial).data.map(model => model.id))
+    .toEqual(["responses-model", "messages-model"])
 })
 
 test("a name Loki keeps leaving out is dropped after a day, and one that returns is fresh", () => {

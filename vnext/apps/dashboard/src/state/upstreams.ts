@@ -6,13 +6,6 @@ import * as api from "../api/upstreams"
 import type { UpstreamRecord } from "../api/types"
 import { ReorderController, partitionPosition } from "./reorder-upstreams"
 
-/** One upstream's live Loki preview removed; the same object when it has none. */
-export function withoutLiveModels<T>(previous: Record<string, T>, id: string): Record<string, T> {
-  if (!Object.hasOwn(previous, id)) return previous
-  const { [id]: _, ...rest } = previous
-  return rest
-}
-
 function sortUpstreams(list: UpstreamRecord[]): UpstreamRecord[] {
   return [...list].sort((a, b) => {
     if (a.enabled !== b.enabled) return a.enabled ? -1 : 1
@@ -42,7 +35,6 @@ export function useUpstreams() {
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState<Record<string, boolean>>({})
   const [modelsByUpstream, setModelsByUpstream] = useState<Map<string, api.UpstreamModelEntry[]>>(new Map())
-  const [liveLokiModels, setLiveLokiModels] = useState<Record<string, { ids: string[]; total: number }>>({})
   const [flagCatalog, setFlagCatalog] = useState<api.FlagCatalog | null>(null)
 
   const loadModels = useCallback(async () => {
@@ -127,11 +119,9 @@ export function useUpstreams() {
     withBusy(id, async () => {
       const u = upstreams.find((x) => x.id === id)
       const name = u?.name ?? id
-      if (u?.provider === "loki") setLiveLokiModels(previous => withoutLiveModels(previous, id))
       try {
         const r = await api.probeUpstream(id)
         if (r.ok) {
-          if (u?.provider === "loki") setLiveLokiModels(previous => ({ ...previous, [id]: { ids: r.models ?? [], total: r.modelCount ?? r.models?.length ?? 0 } }))
           toast(t("dash.probeModelsToast", { name, n: r.modelCount ?? 0 }), "success")
           // Awaited so the row's busy state covers the list refresh too: the
           // probe route repopulates the server-side models cache before
@@ -208,16 +198,11 @@ export function useUpstreams() {
     return ok === true
   }
 
-  // A saved endpoint, static list or pairing makes the last live preview stale.
-  const forgetLiveLokiModels = useCallback((id: string) => setLiveLokiModels(previous => withoutLiveModels(previous, id)), [])
-
   return {
     upstreams,
     loading,
     busy,
     modelsByUpstream,
-    liveLokiModels,
-    forgetLiveLokiModels,
     flagCatalog,
     reload,
     ensureFlagCatalog,

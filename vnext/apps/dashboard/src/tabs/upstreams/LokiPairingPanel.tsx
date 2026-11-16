@@ -9,7 +9,6 @@ import { mirrorImportErrorKey, settingsError } from "./loki-errors"
 import { LokiMirrorsSection } from "./LokiMirrorsSection"
 import { parseLokiMirrorText } from "./loki-mirror"
 import { formatLokiPairing } from "./loki-pairing"
-import { formatLokiModelNames, parseLokiModelNames } from "./loki-static-models"
 
 interface Props { row?: UpstreamRecord; onChanged: () => void; onClose: () => void }
 const DEFAULT_ENDPOINT = "https://loki.delve.office.com/api/v1/llmapi"
@@ -19,8 +18,6 @@ export function LokiPairingPanel({ row, onChanged, onClose }: Props) {
   const [name, setName] = useState(row?.name ?? "Microsoft Entra (Loki)")
   const [baseUrl, setBaseUrl] = useState(typeof row?.config.baseUrl === "string" ? row.config.baseUrl : DEFAULT_ENDPOINT)
   const [savedBaseUrl, setSavedBaseUrl] = useState(baseUrl)
-  const [modelsText, setModelsText] = useState(() => formatLokiModelNames(row?.config.staticModels))
-  const [savedModelsText, setSavedModelsText] = useState(modelsText)
   const [saved, setSaved] = useState(false)
   const titleId = useId()
   const [id, setId] = useState(row?.id)
@@ -36,18 +33,15 @@ export function LokiPairingPanel({ row, onChanged, onClose }: Props) {
   const [notice, setNotice] = useState("")
   const mirrorError = (error: unknown) => t(mirrorImportErrorKey(settingsError(error)))
   const errorMessage = (error: unknown, pairing = false) => t(settingsError(error) === "invalid_endpoint"
-    ? "dash.lokiEndpointInvalid" : settingsError(error) === "invalid_static_models"
-      ? "dash.lokiStaticModelsInvalid" : pairing ? "dash.lokiPairError" : "dash.lokiSettingsError")
+    ? "dash.lokiEndpointInvalid" : pairing ? "dash.lokiPairError" : "dash.lokiSettingsError")
 
   const save = async () => {
     if (!id) return
     setBusy(true); setError(""); setSaved(false)
     try {
       const result = await api<{ upstream: UpstreamRecord }>(`/api/loki/upstreams/${encodeURIComponent(id)}`,
-        { method: "PATCH", body: { baseUrl: baseUrl.trim(), staticModels: parseLokiModelNames(modelsText) } })
+        { method: "PATCH", body: { baseUrl: baseUrl.trim() } })
       const next = typeof result.upstream.config.baseUrl === "string" ? result.upstream.config.baseUrl : DEFAULT_ENDPOINT
-      const nextModels = formatLokiModelNames(result.upstream.config.staticModels)
-      setModelsText(nextModels); setSavedModelsText(nextModels)
       setBaseUrl(next); setSavedBaseUrl(next); setSaved(true)
       onChanged()
     } catch (error) { setError(errorMessage(error)) }
@@ -59,12 +53,10 @@ export function LokiPairingPanel({ row, onChanged, onClose }: Props) {
     try {
       const result = await api<{ upstream: UpstreamRecord; pairing: unknown }>(id
         ? `/api/loki/upstreams/${encodeURIComponent(id)}/pair` : "/api/loki/upstreams",
-      { method: "POST", body: id ? {} : { name, baseUrl: baseUrl.trim(), staticModels: parseLokiModelNames(modelsText) } })
+      { method: "POST", body: id ? {} : { name, baseUrl: baseUrl.trim() } })
       if (!id) {
         const next = typeof result.upstream.config.baseUrl === "string" ? result.upstream.config.baseUrl : DEFAULT_ENDPOINT
         setBaseUrl(next); setSavedBaseUrl(next)
-        const nextModels = formatLokiModelNames(result.upstream.config.staticModels)
-        setModelsText(nextModels); setSavedModelsText(nextModels)
       }
       setId(result.upstream.id)
       setDocument(formatLokiPairing(result.pairing, window.location.origin))
@@ -90,7 +82,7 @@ export function LokiPairingPanel({ row, onChanged, onClose }: Props) {
       const result = await api<{ upstream: UpstreamRecord; warning?: string }>(id
         ? `/api/loki/upstreams/${encodeURIComponent(id)}/mirror-source` : "/api/loki/upstreams",
       { method: id ? "PUT" : "POST", body: id ? { mirror: parsedDoc }
-        : { name, baseUrl: baseUrl.trim(), staticModels: parseLokiModelNames(modelsText), mirror: parsedDoc } })
+        : { name, baseUrl: baseUrl.trim(), mirror: parsedDoc } })
       setId(result.upstream.id); setIsMirror(true); setMirrorOrigin(parsedDoc.gatewayOrigin); setMirrorText("")
       setNotice(t(result.warning === "credential_unavailable" ? "dash.lokiMirrorPending" : "dash.lokiMirrorImported"))
       onChanged()
@@ -130,19 +122,11 @@ export function LokiPairingPanel({ row, onChanged, onClose }: Props) {
           </div>
         )}
       </Field>
-      <Field label={t("dash.lokiStaticModels")} hint={t("dash.lokiStaticModelsHint")}>
-        {({ id: inputId, describedBy }) => (
-          <textarea id={inputId} value={modelsText} rows={6} maxLength={60_000} spellCheck={false}
-            className="w-full font-mono text-xs" aria-describedby={describedBy}
-            placeholder={"claude-opus-5.5\nclaude-sonnet-5.5\ngpt-6-luna"}
-            onChange={event => { setModelsText(event.target.value); setSaved(false); setError("") }} disabled={busy} />
-        )}
-      </Field>
       {!id && source === "mirror" ? <Field label={t("dash.lokiMirrorDocument")} hint={t("dash.lokiMirrorPasteHint")}>
         {({ id: inputId, describedBy }) => mirrorInput(inputId, describedBy)}
       </Field> : null}
       <Button type="submit" variant="primary" size="sm"
-        disabled={busy || (id ? baseUrl === savedBaseUrl && modelsText === savedModelsText
+        disabled={busy || (id ? baseUrl === savedBaseUrl
           : !name.trim() || (source === "mirror" ? !mirrorText.trim() : !secureOrigin))}>
         {busy ? t("dash.savingShort") : t(id ? "dash.save" : "dash.addLoki")}
       </Button>

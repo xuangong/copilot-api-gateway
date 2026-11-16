@@ -21,7 +21,6 @@ test("import errors map to copy with endpoint and model fallbacks", () => {
   expect(mirrorImportErrorKey("invalid_mirror_document")).toBe("dash.lokiMirrorDocumentInvalid")
   expect(mirrorImportErrorKey("mirror_unreachable")).toBe("dash.lokiMirrorUnreachable")
   expect(mirrorImportErrorKey("invalid_endpoint")).toBe("dash.lokiEndpointInvalid")
-  expect(mirrorImportErrorKey("invalid_static_models")).toBe("dash.lokiStaticModelsInvalid")
   expect(mirrorImportErrorKey("mirror_unsupported")).toBe("dash.lokiMirrorImportError")
   expect(mirrorImportErrorKey(undefined)).toBe("dash.lokiMirrorImportError")
 })

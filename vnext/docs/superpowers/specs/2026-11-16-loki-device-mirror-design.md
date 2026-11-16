@@ -213,7 +213,7 @@ mirror upstreams.
 
 Device "Add Loki" form: a source choice, "Windows assistant pairing" (default)
 or "Sync from gateway". The latter adds a textarea for the mirror document;
-Endpoint and static models remain available. Validation errors and the
+Endpoint remains available (models are always discovered live). Validation errors and the
 `credential_unavailable` warning are shown inline.
 
 Device mirror upstream settings: source origin, token status (valid until /

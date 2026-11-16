@@ -340,11 +340,20 @@ test("re-importing replaces the source and clears the bound account", async () =
   expect((await request(`/upstreams/${p.upstreamId}/mirror-source`, { mirror: second.document }, session, "PUT")).status).toBe(400)
 })
 
+test("a stale dashboard's empty staticModels is accepted on mirror create; a non-empty list is rejected", async () => {
+  const p = await central()
+  const issued = await (await issue(p.upstreamId)).json() as Issued
+  expect((await device(issued.document, { staticModels: ["claude-opus-5.5"] })).status).toBe(400)
+  const ok = await device(issued.document, { staticModels: [] })
+  expect(ok.status).toBe(201)
+  expect((await ok.json() as { upstream: { config: Record<string, unknown> } }).upstream.config).not.toHaveProperty("staticModels")
+})
+
 test("a device mirror completes inference against Loki with the central token", async () => {
   __resetLokiMirrorPullsForTests()
   const p = await central()
   const issued = await (await issue(p.upstreamId)).json() as Issued
-  const created = await (await device(issued.document, { staticModels: ["claude-opus-5.5"] })).json() as { upstream: { id: string } }
+  const created = await (await device(issued.document)).json() as { upstream: { id: string } }
   const row = (await repo.upstreams.getById(created.upstream.id)) as StoredUpstreamRecord
   // Force a refresh path: the stored token is expired, so the provider must await the central pull.
   await repo.upstreams.saveState<unknown>(row.id, current => {
@@ -356,13 +365,14 @@ test("a device mirror completes inference against Loki with the central token", 
   const provider = new LokiProvider(row, () => repo.upstreams.getById(row.id), async (url, init) => {
     urls.push(String(url))
     bearers.push(new Headers(init.headers).get("authorization") ?? "")
+    if (String(url).endsWith("/models")) return Response.json({ data: [{ id: "claude-opus-5.5", supported_endpoints: ["/v1/messages"] }] })
     return Response.json({ id: "msg", type: "message", content: [] })
   }, undefined, { save: updater => repo.upstreams.saveState<unknown>(row.id, updater, row) })
   await provider.getModels()
   const result = await provider.fetch({ endpoint: "messages", sourceApi: "anthropic", headers: new Headers(),
     payload: { model: "claude-opus-5.5", messages: [{ role: "user", content: "hello" }], max_tokens: 10 } })
   expect(result.status).toBe(200)
-  expect(bearers).toEqual(["Bearer central-token"])
+  expect(bearers).toEqual(["Bearer central-token", "Bearer central-token"]) // /models discovery, then inference
   expect(urls.length).toBeGreaterThan(0)
   for (const url of urls) expect(url.startsWith("https://loki.delve.office.com/api/v1/llmapi")).toBe(true)
 })
