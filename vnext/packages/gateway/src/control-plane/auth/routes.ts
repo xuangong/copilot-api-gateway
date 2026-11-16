@@ -15,6 +15,7 @@ import type { ApiKeyId, InviteCodeId, SessionToken, UserId } from '../../repo/br
 import { ADMIN_EMAILS } from '../../shared/config/constants.ts'
 import { validateApiKey } from '../lib/api-keys.ts'
 import { zValidator } from '../middleware/zod-validator.ts'
+import { withSyncLock } from '../../sync/lock.ts'
 import { emailAuthRouter } from './email-routes.ts'
 import { deviceAuthRouter } from './device-routes.ts'
 import { githubAuthRouter } from './github-routes.ts'
@@ -266,11 +267,14 @@ authRouter.delete('/admin/users/:id', async (c) => {
   await repo.observabilityShares.deleteByViewer(userId)
   await repo.syncDevices.deleteByOwner(userId)
   // A device gateway's single sync source belongs to the user who connected it; its synced rows go with it.
-  const syncSource = await repo.syncSources.get()
-  if (syncSource && syncSource.ownerId === userId) {
-    await repo.upstreams.deleteSynced(syncSource.id)
-    await repo.syncSources.delete(syncSource.id)
-  }
+  // Under the sync lock so an in-flight tick finishes first and cannot re-create rows afterwards.
+  await withSyncLock(async () => {
+    const syncSource = await repo.syncSources.get()
+    if (syncSource && syncSource.ownerId === userId) {
+      await repo.upstreams.deleteSynced(syncSource.id)
+      await repo.syncSources.delete(syncSource.id)
+    }
+  })
   await repo.users.delete(userId)
 
   return c.json({ ok: true })

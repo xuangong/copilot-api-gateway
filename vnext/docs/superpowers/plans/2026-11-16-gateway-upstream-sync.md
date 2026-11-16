@@ -45,6 +45,7 @@ All paths below are relative to `vnext/`. Run commands from `vnext/` (`/Users/xi
 | D16 | Device-side snapshot parsing ignores unknown fields on upstream entries (forward compatibility) but requires every known field to validate; sync documents reject unknown fields as the spec requires. | An older device must keep working against a newer central. |
 | D17 | A synced row's "Refetch models" button is hidden along with Edit/Duplicate/Re-auth/Delete/Refresh credential. | Spec: synced rows keep only enable, reorder and proxy settings. |
 | D18 | A row this source already synced whose provider becomes unknown to the device is deleted (not just skipped); it is re-created if the provider becomes supported again, losing device-local enabled/order/proxy. | Skipped entries are not "kept", so the delete pass removes them; a stale copy of an unsupported provider must not linger. |
+| D19 | Any `apply_failed` (tick or connect) clears the stored ETag (`etag: null`). The engine also re-checks, right before applying, that the stored source still has the fetched id and secret (otherwise the tick is `idle`), and the user-deletion cascade in `auth/routes.ts` runs under `syncLock`. | A half-applied snapshot must not be frozen by a later 304; an in-flight tick must not re-create rows for a source that was deleted meanwhile. |
 
 ## File structure
 
@@ -3390,7 +3391,7 @@ Error and ETag rules implemented here (spec "Errors", decisions D4-D5):
 | `304` | record attempt and success, clear `last_error` |
 | network failure, timeout, redirect, other status, malformed body | keep the last applied snapshot, record `last_error` (`unreachable` / `http_error` / `bad_response`), retry next tick |
 | `401` | delete every synced upstream of this source, `status = revoked`, clear the ETag, no more polling until a document is re-imported |
-| `200` | apply; store the new ETag only when nothing was skipped; `last_error` = first skip code (`id_conflict` / `unsupported_provider`) or null; an apply exception records `apply_failed` and keeps the old ETag |
+| `200` | apply; store the new ETag only when nothing was skipped; `last_error` = first skip code (`id_conflict` / `unsupported_provider`) or null; an apply exception records `apply_failed` and clears the stored ETag (D19) |
 
 **Files:**
 - Create: `packages/gateway/src/sync/engine.ts`, `scheduler.ts`, `hooks.ts`, `index.ts`

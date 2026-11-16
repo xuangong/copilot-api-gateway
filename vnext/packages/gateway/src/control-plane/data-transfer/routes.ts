@@ -19,6 +19,7 @@ import {
   parseConfigBundle,
   unredactWithLive,
 } from '../lib/import-export.ts'
+import { notifyConfigurationImported } from '../../sync/hooks.ts'
 
 export interface DataTransferAuthCtx {
   isAdmin?: boolean
@@ -89,6 +90,9 @@ dataTransferRouter.post('/import', zValidator('json', importBody), async (c) => 
   for (const upstream of merged.upstreams) {
     await repo.upstreams.save(upstream)
   }
+
+  // Device gateways re-sync right away after an import. Replace mode deleting synced rows is handled in Task 10.
+  notifyConfigurationImported()
 
   return c.json({
     ok: true,

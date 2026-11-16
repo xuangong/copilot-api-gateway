@@ -9,6 +9,7 @@
     "./responses-session": "./src/data-plane/chat-flow/responses/public-session.ts",
     "./ingress-capability": "./src/shared/platform-ingress-capability.ts",
     "./maintenance": "./src/maintenance.ts",
+    "./sync": "./src/sync/index.ts",
     "./bootstrap": "./src/bootstrap.ts",
     "./migrations": "./src/migrations-dir.ts"
   },

@@ -1,6 +1,7 @@
 import { getFileProvider } from "@vibe-core/platform"
 import { sweepMaintenance } from "@vibe-llm/gateway/maintenance"
 import { app } from "@vibe-llm/gateway"
+import { startDeviceSync } from "@vibe-llm/gateway/sync"
 import { bootstrapBunPlatform } from "./bootstrap.ts"
 import { createResponsesWebSocketHandlers } from "./responses-websocket.ts"
 
@@ -24,6 +25,10 @@ const sweep = async () => {
 }
 void sweep()
 setInterval(() => { void sweep() }, 60_000).unref()
+
+// Docker gateways pull their sync source: once now, after every configuration import, then every 60 seconds.
+// Cloudflare Workers never run this.
+startDeviceSync()
 
 // Docker compose sets PORT=41414; bare local runs fall back to 8788.
 const port = Number(process.env.PORT ?? 8788)
