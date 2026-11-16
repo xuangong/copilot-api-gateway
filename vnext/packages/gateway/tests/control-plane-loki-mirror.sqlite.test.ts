@@ -3,7 +3,9 @@ import { Database } from "bun:sqlite"
 import { Hono } from "hono"
 import { BunSqliteRepo } from "@vibe-llm/platform-bun/src/bun-sqlite-repo.ts"
 import { __resetPlatformForTests, initRuntimeLocation, initEnv } from "@vibe-core/platform"
-import { addLokiMirror, newLokiMirrorState, readLokiState } from "@vibe-llm/provider-loki"
+import { __resetLokiMirrorPullsForTests, addLokiMirror, LokiProvider, newLokiMirrorState, readLokiState } from "@vibe-llm/provider-loki"
+import type { StoredUpstreamRecord } from "@vibe-core/upstream-repo"
+import { exportConfig, parseConfigBundle } from "../src/control-plane/lib/import-export"
 import { initRepo } from "../src/repo/index"
 import { sessionAuthMiddleware } from "../src/control-plane/auth/session-auth"
 import { lokiManagementRouter, lokiMirrorRouter, lokiSyncRouter } from "../src/control-plane/loki/routes"
@@ -310,4 +312,43 @@ test("re-importing replaces the source and clears the bound account", async () =
   expect(state.errorCode).toBeUndefined()
   expect(state.credential?.accessToken).toBe("central-token")
   expect((await request(`/upstreams/${p.upstreamId}/mirror-source`, { mirror: second.document }, session, "PUT")).status).toBe(400)
+})
+
+test("a device mirror completes inference against Loki with the central token", async () => {
+  __resetLokiMirrorPullsForTests()
+  const p = await central()
+  const issued = await (await issue(p.upstreamId)).json() as Issued
+  const created = await (await device(issued.document, { staticModels: ["claude-opus-5.5"] })).json() as { upstream: { id: string } }
+  const row = (await repo.upstreams.getById(created.upstream.id)) as StoredUpstreamRecord
+  // Force a refresh path: the stored token is expired, so the provider must await the central pull.
+  await repo.upstreams.saveState<unknown>(row.id, current => {
+    const state = readLokiState(current)
+    return { ...state, credential: { ...state.credential!, accessToken: "stale-token", expiresAt: Date.now() - 1 } }
+  })
+  const bearers: string[] = []
+  const provider = new LokiProvider(row, () => repo.upstreams.getById(row.id), async (_url, init) => {
+    bearers.push(new Headers(init.headers).get("authorization") ?? "")
+    return Response.json({ id: "msg", type: "message", content: [] })
+  }, undefined, { save: updater => repo.upstreams.saveState<unknown>(row.id, updater, row) })
+  await provider.getModels()
+  const result = await provider.fetch({ endpoint: "messages", sourceApi: "anthropic", headers: new Headers(),
+    payload: { model: "claude-opus-5.5", messages: [{ role: "user", content: "hello" }], max_tokens: 10 } })
+  expect(result.status).toBe(200)
+  expect(bearers).toEqual(["Bearer central-token"])
+})
+
+test("backups never carry mirror secrets, hashes or sources", async () => {
+  const p = await central()
+  const issued = await (await issue(p.upstreamId)).json() as Issued
+  await device(issued.document)
+  const rows = await repo.upstreams.list({ includeDisabled: true })
+  const centralHash = readLokiState(rows.find(row => row.id === p.upstreamId)!.state).mirrors![0]!.secretHash
+  for (const redactSecrets of [true, false]) {
+    const raw = JSON.stringify(exportConfig({ apiKeys: [], githubAccounts: [], upstreams: rows }, { redactSecrets }))
+    for (const value of [issued.document.mirrorSecret, centralHash, issued.mirror.id, "central-token"]) expect(raw).not.toContain(value)
+    for (const restored of parseConfigBundle(JSON.parse(raw)).bundle.upstreams) {
+      expect(restored.state).toMatchObject({ assistantStatus: "waiting", syncSecretHash: "" })
+      expect(JSON.stringify(restored.state)).not.toContain("mirror")
+    }
+  }
 })
