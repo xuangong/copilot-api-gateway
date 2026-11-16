@@ -110,7 +110,7 @@ each other's place.
 - Checks: upstream exists and is `loki`; owner exists and is not disabled;
   SHA-256 of the secret equals some `mirrors[].secretHash`.
 - Disabling the central upstream (`enabled: false`) does not stop mirror pulls; it only stops central routing. Revoking a mirror or disconnecting the assistant stops pulls.
-- Returns 200 only for a credential with more than 60 seconds remaining:
+- Returns 200 only for a credential the central gateway could use for its own inference: the upstream is paired, the credential matches the bound account, and it has more than 60 seconds remaining:
 
 ```json
 {
