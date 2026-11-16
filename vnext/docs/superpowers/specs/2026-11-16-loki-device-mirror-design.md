@@ -178,7 +178,9 @@ to Cloudflare.
 ## Management API
 
 All under the existing `lokiManagementRouter` (real session, Origin check,
-ownership via `loadOwned`).
+ownership via `loadOwned`). Mirror management is owner-only, with no administrator
+override: an administrator who does not own the upstream gets the same 404
+`upstream_not_found` as any other non-owner.
 
 Central upstream:
 

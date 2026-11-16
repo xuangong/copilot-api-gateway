@@ -143,6 +143,27 @@ test("owners issue, list and revoke mirrors; secrets appear once and are never s
   expect((await pull(p.upstreamId, issued.document.mirrorSecret)).status).toBe(401)
 })
 
+test("administrators who do not own the upstream cannot manage its mirrors", async () => {
+  const p = await central()
+  const adminId = "loki-admin" as UserId
+  const adminSession = "ses_loki_admin" as SessionToken
+  await repo.users.create({ id: adminId, name: adminId, email: "test@local.dev", createdAt: stamp, disabled: false })
+  await repo.sessions.create({ token: adminSession, userId: adminId, createdAt: stamp, expiresAt: "2099-01-01T00:00:00.000Z" })
+  const issued = await (await issue(p.upstreamId)).json() as Issued
+  const base = `/upstreams/${p.upstreamId}/mirrors`
+  const responses = [
+    await request(base, undefined, adminSession, "GET"),
+    await request(base, { label: "Admin" }, adminSession, "POST"),
+    await request(`${base}/${issued.mirror.id}`, undefined, adminSession, "DELETE"),
+  ]
+  for (const response of responses) {
+    expect(response.status).toBe(404)
+    expect(await response.json()).toMatchObject({ error: { code: "upstream_not_found" } })
+  }
+  const listed = await (await request(base, undefined, session, "GET")).json() as { mirrors: unknown[] }
+  expect(listed.mirrors).toHaveLength(1)
+})
+
 test("labels are validated, issuance is limited and needs HTTPS", async () => {
   const p = await central()
   for (const label of ["", " ", "x".repeat(65)]) expect((await issue(p.upstreamId, label)).status).toBe(400)

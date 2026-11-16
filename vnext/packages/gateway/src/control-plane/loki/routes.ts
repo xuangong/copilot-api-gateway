@@ -1,7 +1,7 @@
 import { Hono } from "hono"
 import { z } from "zod"
 import { directFetcher } from "@vibe-core/upstream"
-import { addLokiMirror, LokiSyncError, LOKI_PROFILE_ID, lokiBaseUrl, lokiMirrorDocument, newLokiMirrorState,
+import { addLokiMirror, LokiSyncError, LOKI_MIRROR_ID_PATTERN, LOKI_PROFILE_ID, lokiBaseUrl, lokiMirrorDocument, newLokiMirrorState,
   normalizeLokiStaticModels, parseLokiMirrorDocument, pullLokiMirror, readLokiState, removeLokiMirror,
   type LokiMirrorSource, type LokiState } from "@vibe-llm/provider-loki"
 import type { Env } from "../../app"
@@ -33,7 +33,7 @@ const pairing = (origin: string, id: string, state: LokiState, syncSecret: strin
 })
 
 const mirrorBody = z.object({ label: z.string().trim().min(1).max(64) }).strict()
-const mirrorId = z.string().regex(/^lkmid_[a-f0-9]{32}$/)
+const mirrorId = z.string().regex(LOKI_MIRROR_ID_PATTERN)
 
 async function ownedLoki(auth: FullAuthCtx, rawId: string) {
   const parsedId = upstreamId.safeParse(rawId)
@@ -41,6 +41,12 @@ async function ownedLoki(auth: FullAuthCtx, rawId: string) {
   const row = await loadOwned(auth, () => getRepo().upstreams.getById(parsedId.data))
   if (!row || row.provider !== "loki") throw new LokiSyncError("upstream_not_found", 404)
   return { row, id: parsedId.data }
+}
+/** Mirror management is owner-only: unlike loadOwned, an admin gets no bypass. */
+async function ownedLokiStrict(auth: FullAuthCtx, rawId: string) {
+  const found = await ownedLoki(auth, rawId)
+  if (found.row.ownerId !== auth?.userId) throw new LokiSyncError("upstream_not_found", 404)
+  return found
 }
 /** Validates a document and pulls once. A revoked secret is a client error, an unreachable or misbehaving
  *  central creates nothing, and a central that is merely waiting for its credential is not an error. */
@@ -159,14 +165,14 @@ for (const method of ["POST", "DELETE"] as const) lokiManagementRouter.on(method
 
 lokiManagementRouter.get("/upstreams/:id/mirrors", async c => {
   try {
-    const { row } = await ownedLoki(c.get("auth"), c.req.param("id"))
+    const { row } = await ownedLokiStrict(c.get("auth"), c.req.param("id"))
     return json({ mirrors: (currentState(row.state)?.mirrors ?? []).map(publicMirror) })
   } catch (error) { return safeError(error) }
 })
 
 lokiManagementRouter.post("/upstreams/:id/mirrors", async c => {
   try {
-    const { row, id } = await ownedLoki(c.get("auth"), c.req.param("id"))
+    const { row, id } = await ownedLokiStrict(c.get("auth"), c.req.param("id"))
     const origin = new URL(c.req.url)
     // Self-hosted deployments behind a TLS-terminating proxy must preserve the original scheme
     // (same requirement as the pairing gatewayOrigin).
@@ -181,7 +187,7 @@ lokiManagementRouter.post("/upstreams/:id/mirrors", async c => {
 
 lokiManagementRouter.delete("/upstreams/:id/mirrors/:mirrorId", async c => {
   try {
-    const { row, id } = await ownedLoki(c.get("auth"), c.req.param("id"))
+    const { row, id } = await ownedLokiStrict(c.get("auth"), c.req.param("id"))
     const parsedMirror = mirrorId.safeParse(c.req.param("mirrorId"))
     if (!parsedMirror.success) throw new LokiSyncError("mirror_not_found", 404)
     let remaining: LokiState["mirrors"]

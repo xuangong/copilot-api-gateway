@@ -156,7 +156,7 @@ A device mirror lets another gateway (typically a local Docker gateway on one of
 
 ### Issuing and revoking (central upstream)
 
-Management requires a real session and the same Origin rules as pairing.
+Management requires a real session and the same Origin rules as pairing. Mirror management is owner-only, with no administrator override.
 
 - `GET /api/loki/upstreams/{id}/mirrors` lists `{ id, label, createdAt, lastPulledAt }`.
 - `POST /api/loki/upstreams/{id}/mirrors` with `{ "label": "MacBook" }` returns `201 { mirror, document }`. The label is 1..64 characters. Errors: `400 https_required` unless the gateway origin is HTTPS, `409 mirror_limit` at 16 mirrors, `400 mirror_unsupported` on a mirror upstream (no chaining).
