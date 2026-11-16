@@ -19,7 +19,7 @@ let background: Promise<unknown>[] = []
 const deferred = () => { let resolve!: (r: Response) => void; const promise = new Promise<Response>(r => { resolve = r }); return { promise, resolve } }
 const freshBody = (token: string) => Response.json({ version: 1, profileId: "loki-df-v1", mirrorId, credential: credential(token, clock + 3_600_000) })
 
-function device(initial: ReturnType<typeof credential> | undefined, extra: { noSave?: boolean; save?: () => Promise<void>; waitMs?: number } = {}) {
+function device(initial: ReturnType<typeof credential> | undefined, extra: { noSave?: boolean; save?: (updater: (current: unknown) => unknown) => Promise<void>; waitMs?: number } = {}) {
   const row: StoredUpstreamRecord<LokiState> = { id: "up_loki_device", rowIncarnation: "i", ownerId: "owner", provider: "loki",
     name: "Loki", enabled: true, sortOrder: 0, config: { profileId: "loki-df-v1" }, state: newLokiMirrorState(source, initial, start),
     catalogGeneration: 0, credentialGeneration: 0, flagOverrides: {}, disabledPublicModelIds: [], proxyFallbackList: [], createdAt: "", updatedAt: "" }
