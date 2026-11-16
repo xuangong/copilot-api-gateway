@@ -144,15 +144,22 @@ Errors use the existing `{"error":{"code":"…"}}` shape:
 Inside `LokiProvider.credential()` for an upstream with a mirror `source`:
 
 1. If the stored credential has more than 5 minutes left, use it.
-2. Otherwise pull from `${origin}/api/loki/mirror/${upstreamId}`:
-   - one in-flight pull per upstream id per process; concurrent callers await it;
+2. If it is still usable but has 5 minutes or less left, return it immediately
+   and refresh in the background (kept alive through the platform's
+   `waitUntil`). Only when no usable credential exists does the caller wait
+   for the pull, bounded by 15 s; then it fails with
+   `loki_credential_unavailable`.
+3. The pull is from `${origin}/api/loki/mirror/${upstreamId}`:
+   - one in-flight pull per upstream id per process (per isolate on Workers);
+     concurrent callers join it, and an entry older than 15 s is replaced
+     because a pull tied to a cancelled request may never settle;
    - `directFetcher`, ignoring the upstream's proxy chain; 10 s timeout;
      `redirect: "manual"`, and any 3xx is a failure.
-3. On 200: parse with the existing credential parser; require more than 60 s
+4. On 200: parse with the existing credential parser; require more than 60 s
    remaining and an account equal to the bound account (if any); persist via
    `saveState` (`credential`, `account`, `assistantStatus: "authorized"`,
    `updatedAt`, clear `errorCode`).
-4. On failure:
+5. On failure:
    - 401 `invalid_mirror`: persist `errorCode: "mirror_revoked"` and stop
      automatic pulls until re-import;
    - account mismatch: persist `errorCode: "account_mismatch"`, do not store
