@@ -242,6 +242,9 @@ test("the metric picker names the metric's unit", () => {
     const html = renderToStaticMarkup(<ChartPanel metrics={[{ metric: "proxy.connections", unit: "count", firstHour: "", lastHour: "", dims: [] }, { metric: "proxy.sent_bytes", unit: "bytes", firstHour: "", lastHour: "", dims: [] }]}
       metric="proxy.connections" range="24h" groupBy="" series={null} settings={{}} surgeHours={new Set()} dark error="" onMetric={noop} onRange={noop} onGroupBy={noop} />)
     expect(html).toContain("proxy.connections (count)")
+    const sent = renderToStaticMarkup(<ChartPanel metrics={[{ metric: "proxy.sent_bytes", unit: "bytes", firstHour: "", lastHour: "", dims: [] }]}
+      metric="proxy.sent_bytes" range="24h" groupBy="" series={null} settings={{}} surgeHours={new Set()} dark error="" onMetric={noop} onRange={noop} onGroupBy={noop} />)
+    expect(sent).toContain("proxy.sent_bytes · download (bytes)")
   } finally { restore() }
 })
 

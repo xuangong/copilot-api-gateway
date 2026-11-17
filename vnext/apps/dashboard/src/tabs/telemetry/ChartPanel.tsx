@@ -7,7 +7,7 @@ import { Notice } from "../../ui/notice"
 import { SegmentedControl, type SegmentedOption } from "../../ui/segmented-control"
 import { Select } from "../../ui/select"
 import { CheckStrip, LatencyNote } from "./Panels"
-import { chartFromSeries, formatValue, latencyCheckMetric, metricDescriptionKey, windowTotal, type ChartRange } from "./telemetry-format"
+import { chartFromSeries, formatValue, latencyCheckMetric, metricDescriptionKey, metricNameKey, windowTotal, type ChartRange } from "./telemetry-format"
 
 export interface ChartPanelProps {
   metrics: TelemetryMetricInfo[]
@@ -67,7 +67,9 @@ export function ChartPanel(props: ChartPanelProps) {
         <Select value={metric} ariaLabel={t("dash.tlmMetric")} size="sm" onChange={props.onMetric}
           options={metrics.map(info => {
             const about = metricDescriptionKey(info.metric)
-            return { value: info.metric, label: unitName(info.unit) ? `${info.metric} (${unitName(info.unit)})` : info.metric, ...(about ? { description: t(about) } : {}) }
+            const named = metricNameKey(info.metric)
+            const base = named ? `${info.metric} · ${t(named)}` : info.metric
+            return { value: info.metric, label: unitName(info.unit) ? `${base} (${unitName(info.unit)})` : base, ...(about ? { description: t(about) } : {}) }
           })} />
         {isCheck ? null : <Select value={props.groupBy} ariaLabel={t("dash.tlmGroupBy")} size="sm" onChange={props.onGroupBy}
           options={[{ value: "", label: t("dash.tlmGroupNone") }, ...dims.map(dim => ({ value: dim, label: dim }))]} />}
