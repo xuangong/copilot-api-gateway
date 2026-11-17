@@ -8,6 +8,7 @@ import { SharedAgentRemoteContinuationRepo } from "./agent-remote-continuations.
 import { SharedSetupLeaseRepo } from "./setup-leases.ts"
 import { SharedSyncDeviceRepo, SharedSyncSourceRepo } from "./sync.ts"
 import { SharedTelemetryRepo } from "./telemetry.ts"
+import { SharedProtectionRepo } from "./protection.ts"
 import type { SyncedUpstreamInput, SyncedUpstreamOutcome } from "../sync.ts"
 import { SharedPerformanceMetricsRepo } from "../performance-metrics"
 import type {
@@ -1458,6 +1459,7 @@ export function buildSharedRepo(x: SqlExecutor): Repo {
     syncDevices: new SharedSyncDeviceRepo(x),
     syncSources: new SharedSyncSourceRepo(x),
     telemetry: new SharedTelemetryRepo(x),
+    protection: new SharedProtectionRepo(x),
     responsesItems: new SharedResponsesItemsRepo(x),
     proxies: new SharedProxyRepo(x),
     proxyBackoffs: new SharedProxyBackoffRepo(x),

@@ -14,6 +14,7 @@ export type { ProxyRepo, ProxyBackoffRepo, ProxyRecord, ProxyFallbackEntry, Back
 
 import type { SharedSessionConfig } from "./shared-session-secret"
 import type { TelemetryRepo } from "./telemetry.ts"
+import type { ProtectionRepo } from "./protection.ts"
 import type { SyncDeviceRepo, SyncSourceRepo, SyncedUpstreamInput, SyncedUpstreamOutcome } from "./sync.ts"
 
 export interface ApiKey {
@@ -632,6 +633,7 @@ export interface Repo {
   syncDevices: SyncDeviceRepo
   syncSources: SyncSourceRepo
   telemetry: TelemetryRepo
+  protection: ProtectionRepo
   deviceCodes: DeviceCodeRepo
   responsesItems: ResponsesItemsRepo
   proxies: ProxyRepo

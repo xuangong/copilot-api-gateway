@@ -60,6 +60,7 @@ export class BunSqliteRepo implements Repo {
   syncDevices: Repo["syncDevices"]
   syncSources: Repo["syncSources"]
   telemetry: Repo["telemetry"]
+  protection: Repo["protection"]
   deviceCodes: Repo["deviceCodes"]
   responsesItems: Repo["responsesItems"]
   proxies: Repo["proxies"]
@@ -91,6 +92,7 @@ export class BunSqliteRepo implements Repo {
     this.syncDevices = shared.syncDevices
     this.syncSources = shared.syncSources
     this.telemetry = shared.telemetry
+    this.protection = shared.protection
     this.deviceCodes = shared.deviceCodes
     this.responsesItems = shared.responsesItems
     this.proxies = shared.proxies
