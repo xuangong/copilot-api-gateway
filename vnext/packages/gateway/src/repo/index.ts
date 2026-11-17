@@ -12,6 +12,7 @@ export type {
   WebSearchUsageRecord, ObservabilityShare, ObservabilityShareRepo,
 } from "./types"
 export type { SyncDeviceRecord, SyncDeviceRepo, SyncSourceRecord, SyncSourceRepo } from "./sync.ts"
+export type { TelemetryPoint, TelemetryRepo, TelemetrySourceRecord, TelemetryUnit } from "./telemetry.ts"
 export type { DataPlaneConfiguration } from "./configuration-ports.ts"
 
 let _repo: Repo | null = null

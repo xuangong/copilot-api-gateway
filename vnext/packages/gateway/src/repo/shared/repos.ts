@@ -7,6 +7,7 @@ import { queryUsageQuota } from "../usage-quota.ts"
 import { SharedAgentRemoteContinuationRepo } from "./agent-remote-continuations.ts"
 import { SharedSetupLeaseRepo } from "./setup-leases.ts"
 import { SharedSyncDeviceRepo, SharedSyncSourceRepo } from "./sync.ts"
+import { SharedTelemetryRepo } from "./telemetry.ts"
 import type { SyncedUpstreamInput, SyncedUpstreamOutcome } from "../sync.ts"
 import { SharedPerformanceMetricsRepo } from "../performance-metrics"
 import type {
@@ -1456,6 +1457,7 @@ export function buildSharedRepo(x: SqlExecutor): Repo {
     observabilityShares: new SharedObservabilityShareRepo(x),
     syncDevices: new SharedSyncDeviceRepo(x),
     syncSources: new SharedSyncSourceRepo(x),
+    telemetry: new SharedTelemetryRepo(x),
     responsesItems: new SharedResponsesItemsRepo(x),
     proxies: new SharedProxyRepo(x),
     proxyBackoffs: new SharedProxyBackoffRepo(x),

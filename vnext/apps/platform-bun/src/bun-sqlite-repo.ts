@@ -28,6 +28,12 @@ class SqliteExecutor implements SqlExecutor {
     const r = this.db.query(sql).run(...(binds as any[]))
     return { changes: Number(r.changes) || 0 }
   }
+
+  async batch(statements: readonly { sql: string; binds: unknown[] }[]): Promise<{ changes: number }[]> {
+    const transaction = this.db.transaction((items: readonly { sql: string; binds: unknown[] }[]) =>
+      items.map(item => ({ changes: Number(this.db.query(item.sql).run(...(item.binds as any[])).changes) || 0 })))
+    return transaction(statements)
+  }
 }
 
 export class BunSqliteRepo implements Repo {
@@ -53,6 +59,7 @@ export class BunSqliteRepo implements Repo {
   observabilityShares: Repo["observabilityShares"]
   syncDevices: Repo["syncDevices"]
   syncSources: Repo["syncSources"]
+  telemetry: Repo["telemetry"]
   deviceCodes: Repo["deviceCodes"]
   responsesItems: Repo["responsesItems"]
   proxies: Repo["proxies"]
@@ -83,6 +90,7 @@ export class BunSqliteRepo implements Repo {
     this.observabilityShares = shared.observabilityShares
     this.syncDevices = shared.syncDevices
     this.syncSources = shared.syncSources
+    this.telemetry = shared.telemetry
     this.deviceCodes = shared.deviceCodes
     this.responsesItems = shared.responsesItems
     this.proxies = shared.proxies

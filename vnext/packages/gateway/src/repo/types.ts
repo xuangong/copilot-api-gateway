@@ -13,6 +13,7 @@ export type { ApiKeyModelMapping, ApiKeyRoutingPolicy } from '../shared/api-key-
 export type { ProxyRepo, ProxyBackoffRepo, ProxyRecord, ProxyFallbackEntry, BackoffRow } from "@vibe-core/proxy-repo"
 
 import type { SharedSessionConfig } from "./shared-session-secret"
+import type { TelemetryRepo } from "./telemetry.ts"
 import type { SyncDeviceRepo, SyncSourceRepo, SyncedUpstreamInput, SyncedUpstreamOutcome } from "./sync.ts"
 
 export interface ApiKey {
@@ -630,6 +631,7 @@ export interface Repo {
   observabilityShares: ObservabilityShareRepo
   syncDevices: SyncDeviceRepo
   syncSources: SyncSourceRepo
+  telemetry: TelemetryRepo
   deviceCodes: DeviceCodeRepo
   responsesItems: ResponsesItemsRepo
   proxies: ProxyRepo

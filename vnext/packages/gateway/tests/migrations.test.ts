@@ -157,6 +157,32 @@ describe("migration corpus", () => {
     } finally { db.close() }
   })
 
+  test("telemetry migration creates the tables, enforces constraints and applies once", () => {
+    const db = new Database(":memory:")
+    try {
+      db.exec("CREATE TABLE _migrations (name TEXT PRIMARY KEY)")
+      for (const file of listSql().sort().filter(file => file < "0026_")) {
+        db.exec(readFileSync(`${dir}/${file}`, "utf8"))
+        db.run("INSERT INTO _migrations (name) VALUES (?)", [file])
+      }
+      applyMigrations(db, dir)
+      applyMigrations(db, dir)
+      const id = `tls_${"a".repeat(32)}`
+      db.run("INSERT INTO telemetry_sources (id, owner_id, name, key_hash, created_at) VALUES (?, 'o', 'vm', ?, 'now')", [id, "b".repeat(64)])
+      expect(db.query("SELECT settings_json, last_push_at FROM telemetry_sources").get()).toEqual({ settings_json: "{}", last_push_at: null })
+      expect(() => db.run("INSERT INTO telemetry_sources (id, owner_id, name, key_hash, created_at) VALUES ('short', 'o', 'vm', ?, 'now')", ["c".repeat(64)])).toThrow()
+      expect(() => db.run("INSERT INTO telemetry_sources (id, owner_id, name, key_hash, created_at) VALUES (?, 'o', 'vm2', ?, 'now')", [`tls_${"d".repeat(32)}`, "b".repeat(64)])).toThrow()
+      const insert = (value: number, unit: string, hour = 3600) =>
+        db.run("INSERT INTO telemetry_points (source_id, metric, hour, dims_key, dims_json, value, unit) VALUES (?, 'm', ?, '', '{}', ?, ?)", [id, hour, value, unit])
+      insert(1, "bytes")
+      expect(() => insert(1, "bytes")).toThrow()
+      expect(() => insert(-1, "bytes", 7200)).toThrow()
+      expect(() => insert(1, "seconds", 7200)).toThrow()
+      insert(1, "ms", 7200)
+      expect(db.query("SELECT name FROM _migrations WHERE name = '0026_telemetry.sql'").all()).toHaveLength(1)
+    } finally { db.close() }
+  })
+
   // Guards against the failure this corpus already suffered once: schema
   // applied by hand to the live databases, leaving the migrations unable to
   // rebuild production. Regenerate with UPDATE_SCHEMA_BASELINE=1 only when a

@@ -183,6 +183,11 @@ class D1Executor implements SqlExecutor {
     const result = await this.prep(sql, binds).run()
     return { changes: (result.meta.changes as number) ?? 0 }
   }
+
+  async batch(statements: readonly { sql: string; binds: unknown[] }[]): Promise<{ changes: number }[]> {
+    const results = await this.db.batch(statements.map(statement => this.prep(statement.sql, statement.binds)))
+    return results.map(result => ({ changes: (result.meta.changes as number) ?? 0 }))
+  }
 }
 
 export class D1Repo implements Repo {
@@ -208,6 +213,7 @@ export class D1Repo implements Repo {
   observabilityShares: Repo["observabilityShares"]
   syncDevices: Repo["syncDevices"]
   syncSources: Repo["syncSources"]
+  telemetry: Repo["telemetry"]
   deviceCodes: Repo["deviceCodes"]
   responsesItems: Repo["responsesItems"]
   proxies: Repo["proxies"]
@@ -237,6 +243,7 @@ export class D1Repo implements Repo {
     this.observabilityShares = shared.observabilityShares
     this.syncDevices = shared.syncDevices
     this.syncSources = shared.syncSources
+    this.telemetry = shared.telemetry
     this.deviceCodes = shared.deviceCodes
     this.responsesItems = shared.responsesItems
     this.proxies = shared.proxies
