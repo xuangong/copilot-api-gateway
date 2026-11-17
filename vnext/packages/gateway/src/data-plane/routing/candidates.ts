@@ -10,6 +10,8 @@ import { listRoutingBindings, routingScope, type CreateProviderOptions } from '.
 import { parseModelRouting } from './model-routing.ts'
 import { parseCompositeModelId } from '@vibe-llm/provider-copilot'
 
+import type { PauseRecord } from '../../repo/protection.ts'
+import { getProtection } from '../../protection/runtime.ts'
 import type { RoutingBindingDescriptor } from "../providers/routing-projection.ts"
 
 export interface BindingCandidate {
@@ -39,6 +41,10 @@ export interface EnumerateResult {
   upstreamPin?: string
   materialize?: (candidate: BindingCandidate) => Promise<MaterializedBindingCandidate | null>
   reconcile?: () => Promise<void>
+  /** Candidates dropped because their upstream is paused (mode `pause`). */
+  pausedCandidates?: BindingCandidate[]
+  /** The paused upstreams at enumeration time, by upstream id. */
+  pausedUpstreams?: ReadonlyMap<string, PauseRecord>
 }
 
 /**
@@ -103,12 +109,26 @@ export async function enumerateBindingCandidates(args: {
   const parsed = parseModelRouting(model)
   const composite = parseCompositeModelId(parsed.bareModel)
   const ids = composite.baseId && composite.baseId !== parsed.bareModel ? [parsed.bareModel, composite.baseId] : [parsed.bareModel]
-  const current = () => filterBindingCandidates({ bindings: bindings.find(ids), model, pickTarget, pin: opts.pin })
+  const paused = await getProtection().pausedUpstreams() // never throws; fail-open
+  const current = () => {
+    const found = filterBindingCandidates({ bindings: bindings.find(ids), model, pickTarget, pin: opts.pin })
+    if (paused.size === 0) return { ...found, pausedCandidates: [] as BindingCandidate[] }
+    const candidates: BindingCandidate[] = []
+    const pausedCandidates: BindingCandidate[] = []
+    for (const candidate of found.candidates) (paused.has(candidate.binding.upstream) ? pausedCandidates : candidates).push(candidate)
+    return { ...found, candidates, pausedCandidates }
+  }
   return {
-    bareModel: parsed.bareModel, upstreamPin,
+    bareModel: parsed.bareModel, upstreamPin, pausedUpstreams: paused,
     get candidates() { return current().candidates },
+    get pausedCandidates() { return current().pausedCandidates },
     get sawModel() { return current().sawModel },
-    get catalogUnavailable() { return incomplete && current().candidates.length === 0 },
+    get catalogUnavailable() {
+      if (!incomplete) return false
+      const { candidates, pausedCandidates } = current()
+      // A candidate dropped only because it is paused is a known answer: prefer upstream-paused over an unrelated failed catalog.
+      return candidates.length === 0 && pausedCandidates.length === 0
+    },
     get failedCatalogs() { return [...failedCatalogs] },
     async materialize(candidate) {
       const binding = await bindings.materialize(candidate.binding)

@@ -47,6 +47,7 @@ import {
   type LlmEventResult,
   type LlmExecuteResult,
   type UpstreamErrorResult,
+  retryAfterHeaders,
 } from '@vibe-llm/protocols/common'
 import { forwardUpstreamError, geminiErrorBody } from '../../errors/forward'
 import { SourceStreamState, recordPerformance } from '../shared/respond-telemetry.ts'
@@ -394,7 +395,7 @@ const renderExecuteResult = async (
     options.dump?.failed(result.error.message)
     return Response.json(
       geminiErrorBody(result.status, result.error.message),
-      { status: result.status },
+      { status: result.status, headers: retryAfterHeaders(result) },
     )
   }
   await validateEventProducer(result, "gemini", result.discardProducer ? undefined : () => options.downstreamAbortController?.abort()).catch(error => {

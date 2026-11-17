@@ -40,6 +40,7 @@ export async function serveCountTokens(args: CountTokensServeArgs): Promise<Resp
       upstreamIds: args.auth.routingPolicy?.upstreamIds,
       copilot: args.auth.copilot,
       pin: resolved.upstreamPin,
+      anthropicErrors: true,
     })
     if (!binding) {
       return tee(jsonErrorWrap(404, {

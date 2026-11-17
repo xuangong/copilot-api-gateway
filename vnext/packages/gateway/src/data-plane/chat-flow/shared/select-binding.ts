@@ -20,11 +20,15 @@ import {
   type EnumerateOptions,
 } from '../../routing/candidates.ts'
 import { getTranslator, type PairTranslator } from '../../dispatch/translator-registry.ts'
+import { describePausedRoute } from '../../routing/paused-route.ts'
 import type { ApiKeyId } from '../../../repo/branded-ids.ts'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
+export interface UpstreamPausedSelection { kind: 'upstream-paused'; bareModel: string; message: string; retryAfterSeconds: number }
+
 export type SelectBindingResult =
+  | UpstreamPausedSelection
   | { kind: 'ok'; binding: LlmProviderBinding; targetEndpoint: EndpointKey; translator: PairTranslator; bareModel: string }
   | { kind: 'catalog-unavailable'; bareModel: string; failedCatalogs: readonly string[] }
   | { kind: 'model-not-found'; bareModel: string }
@@ -96,6 +100,9 @@ export async function selectBindingForProtocol(
     console.warn(`[routing] ${bareModel} is in no catalog that loaded; failed catalogs: ${failedCatalogs.map(id => id || "(upstream list)").join(", ") || "unknown"}`)
     return { kind: "catalog-unavailable", bareModel, failedCatalogs }
   }
+  const pausedFor = () => enumeration.pausedUpstreams && enumeration.pausedCandidates?.length
+    ? describePausedRoute(enumeration.pausedCandidates.map(candidate => candidate.binding.upstream), enumeration.pausedUpstreams, args.auth.ownerId)
+    : Promise.resolve(null)
   if (enumeration.candidates.length === 0) await enumeration.reconcile?.()
   if (enumeration.catalogUnavailable) return catalogUnavailable()
   if (!enumeration.sawModel) return { kind: "model-not-found", bareModel }
@@ -106,12 +113,23 @@ export async function selectBindingForProtocol(
   } catch (error) {
     // Constructor failures remove catalog contributions; preparation failures
     // instead remain affinity proof errors for still-advertised candidates.
-    if (error instanceof AffinityRoutingUnavailableError && enumeration.catalogUnavailable) return catalogUnavailable()
+    if (error instanceof AffinityRoutingUnavailableError) {
+      if (enumeration.catalogUnavailable) return catalogUnavailable()
+      // The route that holds the opaque state may be a paused upstream: say so (with Retry-After) instead of a bare 503,
+      // but only when a paused candidate would have been authorized (local proof, no inference).
+      if (enumeration.pausedUpstreams && enumeration.pausedCandidates?.length) {
+        const authorized = await selectAffinityCandidate(enumeration.pausedCandidates, args.affinity, bareModel, args.affinityOptions, enumeration.materialize).catch(() => undefined)
+        const paused = authorized ? await describePausedRoute([authorized.binding.upstream], enumeration.pausedUpstreams, args.auth.ownerId) : null
+        if (paused) return { kind: "upstream-paused", bareModel, ...paused }
+      }
+    }
     throw error
   }
   if (!first) {
     if (enumeration.catalogUnavailable) return catalogUnavailable()
     if (!enumeration.sawModel) return { kind: "model-not-found", bareModel }
+    const paused = await pausedFor()
+    if (paused) return { kind: "upstream-paused", bareModel, ...paused }
     return { kind: "no-eligible-binding", bareModel }
   }
   const translator = getTranslator(args.protocol, first.targetEndpoint)

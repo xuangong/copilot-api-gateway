@@ -31,6 +31,7 @@ import {
   type LlmEventResult,
   type LlmExecuteResult,
   type UpstreamErrorResult,
+  retryAfterHeaders,
 } from '@vibe-llm/protocols/common'
 import {
   doneFrame,
@@ -348,7 +349,10 @@ const renderExecuteResult = async (
       waitUntil(recordPerformance(options.telemetryCtx, result.performance, true))
     }
     options.dump?.failed(result.error.message)
-    return Response.json({ error: { message: result.error.message } }, { status: result.status })
+    return Response.json(
+      { error: { message: result.error.message, ...(result.code ? { code: result.code } : {}) } },
+      { status: result.status, headers: retryAfterHeaders(result) },
+    )
   }
   await validateEventProducer(result, "chat_completions", result.discardProducer ? undefined : () => options.downstreamAbortController?.abort()).catch(error => {
     options.dump?.failed(error)

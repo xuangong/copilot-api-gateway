@@ -17,6 +17,9 @@ import { ModelCatalogUnavailableError } from '../errors/model-catalog.ts'
 import { listRoutingBindings, routingScope, type CreateProviderOptions } from '../providers/registry.ts'
 import { parseCompositeModelId } from '@vibe-llm/provider-copilot'
 import { parseModelRouting } from './model-routing.ts'
+import { getProtection } from '../../protection/runtime.ts'
+import { describePausedRoute } from './paused-route.ts'
+import { UpstreamPausedError } from '../errors/upstream-paused.ts'
 
 export { parseModelRouting } from './model-routing.ts'
 export type { ModelRoutingHint } from './model-routing.ts'
@@ -28,6 +31,8 @@ export interface ResolveBindingOptions {
   copilot?: CreateProviderOptions
   pin?: string
   errorFormat?: 'gemini'
+  /** Render a paused-upstream error in the Anthropic error shape (count_tokens). */
+  anthropicErrors?: boolean
 }
 
 export async function resolveBinding(
@@ -50,17 +55,23 @@ export async function resolveBinding(
   })
   const composite = parseCompositeModelId(bareModel)
   const ids = composite.baseId && composite.baseId !== bareModel ? [bareModel, composite.baseId] : [bareModel]
+  const paused = await getProtection().pausedUpstreams() // never throws; fail-open
+  const skipped: string[] = []
   // This resolver intentionally prefers all direct matches before any base
   // fallback; chat candidate enumeration preserves upstream order instead.
   for (const id of ids) {
     for (const descriptor of bindings.find([id])) {
       if ((upstreamPin && descriptor.upstream !== upstreamPin) || descriptor.model.endpoints[endpoint] === undefined) continue
+      if (paused.has(descriptor.upstream)) { skipped.push(descriptor.upstream); continue }
       const binding = await bindings.materialize(descriptor)
       if (binding) return binding
     }
   }
   await bindings.reconcile()
 
+  // A candidate dropped only because it is paused is a known answer: prefer it over an unrelated failed catalog (as chat does).
+  const route = await describePausedRoute(skipped, paused, opts.ownerId)
+  if (route) throw new UpstreamPausedError(route.message, route.retryAfterSeconds, opts.errorFormat ?? (opts.anthropicErrors ? 'anthropic' : undefined))
   if (incomplete) throw new ModelCatalogUnavailableError(opts.errorFormat)
   return null
 }

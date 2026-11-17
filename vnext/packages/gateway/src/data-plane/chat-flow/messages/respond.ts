@@ -43,6 +43,7 @@ import {
   type LlmEventResult,
   type LlmExecuteResult,
   type UpstreamErrorResult,
+  retryAfterHeaders,
 } from '@vibe-llm/protocols/common'
 import {
   eventFrame,
@@ -355,8 +356,8 @@ const renderExecuteResult = async (
     // error.type, so the distinction matters for user-facing handling.
     const errType = result.status >= 400 && result.status < 500 ? 'invalid_request_error' : 'api_error'
     return Response.json(
-      { type: 'error', error: { type: errType, message: result.error.message } },
-      { status: result.status },
+      { type: 'error', error: { type: errType, message: result.error.message, ...(result.code ? { code: result.code } : {}) } },
+      { status: result.status, headers: retryAfterHeaders(result) },
     )
   }
   await validateEventProducer(result, "messages", result.discardProducer ? undefined : () => options.downstreamAbortController?.abort()).catch(error => {

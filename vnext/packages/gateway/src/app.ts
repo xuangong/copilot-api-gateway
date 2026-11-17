@@ -13,6 +13,8 @@ import { setupExchangeRouter } from './control-plane/setup/routes.ts'
 import { lokiSyncRouter } from './control-plane/loki/sync.ts'
 import { syncSnapshotRouter } from './control-plane/sync/snapshot.ts'
 import { telemetryPushRouter } from './control-plane/telemetry/push.ts'
+import { isInferencePath } from './data-plane/inference-paths.ts'
+import { keyPausedMiddleware } from './data-plane/protection/key-guard.ts'
 import { dmrRouter } from './data-plane/dmr/routes.ts'
 import { isDmrCompatEnabled } from './data-plane/dmr/config.ts'
 
@@ -73,10 +75,7 @@ app.get('/debug/db/users-count', async (c) => {
 
 // Pin one immutable configuration view across authentication, routing and translation.
 app.use('*', async (c, next) => {
-  const path = c.req.path.replace(/^\/(?:azure-api\.codex|engines\/(?:[^/]+\/)?v1|anthropic)(?=\/)/, '')
-  const inference = /^(?:\/v1)?\/(?:messages(?:\/count_tokens)?|chat\/completions|responses(?:\/compact)?|embeddings|images\/(?:generations|edits)|alpha\/search|models)$/.test(path)
-    || /^\/v1beta\/models(?:\/.*)?$/.test(path) || /^\/api\/(?:chat|generate|embed|embeddings|tags|show)$/.test(path)
-  if (!inference) return next()
+  if (!isInferencePath(c.req.path)) return next()
   try { await withConfigurationSnapshot(next) }
   catch (error) {
     if (!(error instanceof ConfigurationUnavailableError)) throw error
@@ -93,6 +92,8 @@ app.route('/api/telemetry', telemetryPushRouter)
 
 app.use('*', sessionAuthMiddleware)
 app.use('*', (c, next) => /^\/api\/keys\/[^/]+\/setup\//.test(c.req.path) ? next() : devAuthMiddleware(c, next))
+// A key paused by upstream protection is refused before any route or upstream is touched.
+app.use('*', keyPausedMiddleware)
 
 // Docker Model Runner compatibility. Inert unless DMR_COMPAT is set, in which
 // case the whole data plane is re-exposed under DMR's prefixes so clients that

@@ -6,7 +6,7 @@ import { StreamTail, closeStream, settleStreamMetadata } from "../shared/stream-
 import { parseSSEStream } from "@vibe-core/result/parse"
 import { waitUntil } from "@vibe-core/platform"
 import { eventFrame, type ProtocolFrame } from "@vibe-core/result"
-import { upstreamErrorToResponse, type LlmEventResult, type LlmExecuteResult, type EventResultMetadata } from "@vibe-llm/protocols/common"
+import { retryAfterHeaders, upstreamErrorToResponse, type LlmEventResult, type LlmExecuteResult, type EventResultMetadata } from "@vibe-llm/protocols/common"
 import { ResponsesFinalOutput, type ResponsesResult, type ResponsesStreamEvent } from "@vibe-llm/protocols/responses"
 import { forwardUpstreamError } from "../../errors/forward"
 import { SourceStreamState, eventResultMetadata, finalModelIdentity, normalizeStreamEventModel, performanceTargetFromTranslatorPair, recordPerformance, recordUsage } from "../shared/respond-telemetry"
@@ -332,7 +332,11 @@ export function createResponsesTurn(
       metadata = { status: response.status, headers: new Headers(response.headers), body: await response.json() }
       options.dump?.error("upstream", result.performance?.upstream ?? undefined)
     } else if (result.type === "internal-error") {
-      metadata = { status: result.status, body: { error: { type: "api_error", message: result.error.message } } }
+      metadata = {
+        status: result.status,
+        headers: new Headers(retryAfterHeaders(result)),
+        body: { error: { type: "api_error", message: result.error.message, ...(result.code ? { code: result.code } : {}) } },
+      }
       options.dump?.failed(result.error.message)
     }
     const headers = new Headers(metadata.headers)

@@ -14,6 +14,8 @@ import type { DumpAccumulator } from "../../../../shared/dump/accumulator.ts"
  */
 import type { EndpointKey } from '@vibe-llm/protocols/common'
 import { enumerateBindingCandidates } from '../../../routing/candidates.ts'
+import { describePausedRoute } from '../../../routing/paused-route.ts'
+import { UpstreamPausedError } from '../../../errors/upstream-paused.ts'
 import type { DataPlaneAuthCtx } from '../../../models/routes.ts'
 
 export type AlphaSearchDispatcher = (
@@ -40,6 +42,10 @@ export const resolveAlphaSearchDispatcher = async (args: {
     opts: { dump: args.dump, ownerId: auth.userId, upstreamIds: auth.routingPolicy?.upstreamIds, copilot: auth.copilot, pin: config.upstreamId },
   })
   const descriptor = enumeration.candidates.find((c) => c.binding.upstream === config.upstreamId)
+  if (!descriptor && enumeration.pausedUpstreams && enumeration.pausedCandidates?.some((c) => c.binding.upstream === config.upstreamId)) {
+    const route = await describePausedRoute([config.upstreamId], enumeration.pausedUpstreams, auth.userId)
+    if (route) throw new UpstreamPausedError(route.message, route.retryAfterSeconds)
+  }
   const candidate = descriptor ? await enumeration.materialize?.(descriptor) : undefined
   if (!candidate) {
     // Enumeration is already scoped to what this caller can see, so "not

@@ -22,6 +22,7 @@ import {
   startTimer,
 } from '../../../data-plane/observability/latency-tracker.ts'
 import { detectClient } from '../../../data-plane/observability/client-detect.ts'
+import { recordResponse, recordThrown } from '../../../protection/observe.ts'
 import { extractFromJson } from '../../../data-plane/observability/usage-extractor.ts'
 import { getRepo } from '../../../repo/index.ts'
 import type { TokenUsage, UsageRecord } from '../../../repo/types.ts'
@@ -125,6 +126,7 @@ export async function runEmbeddingsAttempt(
     }
   }
 
+  const identity = { upstreamId: input.upstream, keyId: input.apiKeyId ?? '', model: input.model }
   const elapsed = startTimer()
   const upstreamStart = Date.now()
   let res: Response
@@ -132,6 +134,7 @@ export async function runEmbeddingsAttempt(
   try {
     res = await input.call()
   } catch (err) {
+    recordThrown(identity, err)
     const upstreamMs = Date.now() - upstreamStart
     input.dump?.error('upstream', input.upstream)
     input.dump?.failed(err)
@@ -148,6 +151,7 @@ export async function runEmbeddingsAttempt(
     throw err
   }
   const upstreamMs = Date.now() - upstreamStart
+  recordResponse(identity, res)
 
   if (!res.ok) {
     input.dump?.error('upstream', input.upstream)

@@ -24,6 +24,7 @@ import type { ModelPricing } from '@vibe-llm/protocols/common'
 import type { DumpAccumulator } from '../../../shared/dump/accumulator.ts'
 import { recordTokenUsage, tokenUsageFromImagesBody } from '../../shared/token-usage.ts'
 import { detectClient } from '../client-detect.ts'
+import { recordResponse, recordThrown } from '../../../protection/observe.ts'
 
 export interface ImagesAttemptInput {
   apiKeyId: ApiKeyId | undefined
@@ -68,6 +69,7 @@ export async function runImagesAttempt(
     }
   }
 
+  const identity = { upstreamId: input.upstream, keyId: input.apiKeyId ?? '', model: input.model }
   const elapsed = startTimer()
   const upstreamStart = Date.now()
   let res: Response
@@ -75,6 +77,7 @@ export async function runImagesAttempt(
   try {
     res = await input.call()
   } catch (err) {
+    recordThrown(identity, err)
     const upstreamMs = Date.now() - upstreamStart
     input.dump?.error('upstream', input.upstream)
     input.dump?.failed(err)
@@ -91,6 +94,7 @@ export async function runImagesAttempt(
     throw err
   }
   const upstreamMs = Date.now() - upstreamStart
+  recordResponse(identity, res)
 
   if (input.apiKeyId) {
     await recordLatency(
