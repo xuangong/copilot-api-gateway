@@ -44,6 +44,8 @@ export interface TelemetryMetricInfo {
   dimKeys: string[]
 }
 
+/** Restricts point rows to those whose dim `key` equals `value`. `key` becomes a JSON path: callers must validate it against the dim-key pattern. */
+export interface TelemetryDimFilter { key: string; value: string }
 export interface TelemetryHourValue { hour: number; value: number }
 export interface TelemetryMetricHourValue extends TelemetryHourValue { metric: string; unit: TelemetryUnit }
 export interface TelemetryGroupTotal { key: string; value: number }
@@ -78,15 +80,17 @@ export interface TelemetryRepo {
   firstHours(sourceId: string, metrics: readonly string[]): Promise<Map<string, number>>
   /** Per metric and hour, summed over dims; `[fromHour, toHour)`. */
   hourlyTotals(sourceId: string, metrics: readonly string[], fromHour: number, toHour: number): Promise<TelemetryMetricHourValue[]>
+  /** Per hour sum of one metric over the point rows matching `filter` (the hourly rollup has no dims); hours without rows are absent. `[fromHour, toHour)`. */
+  filteredHourlyTotals(sourceId: string, metric: string, filter: TelemetryDimFilter, fromHour: number, toHour: number): Promise<TelemetryMetricHourValue[]>
   /** Sum over all groups plus the top groups by total (the group `(other)` is excluded from the ranking). `groupBy` becomes a JSON path: callers must validate it against the dim-key pattern. */
-  topGroups(sourceId: string, metric: string, groupBy: string, fromHour: number, toHour: number, limit: number):
+  topGroups(sourceId: string, metric: string, groupBy: string, fromHour: number, toHour: number, limit: number, filter?: TelemetryDimFilter):
     Promise<{ unit: TelemetryUnit | null; total: number; groups: TelemetryGroupTotal[] }>
   /** Only the ranked groups of `topGroups` (one query, no total). `groupBy` becomes a JSON path: callers must validate it against the dim-key pattern. */
-  rankGroups(sourceId: string, metric: string, groupBy: string, fromHour: number, toHour: number, limit: number): Promise<TelemetryGroupTotal[]>
+  rankGroups(sourceId: string, metric: string, groupBy: string, fromHour: number, toHour: number, limit: number, filter?: TelemetryDimFilter): Promise<TelemetryGroupTotal[]>
   /** `groupBy` becomes a JSON path: callers must validate it against the dim-key pattern. */
-  groupHours(sourceId: string, metric: string, groupBy: string, fromHour: number, toHour: number, keys: readonly string[]): Promise<TelemetryGroupHours[]>
+  groupHours(sourceId: string, metric: string, groupBy: string, fromHour: number, toHour: number, keys: readonly string[], filter?: TelemetryDimFilter): Promise<TelemetryGroupHours[]>
   /** `groupBy` becomes a JSON path: callers must validate it against the dim-key pattern. */
-  groupTotals(sourceId: string, metric: string, groupBy: string, fromHour: number, toHour: number, keys: readonly string[]): Promise<TelemetryGroupTotal[]>
+  groupTotals(sourceId: string, metric: string, groupBy: string, fromHour: number, toHour: number, keys: readonly string[], filter?: TelemetryDimFilter): Promise<TelemetryGroupTotal[]>
   /** Rows with value > 0, newest hour first. */
   nonZeroRows(sourceId: string, metrics: readonly string[], fromHour: number, toHour: number, limit: number): Promise<TelemetryDimRow[]>
   /** The largest dimensioned rows (at most `limit` each) for every (metric, hour) pair, in one query. Row order is unspecified between pairs; within a pair it is by value descending. */

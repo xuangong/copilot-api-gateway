@@ -60,6 +60,11 @@ test("every dashboard read seeks (primary key or a keyed index) on the rollup or
     ["rankGroups", () => repo.rankGroups(id, "m1", "user", from, to, 3)],
     ["groupHours", () => repo.groupHours(id, "m1", "user", from, to, ["u1"])],
     ["groupTotals", () => repo.groupTotals(id, "m1", "user", from, to, ["u1"])],
+    ["topGroups filtered", () => repo.topGroups(id, "m1", "user", from, to, 3, { key: "user", value: "u1" })],
+    ["rankGroups filtered", () => repo.rankGroups(id, "m1", "user", from, to, 3, { key: "user", value: "u1" })],
+    ["groupHours filtered", () => repo.groupHours(id, "m1", "user", from, to, ["u1"], { key: "user", value: "u1" })],
+    ["groupTotals filtered", () => repo.groupTotals(id, "m1", "user", from, to, ["u1"], { key: "user", value: "u1" })],
+    ["filteredHourlyTotals", () => repo.filteredHourlyTotals(id, "m1", { key: "user", value: "u1" }, from, to)],
     ["nonZeroRows", () => repo.nonZeroRows(id, ["m1", "m2"], from, to, 50)],
     ["hoursContributors", () => repo.hoursContributors(id, [["m1", from]], 5)],
   ]
@@ -70,6 +75,17 @@ test("every dashboard read seeks (primary key or a keyed index) on the rollup or
     noScan(plan)
     keyedBySource(plan)
     expect(plan.some(detail => /^SEARCH (telemetry_points|telemetry_hourly|p|t) USING (COVERING )?(PRIMARY KEY|INDEX)/.test(detail)), `${name}: ${plan.join(" | ")}`).toBe(true)
+  }
+})
+
+test("filtered reads range over the (source_id, metric, hour) primary key", async () => {
+  const filter = { key: "user", value: "u1" }
+  const reads = [() => repo.topGroups(id, "m1", "user", BASE, BASE + 4 * HOUR, 3, filter), () => repo.filteredHourlyTotals(id, "m1", filter, BASE, BASE + 4 * HOUR)]
+  for (const read of reads) {
+    const plan = plansOf(await record(read)).filter(detail => TABLE_SEARCH.test(detail))
+    expect(plan.length).toBeGreaterThan(0)
+    for (const detail of plan) expect(detail).toMatch(/USING (COVERING )?INDEX|USING PRIMARY KEY/)
+    for (const detail of plan) expect(detail).toMatch(/source_id=\? AND metric=\? AND hour>\? AND hour<\?/)
   }
 })
 

@@ -2,7 +2,7 @@ import { Hono } from "hono"
 import type { Env } from "../../app"
 import { getRepo } from "../../repo"
 import type { UserId } from "../../repo/branded-ids"
-import type { TelemetrySourceRecord } from "../../repo/telemetry"
+import type { TelemetryDimFilter, TelemetrySourceRecord } from "../../repo/telemetry"
 import type { FullAuthCtx } from "../../shared/credential-auth"
 import {
   DAY, HOUR, MAX_SURGE_METRICS, SURGE_BASELINE_HOURS, SURGE_WINDOW_HOURS, buildSeries, buildTop, checkStatuses, costOf, dropPartialHour, failMetricOf, findSurges,
@@ -28,6 +28,18 @@ function groupByParam(query: Query): string | undefined {
   if (value === undefined || value === "") return undefined
   if (!DIM_KEY_PATTERN.test(value)) throw bad()
   return value
+}
+
+/** `filter=<dimKey>:<value>`, split at the first colon; the dim must differ from `groupBy`. */
+function filterParam(query: Query, groupBy: string | undefined): TelemetryDimFilter | undefined {
+  const raw = query("filter")
+  if (raw === undefined || raw === "") return undefined
+  const colon = raw.indexOf(":")
+  if (colon < 0) throw bad()
+  const key = raw.slice(0, colon)
+  const value = raw.slice(colon + 1)
+  if (!DIM_KEY_PATTERN.test(key) || value.length < 1 || value.length > 256 || key === groupBy) throw bad()
+  return { key, value }
 }
 
 function intParam(query: Query, name: string, fallback: number, min: number, max: number): number {
@@ -58,21 +70,25 @@ telemetryQueriesRouter.get("/sources/:id/series", async c => {
     const window = parseWindow(query("from"), query("to"), nowSec)
     const metric = metricParam(query)
     const groupBy = groupByParam(query)
+    const filter = filterParam(query, groupBy)
     const top = intParam(query, "top", 10, 1, 20)
     const repo = getRepo().telemetry
     const settings = settingsOf(source)
 
-    const totals = await repo.hourlyTotals(source.id, [metric], window.from, window.to)
+    // The hourly rollup has no dims, so a filtered total sums the matching point rows instead.
+    const totals = filter === undefined ? await repo.hourlyTotals(source.id, [metric], window.from, window.to)
+      : await repo.filteredHourlyTotals(source.id, metric, filter, window.from, window.to)
     let groups: Awaited<ReturnType<typeof repo.groupHours>> = []
     if (groupBy !== undefined) {
-      const ranked = await repo.rankGroups(source.id, metric, groupBy, window.from, window.to, top)
-      groups = await repo.groupHours(source.id, metric, groupBy, window.from, window.to, ranked.map(group => group.key))
+      const ranked = await repo.rankGroups(source.id, metric, groupBy, window.from, window.to, top, filter)
+      groups = await repo.groupHours(source.id, metric, groupBy, window.from, window.to, ranked.map(group => group.key), filter)
     }
     const built = buildSeries(window, totals, groups)
     const body: Record<string, unknown> = {
       metric, unit: totals[0]?.unit ?? null, from: formatHour(window.from), to: formatHour(window.to),
       hours: built.hours.map(formatHour), total: built.total, groups: built.groups,
     }
+    if (filter !== undefined) body.filter = filter
     if ((settings.checkMetrics ?? []).includes(metric)) {
       const statuses = checkStatuses(built.hours, totals, await repo.firstHour(source.id, metric))
       const failMetric = failMetricOf(metric)
@@ -94,16 +110,17 @@ telemetryQueriesRouter.get("/sources/:id/top", async c => {
     const metric = metricParam(query)
     const groupBy = groupByParam(query)
     if (groupBy === undefined) throw bad()
+    const filter = filterParam(query, groupBy)
     const limit = intParam(query, "limit", 20, 1, 100)
     const repo = getRepo().telemetry
     const length = window.to - window.from
-    const current = await repo.topGroups(source.id, metric, groupBy, window.from, window.to, limit)
-    const previous = await repo.groupTotals(source.id, metric, groupBy, window.from - length, window.from, current.groups.map(group => group.key))
+    const current = await repo.topGroups(source.id, metric, groupBy, window.from, window.to, limit, filter)
+    const previous = await repo.groupTotals(source.id, metric, groupBy, window.from - length, window.from, current.groups.map(group => group.key), filter)
     const first = (await repo.firstHours(source.id, [metric])).get(metric)
     const comparable = first !== undefined && first <= window.from - length
     const top = buildTop(current.total, current.groups, previous, comparable)
     return telemetryJson({
-      metric, unit: current.unit, groupBy, from: formatHour(window.from), to: formatHour(window.to),
+      metric, unit: current.unit, groupBy, ...(filter === undefined ? {} : { filter }), from: formatHour(window.from), to: formatHour(window.to),
       previousFrom: formatHour(window.from - length), previousTo: formatHour(window.from), comparable,
       total: top.total, rows: top.rows, otherCurrent: top.otherCurrent, otherShare: top.otherShare,
     })

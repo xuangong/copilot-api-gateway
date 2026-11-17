@@ -160,6 +160,33 @@ export function telemetryRepoContract(getRepo: () => TelemetryRepo, run: (sql: s
     expect(await repo.groupHours(id, "t", "user", BASE, BASE + HOUR, [])).toEqual([])
   })
 
+  test.serial("a dim filter restricts groups, totals and hours to the matching point rows", async () => {
+    const repo = getRepo()
+    const id = sourceId(60)
+    await repo.createSourceWithinLimit(source(60, { ownerId: "tlm-f" as UserId, keyHash: hex(60, 64) }), 16)
+    await repo.replaceHours(id, [
+      point("t", 0, 50, { user: "#1", domain: "x.com" }), point("t", 0, 30, { user: "#2", domain: "y.com" }),
+      point("t", 0, 7, { user: "#1", domain: "z.com" }), point("t", 0, 4, { domain: "only.com" }),
+      point("t", 1, 10, { user: "#1", domain: "x.com" }), point("t", 1, 60, { user: "#2", domain: "y.com" }),
+    ], stamp)
+    const filter = { key: "user", value: "#1" }
+    const range = [BASE, BASE + 2 * HOUR] as const
+    expect(await repo.topGroups(id, "t", "domain", ...range, 1, filter)).toEqual({ unit: "bytes", total: 67, groups: [{ key: "x.com", value: 60 }] })
+    expect(await repo.rankGroups(id, "t", "domain", ...range, 5, filter)).toEqual([{ key: "x.com", value: 60 }, { key: "z.com", value: 7 }])
+    expect(await repo.groupHours(id, "t", "domain", ...range, ["x.com", "y.com"], filter)).toEqual([
+      { key: "x.com", points: [{ hour: BASE, value: 50 }, { hour: BASE + HOUR, value: 10 }] },
+    ])
+    expect(await repo.groupTotals(id, "t", "domain", BASE + HOUR, BASE + 2 * HOUR, ["x.com", "y.com"], filter)).toEqual([{ key: "x.com", value: 10 }])
+    expect(await repo.filteredHourlyTotals(id, "t", filter, ...range)).toEqual([
+      { metric: "t", hour: BASE, value: 57, unit: "bytes" }, { metric: "t", hour: BASE + HOUR, value: 10, unit: "bytes" },
+    ])
+    expect(await repo.filteredHourlyTotals(id, "t", { key: "user", value: "nobody" }, ...range)).toEqual([])
+    expect(await repo.filteredHourlyTotals(id, "t", { key: "nokey", value: "#1" }, ...range)).toEqual([])
+    // Values are bound, never interpolated; no filter keeps the unfiltered result.
+    expect((await repo.topGroups(id, "t", "domain", ...range, 5, { key: "user", value: "#1' OR '1'='1" })).total).toBe(0)
+    expect((await repo.topGroups(id, "t", "user", ...range, 5)).total).toBe(161)
+  })
+
   test.serial("metrics list units, first and last hour and the dim keys of each metric's last hour", async () => {
     const repo = getRepo()
     const id = sourceId(15)

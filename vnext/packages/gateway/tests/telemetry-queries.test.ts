@@ -115,6 +115,66 @@ test.each([
   expect(await response.json()).toEqual({ error: { code: "invalid_request" } })
 })
 
+test.each([
+  "/series?metric=m&filter=user", "/series?metric=m&filter=:x", "/series?metric=m&filter=user:", "/series?metric=m&filter=Bad:x", "/series?metric=m&filter=a.b:x",
+  `/series?metric=m&filter=user:${"x".repeat(257)}`, "/series?metric=m&groupBy=user&filter=user:%231",
+  "/top?metric=m&groupBy=user&filter=user:%231", "/top?metric=m&groupBy=user&filter=nocolon", "/top?metric=m&groupBy=user&filter=A:b",
+])("%s is a 400 invalid_request (filter)", async path => {
+  const response = await get(path)
+  expect(response.status).toBe(400)
+  expect(await response.json()).toEqual({ error: { code: "invalid_request" } })
+})
+
+const seedFiltered = () => seed([
+  pt("t", "2026-11-16T03:00:00Z", 60, { user: "#1", domain: "a.com" }), pt("t", "2026-11-16T03:00:00Z", 30, { user: "#1", domain: "b.com" }),
+  pt("t", "2026-11-16T03:00:00Z", 5, { user: "#1", domain: "c.com" }), pt("t", "2026-11-16T03:00:00Z", 100, { user: "#2", domain: "a.com" }),
+  pt("t", "2026-11-16T04:00:00Z", 10, { user: "#1", domain: "a.com" }), pt("t", "2026-11-15T12:00:00Z", 30, { user: "#1", domain: "a.com" }),
+  pt("t", "2026-11-15T12:00:00Z", 999, { user: "#2", domain: "a.com" }),
+])
+const WINDOW = "from=2026-11-16T00:00:00Z&to=2026-11-16T12:00:00Z"
+
+test("a filtered series without groupBy returns the filtered total and echoes the filter", async () => {
+  await seedFiltered()
+  const body = await json(`/series?metric=t&${WINDOW}&filter=user:${encodeURIComponent("#1")}`)
+  expect(body.filter).toEqual({ key: "user", value: "#1" })
+  expect(body.unit).toBe("bytes")
+  expect(body.total[3]).toBe(95)
+  expect(body.total[4]).toBe(10)
+  expect(body.groups).toEqual([])
+  const plain = await json(`/series?metric=t&${WINDOW}`)
+  expect(plain.filter).toBeUndefined()
+  expect(plain.total[3]).toBe(195)
+})
+
+test("a filtered series split by another dim stays within the filter, with (other) for the remainder", async () => {
+  await seedFiltered()
+  const body = await json(`/series?metric=t&${WINDOW}&groupBy=domain&top=2&filter=user:${encodeURIComponent("#1")}`)
+  expect(body.filter).toEqual({ key: "user", value: "#1" })
+  expect(body.groups.map((g: { key: string }) => g.key)).toEqual(["a.com", "b.com", "(other)"])
+  expect(body.groups[0].values[3]).toBe(60)
+  expect(body.groups[2].values[3]).toBe(5)
+  expect(body.total[3]).toBe(95)
+})
+
+test("a filter value in the URL may itself contain colons", async () => {
+  await seed([pt("t", "2026-11-16T03:00:00Z", 8, { domain: "a:b" }), pt("t", "2026-11-16T03:00:00Z", 2, { domain: "c" })])
+  const body = await json(`/series?metric=t&${WINDOW}&filter=domain:${encodeURIComponent("a:b")}`)
+  expect(body.filter).toEqual({ key: "domain", value: "a:b" })
+  expect(body.total[3]).toBe(8)
+})
+
+test("a filtered top ranks, totals and compares within the filter", async () => {
+  await seedFiltered()
+  const body = await json(`/top?metric=t&groupBy=domain&${WINDOW}&limit=2&filter=user:${encodeURIComponent("#1")}`)
+  expect(body).toMatchObject({ groupBy: "domain", filter: { key: "user", value: "#1" }, total: 105, comparable: true })
+  expect(body.rows.map((r: { key: string }) => r.key)).toEqual(["a.com", "b.com"])
+  expect(body.rows[0]).toMatchObject({ value: 70, previous: 30, change: 40 / 30 })
+  expect(body.rows[1]).toMatchObject({ value: 30, previous: 0, change: null })
+  expect(body.otherCurrent).toBe(5)
+  expect(body.otherShare).toBeCloseTo(5 / 105, 9)
+  expect((await json(`/top?metric=t&groupBy=domain&${WINDOW}`)).filter).toBeUndefined()
+})
+
 test.each(["a.b", "a[0]", "$", 'user"', "a-b", "1a", "x".repeat(33)])("groupBy %s is rejected before reaching the repo", async value => {
   for (const route of ["series", "top"]) {
     const response = await get(`/${route}?metric=m&groupBy=${encodeURIComponent(value)}`)

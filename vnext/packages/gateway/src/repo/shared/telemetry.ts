@@ -2,7 +2,7 @@ import type { UserId } from "../branded-ids.ts"
 import {
   TELEMETRY_DIMS_RETENTION_DAYS, TELEMETRY_INSERT_CHUNK, TELEMETRY_INSERT_CHUNK_BYTES, TELEMETRY_PLAIN_RETENTION_DAYS, TELEMETRY_PURGE_CHUNK,
   TELEMETRY_PURGE_MAX_CHUNKS, TELEMETRY_ROLLUP_RETENTION_DAYS, canonicalDims,
-  type TelemetryDimRow, type TelemetryGroupHours, type TelemetryGroupTotal, type TelemetryHourContribution, type TelemetryMetricHourValue,
+  type TelemetryDimFilter, type TelemetryDimRow, type TelemetryGroupHours, type TelemetryGroupTotal, type TelemetryHourContribution, type TelemetryMetricHourValue,
   type TelemetryMetricInfo, type TelemetryPoint, type TelemetryRepo, type TelemetrySourceRecord, type TelemetryUnit,
 } from "../telemetry.ts"
 import type { SqlExecutor, SqlStatement } from "./executor.ts"
@@ -75,8 +75,12 @@ export const TELEMETRY_DIM_KEYS_SQL = `SELECT DISTINCT p.metric AS metric, k.key
   WHERE p.source_id = ? AND p.metric = json_extract(j.value, '$[0]') AND p.hour = json_extract(j.value, '$[1]') AND p.dims_key <> ''`
 
 /** The group a row belongs to: the value of one dim, or '' when the row lacks that dim. */
-const GROUPED = `SELECT COALESCE(json_extract(dims_json, ?), '') AS grp, hour, value FROM telemetry_points
-  WHERE source_id = ? AND metric = ? AND hour >= ? AND hour < ?`
+const GROUPED = (filter?: TelemetryDimFilter) => `SELECT COALESCE(json_extract(dims_json, ?), '') AS grp, hour, value FROM telemetry_points
+  WHERE source_id = ? AND metric = ? AND hour >= ? AND hour < ?${filterSql(filter)}`
+
+/** Restricts point rows to one dim value; the path binds come right after the range binds. The key is a JSON path, so callers validate it. */
+const filterSql = (filter?: TelemetryDimFilter) => filter === undefined ? "" : " AND json_extract(dims_json, ?) = ?"
+const filterBinds = (filter?: TelemetryDimFilter): unknown[] => filter === undefined ? [] : [`$.${filter.key}`, filter.value]
 
 /** Source ids present in `telemetry_points` or `telemetry_hourly` but not in `telemetry_sources`, found by seeking from one distinct `source_id` to the next in each table. */
 export const TELEMETRY_ORPHAN_SOURCES_SQL = `WITH RECURSIVE s(id) AS (
@@ -232,26 +236,34 @@ export class SharedTelemetryRepo implements TelemetryRepo {
     return rows.map(row => ({ metric: row.metric, hour: Number(row.hour), value: Number(row.value), unit: row.unit }))
   }
 
-  async rankGroups(sourceId: string, metric: string, groupBy: string, fromHour: number, toHour: number, limit: number): Promise<TelemetryGroupTotal[]> {
+  async filteredHourlyTotals(sourceId: string, metric: string, filter: TelemetryDimFilter, fromHour: number, toHour: number): Promise<TelemetryMetricHourValue[]> {
+    const rows = await this.x.all<{ hour: number; value: number; unit: TelemetryUnit }>(
+      `SELECT hour, SUM(value) AS value, MAX(unit) AS unit FROM telemetry_points
+       WHERE source_id = ? AND metric = ? AND hour >= ? AND hour < ?${filterSql(filter)} GROUP BY hour ORDER BY hour`,
+      [sourceId, metric, fromHour, toHour, ...filterBinds(filter)])
+    return rows.map(row => ({ metric, hour: Number(row.hour), value: Number(row.value), unit: row.unit }))
+  }
+
+  async rankGroups(sourceId: string, metric: string, groupBy: string, fromHour: number, toHour: number, limit: number, filter?: TelemetryDimFilter): Promise<TelemetryGroupTotal[]> {
     const groups = await this.x.all<{ grp: string; total: number }>(
-      `SELECT grp, SUM(value) AS total FROM (${GROUPED}) WHERE grp <> '(other)' GROUP BY grp ORDER BY total DESC, grp ASC LIMIT ?`,
-      [`$.${groupBy}`, sourceId, metric, fromHour, toHour, limit])
+      `SELECT grp, SUM(value) AS total FROM (${GROUPED(filter)}) WHERE grp <> '(other)' GROUP BY grp ORDER BY total DESC, grp ASC LIMIT ?`,
+      [`$.${groupBy}`, sourceId, metric, fromHour, toHour, ...filterBinds(filter), limit])
     return groups.map((row): TelemetryGroupTotal => ({ key: row.grp, value: Number(row.total) }))
   }
 
   /** The total is summed over the same point rows as the groups (not the rollup), so hours whose dimension rows retention already purged cannot inflate `(other)`. */
-  async topGroups(sourceId: string, metric: string, groupBy: string, fromHour: number, toHour: number, limit: number) {
+  async topGroups(sourceId: string, metric: string, groupBy: string, fromHour: number, toHour: number, limit: number, filter?: TelemetryDimFilter) {
     const total = await this.x.first<{ total: number; unit: TelemetryUnit | null }>(
       `SELECT COALESCE(SUM(value), 0) AS total, MAX(unit) AS unit FROM telemetry_points
-       WHERE source_id = ? AND metric = ? AND hour >= ? AND hour < ?`, [sourceId, metric, fromHour, toHour])
-    return { unit: total?.unit ?? null, total: Number(total?.total ?? 0), groups: await this.rankGroups(sourceId, metric, groupBy, fromHour, toHour, limit) }
+       WHERE source_id = ? AND metric = ? AND hour >= ? AND hour < ?${filterSql(filter)}`, [sourceId, metric, fromHour, toHour, ...filterBinds(filter)])
+    return { unit: total?.unit ?? null, total: Number(total?.total ?? 0), groups: await this.rankGroups(sourceId, metric, groupBy, fromHour, toHour, limit, filter) }
   }
 
-  async groupHours(sourceId: string, metric: string, groupBy: string, fromHour: number, toHour: number, keys: readonly string[]): Promise<TelemetryGroupHours[]> {
+  async groupHours(sourceId: string, metric: string, groupBy: string, fromHour: number, toHour: number, keys: readonly string[], filter?: TelemetryDimFilter): Promise<TelemetryGroupHours[]> {
     if (keys.length === 0) return []
     const rows = await this.x.all<{ grp: string; hour: number; value: number }>(
-      `SELECT grp, hour, SUM(value) AS value FROM (${GROUPED}) WHERE grp IN (SELECT value FROM json_each(?))
-       GROUP BY grp, hour ORDER BY grp, hour`, [`$.${groupBy}`, sourceId, metric, fromHour, toHour, JSON.stringify(keys)])
+      `SELECT grp, hour, SUM(value) AS value FROM (${GROUPED(filter)}) WHERE grp IN (SELECT value FROM json_each(?))
+       GROUP BY grp, hour ORDER BY grp, hour`, [`$.${groupBy}`, sourceId, metric, fromHour, toHour, ...filterBinds(filter), JSON.stringify(keys)])
     const byKey = new Map<string, TelemetryGroupHours>()
     for (const row of rows) {
       const entry = byKey.get(row.grp) ?? { key: row.grp, points: [] }
@@ -261,11 +273,11 @@ export class SharedTelemetryRepo implements TelemetryRepo {
     return keys.flatMap(key => { const entry = byKey.get(key); return entry ? [entry] : [] })
   }
 
-  async groupTotals(sourceId: string, metric: string, groupBy: string, fromHour: number, toHour: number, keys: readonly string[]): Promise<TelemetryGroupTotal[]> {
+  async groupTotals(sourceId: string, metric: string, groupBy: string, fromHour: number, toHour: number, keys: readonly string[], filter?: TelemetryDimFilter): Promise<TelemetryGroupTotal[]> {
     if (keys.length === 0) return []
     const rows = await this.x.all<{ grp: string; total: number }>(
-      `SELECT grp, SUM(value) AS total FROM (${GROUPED}) WHERE grp IN (SELECT value FROM json_each(?)) GROUP BY grp`,
-      [`$.${groupBy}`, sourceId, metric, fromHour, toHour, JSON.stringify(keys)])
+      `SELECT grp, SUM(value) AS total FROM (${GROUPED(filter)}) WHERE grp IN (SELECT value FROM json_each(?)) GROUP BY grp`,
+      [`$.${groupBy}`, sourceId, metric, fromHour, toHour, ...filterBinds(filter), JSON.stringify(keys)])
     return rows.map(row => ({ key: row.grp, value: Number(row.total) }))
   }
 
