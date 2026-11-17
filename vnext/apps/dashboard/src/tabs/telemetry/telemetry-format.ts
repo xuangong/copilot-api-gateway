@@ -11,7 +11,6 @@ export const STATUS_KEYS: Record<DisplayStatus, string> = {
   pending: "dash.tlmStatusPending",
 }
 /** A text cue per state, so a marker never relies on colour alone. */
-export const STATUS_GLYPHS: Record<DisplayStatus, string> = { passed: "✓", failed: "✕", "no check": "!", "not monitored": "–", pending: "…" }
 
 /** The hour containing `nowMs` has not closed: without a check it is pending; a check that already ran in it still counts. */
 export function displayStatus(status: CheckStatus, hour: string, nowMs: number): DisplayStatus {

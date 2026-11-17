@@ -8,7 +8,7 @@ import { Meter } from "../../ui/meter"
 import { Notice } from "../../ui/notice"
 import { Table, TBody, Td, Th } from "../../ui/table"
 import {
-  type DisplayStatus, CHECK_SENTENCE_KEYS, STATUS_GLYPHS, STATUS_KEYS, budgetView, displayStatus, formatUtc, dimsLabel, formatChange, formatShare, formatValue, freshnessNotices, groupLabel, hourRange, hourShort, isLatencyMetric, statusTone,
+  type DisplayStatus, CHECK_SENTENCE_KEYS, STATUS_KEYS, budgetView, displayStatus, formatUtc, dimsLabel, formatChange, formatShare, formatValue, freshnessNotices, groupLabel, hourRange, hourShort, isLatencyMetric, statusTone,
 } from "./telemetry-format"
 
 const money = (value: number | null) => value === null ? "—" : `$${value.toFixed(2)}`
@@ -55,28 +55,51 @@ export function BudgetPanel({ budget }: { budget: TelemetryBudget | null }) {
   </Card>
 }
 
-const MARKER_CLASS: Record<DisplayStatus, string> = {
-  passed: "bg-success text-white", failed: "bg-danger text-white", "no check": "bg-warn text-black",
-  "not monitored": "border border-dashed border-fg-subtle text-fg-subtle", pending: "border border-fg-subtle text-fg-subtle",
+/** Bar per status: checks are full height, hours without a check to judge are a short baseline tick. */
+const BAR_CLASS: Record<DisplayStatus, string> = {
+  passed: "h-full bg-success/80",
+  failed: "h-full bg-danger",
+  "no check": "h-full bg-warn [background-image:repeating-linear-gradient(135deg,transparent_0_3px,rgb(0_0_0/0.18)_3px_5px)]",
+  "not monitored": "h-1 bg-fg-subtle/25",
+  pending: "h-1 bg-fg-subtle/50",
 }
+const LEGEND_ORDER: DisplayStatus[] = ["passed", "failed", "no check", "not monitored", "pending"]
 
-/** One marker per hour; a check is one point in time, so it is never summarised as a percentage. */
+/** One bar per hour; a check is one point in time, so it is never summarised as a percentage. */
 export function CheckStrip({ hours, statuses, stages, nowMs = Date.now() }: { hours: string[]; statuses: CheckStatus[]; stages: Array<string | null>; nowMs?: number }) {
   const t = useT()
-  return <div className="space-y-2">
-    <div role="list" className="flex flex-wrap gap-0.5">
-      {hours.map((hour, index) => {
-        const status = displayStatus(statuses[index] ?? "not monitored", hour, nowMs)
-        const label = `${hourShort(hour)} ${t(STATUS_KEYS[status])}${stages[index] ? ` (${stages[index]})` : ""}`
-        return <span key={hour} role="listitem" aria-label={label} title={label} data-status={status}
-          className={cn("inline-flex h-5 w-4 items-center justify-center rounded-sm text-xs leading-none", MARKER_CLASS[status])}><span aria-hidden="true">{STATUS_GLYPHS[status]}</span></span>
-      })}
+  const cells = hours.map((hour, index) => {
+    const status = displayStatus(statuses[index] ?? "not monitored", hour, nowMs)
+    const stage = stages[index] ?? null
+    return { hour, status, stage, label: `${hourShort(hour)} ${t(STATUS_KEYS[status])}${stage ? ` (${stage})` : ""}` }
+  })
+  const present = new Set(cells.map(cell => cell.status))
+  const failed = cells.filter(cell => cell.status === "failed")
+  const missing = cells.filter(cell => cell.status === "no check")
+  const passed = cells.filter(cell => cell.status === "passed").length
+  const gap = hours.length <= 48 ? "2px" : hours.length <= 200 ? "1px" : "0px"
+  const list = (items: typeof cells) => items.map(cell => `${hourShort(cell.hour)}${cell.stage ? ` (${cell.stage})` : ""}`).join(", ")
+  return <div className="space-y-1.5">
+    <div role="list" className="grid h-7 items-end" style={{ gridTemplateColumns: `repeat(${Math.max(hours.length, 1)}, minmax(0, 1fr))`, columnGap: gap }}>
+      {cells.map(cell => <span key={cell.hour} role="listitem" aria-label={cell.label} title={cell.label} data-status={cell.status}
+        className={cn("block w-full rounded-[2px] transition-opacity hover:opacity-70", BAR_CLASS[cell.status])} />)}
     </div>
-    <ul className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-fg-muted">
-      {(Object.keys(STATUS_KEYS) as DisplayStatus[]).map(status => <li key={status} className="flex items-center gap-1">
-        <span aria-hidden="true" className={cn("inline-flex h-4 w-4 items-center justify-center rounded-sm text-xs leading-none", MARKER_CLASS[status])}>{STATUS_GLYPHS[status]}</span>{t(STATUS_KEYS[status])}
-      </li>)}
-    </ul>
+    {hours.length > 0 ? <div className="flex justify-between font-mono text-[11px] text-fg-subtle"><span>{hourShort(hours[0]!)}</span><span>{hourShort(hours[hours.length - 1]!)}</span></div> : null}
+    <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1 pt-0.5">
+      <p className="text-xs text-fg-muted">
+        {failed.length === 0 && missing.length === 0
+          ? (passed > 0 ? t("dash.tlmChecksAllPassed", { n: String(passed) }) : t("dash.tlmChecksNone"))
+          : <>
+            {failed.length > 0 ? <span className="mr-3"><b className="font-medium text-fg">{t("dash.tlmStatusFailed")}</b>: {list(failed)}</span> : null}
+            {missing.length > 0 ? <span><b className="font-medium text-fg">{t("dash.tlmStatusNoCheck")}</b>: {list(missing)}</span> : null}
+          </>}
+      </p>
+      <ul className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-fg-subtle">
+        {LEGEND_ORDER.filter(status => present.has(status)).map(status => <li key={status} className="flex items-center gap-1.5">
+          <span aria-hidden="true" className="flex h-2.5 w-1.5 items-end"><span className={cn("block w-full rounded-[1px]", status === "not monitored" || status === "pending" ? "h-1" : "h-full", BAR_CLASS[status].replace(/\bh-(full|1)\b/, ""))} /></span>{t(STATUS_KEYS[status])}
+        </li>)}
+      </ul>
+    </div>
   </div>
 }
 

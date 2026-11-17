@@ -84,15 +84,15 @@ test("the budget panel shows month-to-date, the projection, a red bar and an ale
   expect(renderToStaticMarkup(<BudgetPanel budget={budget({ monthlyLimit: null, mtdPercent: null, projectionPercent: null, overLimit: null, cost: null })} />)).not.toContain("dash.tlmPercentOfLimit")
 })
 
-test("the check strip marks every hour: passed green, failed red, no check amber and not monitored neutral, never a percentage", () => {
+test("the check strip draws one bar per hour: passed green, failed red, no check amber and hours without a check short and neutral, never a percentage", () => {
   const hours = ["2026-11-16T09:00:00Z", "2026-11-16T10:00:00Z", "2026-11-16T11:00:00Z", "2026-11-16T12:00:00Z"]
-  const html = renderToStaticMarkup(<CheckStrip hours={hours} statuses={["not monitored", "passed", "failed", "no check"]} stages={[null, null, "tls", null]} />)
-  const markers = html.match(/<span[^>]*data-status="[^"]*"[^>]*>/g) ?? []
-  expect(markers).toHaveLength(4)
-  expect(markers[0]).toContain("border-dashed")
-  expect(markers[1]).toContain("bg-success")
-  expect(markers[2]).toContain("bg-danger")
-  expect(markers[3]).toContain("bg-warn")
+  const html = renderToStaticMarkup(<CheckStrip hours={hours} statuses={["not monitored", "passed", "failed", "no check"]} stages={[null, null, "tls", null]} nowMs={Date.parse("2026-11-17T00:00:00Z")} />)
+  const bars = html.match(/<span[^>]*data-status="[^"]*"[^>]*>/g) ?? []
+  expect(bars).toHaveLength(4)
+  expect(bars[0]).toContain("h-1")
+  expect(bars[1]).toContain("bg-success")
+  expect(bars[2]).toContain("bg-danger")
+  expect(bars[3]).toContain("bg-warn")
   expect(html).toContain("11-16 11:00 dash.tlmStatusFailed (tls)")
   expect(html).not.toContain("%")
 })
@@ -176,17 +176,19 @@ test("a latency chart says that only passed hours are shown", () => {
   expect(renderToStaticMarkup(<LatencyNote check={null} metric="nic.tx_bytes" />)).toBe("")
 })
 
-test("check markers carry a non-colour cue, distinct per state, and the legend repeats them", () => {
+test("failures and missing checks are also named in text, and the legend lists only the states shown", () => {
   const hours = ["2026-11-16T09:00:00Z", "2026-11-16T10:00:00Z", "2026-11-16T11:00:00Z", "2026-11-16T12:00:00Z", "2026-11-16T13:00:00Z"]
   const now = Date.parse("2026-11-16T13:30:00Z")
-  const html = renderToStaticMarkup(<CheckStrip hours={hours} statuses={["not monitored", "passed", "failed", "no check", "no check"]} stages={[]} nowMs={now} />)
-  const marker = (status: string) => ((html.match(new RegExp(`<span[^>]*data-status="${status}"[^>]*>(.*?)</span></span>`)) ?? [])[1] ?? "").replace(/<[^>]*>/g, "")
-  const cues = ["not monitored", "passed", "failed", "no check", "pending"].map(marker)
-  expect(cues.every(cue => cue.length > 0)).toBe(true)
-  expect(new Set(cues).size).toBe(5)
+  const html = renderToStaticMarkup(<CheckStrip hours={hours} statuses={["not monitored", "passed", "failed", "no check", "no check"]} stages={[null, null, "tls", null, null]} nowMs={now} />)
+  const text = html.replace(/<[^>]*>/g, "")
+  expect(text).toContain("dash.tlmStatusFailed: 11-16 11:00 (tls)")
+  expect(text).toContain("dash.tlmStatusNoCheck: 11-16 12:00")
+  expect(html.match(/data-status="pending"/g)).toHaveLength(1)
   const legend = html.slice(html.indexOf("<ul"))
-  for (const cue of cues) expect(legend).toContain(cue)
-  expect(legend).toContain("dash.tlmStatusPending")
+  for (const key of ["dash.tlmStatusPassed", "dash.tlmStatusFailed", "dash.tlmStatusNoCheck", "dash.tlmStatusNotMonitored", "dash.tlmStatusPending"]) expect(legend).toContain(key)
+  const allPassed = renderToStaticMarkup(<CheckStrip hours={hours.slice(1, 3)} statuses={["passed", "passed"]} stages={[]} nowMs={now} />)
+  expect(allPassed).toContain("dash.tlmChecksAllPassed")
+  expect(allPassed.slice(allPassed.indexOf("<ul"))).not.toContain("dash.tlmStatusFailed")
 })
 
 test("a failed load is shown instead of an endless Loading", () => {
