@@ -7,6 +7,8 @@ import { BunSqliteDatabase } from "@vibe-llm/platform-bun/src/bun-sqlite-databas
 import { BunSqliteRepo } from "@vibe-llm/platform-bun/src/bun-sqlite-repo.ts"
 import { FsFileProvider } from "@vibe-llm/platform-bun/src/fs-file-provider.ts"
 import type { FileProvider } from "@vibe-core/platform"
+import { __resetPlatformForTests } from "@vibe-core/platform"
+import { initRepo } from "../src/repo/index"
 
 let raw: Database
 let db: BunSqliteDatabase
@@ -20,7 +22,8 @@ beforeEach(async () => {
   // fsync and journal file. File locking (which the race tests rely on) is unchanged.
   raw.run("PRAGMA synchronous = OFF")
   raw.run("PRAGMA journal_mode = MEMORY")
-  new BunSqliteRepo(raw)
+  __resetPlatformForTests()
+  initRepo(new BunSqliteRepo(raw))
   db = new BunSqliteDatabase(raw)
   files = new FsFileProvider(join(root, "files"))
   for (const id of ["active", "disabled", "cleared", "deleted"]) {
@@ -29,7 +32,7 @@ beforeEach(async () => {
   raw.run("INSERT INTO users (id, name, created_at, disabled) VALUES ('disabled-owner', 'Disabled', '2026-09-29', 1)")
   raw.run("UPDATE api_keys SET owner_id = 'disabled-owner' WHERE id = 'disabled'")
 })
-afterEach(async () => { raw.close(); await rm(root, { recursive: true, force: true }) })
+afterEach(async () => { raw.close(); await rm(root, { recursive: true, force: true }); __resetPlatformForTests() })
 function record(id: string, owner = "active", time = now, request: string | null = null, response: string | null = null, upstream: string | null = null) {
   raw.run(`INSERT INTO dump_records (key_id, id, created_at, meta_json, request_headers_json, request_body_descriptor, response_body_descriptor, upstream_exchanges_descriptor)
     VALUES (?, ?, ?, '{}', '[]', ?, ?, ?)`, [owner, id, time, request === null ? null : JSON.stringify({ key: request, type: "bytes" }), response === null ? null : JSON.stringify({ key: response, type: "bytes" }), upstream === null ? null : JSON.stringify({ key: upstream, type: "upstreamExchanges", version: 1 })])
