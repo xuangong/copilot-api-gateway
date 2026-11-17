@@ -2,7 +2,7 @@ import { expect, test } from "bun:test"
 import type { TelemetryBudget, TelemetrySeries, TelemetrySummary } from "../../api/telemetry"
 import {
   availabilityGroups, budgetView, customWindow, defaultCustomDates, windowTotal, chartFromSeries, defaultMetric, isAvailabilityMetric, dimsLabel, formatChange, formatShare, formatValue, freshnessNotices, groupLabel, hourRange, hourShort,
-  displayStatus, formatUtc, latencyCheckMetric, maskUnpassed, rangeWindow, statusTone, visibleGroups,
+  displayStatus, filterDimFor, filterQuery, filterText, keepFilter, formatUtc, latencyCheckMetric, maskUnpassed, rangeWindow, statusTone, visibleGroups,
 } from "./telemetry-format"
 
 test("values render in the unit of their metric", () => {
@@ -195,4 +195,28 @@ test("the window total sums the hours, skips gaps and is not given for milliseco
   const series = (unit: "bytes" | "ms", total: number[]) => ({ metric: "m", unit, from: "", to: "", hours: [], total, groups: [] })
   expect(windowTotal(series("bytes", [1, 2, Number.NaN, 3]))).toBe(6)
   expect(windowTotal(series("ms", [1, 2]))).toBeNull()
+})
+
+test("the filter dim prefers user, is never the split dim and needs two dims", () => {
+  expect(filterDimFor(["domain", "user"], "")).toBe("user")
+  expect(filterDimFor(["domain", "user"], "domain")).toBe("user")
+  expect(filterDimFor(["domain", "user"], "user")).toBe("domain")
+  expect(filterDimFor(["domain", "stage"], "")).toBe("domain")
+  expect(filterDimFor(["user"], "")).toBeNull()
+  expect(filterDimFor([], "")).toBeNull()
+})
+
+test("the filter is shown with the owner's name, sent as key:value, and kept only while its dim and value are offered", () => {
+  const settings = { labels: { user: { "#1": "MacBook" } } }
+  expect(filterText(settings, { key: "user", value: "#1" })).toBe("user #1 (MacBook)")
+  expect(filterText(settings, { key: "user", value: "#2" })).toBe("user #2")
+  expect(filterQuery({ key: "user", value: "#1" })).toBe("user:#1")
+  expect(filterQuery(null)).toBeUndefined()
+  const filter = { key: "user", value: "#1" }
+  expect(keepFilter(filter, "user", null)).toBe(filter)
+  expect(keepFilter(filter, "user", { key: "user", values: ["#1", "#2"] })).toBe(filter)
+  expect(keepFilter(filter, "user", { key: "user", values: ["#2"] })).toBeNull()
+  expect(keepFilter(filter, "domain", null)).toBeNull()
+  expect(keepFilter(filter, null, null)).toBeNull()
+  expect(keepFilter(null, "user", null)).toBeNull()
 })

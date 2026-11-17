@@ -44,3 +44,10 @@ test("availability fetches each check and its latency, keeping latency only in p
   const plain = await loadAvailability(async (_id, query) => make(query.metric, { statuses: ["passed", "passed"] }), "s", [{ check: "probe.ok", latency: null }], span)
   expect(plain[0]!.latency).toBeNull()
 })
+
+test("the filter is passed to the series fetch, and not to the check metric", async () => {
+  const calls: Array<{ metric: string; filter?: string }> = []
+  await loadSeries(async (_id, query) => { calls.push({ metric: query.metric, filter: query.filter }); return make(query.metric, { statuses: ["passed", "passed"] }) },
+    "s", { metric: "probe.latency_ms", ...span, groupBy: "", filter: "user:#1", checkMetrics: ["probe.ok"] })
+  expect(calls).toEqual([{ metric: "probe.latency_ms", filter: "user:#1" }, { metric: "probe.ok", filter: undefined }])
+})

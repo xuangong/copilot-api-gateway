@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   deleteTelemetrySource, rotateTelemetryKey, telemetryMetrics, telemetrySeries, telemetrySummary, telemetryTop, updateTelemetrySource,
-  type TelemetryMetricInfo, type TelemetrySeries, type TelemetrySource, type TelemetrySummary, type TelemetryTop, type TelemetryUnit,
+  type TelemetryDimFilter, type TelemetryMetricInfo, type TelemetrySeries, type TelemetrySource, type TelemetrySummary, type TelemetryTop, type TelemetryUnit,
 } from "../../api/telemetry"
 import { useConfirm } from "../../state/confirm"
 import { useT } from "../../state/i18n"
@@ -14,7 +14,7 @@ import { BudgetPanel, FlaggedPanel, FreshnessPanel, TopPanel } from "./Panels"
 import { SettingsPanel } from "./SettingsPanel"
 import { IssuedKeyPanel, type CopyTarget, type IssuedKeyView } from "./SourceList"
 import { telemetryErrorKey } from "./telemetry-errors"
-import { availabilityGroups, customWindow, defaultCustomDates, defaultMetric, hourShort, isAvailabilityMetric, rangeWindow, utcDate, type ChartRange, type RangeId } from "./telemetry-format"
+import { availabilityGroups, customWindow, defaultCustomDates, defaultMetric, filterDimFor, filterQuery, hourShort, isAvailabilityMetric, keepFilter, rangeWindow, utcDate, type ChartRange, type RangeId } from "./telemetry-format"
 import { loadAvailability, loadSeries, type AvailabilitySeries } from "./telemetry-series"
 import { startPolling } from "./telemetry-sources"
 import { editLimit, formToSettings, limitState, reconcileLimit, settingsToForm, shouldResetForm, type FormSource, type SettingsForm, type TextField } from "./telemetry-settings-form"
@@ -33,6 +33,8 @@ export function SourcePage({ source, onBack, onSourceChanged, onDeleted }: {
   const [range, setRange] = useState<ChartRange>("24h")
   const [custom, setCustom] = useState(() => defaultCustomDates(Date.now()))
   const [groupBy, setGroupBy] = useState("")
+  const [filterState, setFilterState] = useState<TelemetryDimFilter | null>(null)
+  const [filterValues, setFilterValues] = useState<{ key: string; values: string[] } | null>(null)
   const [series, setSeries] = useState<TelemetrySeries | null>(null)
   const [fetchedAt, setFetchedAt] = useState(() => Date.now())
   const [metricsLoaded, setMetricsLoaded] = useState(false)
@@ -109,6 +111,25 @@ export function SourcePage({ source, onBack, onSourceChanged, onDeleted }: {
     }).catch(() => { if (seq === summarySeq.current) setSummaryError(tRef.current("dash.tlmLoadError")) })
   }, [pollTick])
 
+  // The "Only" selector offers one dim other than the split dim; the active filter must be on that dim and, once its values are known, among them.
+  const dims = useMemo(() => metrics.find(info => info.metric === metric)?.dims ?? [], [metrics, metric])
+  const filterKey = filterDimFor(dims, groupBy)
+  const filter = keepFilter(filterState, filterKey, filterValues)
+  const filterParam = filterQuery(filter)
+  useEffect(() => { if (filterState !== null && filter === null) setFilterState(null) }, [filterState, filter])
+
+  // The values of the filter dim for the current window, ranked, from the same top query as the table (one extra request per view, only for metrics with two or more dims).
+  useEffect(() => {
+    setFilterValues(null)
+    if (metric === "" || filterKey === null) return
+    const chosen = range === "custom" ? customWindow(custom.start, custom.end, Date.now()) : rangeWindow(range, Date.now())
+    if ("error" in chosen) return
+    let live = true
+    telemetryTop(source.id, { metric, ...chosen, groupBy: filterKey, limit: 50 })
+      .then(next => { if (live) setFilterValues({ key: filterKey, values: next.rows.filter(row => row.key !== "").map(row => row.key) }) }).catch(() => {})
+    return () => { live = false }
+  }, [source.id, metric, range, custom, filterKey, tick])
+
   useEffect(() => {
     if (metric === "") return
     let live = true
@@ -119,14 +140,14 @@ export function SourcePage({ source, onBack, onSourceChanged, onDeleted }: {
     setTopFailed(false)
     if ("error" in chosen) return
     const span = chosen
-    loadSeries(telemetrySeries, source.id, { metric, ...span, groupBy, checkMetrics: source.settings.checkMetrics ?? [] })
+    loadSeries(telemetrySeries, source.id, { metric, ...span, groupBy, filter: filterParam, checkMetrics: source.settings.checkMetrics ?? [] })
       .then(next => { if (live) { setSeries(next); setFetchedAt(started); setSeriesError("") } }).catch(() => { if (live) setSeriesError(t("dash.tlmLoadError")) })
     if (groupBy !== "") {
-      telemetryTop(source.id, { metric, ...span, groupBy, limit: 20 })
+      telemetryTop(source.id, { metric, ...span, groupBy, limit: 20, filter: filterParam })
         .then(next => { if (live) setTop(next) }).catch(() => { if (live) setTopFailed(true) })
     }
     return () => { live = false }
-  }, [source.id, source.settings.checkMetrics, metric, range, custom, groupBy, tick, t])
+  }, [source.id, source.settings.checkMetrics, metric, range, custom, groupBy, filterParam, tick, t])
 
   // Availability checks have their own panel and range; the traffic chart lists every other metric.
   const checkMetrics = source.settings.checkMetrics
@@ -149,7 +170,6 @@ export function SourcePage({ source, onBack, onSourceChanged, onDeleted }: {
   const windowLabel = "error" in rangeWindowNow ? "" : `${hourShort(rangeWindowNow.from)} – ${hourShort(rangeWindowNow.to)} UTC`
 
   // A dim that the newly chosen metric lacks cannot stay selected.
-  const dims = useMemo(() => metrics.find(info => info.metric === metric)?.dims ?? [], [metrics, metric])
   useEffect(() => { if (groupBy !== "" && !dims.includes(groupBy)) setGroupBy("") }, [dims, groupBy])
 
   const units = useMemo(() => Object.fromEntries(metrics.map(info => [info.metric, info.unit])) as Record<string, TelemetryUnit>, [metrics])
@@ -205,7 +225,8 @@ export function SourcePage({ source, onBack, onSourceChanged, onDeleted }: {
     <BudgetPanel budget={summary?.budget ?? null} />
     {groups.length > 0 ? <AvailabilityPanel data={availability} range={availRange} fetchedAt={availFetchedAt} dark={dark} error={availError} onRange={setAvailRange} /> : null}
     <ChartPanel metrics={trafficMetrics} metric={metric} range={range} customStart={custom.start} customEnd={custom.end} today={utcDate(Date.now())}
-      rangeError={rangeError} windowLabel={windowLabel} onCustom={(start, end) => setCustom({ start, end })} groupBy={groupBy} series={series} fetchedAt={fetchedAt} settings={source.settings} surgeHours={surgeHours} dark={dark}
+      rangeError={rangeError} windowLabel={windowLabel} onCustom={(start, end) => setCustom({ start, end })} groupBy={groupBy} filterKey={filterKey} filterValues={filterValues?.key === filterKey ? filterValues.values : null} filter={filter}
+      onFilter={value => setFilterState(value === "" || filterKey === null ? null : { key: filterKey, value })} series={series} fetchedAt={fetchedAt} settings={source.settings} surgeHours={surgeHours} dark={dark}
       error={seriesError} onMetric={setMetric} onRange={setRange} onGroupBy={setGroupBy} />
     <TopPanel top={top} settings={source.settings} groupBy={groupBy} failed={topFailed} />
     <FlaggedPanel summary={summary} settings={source.settings} units={units} failed={summaryError !== ""} />

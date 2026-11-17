@@ -41,6 +41,8 @@ export const deleteTelemetrySource = (id: string) => api<{ sources: TelemetrySou
 
 export interface TelemetryMetricInfo { metric: string; unit: TelemetryUnit; firstHour: string; lastHour: string; dims: string[] }
 
+export interface TelemetryDimFilter { key: string; value: string }
+
 export interface TelemetrySeries {
   metric: string
   unit: TelemetryUnit | null
@@ -49,6 +51,8 @@ export interface TelemetrySeries {
   hours: string[]
   total: number[]
   groups: Array<{ key: string; values: number[] }>
+  /** Echo of the `filter` param: the totals and groups cover only rows whose dim `key` equals `value`. */
+  filter?: TelemetryDimFilter
   /** Only for `checkMetrics`: one status and, for a failure, one stage per hour. */
   statuses?: CheckStatus[]
   stages?: Array<string | null>
@@ -59,6 +63,7 @@ export interface TelemetryTop {
   metric: string
   unit: TelemetryUnit | null
   groupBy: string
+  filter?: TelemetryDimFilter
   /** False when the previous period starts before the metric's first data, so no change is given. */
   comparable?: boolean
   from: string
@@ -100,8 +105,8 @@ export interface TelemetrySummary {
 }
 
 export const telemetryMetrics = (id: string) => api<{ metrics: TelemetryMetricInfo[] }>(path(id, "/metrics"))
-export const telemetrySeries = (id: string, query: { metric: string; from: string; to: string; groupBy?: string; top?: number }) =>
+export const telemetrySeries = (id: string, query: { metric: string; from: string; to: string; groupBy?: string; top?: number; filter?: string }) =>
   api<TelemetrySeries>(path(id, "/series"), { query })
-export const telemetryTop = (id: string, query: { metric: string; from: string; to: string; groupBy: string; limit?: number }) =>
+export const telemetryTop = (id: string, query: { metric: string; from: string; to: string; groupBy: string; limit?: number; filter?: string }) =>
   api<TelemetryTop>(path(id, "/top"), { query })
 export const telemetrySummary = (id: string) => api<TelemetrySummary>(path(id, "/summary"))

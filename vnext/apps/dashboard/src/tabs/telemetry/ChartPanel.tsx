@@ -1,5 +1,5 @@
 import { useCallback, useId, useMemo } from "react"
-import type { TelemetryMetricInfo, TelemetrySeries, TelemetrySettings } from "../../api/telemetry"
+import type { TelemetryDimFilter, TelemetryMetricInfo, TelemetrySeries, TelemetrySettings } from "../../api/telemetry"
 import { TimeSeriesChart, paletteFor } from "../../components/TimeSeriesChart"
 import { useT } from "../../state/i18n"
 import { Card, SectionHeading } from "../../ui/card"
@@ -7,7 +7,7 @@ import { Notice } from "../../ui/notice"
 import { SegmentedControl, type SegmentedOption } from "../../ui/segmented-control"
 import { Select } from "../../ui/select"
 import { CheckStrip, LatencyNote } from "./Panels"
-import { chartFromSeries, formatValue, latencyCheckMetric, metricDescriptionKey, metricNameKey, windowTotal, type ChartRange } from "./telemetry-format"
+import { chartFromSeries, filterText, formatValue, valueWithName, latencyCheckMetric, metricDescriptionKey, metricNameKey, windowTotal, type ChartRange } from "./telemetry-format"
 
 export interface ChartPanelProps {
   metrics: TelemetryMetricInfo[]
@@ -23,6 +23,12 @@ export interface ChartPanelProps {
   /** The window being shown, e.g. "11-01 00:00 – 11-17 06:00 UTC", for the total line. */
   windowLabel?: string
   groupBy: string
+  /** The dim the "Only" selector offers (null: the metric has fewer than two dims) and its values for the window (null while loading). */
+  filterKey?: string | null
+  filterValues?: readonly string[] | null
+  /** The active filter, already known to match `filterKey`. */
+  filter?: TelemetryDimFilter | null
+  onFilter?: (value: string) => void
   series: TelemetrySeries | null
   /** When the series was fetched (ms): check hours are judged against this, not the render time. Defaults to now. */
   fetchedAt?: number
@@ -73,6 +79,9 @@ export function ChartPanel(props: ChartPanelProps) {
           })} />
         {isCheck ? null : <Select value={props.groupBy} ariaLabel={t("dash.tlmGroupBy")} size="sm" onChange={props.onGroupBy}
           options={[{ value: "", label: t("dash.tlmGroupNone") }, ...dims.map(dim => ({ value: dim, label: dim }))]} />}
+        {isCheck || !props.filterKey ? null : <Select value={props.filter?.value ?? ""} ariaLabel={t("dash.tlmFilter")} size="sm" onChange={value => props.onFilter?.(value)}
+          options={[{ value: "", label: t("dash.tlmFilterAll", { dim: props.filterKey }) },
+            ...[...new Set([...(props.filterValues ?? []), ...(props.filter ? [props.filter.value] : [])])].map(value => ({ value, label: valueWithName(settings, props.filterKey!, value) }))]} />}
         <SegmentedControl options={ranges} value={props.range} onChange={props.onRange} ariaLabel={t("dash.tlmRangeLabel")} size="sm" />
         {props.range === "custom" ? <div className="flex flex-wrap items-center gap-2">
           <label htmlFor={startId} className="text-xs font-medium text-fg-muted">{t("dash.tlmStartDate")}</label>
@@ -84,7 +93,7 @@ export function ChartPanel(props: ChartPanelProps) {
       </div>
       {props.rangeError ? <Notice tone="warn">{props.rangeError}</Notice> : null}
       {series !== null && !isCheck && !props.rangeError && windowTotal(series) !== null ? <p className="text-body text-fg-muted" data-testid="tlm-window-total">
-        {t("dash.tlmWindowTotal", { range: props.windowLabel ?? "" })}: <b className="font-medium tabular-nums text-fg">{formatValue(windowTotal(series)!, series.unit)}</b>
+        {props.filter ? t("dash.tlmWindowTotalFiltered", { range: props.windowLabel ?? "", filter: filterText(settings, props.filter) }) : t("dash.tlmWindowTotal", { range: props.windowLabel ?? "" })}: <b className="font-medium tabular-nums text-fg">{formatValue(windowTotal(series)!, series.unit)}</b>
       </p> : null}
       {metricDescriptionKey(metric) ? <p className="text-xs text-fg-muted">{t(metricDescriptionKey(metric)!)}</p> : null}
       <LatencyNote metric={metric} check={latencyCheckMetric(metric, settings.checkMetrics ?? [])} />

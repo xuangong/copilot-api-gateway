@@ -1,4 +1,4 @@
-import type { CheckStatus, TelemetryBudget, TelemetryMetricInfo, TelemetrySeries, TelemetrySettings, TelemetrySummary, TelemetryUnit } from "../../api/telemetry"
+import type { CheckStatus, TelemetryBudget, TelemetryDimFilter, TelemetryMetricInfo, TelemetrySeries, TelemetrySettings, TelemetrySummary, TelemetryUnit } from "../../api/telemetry"
 import type { ChartDataset } from "../../components/TimeSeriesChart"
 import { meterTone, type MeterTone } from "../../ui/meter"
 
@@ -53,6 +53,32 @@ export const formatShare = (share: number): string => `${(share * 100).toFixed(1
 export function groupLabel(settings: TelemetrySettings, dimKey: string, value: string, noneLabel: string): string {
   if (value === "") return noneLabel
   return settings.labels?.[dimKey]?.[value] ?? value
+}
+
+/** A dim value with the owner's name for it: `#1 (MacBook)`; the bare value when it has no name. */
+export function valueWithName(settings: TelemetrySettings, dimKey: string, value: string): string {
+  const name = settings.labels?.[dimKey]?.[value]
+  return name === undefined || name === value ? value : `${value} (${name})`
+}
+
+/** The active filter as shown next to a total: `user #1 (MacBook)`. */
+export const filterText = (settings: TelemetrySettings, filter: TelemetryDimFilter): string => `${filter.key} ${valueWithName(settings, filter.key, filter.value)}`
+
+/** The `filter` query param (`key:value`), or undefined without a filter. */
+export const filterQuery = (filter: TelemetryDimFilter | null | undefined): string | undefined => filter ? `${filter.key}:${filter.value}` : undefined
+
+/** The dim a metric can be filtered on: needs at least two dims; `user` when it is not the split dim, else the first other dim. Null when none. */
+export function filterDimFor(dims: readonly string[], groupBy: string): string | null {
+  if (dims.length < 2) return null
+  if (dims.includes("user") && groupBy !== "user") return "user"
+  return dims.find(dim => dim !== groupBy) ?? null
+}
+
+/** The filter that may stay: its dim is still the one offered and, once the values are known, its value is among them. */
+export function keepFilter(filter: TelemetryDimFilter | null, filterKey: string | null, values: { key: string; values: readonly string[] } | null): TelemetryDimFilter | null {
+  if (filter === null || filterKey === null || filter.key !== filterKey) return null
+  if (values !== null && values.key === filterKey && !values.values.includes(filter.value)) return null
+  return filter
 }
 
 export function dimsLabel(settings: TelemetrySettings, dims: Record<string, string>): string {

@@ -308,3 +308,39 @@ test("the top table says why no change is shown when the previous period has no 
   expect(html).toContain("—")
   expect(renderToStaticMarkup(<TopPanel top={top()} settings={{}} groupBy="user" />)).not.toContain("dash.tlmNotComparable")
 })
+
+const sentMetric = { metric: "proxy.sent_bytes", unit: "bytes" as const, firstHour: "", lastHour: "", dims: ["domain", "user"] }
+const filterSeries = { metric: "proxy.sent_bytes", unit: "bytes" as const, from: "2026-11-16T06:00:00Z", to: "2026-11-16T08:00:00Z", hours: ["2026-11-16T06:00:00Z", "2026-11-16T07:00:00Z"], total: [1e9, 2e9], groups: [] }
+const filterPanel = (over: Partial<Parameters<typeof ChartPanel>[0]> = {}) => renderToStaticMarkup(<ChartPanel metrics={[sentMetric]} metric="proxy.sent_bytes" range="24h" groupBy="" series={filterSeries}
+  windowLabel="11-16 06:00 – 11-16 08:00 UTC" settings={{ labels: { user: { "#1": "MacBook" } } }} surgeHours={new Set()} dark error="" onMetric={noop} onRange={noop} onGroupBy={noop} {...over} />)
+
+test("the Only selector appears for a metric with two dims, lists the dim's values by name and puts the filter in the total line", () => {
+  const restore = installDictionary("en")
+  try {
+    const plain = filterPanel({ filterKey: "user", filterValues: ["#1", "#2"], filter: null })
+    expect(plain).toContain('aria-label="Only"')
+    expect(plain).toContain("Total for 11-16 06:00 – 11-16 08:00 UTC:")
+    const active = filterPanel({ filterKey: "user", filterValues: ["#1", "#2"], filter: { key: "user", value: "#1" } })
+    expect(active).toContain("Total for 11-16 06:00 – 11-16 08:00 UTC · user #1 (MacBook):")
+    expect(active).toContain("#1 (MacBook)")
+    // No selector without a filter dim, and none for a check metric.
+    expect(filterPanel({ filterKey: null })).not.toContain('aria-label="Only"')
+    expect(filterPanel()).not.toContain('aria-label="Only"')
+    expect(filterPanel({ settings: { checkMetrics: ["proxy.sent_bytes"] }, filterKey: "user" })).not.toContain('aria-label="Only"')
+  } finally { restore() }
+})
+
+test("the Only label and all-option are translated, and the top table names its filter", () => {
+  const zh = installDictionary("zh")
+  try {
+    const html = filterPanel({ filterKey: "user", filterValues: [], filter: { key: "user", value: "#1" } })
+    expect(html).toContain('aria-label="仅看"')
+    expect(html).toContain("累计 · user #1 (MacBook)")
+  } finally { zh() }
+  const restore = installDictionary("en")
+  try {
+    const html = renderToStaticMarkup(<TopPanel top={top({ groupBy: "domain", filter: { key: "user", value: "#1" } })} settings={{ labels: { user: { "#1": "MacBook" } } }} groupBy="domain" />)
+    expect(html).toContain("Only user #1 (MacBook)")
+    expect(renderToStaticMarkup(<TopPanel top={top()} settings={{}} groupBy="user" />)).not.toContain("Only")
+  } finally { restore() }
+})

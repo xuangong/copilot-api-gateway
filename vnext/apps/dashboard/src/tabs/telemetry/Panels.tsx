@@ -8,7 +8,7 @@ import { Meter } from "../../ui/meter"
 import { Notice } from "../../ui/notice"
 import { Table, TBody, Td, Th } from "../../ui/table"
 import {
-  type DisplayStatus, CHECK_SENTENCE_KEYS, STATUS_KEYS, budgetView, displayStatus, formatUtc, dimsLabel, formatChange, formatShare, formatValue, freshnessNotices, groupLabel, hourRange, hourShort, isLatencyMetric, statusTone,
+  type DisplayStatus, CHECK_SENTENCE_KEYS, STATUS_KEYS, budgetView, displayStatus, formatUtc, dimsLabel, filterText, formatChange, formatShare, formatValue, freshnessNotices, groupLabel, hourRange, hourShort, isLatencyMetric, statusTone,
 } from "./telemetry-format"
 
 const money = (value: number | null) => value === null ? "—" : `$${value.toFixed(2)}`
@@ -125,6 +125,7 @@ export function TopPanel({ top, settings, groupBy, failed = false }: { top: Tele
           </tr> : null}
         </TBody>
       </Table>}
+    {top?.filter && rows.length > 0 ? <p className="text-xs text-fg-muted">{t("dash.tlmFilterOnly", { filter: filterText(settings, top.filter) })}</p> : null}
     {top !== null && top.comparable === false && rows.length > 0 ? <p className="text-xs text-fg-subtle">{t("dash.tlmNotComparable")}</p> : null}
   </Card>
 }
