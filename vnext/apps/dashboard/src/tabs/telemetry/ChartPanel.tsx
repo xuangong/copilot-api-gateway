@@ -7,20 +7,20 @@ import { Notice } from "../../ui/notice"
 import { SegmentedControl, type SegmentedOption } from "../../ui/segmented-control"
 import { Select } from "../../ui/select"
 import { CheckStrip, LatencyNote } from "./Panels"
-import { chartFromSeries, filterText, formatValue, valueWithName, latencyCheckMetric, metricDescriptionKey, metricNameKey, windowTotal, type ChartRange } from "./telemetry-format"
+import { zoneLabel, chartFromSeries, filterText, formatValue, valueWithName, latencyCheckMetric, metricDescriptionKey, metricNameKey, windowTotal, type ChartRange } from "./telemetry-format"
 
 export interface ChartPanelProps {
   metrics: TelemetryMetricInfo[]
   metric: string
   range: ChartRange
-  /** The custom period (UTC dates, both included), used when `range` is "custom". */
+  /** The custom period (local dates, both included), used when `range` is "custom". */
   customStart?: string
   customEnd?: string
-  /** Today's UTC date, the latest end date. */
+  /** Today's local date, the latest end date. */
   today?: string
   /** An already translated message when the custom period cannot be shown. */
   rangeError?: string
-  /** The window being shown, e.g. "11-01 00:00 – 11-17 06:00 UTC", for the total line. */
+  /** The window being shown, e.g. "11-01 00:00 – 11-17 06:00", for the total line. */
   windowLabel?: string
   groupBy: string
   /** The dim the "Only" selector offers (null: the metric has fewer than two dims) and its values for the window (null while loading). */
@@ -88,7 +88,7 @@ export function ChartPanel(props: ChartPanelProps) {
           <input id={startId} type="date" value={props.customStart ?? ""} max={props.today} onChange={event => props.onCustom?.(event.target.value, props.customEnd ?? "")} />
           <label htmlFor={endId} className="text-xs font-medium text-fg-muted">{t("dash.tlmEndDate")}</label>
           <input id={endId} type="date" value={props.customEnd ?? ""} max={props.today} onChange={event => props.onCustom?.(props.customStart ?? "", event.target.value)} />
-          <span className="text-xs text-fg-subtle">{t("dash.tlmUtcDates")}</span>
+          <span className="text-xs text-fg-subtle">{t("dash.tlmLocalDates")}</span>
         </div> : null}
       </div>
       {props.rangeError ? <Notice tone="warn">{props.rangeError}</Notice> : null}
@@ -100,7 +100,7 @@ export function ChartPanel(props: ChartPanelProps) {
       {props.rangeError ? null : series === null ? (props.error ? null : <p className="text-body text-fg-subtle">{t("dash.loadingShort")}</p>)
         : isCheck ? <CheckStrip hours={series.hours} statuses={series.statuses ?? series.hours.map(() => "not monitored" as const)} stages={series.stages ?? []} nowMs={props.fetchedAt} />
         : chart ? <TimeSeriesChart labels={chart.labels} datasets={chart.datasets} height={280} yTickFormat={formatY} tooltipFormat={formatY} yTitle={yTitle} /> : null}
-      {series !== null && (isCheck || chart) ? <p className="text-xs text-fg-subtle">{t("dash.tlmUtcNote")}</p> : null}
+      {series !== null && (isCheck || chart) ? <p className="text-xs text-fg-subtle">{t("dash.tlmZoneNote", { zone: zoneLabel(Date.now()) })}</p> : null}
     </>}
   </Card>
 }

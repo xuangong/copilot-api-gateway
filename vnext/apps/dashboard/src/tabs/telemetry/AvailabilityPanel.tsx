@@ -5,7 +5,7 @@ import { Card, SectionHeading } from "../../ui/card"
 import { Notice } from "../../ui/notice"
 import { SegmentedControl, type SegmentedOption } from "../../ui/segmented-control"
 import { CheckStrip } from "./Panels"
-import { chartFromSeries, formatValue, type RangeId } from "./telemetry-format"
+import { zoneLabel, chartFromSeries, formatValue, type RangeId } from "./telemetry-format"
 import type { AvailabilitySeries } from "./telemetry-series"
 
 export interface AvailabilityPanelProps {
@@ -51,6 +51,6 @@ export function AvailabilityPanel(props: AvailabilityPanelProps) {
         </> : null}
       </div>
     })}
-    {data !== null && data.length > 0 ? <p className="text-xs text-fg-subtle">{t("dash.tlmUtcNote")}</p> : null}
+    {data !== null && data.length > 0 ? <p className="text-xs text-fg-subtle">{t("dash.tlmZoneNote", { zone: zoneLabel(Date.now()) })}</p> : null}
   </Card>
 }

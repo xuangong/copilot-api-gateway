@@ -72,6 +72,10 @@ Requires a real, current `ses_` session (the same guard as sync device managemen
 - **Latency** (`<name>.latency_ms`) is charted only for hours whose `<name>.ok` check passed; every other hour is a gap, because an earlier success in the same hour may have left a stale latency.
 - **Freshness**: stale when `now - lastPushAt` is strictly greater than `staleAfterHours`; a source that never pushed is not stale.
 
+## Dashboard time zone
+
+The server keeps and serves hourly UTC buckets; the dashboard only changes how they are shown. Every time on the Telemetry page (chart labels, check strip, last push, flagged hours, window totals) is formatted as `MM-DD HH:mm` in the browser's time zone, and a note under the charts names the zone and offset (for example `Asia/Shanghai, UTC+8`). The custom range takes local calendar dates, both included: from the local midnight of the start date to the local midnight after the end date, capped at the end of the current hour, at most 90 days, DST-safe. The API needs top-of-hour UTC instants, so `from` is floored and `to` ceiled to whole UTC hours; this only widens the window (by 30 or 45 minutes) in zones with a fractional offset such as Asia/Kolkata. The 24h/7d/30d presets are relative and unaffected. Month to date and the projection stay on the UTC month, which is how Azure bills, and the budget panel says so. The pending-hour logic of the check strip also stays on UTC buckets.
+
 ## Retention
 
 Scheduled maintenance (`telemetry_retention`) deletes points with dims after 90 days and points without dims after 400 days, expires rollup rows after 400 days, and purges orphans: points and rollup rows whose source is gone. Deleting a source removes only its row; its data stays until the background purge removes it.

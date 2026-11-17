@@ -1,9 +1,11 @@
 import { expect, test } from "bun:test"
 import type { TelemetryBudget, TelemetrySeries, TelemetrySummary } from "../../api/telemetry"
 import {
-  availabilityGroups, budgetView, customWindow, defaultCustomDates, windowTotal, chartFromSeries, defaultMetric, isAvailabilityMetric, dimsLabel, formatChange, formatShare, formatValue, freshnessNotices, groupLabel, hourRange, hourShort,
-  displayStatus, filterDimFor, filterQuery, filterText, keepFilter, formatUtc, latencyCheckMetric, maskUnpassed, rangeWindow, statusTone, visibleGroups,
+  availabilityGroups, budgetView, customWindow, defaultCustomDates, windowTotal, chartFromSeries, defaultMetric, isAvailabilityMetric, dimsLabel, formatChange, formatShare, formatValue, freshnessNotices, groupLabel, hourRange, hourShort, setDisplayZone, localDate, offsetLabel, zoneLabel,
+  displayStatus, filterDimFor, filterQuery, filterText, keepFilter, formatInstant, latencyCheckMetric, maskUnpassed, rangeWindow, statusTone, visibleGroups,
 } from "./telemetry-format"
+
+setDisplayZone("UTC")
 
 test("values render in the unit of their metric", () => {
   expect(formatValue(0, "bytes")).toBe("0 B")
@@ -36,8 +38,8 @@ test("group and dim labels use the configured names and fall back to the raw val
 })
 
 test("hours are shown in UTC as a range and as a short label", () => {
-  expect(hourRange("2026-11-16T13:00:00Z")).toBe("13:00–14:00 UTC")
-  expect(hourRange("2026-11-16T23:00:00Z")).toBe("23:00–00:00 UTC")
+  expect(hourRange("2026-11-16T13:00:00Z")).toBe("13:00–14:00")
+  expect(hourRange("2026-11-16T23:00:00Z")).toBe("23:00–00:00")
   expect(hourShort("2026-11-16T13:00:00Z")).toBe("11-16 13:00")
 })
 
@@ -160,8 +162,8 @@ test("the open hour is never judged by the latency mask: a gap unless its check 
   expect(masked.total.map(v => Number.isNaN(v))).toEqual([false, false, true])
 })
 
-test("instants are shown in UTC", () => {
-  expect(formatUtc("2026-11-16T09:05:00.000Z")).toBe("2026-11-16 09:05 UTC")
+test("instants are shown as zone text", () => {
+  expect(formatInstant("2026-11-16T09:05:00.000Z")).toBe("2026-11-16 09:05")
 })
 
 test("availability metrics are the check metrics and their namespace, and the traffic default skips them", () => {
@@ -178,7 +180,7 @@ test("availability metrics are the check metrics and their namespace, and the tr
   expect(availabilityGroups([info("proxy.connections")], checks)).toEqual([])
 })
 
-test("a custom period is whole UTC days, both included, ends at the current hour and is at most 90 days", () => {
+test("a custom period is whole days in the display zone, both included, ends at the current hour and is at most 90 days", () => {
   const now = Date.parse("2026-11-17T05:30:00Z")
   expect(defaultCustomDates(now)).toEqual({ start: "2026-11-01", end: "2026-11-17" })
   expect(customWindow("2026-11-01", "2026-11-10", now)).toEqual({ from: "2026-11-01T00:00:00Z", to: "2026-11-11T00:00:00Z" })
@@ -219,4 +221,64 @@ test("the filter is shown with the owner's name, sent as key:value, and kept onl
   expect(keepFilter(filter, "domain", null)).toBeNull()
   expect(keepFilter(filter, null, null)).toBeNull()
   expect(keepFilter(null, "user", null)).toBeNull()
+})
+
+const inZone = (zone: string, run: () => void) => { setDisplayZone(zone); try { run() } finally { setDisplayZone("UTC") } }
+
+test("labels shift to the display zone", () => {
+  inZone("Asia/Shanghai", () => {
+    expect(hourShort("2026-11-16T16:00:00Z")).toBe("11-17 00:00")
+    expect(hourRange("2026-11-16T15:00:00Z")).toBe("23:00–00:00")
+    expect(formatInstant("2026-11-16T21:05:00.000Z")).toBe("2026-11-17 05:05")
+    expect(zoneLabel(Date.parse("2026-11-16T00:00:00Z"))).toBe("Asia/Shanghai, UTC+8")
+    const series = { hours: ["2026-11-16T16:00:00Z"], total: [1], groups: [], unit: "count" } as unknown as TelemetrySeries
+    expect(chartFromSeries({ series, palette: ["#000"], surgeHours: new Set(), totalLabel: "Total", groupBy: "", settings: {} } as never).labels).toEqual(["11-17 00:00"])
+  })
+  inZone("Asia/Kolkata", () => {
+    expect(hourShort("2026-11-16T16:00:00Z")).toBe("11-16 21:30")
+    expect(hourRange("2026-11-16T16:00:00Z")).toBe("21:30–22:30")
+    expect(offsetLabel(0)).toBe("UTC+5:30")
+  })
+})
+
+test("a custom period in Asia/Shanghai starts and ends at local midnight", () => {
+  inZone("Asia/Shanghai", () => {
+    const now = Date.parse("2026-11-17T06:20:00Z") // 14:20 local on the 17th
+    expect(localDate(now)).toBe("2026-11-17")
+    expect(localDate(Date.parse("2026-11-16T17:00:00Z"))).toBe("2026-11-17")
+    expect(defaultCustomDates(now)).toEqual({ start: "2026-11-01", end: "2026-11-17" })
+    expect(customWindow("2026-11-01", "2026-11-10", now)).toEqual({ from: "2026-10-31T16:00:00Z", to: "2026-11-10T16:00:00Z" })
+    expect(customWindow("2026-11-17", "2026-11-17", now)).toEqual({ from: "2026-11-16T16:00:00Z", to: "2026-11-17T07:00:00Z" })
+    expect(customWindow("2026-11-18", "2026-11-18", now)).toEqual({ error: "order" })
+  })
+})
+
+test("a custom period is DST-safe in America/New_York across 2026-11-01", () => {
+  inZone("America/New_York", () => {
+    const now = Date.parse("2026-11-17T12:00:00Z")
+    // Oct 31 is still EDT (UTC-4); Nov 2 is EST (UTC-5); Nov 1 is 25 hours long.
+    expect(customWindow("2026-10-31", "2026-10-31", now)).toEqual({ from: "2026-10-31T04:00:00Z", to: "2026-11-01T04:00:00Z" })
+    expect(customWindow("2026-11-01", "2026-11-01", now)).toEqual({ from: "2026-11-01T04:00:00Z", to: "2026-11-02T05:00:00Z" })
+    expect(customWindow("2026-10-31", "2026-11-02", now)).toEqual({ from: "2026-10-31T04:00:00Z", to: "2026-11-03T05:00:00Z" })
+    expect(hourShort("2026-11-01T05:00:00Z")).toBe("11-01 01:00") // 05:00Z is 01:00 EST, after the clocks went back
+    expect(hourShort("2026-11-01T06:00:00Z")).toBe("11-01 01:00")
+    expect(hourShort("2026-11-01T04:00:00Z")).toBe("11-01 00:00")
+    expect(localDate(Date.parse("2026-11-02T04:30:00Z"))).toBe("2026-11-01")
+  })
+})
+
+test("a custom period floors from and ceils to whole UTC hours in Asia/Kolkata", () => {
+  inZone("Asia/Kolkata", () => {
+    const now = Date.parse("2026-11-20T00:00:00Z")
+    // Local midnight of Nov 1 is 2026-10-31T18:30Z: floored to 18:00Z. Local midnight after Nov 1 is 2026-11-01T18:30Z: ceiled to 19:00Z.
+    expect(customWindow("2026-11-01", "2026-11-01", now)).toEqual({ from: "2026-10-31T18:00:00Z", to: "2026-11-01T19:00:00Z" })
+  })
+})
+
+test("the 90-day limit counts local calendar days", () => {
+  inZone("America/New_York", () => {
+    const now = Date.parse("2026-11-17T12:00:00Z")
+    expect("error" in customWindow("2026-08-20", "2026-11-17", now)).toBe(false)
+    expect(customWindow("2026-08-19", "2026-11-17", now)).toEqual({ error: "too_long" })
+  })
 })

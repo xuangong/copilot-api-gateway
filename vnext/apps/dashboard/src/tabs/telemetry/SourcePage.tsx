@@ -14,7 +14,7 @@ import { BudgetPanel, FlaggedPanel, FreshnessPanel, TopPanel } from "./Panels"
 import { SettingsPanel } from "./SettingsPanel"
 import { IssuedKeyPanel, type CopyTarget, type IssuedKeyView } from "./SourceList"
 import { telemetryErrorKey } from "./telemetry-errors"
-import { availabilityGroups, customWindow, defaultCustomDates, defaultMetric, filterDimFor, filterQuery, hourShort, isAvailabilityMetric, keepFilter, rangeWindow, utcDate, type ChartRange, type RangeId } from "./telemetry-format"
+import { availabilityGroups, customWindow, defaultCustomDates, defaultMetric, filterDimFor, filterQuery, hourShort, isAvailabilityMetric, keepFilter, rangeWindow, localDate, type ChartRange, type RangeId } from "./telemetry-format"
 import { loadAvailability, loadSeries, type AvailabilitySeries } from "./telemetry-series"
 import { startPolling } from "./telemetry-sources"
 import { editLimit, formToSettings, limitState, reconcileLimit, settingsToForm, shouldResetForm, type FormSource, type SettingsForm, type TextField } from "./telemetry-settings-form"
@@ -167,7 +167,7 @@ export function SourcePage({ source, onBack, onSourceChanged, onDeleted }: {
   // The custom period's problem, if any, and the label of the window the traffic chart shows.
   const rangeWindowNow = range === "custom" ? customWindow(custom.start, custom.end, fetchedAt) : rangeWindow(range, fetchedAt)
   const rangeError = "error" in rangeWindowNow ? t(rangeWindowNow.error === "too_long" ? "dash.tlmRangeTooLong" : rangeWindowNow.error === "order" ? "dash.tlmRangeOrder" : "dash.tlmRangeInvalid") : ""
-  const windowLabel = "error" in rangeWindowNow ? "" : `${hourShort(rangeWindowNow.from)} – ${hourShort(rangeWindowNow.to)} UTC`
+  const windowLabel = "error" in rangeWindowNow ? "" : `${hourShort(rangeWindowNow.from)} – ${hourShort(rangeWindowNow.to)}`
 
   // A dim that the newly chosen metric lacks cannot stay selected.
   useEffect(() => { if (groupBy !== "" && !dims.includes(groupBy)) setGroupBy("") }, [dims, groupBy])
@@ -224,7 +224,7 @@ export function SourcePage({ source, onBack, onSourceChanged, onDeleted }: {
     <FreshnessPanel summary={summary} failed={summaryError !== ""} />
     <BudgetPanel budget={summary?.budget ?? null} />
     {groups.length > 0 ? <AvailabilityPanel data={availability} range={availRange} fetchedAt={availFetchedAt} dark={dark} error={availError} onRange={setAvailRange} /> : null}
-    <ChartPanel metrics={trafficMetrics} metric={metric} range={range} customStart={custom.start} customEnd={custom.end} today={utcDate(Date.now())}
+    <ChartPanel metrics={trafficMetrics} metric={metric} range={range} customStart={custom.start} customEnd={custom.end} today={localDate(Date.now())}
       rangeError={rangeError} windowLabel={windowLabel} onCustom={(start, end) => setCustom({ start, end })} groupBy={groupBy} filterKey={filterKey} filterValues={filterValues?.key === filterKey ? filterValues.values : null} filter={filter}
       onFilter={value => setFilterState(value === "" || filterKey === null ? null : { key: filterKey, value })} series={series} fetchedAt={fetchedAt} settings={source.settings} surgeHours={surgeHours} dark={dark}
       error={seriesError} onMetric={setMetric} onRange={setRange} onGroupBy={setGroupBy} />

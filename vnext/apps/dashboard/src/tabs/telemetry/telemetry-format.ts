@@ -17,8 +17,50 @@ export function displayStatus(status: CheckStatus, hour: string, nowMs: number):
   return status === "no check" && Date.parse(hour) + 3_600_000 > nowMs ? "pending" : status
 }
 
-/** An instant as UTC text, e.g. `2026-11-16 09:05 UTC`. */
-export const formatUtc = (iso: string): string => `${iso.slice(0, 10)} ${iso.slice(11, 16)} UTC`
+/**
+ * The one time zone every telemetry time is shown in. Data stays in hourly UTC buckets on the server; only display
+ * (and the custom date picker) use this zone. Defaults to the browser's zone; tests pin it with `setDisplayZone`.
+ */
+const browserZone = (): string => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC" } catch { return "UTC" } }
+let displayZone: string | null = null
+/** Pin the display zone (an IANA name), or pass null to go back to the browser's zone. */
+export function setDisplayZone(zone: string | null): void { displayZone = zone }
+export const getDisplayZone = (): string => displayZone ?? browserZone()
+
+const formatters = new Map<string, Intl.DateTimeFormat>()
+interface Parts { year: number; month: number; day: number; hour: number; minute: number; second: number }
+/** The wall-clock fields of an instant in the display zone. */
+function zoneParts(ms: number, zone = getDisplayZone()): Parts {
+  let fmt = formatters.get(zone)
+  if (!fmt) {
+    fmt = new Intl.DateTimeFormat("en-US", { timeZone: zone, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" })
+    formatters.set(zone, fmt)
+  }
+  const out: Record<string, number> = {}
+  for (const part of fmt.formatToParts(new Date(ms))) if (part.type !== "literal") out[part.type] = Number(part.value)
+  return { year: out.year!, month: out.month!, day: out.day!, hour: out.hour! % 24, minute: out.minute!, second: out.second! }
+}
+/** The zone's offset from UTC at an instant, in ms (positive east of Greenwich). */
+function zoneOffsetMs(ms: number, zone = getDisplayZone()): number {
+  const p = zoneParts(ms, zone)
+  return Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second) - Math.floor(ms / 1000) * 1000
+}
+/** `UTC+8`, `UTC-5`, `UTC+5:30`. */
+export function offsetLabel(nowMs: number, zone = getDisplayZone()): string {
+  const mins = Math.round(zoneOffsetMs(nowMs, zone) / 60_000)
+  const abs = Math.abs(mins)
+  const m = abs % 60
+  return `UTC${mins < 0 ? "-" : "+"}${Math.floor(abs / 60)}${m === 0 ? "" : `:${pad(m)}`}`
+}
+/** The zone as named in the note under times: `Asia/Shanghai, UTC+8`. */
+export const zoneLabel = (nowMs: number): string => `${getDisplayZone()}, ${offsetLabel(nowMs)}`
+
+/** An instant as zone text, e.g. `2026-11-16 17:05`. */
+export const formatInstant = (iso: string): string => {
+  if (!Number.isFinite(Date.parse(iso))) return iso
+  const p = zoneParts(Date.parse(iso))
+  return `${p.year}-${pad(p.month)}-${pad(p.day)} ${pad(p.hour)}:${pad(p.minute)}`
+}
 export const CHECK_SENTENCE_KEYS: Record<CheckStatus, string> = {
   passed: "dash.tlmCheckPassed", failed: "dash.tlmCheckFailed", "no check": "dash.tlmCheckNoCheck", "not monitored": "dash.tlmCheckNotMonitored",
 }
@@ -85,15 +127,17 @@ export function dimsLabel(settings: TelemetrySettings, dims: Record<string, stri
   return Object.keys(dims).sort().map(key => `${key}=${groupLabel(settings, key, dims[key]!, "")}`).join(", ")
 }
 
+/** An hour bucket as `HH:mm–HH:mm` in the display zone (minutes are 30 or 45 in zones with fractional offsets). */
 export function hourRange(iso: string): string {
-  const start = new Date(iso)
-  const end = new Date(start.getTime() + 3_600_000)
-  return `${pad(start.getUTCHours())}:00–${pad(end.getUTCHours())}:00 UTC`
+  const start = Date.parse(iso)
+  const clock = (ms: number) => { const p = zoneParts(ms); return `${pad(p.hour)}:${pad(p.minute)}` }
+  return `${clock(start)}–${clock(start + 3_600_000)}`
 }
 
+/** An instant as `MM-DD HH:mm` in the display zone. */
 export function hourShort(iso: string): string {
-  const date = new Date(iso)
-  return `${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())} ${pad(date.getUTCHours())}:00`
+  const p = zoneParts(Date.parse(iso))
+  return `${pad(p.month)}-${pad(p.day)} ${pad(p.hour)}:${pad(p.minute)}`
 }
 
 export type FreshnessNotice = { kind: "stale"; hours: number } | { kind: "noCheck"; metric: string; hour: string }
@@ -127,30 +171,44 @@ export function rangeWindow(range: RangeId, nowMs: number): { from: string; to: 
   return { from: iso(to - RANGE_HOURS[range] * 3_600_000), to: iso(to) }
 }
 
-/** The traffic chart's range: a preset, or whole UTC days the owner picks. */
+/** The traffic chart's range: a preset, or whole local calendar days the owner picks. */
 export type ChartRange = RangeId | "custom"
 export const MAX_CUSTOM_DAYS = 90
 const DAY_MS = 86_400_000
+const HOUR_MS = 3_600_000
 const DATE = /^\d{4}-\d{2}-\d{2}$/
 
-/** Today's UTC date as YYYY-MM-DD. */
-export const utcDate = (ms: number): string => new Date(ms).toISOString().slice(0, 10)
-/** The default custom period: the first of this UTC month through today. */
-export const defaultCustomDates = (nowMs: number): { start: string; end: string } => ({ start: `${utcDate(nowMs).slice(0, 8)}01`, end: utcDate(nowMs) })
+/** The date (YYYY-MM-DD) of an instant in the display zone: "today" for the date picker. */
+export const localDate = (ms: number): string => { const p = zoneParts(ms); return `${p.year}-${pad(p.month)}-${pad(p.day)}` }
+/** The default custom period: the first of this local month through local today. */
+export const defaultCustomDates = (nowMs: number): { start: string; end: string } => ({ start: `${localDate(nowMs).slice(0, 8)}01`, end: localDate(nowMs) })
+
+/** The instant at which the display zone's wall clock reads `date` 00:00 (DST-safe: the offset is looked up, twice, not assumed). */
+function localMidnight(date: string): number {
+  const wall = Date.parse(`${date}T00:00:00Z`)
+  let guess = wall - zoneOffsetMs(wall)
+  guess = wall - zoneOffsetMs(guess)
+  return guess
+}
 
 /**
- * Whole UTC days from `start` through `end`, both included. The window stops at the end of the current hour, so
- * today counts up to now. Errors: a missing or malformed date, end before start, a start in the future, or more than 90 days.
+ * Local calendar days from `start` through `end`, both included: from = local midnight of `start`, to = local midnight
+ * after `end`, capped at the end of the current hour (so today counts up to now). The API takes top-of-hour UTC
+ * instants, so `from` is floored and `to` ceiled to whole UTC hours; that only moves anything in zones whose offset is
+ * not a whole number of hours (e.g. Asia/Kolkata, UTC+5:30), where the window widens by up to 30 or 45 minutes.
+ * Errors: a missing or malformed date, end before start, a start in the future, or more than 90 days.
  */
 export function customWindow(start: string, end: string, nowMs: number): { from: string; to: string } | { error: "invalid" | "order" | "too_long" } {
   if (!DATE.test(start) || !DATE.test(end)) return { error: "invalid" }
-  const from = Date.parse(`${start}T00:00:00Z`)
+  const startDay = Date.parse(`${start}T00:00:00Z`)
   const endDay = Date.parse(`${end}T00:00:00Z`)
-  if (!Number.isFinite(from) || !Number.isFinite(endDay)) return { error: "invalid" }
-  if (endDay < from) return { error: "order" }
-  if ((endDay - from) / DAY_MS + 1 > MAX_CUSTOM_DAYS) return { error: "too_long" }
-  const nowEnd = Math.floor(nowMs / 3_600_000) * 3_600_000 + 3_600_000
-  const to = Math.min(endDay + DAY_MS, nowEnd)
+  if (!Number.isFinite(startDay) || !Number.isFinite(endDay)) return { error: "invalid" }
+  if (endDay < startDay) return { error: "order" }
+  if ((endDay - startDay) / DAY_MS + 1 > MAX_CUSTOM_DAYS) return { error: "too_long" }
+  const from = Math.floor(localMidnight(start) / HOUR_MS) * HOUR_MS
+  const nowEnd = Math.floor(nowMs / HOUR_MS) * HOUR_MS + HOUR_MS
+  const afterEnd = Math.ceil(localMidnight(new Date(endDay + DAY_MS).toISOString().slice(0, 10)) / HOUR_MS) * HOUR_MS
+  const to = Math.min(afterEnd, nowEnd)
   if (to <= from) return { error: "order" }
   return { from: iso(from), to: iso(to) }
 }

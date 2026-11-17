@@ -7,7 +7,7 @@ import { Button } from "../../ui/button"
 import { Card, SectionHeading } from "../../ui/card"
 import { Notice } from "../../ui/notice"
 import { telemetryErrorKey } from "./telemetry-errors"
-import { formatUtc } from "./telemetry-format"
+import { formatInstant } from "./telemetry-format"
 import { canCreateSource, sourceBadge, startPolling } from "./telemetry-sources"
 
 export interface IssuedKeyView extends IssuedTelemetryKey { sourceName: string }
@@ -69,7 +69,7 @@ export function SourceListView(props: SourceListViewProps) {
           <span className="flex flex-wrap items-center gap-2">
             <span className="font-medium text-fg">{source.name}</span>
             <Badge tone={badge.tone}>{t(badge.key)}</Badge>
-            {source.lastPushAt ? <span className="text-fg-muted">{t("dash.tlmLastPush", { at: formatUtc(source.lastPushAt) })}</span> : null}
+            {source.lastPushAt ? <span className="text-fg-muted">{t("dash.tlmLastPush", { at: formatInstant(source.lastPushAt) })}</span> : null}
           </span>
           <span className="flex gap-1">
             {props.onOpen ? <Button variant="secondary" size="sm" disabled={busy} onClick={() => props.onOpen?.(source)}>{t("dash.tlmOpen")}</Button> : null}

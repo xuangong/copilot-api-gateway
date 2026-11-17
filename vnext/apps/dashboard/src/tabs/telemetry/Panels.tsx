@@ -8,7 +8,7 @@ import { Meter } from "../../ui/meter"
 import { Notice } from "../../ui/notice"
 import { Table, TBody, Td, Th } from "../../ui/table"
 import {
-  type DisplayStatus, CHECK_SENTENCE_KEYS, STATUS_KEYS, budgetView, displayStatus, formatUtc, dimsLabel, filterText, formatChange, formatShare, formatValue, freshnessNotices, groupLabel, hourRange, hourShort, isLatencyMetric, statusTone,
+  type DisplayStatus, CHECK_SENTENCE_KEYS, STATUS_KEYS, budgetView, displayStatus, formatInstant, dimsLabel, filterText, formatChange, formatShare, formatValue, freshnessNotices, groupLabel, hourRange, hourShort, isLatencyMetric, statusTone,
 } from "./telemetry-format"
 
 const money = (value: number | null) => value === null ? "—" : `$${value.toFixed(2)}`
@@ -20,7 +20,7 @@ export function FreshnessPanel({ summary, failed = false }: { summary: Telemetry
     <SectionHeading id={titleId}>{t("dash.tlmFreshness")}</SectionHeading>
     {summary === null ? <p className="text-body text-fg-subtle">{t(failed ? "dash.tlmLoadError" : "dash.loadingShort")}</p> : <>
       <p className="text-body text-fg-muted">
-        {summary.freshness.lastPushAt ? t("dash.tlmLastPush", { at: formatUtc(summary.freshness.lastPushAt) }) : t("dash.tlmNeverPushed")}
+        {summary.freshness.lastPushAt ? t("dash.tlmLastPush", { at: formatInstant(summary.freshness.lastPushAt) }) : t("dash.tlmNeverPushed")}
       </p>
       {freshnessNotices(summary).map(notice => notice.kind === "stale"
         ? <Notice key="stale" tone="warn" role="status">{t("dash.tlmStaleWarning", { n: notice.hours })}</Notice>
@@ -147,7 +147,7 @@ export function FlaggedPanel({ summary, settings, units, failed = false }: { sum
             <Th numeric>{t("dash.tlmColRatio")}</Th><Th>{t("dash.tlmColContributors")}</Th>
           </tr></thead>
           <TBody>{surges.map(surge => <tr key={`${surge.metric}-${surge.hour}`}>
-            <Td>{hourShort(surge.hour)} UTC</Td><Td>{surge.metric}</Td><Td numeric>{formatValue(surge.value, units[surge.metric] ?? null)}</Td>
+            <Td>{hourShort(surge.hour)}</Td><Td>{surge.metric}</Td><Td numeric>{formatValue(surge.value, units[surge.metric] ?? null)}</Td>
             <Td numeric>{formatValue(surge.baseline, units[surge.metric] ?? null)}</Td><Td numeric>{surge.ratio === null ? "—" : `×${surge.ratio.toFixed(1)}`}</Td>
             <Td>{surge.contributors.filter(c => c.value !== 0).map(c => `${dimsLabel(settings, c.dims)} (${formatValue(c.value, units[surge.metric] ?? null)})`).join("; ")}</Td>
           </tr>)}</TBody>
@@ -158,7 +158,7 @@ export function FlaggedPanel({ summary, settings, units, failed = false }: { sum
         <Table label={t("dash.tlmNonZero")}>
           <thead><tr><Th>{t("dash.tlmColHour")}</Th><Th>{t("dash.tlmMetric")}</Th><Th numeric>{t("dash.tlmColTotal")}</Th><Th>{t("dash.tlmColBreakdown")}</Th></tr></thead>
           <TBody>{flags.map(flag => <tr key={`${flag.metric}-${flag.hour}`}>
-            <Td>{hourShort(flag.hour)} UTC</Td><Td>{flag.metric}</Td><Td numeric>{formatValue(flag.total, units[flag.metric] ?? null)}</Td>
+            <Td>{hourShort(flag.hour)}</Td><Td>{flag.metric}</Td><Td numeric>{formatValue(flag.total, units[flag.metric] ?? null)}</Td>
             <Td>{flag.breakdown.filter(entry => entry.value !== 0).map(entry => dimsLabel(settings, entry.dims)).join("; ")}</Td>
           </tr>)}</TBody>
         </Table>

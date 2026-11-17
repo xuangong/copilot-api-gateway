@@ -6,7 +6,10 @@ import { AvailabilityPanel } from "./AvailabilityPanel"
 import { ChartPanel } from "./ChartPanel"
 import { BudgetPanel, CheckStrip, FlaggedPanel, FreshnessPanel, LatencyNote, TopPanel } from "./Panels"
 import { SETTINGS_FIELDS, SettingsPanel, type SettingsPanelProps } from "./SettingsPanel"
+import { setDisplayZone } from "./telemetry-format"
 import { settingsToForm } from "./telemetry-settings-form"
+
+setDisplayZone("UTC")
 
 const summary = (over: Partial<TelemetrySummary> = {}): TelemetrySummary => ({
   now: "2026-11-16T12:30:00.000Z", freshness: { lastPushAt: "2026-11-16T09:00:00.000Z", stale: false, staleAfterHours: 2, hoursSincePush: 3 }, budget: null,
@@ -47,17 +50,17 @@ test("the single-check sentence says it reflects only the moment of the check, i
     const restore = installDictionary(language)
     try {
       const html = renderToStaticMarkup(<FreshnessPanel summary={summary({ checks: [check("passed")] })} />)
-      expect(html).toContain("11:00–12:00 UTC")
+      expect(html).toContain("11:00–12:00")
       expect(html).not.toContain("dash.tlmCheckPassed")
     } finally { restore() }
   }
   const zh = installDictionary("zh")
   try {
-    expect(renderToStaticMarkup(<FreshnessPanel summary={summary({ checks: [check("passed")] })} />)).toContain("11:00–12:00 UTC 期间的一次检测：正常（只代表检测时那一刻）")
+    expect(renderToStaticMarkup(<FreshnessPanel summary={summary({ checks: [check("passed")] })} />)).toContain("11:00–12:00 期间的一次检测：正常（只代表检测时那一刻）")
   } finally { zh() }
   const restore = installDictionary("en")
   try {
-    expect(renderToStaticMarkup(<FreshnessPanel summary={summary({ checks: [check("passed")] })} />)).toContain("One check during 11:00–12:00 UTC: passed (this reflects only the moment of the check)")
+    expect(renderToStaticMarkup(<FreshnessPanel summary={summary({ checks: [check("passed")] })} />)).toContain("One check during 11:00–12:00: passed (this reflects only the moment of the check)")
     expect(renderToStaticMarkup(<FreshnessPanel summary={summary({ checks: [check("no check")] })} />)).toContain("the VM may be down or the agent not running")
   } finally { restore() }
 })
@@ -201,11 +204,11 @@ test("a failed load is shown instead of an endless Loading", () => {
   expect(chart).not.toContain("dash.tlmNoMetrics")
 })
 
-test("hours in flagged tables and the last push are marked UTC", () => {
+test("hours in flagged tables and the last push are shown in the display zone", () => {
   const html = renderToStaticMarkup(<FlaggedPanel units={{ m: "count" }} settings={{}} summary={summary({
     flags: [{ metric: "m", hour: "2026-11-16T09:00:00Z", total: 1, breakdown: [] }],
   })} />)
-  expect(html).toContain("11-16 09:00 UTC")
+  expect(html).toContain("11-16 09:00")
 })
 
 test("settings fields match the form fields exactly", () => {
@@ -290,9 +293,9 @@ test("the traffic chart shows the total for the chosen window, date fields for a
     const series = { metric: "nic.tx_bytes", unit: "bytes" as const, from: "2026-11-01T00:00:00Z", to: "2026-11-01T02:00:00Z", hours: ["2026-11-01T00:00:00Z", "2026-11-01T01:00:00Z"], total: [1e9, 2.5e9], groups: [] }
     const metrics = [{ metric: "nic.tx_bytes", unit: "bytes" as const, firstHour: "", lastHour: "", dims: [] }]
     const html = renderToStaticMarkup(<ChartPanel metrics={metrics} metric="nic.tx_bytes" range="custom" customStart="2026-11-01" customEnd="2026-11-01" today="2026-11-17"
-      windowLabel="11-01 00:00 – 11-02 00:00 UTC" series={series} groupBy="" settings={{}} surgeHours={new Set()} dark error="" onMetric={noop} onRange={noop} onGroupBy={noop} />)
+      windowLabel="11-01 00:00 – 11-02 00:00" series={series} groupBy="" settings={{}} surgeHours={new Set()} dark error="" onMetric={noop} onRange={noop} onGroupBy={noop} />)
     expect(html).toContain('type="date"')
-    expect(html).toContain("Total for 11-01 00:00 – 11-02 00:00 UTC")
+    expect(html).toContain("Total for 11-01 00:00 – 11-02 00:00")
     expect(html).toContain("3.5 GB")
     const bad = renderToStaticMarkup(<ChartPanel metrics={metrics} metric="nic.tx_bytes" range="custom" customStart="2026-08-01" customEnd="2026-11-17" rangeError="Choose at most 90 days."
       series={null} groupBy="" settings={{}} surgeHours={new Set()} dark error="" onMetric={noop} onRange={noop} onGroupBy={noop} />)
@@ -312,16 +315,16 @@ test("the top table says why no change is shown when the previous period has no 
 const sentMetric = { metric: "proxy.sent_bytes", unit: "bytes" as const, firstHour: "", lastHour: "", dims: ["domain", "user"] }
 const filterSeries = { metric: "proxy.sent_bytes", unit: "bytes" as const, from: "2026-11-16T06:00:00Z", to: "2026-11-16T08:00:00Z", hours: ["2026-11-16T06:00:00Z", "2026-11-16T07:00:00Z"], total: [1e9, 2e9], groups: [] }
 const filterPanel = (over: Partial<Parameters<typeof ChartPanel>[0]> = {}) => renderToStaticMarkup(<ChartPanel metrics={[sentMetric]} metric="proxy.sent_bytes" range="24h" groupBy="" series={filterSeries}
-  windowLabel="11-16 06:00 – 11-16 08:00 UTC" settings={{ labels: { user: { "#1": "MacBook" } } }} surgeHours={new Set()} dark error="" onMetric={noop} onRange={noop} onGroupBy={noop} {...over} />)
+  windowLabel="11-16 06:00 – 11-16 08:00" settings={{ labels: { user: { "#1": "MacBook" } } }} surgeHours={new Set()} dark error="" onMetric={noop} onRange={noop} onGroupBy={noop} {...over} />)
 
 test("the Only selector appears for a metric with two dims, lists the dim's values by name and puts the filter in the total line", () => {
   const restore = installDictionary("en")
   try {
     const plain = filterPanel({ filterKey: "user", filterValues: ["#1", "#2"], filter: null })
     expect(plain).toContain('aria-label="Only"')
-    expect(plain).toContain("Total for 11-16 06:00 – 11-16 08:00 UTC:")
+    expect(plain).toContain("Total for 11-16 06:00 – 11-16 08:00:")
     const active = filterPanel({ filterKey: "user", filterValues: ["#1", "#2"], filter: { key: "user", value: "#1" } })
-    expect(active).toContain("Total for 11-16 06:00 – 11-16 08:00 UTC · user #1 (MacBook):")
+    expect(active).toContain("Total for 11-16 06:00 – 11-16 08:00 · user #1 (MacBook):")
     expect(active).toContain("#1 (MacBook)")
     // No selector without a filter dim, and none for a check metric.
     expect(filterPanel({ filterKey: null })).not.toContain('aria-label="Only"')
@@ -343,4 +346,25 @@ test("the Only label and all-option are translated, and the top table names its 
     expect(html).toContain("Only user #1 (MacBook)")
     expect(renderToStaticMarkup(<TopPanel top={top()} settings={{}} groupBy="user" />)).not.toContain("Only")
   } finally { restore() }
+})
+
+test("flagged hours follow the display zone", () => {
+  setDisplayZone("Asia/Shanghai")
+  try {
+    const html = renderToStaticMarkup(<FlaggedPanel units={{ m: "count" }} settings={{}} summary={summary({
+      flags: [{ metric: "m", hour: "2026-11-16T16:00:00Z", total: 1, breakdown: [] }],
+    })} />)
+    expect(html).toContain("11-17 00:00")
+    const restore = installDictionary("en")
+    try {
+      const fresh = renderToStaticMarkup(<FreshnessPanel summary={summary({ freshness: { lastPushAt: "2026-11-16T21:05:00.000Z", stale: false, staleAfterHours: 2, hoursSincePush: 1 } })} />)
+      expect(fresh).toContain("last push 2026-11-17 05:05")
+      expect(renderToStaticMarkup(<FreshnessPanel summary={summary({ checks: [check("passed")] })} />)).toContain("19:00–20:00")
+    } finally { restore() }
+  } finally { setDisplayZone("UTC") }
+})
+
+test("the budget panel says its month is the UTC month", () => {
+  const html = renderToStaticMarkup(<BudgetPanel budget={{ metric: "m", unit: "count", mtd: 1, projection: 2, monthlyLimit: null, mtdPercent: null, projectionPercent: null } as unknown as TelemetryBudget} />)
+  expect(html).toContain("dash.tlmMtd")
 })
