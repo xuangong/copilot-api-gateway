@@ -17,6 +17,8 @@ import { ModelsTab } from "./tabs/models/ModelsTab"
 import { PricingTab } from "./tabs/pricing/PricingTab"
 import { useT } from "./state/i18n"
 import { EmptyState } from "./ui/empty-state"
+import { ProtectionProvider } from "./state/protection"
+import { ProtectionBannerHost } from "./components/ProtectionBanner"
 import { AppShell } from "./shell/AppShell"
 import { allowedTabIds, buildNavGroups, DEFAULT_TAB } from "./shell/navigation"
 
@@ -38,9 +40,11 @@ function Shell() {
   if (!session) return null
 
   return (
-    <AppShell groups={groups} current={tab} onSelect={setTab} offNavTitles={offNavTitles}>
-      <TabBody tab={tab} />
-    </AppShell>
+    <ProtectionProvider>
+      <AppShell groups={groups} current={tab} onSelect={setTab} offNavTitles={offNavTitles} banner={<ProtectionBannerHost />}>
+        <TabBody tab={tab} />
+      </AppShell>
+    </ProtectionProvider>
   )
 }
 

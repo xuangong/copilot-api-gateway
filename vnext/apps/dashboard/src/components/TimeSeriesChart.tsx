@@ -100,7 +100,7 @@ interface Props {
   yTitle?: string
 }
 
-function isDarkTheme(): boolean {
+export function isDarkTheme(): boolean {
   if (typeof document === "undefined") return true
   return document.documentElement.getAttribute("data-theme") === "dark"
 }
@@ -112,7 +112,7 @@ export function chartFont(read: (name: string) => string, kind: "sans" | "mono")
   return kind === "sans" ? "ui-sans-serif, system-ui, sans-serif" : "ui-monospace, monospace"
 }
 
-function cssVar(name: string): string {
+export function cssVar(name: string): string {
   if (typeof document === "undefined") return ""
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim()
 }

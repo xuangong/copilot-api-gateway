@@ -1,12 +1,15 @@
-import { useState } from "react"
+import { useId, useState } from "react"
 import { Check, Copy, Trash2 } from "lucide-react"
 import type { ApiKeyDetail } from "../../api/keys"
+import type { ProtectionPause } from "../../api/protection"
+import { summarizeReason } from "../../components/protection-banner-model"
 import { useT } from "../../state/i18n"
 import { Badge } from "../../ui/badge"
 import { Button } from "../../ui/button"
 import { cn } from "../../ui/cn"
 import { Td } from "../../ui/table"
 import { timeAgo } from "../../state/time-ago"
+import { formatUntil } from "../telemetry/telemetry-format"
 import { copyToClipboard, fullDateTime, truncateKey } from "./helpers"
 
 interface Props {
@@ -17,11 +20,18 @@ interface Props {
   onSelect: () => void
   onDelete: () => void
   onRequests?: () => void
+  /** The active pause on this key, if any. */
+  pause?: ProtectionPause
+  /** Resumes the pause; only used when the server says the viewer may (`pause.canResume`). */
+  onResume?: () => void
+  /** The Resume request is in flight. */
+  resuming?: boolean
 }
 
-export function KeyRow({ row, selected, canManage, busy, onSelect, onDelete, onRequests }: Props) {
+export function KeyRow({ row, selected, canManage, busy, onSelect, onDelete, onRequests, pause, onResume, resuming = false }: Props) {
   const [copied, setCopied] = useState(false)
   const t = useT()
+  const pauseNoteId = useId()
 
   const handleCopy = async (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -36,6 +46,11 @@ export function KeyRow({ row, selected, canManage, busy, onSelect, onDelete, onR
   }
 
   const isShared = row.is_owner === false
+  const pauseReason = pause
+    ? pause.upstreamName === ""
+      ? summarizeReason(pause.reason, t)
+      : t("dash.protKeyPausedTip", { summary: summarizeReason(pause.reason, t), upstream: pause.upstreamName })
+    : ""
   const assigneeCount = row.assignees?.length ?? 0
 
   return (
@@ -59,6 +74,15 @@ export function KeyRow({ row, selected, canManage, busy, onSelect, onDelete, onR
           >
             {row.name}
           </button>
+          {pause ? (
+            <>
+              {/* Focusable and described by hidden text, so the reason is reachable by keyboard and screen reader, not only on hover. */}
+              <span className="cursor-default" tabIndex={0} aria-describedby={pauseNoteId} title={pauseReason}>
+                <Badge tone="danger">{t("dash.protKeyPausedBadge", { until: formatUntil(pause.endsAt, Date.now()) })}</Badge>
+              </span>
+              <span id={pauseNoteId} className="sr-only">{pauseReason}</span>
+            </>
+          ) : null}
         </div>
       </Td>
       <Td>
@@ -106,6 +130,9 @@ export function KeyRow({ row, selected, canManage, busy, onSelect, onDelete, onR
             >
               {t("dash.requests.action")}
             </Button>
+          ) : null}
+          {pause && onResume && pause.canResume ? (
+            <Button variant="secondary" size="sm" disabled={resuming} onClick={(event) => { event.stopPropagation(); onResume() }}>{t("dash.protResumeKey")}</Button>
           ) : null}
           <Button
             variant="ghost"

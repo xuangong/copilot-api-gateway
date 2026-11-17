@@ -7,6 +7,7 @@ import { useT } from "../../state/i18n"
 import { useToast } from "../../state/toast"
 import type { UpstreamRecord } from "../../api/types"
 import * as api from "../../api/upstreams"
+import type { ProtectionPause } from "../../api/protection"
 import { Badge } from "../../ui/badge"
 import { Button } from "../../ui/button"
 import { cn } from "../../ui/cn"
@@ -45,6 +46,12 @@ interface Props {
   showProxy?: boolean
   proxyOpen?: boolean
   onToggleProxy?: () => void
+  /** Shows the Protection button (owners and admins). */
+  showProtection?: boolean
+  protectionOpen?: boolean
+  onToggleProtection?: () => void
+  /** The active pause or warning about this upstream itself, for the badge. */
+  pause?: ProtectionPause
   onToggleEnabled: () => void
   onReorder: (dir: "up" | "down") => void
   dragging?: boolean
@@ -74,6 +81,10 @@ export function UpstreamRow({
   showProxy = false,
   proxyOpen = false,
   onToggleProxy,
+  showProtection = false,
+  protectionOpen = false,
+  onToggleProtection,
+  pause,
   onToggleEnabled,
   onReorder,
   dragging = false,
@@ -173,6 +184,9 @@ export function UpstreamRow({
                 <span className="inline-flex shrink-0 cursor-default" title={t("dash.tokenExpiredTip", { at: expiredAt })}>
                   <Badge tone="danger">{t("dash.tokenExpiredBadge")}</Badge>
                 </span>
+              ) : null}
+              {pause ? (
+                <Badge tone={pause.mode === "pause" ? "danger" : "warn"}>{pause.mode === "pause" ? t("dash.protPausedBadge") : t("dash.protWarningBadge")}</Badge>
               ) : null}
             </div>
             <div className="text-xs text-fg-subtle font-mono truncate">
@@ -280,6 +294,11 @@ export function UpstreamRow({
               aria-expanded={proxyOpen}
             >
               {proxyOpen ? t("dash.closeBtn") : t("dash.proxyBtn")}
+            </Button>
+          ) : null}
+          {showProtection ? (
+            <Button variant="ghost" size="sm" onClick={onToggleProtection} aria-expanded={protectionOpen}>
+              {protectionOpen ? t("dash.closeBtn") : t("dash.protButton")}
             </Button>
           ) : null}
           {!synced ? (

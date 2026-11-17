@@ -1,3 +1,4 @@
+import type { ProtectionSettings } from "./protection"
 import { api } from "./client"
 import type { UpstreamRecord, ProxyFallbackEntry } from "./types"
 
@@ -65,6 +66,7 @@ export interface UpstreamPatch {
   flagOverrides?: Record<string, boolean>
   disabledPublicModelIds?: string[]
   proxyFallbackList?: ProxyFallbackEntry[]
+  protection?: Partial<ProtectionSettings>
   config?: Record<string, unknown>
 }
 export function patchUpstream(id: string, body: UpstreamPatch): Promise<{ upstream: UpstreamRecord }> {

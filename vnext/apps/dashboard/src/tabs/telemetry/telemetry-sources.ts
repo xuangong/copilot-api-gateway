@@ -34,16 +34,16 @@ const defaultVisibility = (): PollingVisibility => ({
 })
 
 /**
- * Runs `refresh` every five minutes while the page is visible; the returned function stops it (call it on unmount).
+ * Runs `refresh` every `intervalMs` (default five minutes) while the page is visible; the returned function stops it (call it on unmount).
  * A tick that falls while the page is hidden is skipped (no request), and the page refreshes once when it becomes visible again.
  */
-export function startPolling(refresh: () => void, timers: PollingTimers = defaultTimers, visibility: PollingVisibility = defaultVisibility()): () => void {
+export function startPolling(refresh: () => void, timers: PollingTimers = defaultTimers, visibility: PollingVisibility = defaultVisibility(), intervalMs: number = POLL_MS): () => void {
   let missed = false
   const id = timers.setInterval(() => {
     if (visibility.hidden()) { missed = true; return }
     missed = false
     refresh()
-  }, POLL_MS)
+  }, intervalMs)
   const unsubscribe = visibility.subscribe(() => {
     if (visibility.hidden() || !missed) return
     missed = false

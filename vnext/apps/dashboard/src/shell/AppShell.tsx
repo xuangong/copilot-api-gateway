@@ -12,10 +12,12 @@ interface Props {
   onSelect: (id: string) => void
   /** Title for the pages outside the groups, keyed by tab id. */
   offNavTitles: Record<string, string>
+  /** Shown above the page crumb on every page. */
+  banner?: ReactNode
   children: ReactNode
 }
 
-export function AppShell({ groups, current, onSelect, offNavTitles, children }: Props) {
+export function AppShell({ groups, current, onSelect, offNavTitles, banner, children }: Props) {
   const { group, page } = locateTab(groups, current)
   const title = page ?? offNavTitles[current] ?? ""
   // One navigation at a time: the phone drawer and the sidebar never coexist,
@@ -36,6 +38,7 @@ export function AppShell({ groups, current, onSelect, offNavTitles, children }: 
               shifting between short and long pages. */}
           <main className="flex min-h-0 flex-1 flex-col overflow-y-auto pt-6 [scrollbar-gutter:stable]">
             <div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col px-4 sm:px-6">
+              {banner}
               <PageCrumb group={group} page={page} fallback={title} />
               {children}
               <div aria-hidden="true" data-shell-bottom-gap="" className="h-6 shrink-0" />

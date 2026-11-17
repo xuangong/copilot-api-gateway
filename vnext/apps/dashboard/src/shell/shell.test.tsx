@@ -1,6 +1,8 @@
 import { expect, test } from "bun:test"
 import { renderToStaticMarkup } from "react-dom/server"
 import { TooltipProvider } from "../ui/tooltip"
+import { AuthProvider } from "../state/auth"
+import { AppShell } from "./AppShell"
 import { isPlainLeftClick } from "./links"
 import { buildNavGroups } from "./navigation"
 import { PageCrumb } from "./PageCrumb"
@@ -99,4 +101,19 @@ test("each theme sets color-scheme, so native scrollbars and controls follow it"
   const css = await Bun.file(new URL("../styles.css", import.meta.url)).text()
   expect(css).toMatch(/\[data-theme="light"\] \{\s*\/\*[^*]*\*\/\s*color-scheme: light;/)
   expect(css).toMatch(/\[data-theme="dark"\] \{\s*color-scheme: dark;/)
+})
+
+test("the shell shows its banner above the page crumb and the page", () => {
+  const shell = (banner?: React.ReactNode) => renderToStaticMarkup(
+    <AuthProvider>
+      <AppShell groups={buildNavGroups(t, { isAdmin: true })} current="usage" onSelect={() => {}} offNavTitles={{}} banner={banner}>
+        <p>page body</p>
+      </AppShell>
+    </AuthProvider>,
+  )
+  const html = shell(<div data-banner="x">B</div>)
+  const banner = html.indexOf('data-banner="x"')
+  expect(banner).toBeGreaterThan(-1)
+  expect(banner).toBeLessThan(html.indexOf("page body"))
+  expect(shell()).not.toContain("data-banner")
 })

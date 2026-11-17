@@ -1,7 +1,8 @@
-import { useRef, useState } from "react"
+import { useMemo, useRef, useState } from "react"
 import { useAuth } from "../../state/auth"
 import { useT } from "../../state/i18n"
 import { useKeys } from "../../state/keys"
+import { useProtection } from "../../state/protection"
 import { JustCreatedKeyModal } from "./JustCreatedKeyModal"
 import { KeyDetailPanel } from "./KeyDetailPanel"
 import { KeyRow } from "./KeyRow"
@@ -15,6 +16,9 @@ import { Table, TBody, Th } from "../../ui/table"
 export function KeysTab() {
   const { session } = useAuth()
   const store = useKeys()
+  const protection = useProtection()
+  // The active pause per key (a warning does not block a key, so only pauses count).
+  const keyPauses = useMemo(() => new Map(protection.pauses.filter((p) => p.targetKind === "key" && p.mode === "pause").map((p) => [p.targetId, p])), [protection.pauses])
   const t = useT()
   const [newKeyName, setNewKeyName] = useState("")
   const nameInputRef = useRef<HTMLInputElement>(null)
@@ -89,7 +93,9 @@ export function KeysTab() {
               </tr>
             </thead>
             <TBody>
-              {store.keys.map((k) => (
+              {store.keys.map((k) => {
+                const paused = keyPauses.get(k.id)
+                return (
                 <KeyRow
                   key={k.id}
                   row={k}
@@ -102,8 +108,12 @@ export function KeysTab() {
                   onDelete={() => store.deleteKey(k.id, k.name)}
                   onRequests={isAdmin || (isUser && k.is_owner && k.owner_id != null && String(session?.userId) === k.owner_id)
                     ? () => setRequestsKeyId(k.id) : undefined}
+                  pause={paused}
+                  onResume={paused ? () => { void protection.resume(paused.id) } : undefined}
+                  resuming={paused ? protection.resuming.has(paused.id) : false}
                 />
-              ))}
+                )
+              })}
             </TBody>
           </Table>
         ) : null}

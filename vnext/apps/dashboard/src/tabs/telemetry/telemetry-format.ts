@@ -61,6 +61,17 @@ export const formatInstant = (iso: string): string => {
   const p = zoneParts(Date.parse(iso))
   return `${p.year}-${pad(p.month)}-${pad(p.day)} ${pad(p.hour)}:${pad(p.minute)}`
 }
+/** `HH:mm` of an instant (ms) in the display zone. */
+export const formatClockMs = (ms: number): string => { const p = zoneParts(ms); return `${pad(p.hour)}:${pad(p.minute)}` }
+/** An instant (ms) as `YYYY-MM-DD HH:mm` in the display zone. */
+export const formatInstantMs = (ms: number): string => formatInstant(new Date(ms).toISOString())
+/** When a pause ends: `HH:mm` if that is today's date in the display zone, `MM-DD HH:mm` otherwise. */
+export function formatUntil(ms: number, nowMs: number): string {
+  const at = zoneParts(ms)
+  const now = zoneParts(nowMs)
+  const sameDay = at.year === now.year && at.month === now.month && at.day === now.day
+  return sameDay ? formatClockMs(ms) : `${pad(at.month)}-${pad(at.day)} ${formatClockMs(ms)}`
+}
 export const CHECK_SENTENCE_KEYS: Record<CheckStatus, string> = {
   passed: "dash.tlmCheckPassed", failed: "dash.tlmCheckFailed", "no check": "dash.tlmCheckNoCheck", "not monitored": "dash.tlmCheckNotMonitored",
 }

@@ -1,3 +1,4 @@
+import type { ProtectionSettings } from "./protection"
 // Shared API response types. Keep these in sync with src/routes/control-plane.ts
 // and src/routes/auth/*. When a route shape changes, update here too.
 
@@ -42,6 +43,7 @@ export interface UpstreamRecord {
   flagOverrides?: Record<string, boolean>
   disabledPublicModelIds: string[]
   proxyFallbackList?: ProxyFallbackEntry[]
+  protection?: ProtectionSettings
   // Set by the server only for sdf upstreams whose Substrate token's `exp` has
   // already passed — the token itself is redacted, so we cannot work this out
   // here. Present means expired; absent means "not expired, or unknowable", and

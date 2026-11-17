@@ -3,9 +3,12 @@ import { cn } from "../../ui/cn"
 import { useAuth } from "../../state/auth"
 import { useT } from "../../state/i18n"
 import { useUpstreams } from "../../state/upstreams"
+import { useProtection } from "../../state/protection"
 import { UpstreamRow } from "./UpstreamRow"
 import { UpstreamFormModal } from "./UpstreamFormModal"
 import { ProxyChainModal } from "./ProxyChainModal"
+import { ProtectionSection } from "./protection/ProtectionSection"
+import { planFocus } from "./protection/focus"
 import { DeviceFlowModal } from "./DeviceFlowModal"
 import { VENDOR_PRESETS } from "./vendorPresets"
 import { createPortableUpstreamDraft } from "./duplicate-draft"
@@ -56,6 +59,10 @@ export function UpstreamsTab() {
   const [createMode, setCreateMode] = useState<CreateMode | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [proxyId, setProxyId] = useState<string | null>(null)
+  const protection = useProtection()
+  const { focusUpstreamId, clearFocus } = protection
+  const [protectionId, setProtectionId] = useState<string | null>(null)
+  const [scrollToId, setScrollToId] = useState<string | null>(null)
   const [deviceFlowOpen, setDeviceFlowOpen] = useState(false)
   const [createLoki, setCreateLoki] = useState(false)
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
@@ -135,6 +142,28 @@ export function UpstreamsTab() {
     document.addEventListener("keydown", cancel)
     return () => document.removeEventListener("keydown", cancel)
   }, [drag, abortTouchDrag])
+
+  // The banner's "Open" asks for one upstream's Protection section: expand its group, open it, scroll to it.
+  const upstreamRows = store.upstreams
+  useEffect(() => {
+    if (focusUpstreamId === null) return
+    // The list may still be loading; keep the request until it arrives.
+    if (upstreamRows.length === 0 && store.loading) return
+    const plan = planFocus(upstreamRows, focusUpstreamId, { isAdmin, myOwnerId })
+    clearFocus()
+    if (!plan) return
+    setCollapsed((current) => (current[plan.groupKey] ? { ...current, [plan.groupKey]: false } : current))
+    setProtectionId(plan.id)
+    setScrollToId(plan.id)
+  }, [focusUpstreamId, clearFocus, upstreamRows, store.loading, isAdmin, myOwnerId])
+  useEffect(() => {
+    if (scrollToId === null) return
+    const section = document.getElementById(`protection-${scrollToId}`)
+    if (!section) return // not mounted yet; runs again when it is
+    section.scrollIntoView({ block: "start", behavior: "auto" })
+    section.focus({ preventScroll: true })
+    setScrollToId(null)
+  }, [scrollToId, protectionId, collapsed])
 
   const groups: OwnerGroup[] = useMemo(() => {
     const map = new Map<string, OwnerGroup>()
@@ -315,6 +344,10 @@ export function UpstreamsTab() {
                           showProxy={isAdmin}
                           proxyOpen={proxyId === u.id}
                           onToggleProxy={() => setProxyId((v) => (v === u.id ? null : u.id))}
+                          showProtection={g.isMine || isAdmin}
+                          protectionOpen={protectionId === u.id}
+                          onToggleProtection={() => setProtectionId((v) => (v === u.id ? null : u.id))}
+                          pause={protection.pauses.find((p) => p.targetKind === "upstream" && p.targetId === u.id)}
                           onToggleEnabled={() => store.toggleEnabled(u)}
                           onReorder={(d) => announceMove(u, store.reorder(u.id, d, myOwnerId))}
                           onEdit={() => openEdit(u)}
@@ -351,6 +384,11 @@ export function UpstreamsTab() {
                               }}
                               onClose={() => setProxyId(null)}
                             />
+                          </Expand>
+                        ) : null}
+                        {protectionId === u.id && (g.isMine || isAdmin) ? (
+                          <Expand>
+                            <ProtectionSection upstream={u} onSaved={() => { void store.reload() }} />
                           </Expand>
                         ) : null}
                       </div>
