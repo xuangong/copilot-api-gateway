@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-AGENT_VERSION = "1.0.0"
+AGENT_VERSION = "1.0.1"
 
 HOUR = 3600
 DAY = 86400
@@ -598,6 +598,8 @@ def compute_hour(cfg, user_map, nic, hour_epoch, runner):
         rx, tx = row
         points.append(point("nic.tx_bytes", label, {}, tx, "bytes"))
         points.append(point("nic.rx_bytes", label, {}, rx, "bytes"))
+        # Both directions together: for billing schemes that charge inbound as well as outbound traffic.
+        points.append(point("nic.total_bytes", label, {}, rx + tx, "bytes"))
     return points
 
 

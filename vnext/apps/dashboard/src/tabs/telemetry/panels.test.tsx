@@ -271,7 +271,7 @@ test("the chosen metric is explained, and every built-in explanation exists in E
   for (const language of ["en", "zh"] as const) {
     const undo = installDictionary(language)
     try {
-      for (const metric of ["nic.tx_bytes", "nic.rx_bytes", "proxy.sent_bytes", "proxy.recv_bytes", "proxy.connections", "probe.ok", "probe.fail", "probe.latency_ms", "custom.metric"]) {
+      for (const metric of ["nic.total_bytes", "nic.tx_bytes", "nic.rx_bytes", "proxy.sent_bytes", "proxy.recv_bytes", "proxy.connections", "probe.ok", "probe.fail", "probe.latency_ms", "custom.metric"]) {
         const html = renderToStaticMarkup(<ChartPanel metrics={[{ metric, unit: "count", firstHour: "", lastHour: "", dims: [] }]}
           metric={metric} range="24h" groupBy="" series={null} settings={{}} surgeHours={new Set()} dark error="" onMetric={noop} onRange={noop} onGroupBy={noop} />)
         expect(html).not.toContain("dash.tlmAbout")

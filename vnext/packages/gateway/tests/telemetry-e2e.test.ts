@@ -119,7 +119,7 @@ test.skipIf(!python)("the real agent pushes computed hours and the gateway repor
   expect(first.code, first.err).toBe(0)
 
   const metrics = (await get("/metrics")).metrics.map((m: { metric: string }) => m.metric)
-  expect(metrics).toEqual(["nic.rx_bytes", "nic.tx_bytes", "probe.fail", "probe.ok", "proxy.connections", "proxy.recv_bytes", "proxy.sent_bytes"])
+  expect(metrics).toEqual(["nic.rx_bytes", "nic.total_bytes", "nic.tx_bytes", "probe.fail", "probe.ok", "proxy.connections", "proxy.recv_bytes", "proxy.sent_bytes"])
 
   const byDomain = await get(`/series?metric=proxy.sent_bytes&groupBy=domain&top=10&${window}`)
   const values = (key: string) => byDomain.groups.find((g: { key: string }) => g.key === key)?.values
@@ -140,6 +140,9 @@ test.skipIf(!python)("the real agent pushes computed hours and the gateway repor
 
   const nic = await get(`/series?metric=nic.tx_bytes&${window}`)
   expect(nic.total).toEqual([111, 222, 333, 444])
+  const both = await get(`/series?metric=nic.total_bytes&${window}`)
+  const rx = await get(`/series?metric=nic.rx_bytes&${window}`)
+  expect(both.total).toEqual(nic.total.map((tx: number, index: number) => tx + rx.total[index]))
 
   const summary = await get("/summary")
   expect(summary.freshness).toMatchObject({ lastPushAt: "2026-11-16T14:05:00.000Z", stale: false })

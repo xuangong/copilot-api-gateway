@@ -2,7 +2,7 @@
  * The agent release this gateway's install command pins. Kept equal to `tools/trojan-telemetry/VERSION` and to the agent's
  * `AGENT_VERSION` by `tests/telemetry-agent-release-consistency.test.ts` and by the release workflow.
  */
-export const TELEMETRY_AGENT_VERSION = "1.0.0"
+export const TELEMETRY_AGENT_VERSION = "1.0.1"
 export const TELEMETRY_RELEASE_TAG = `telemetry-agent-v${TELEMETRY_AGENT_VERSION}`
 export const TELEMETRY_RELEASE_BASE = `https://github.com/xuangong/copilot-api-gateway/releases/download/${TELEMETRY_RELEASE_TAG}`
 
@@ -12,8 +12,8 @@ export const TELEMETRY_RELEASE_BASE = `https://github.com/xuangong/copilot-api-g
  * VM runs are the bytes this gateway was built with, whatever the release page serves. Update them with any change to those files;
  * `tests/telemetry-agent-release-consistency.test.ts` recomputes both and the release workflow checks the built assets against them.
  */
-export const TELEMETRY_AGENT_SHA256 = "58cb8d2fead2ac749ec1df38023e9d267af582ee0ba89860c122527367ca505f"
-export const TELEMETRY_INSTALLER_SHA256 = "0af10c5b66ef85312d15d6bfc0b9f15342536356f8d64dfd7e8c937efc7a1a40"
+export const TELEMETRY_AGENT_SHA256 = "f1411f88c451138cb8598743d12b41d82806e926f7f84fe3169c943fce29d1b1"
+export const TELEMETRY_INSTALLER_SHA256 = "fb06408f28f13623aeda0bce1b8182de644502543308df9afec7bf4df41e5791"
 
 /** POSIX single quoting: safe for any value, including embedded quotes. */
 export const shellQuote = (value: string): string => `'${value.replace(/'/g, `'\\''`)}'`

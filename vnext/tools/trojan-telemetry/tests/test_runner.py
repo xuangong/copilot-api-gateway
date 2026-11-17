@@ -236,7 +236,8 @@ class CollectTest(RunnerCase):
         self.assertEqual(code, 0)
         points = self.server.requests[0]["body"]["points"]
         self.assertEqual(sorted((p["metric"], p["hour"], p["value"]) for p in points),
-                         [("nic.rx_bytes", "2026-11-16T11:00:00Z", 100), ("nic.tx_bytes", "2026-11-16T11:00:00Z", 200)])
+                         [("nic.rx_bytes", "2026-11-16T11:00:00Z", 100), ("nic.total_bytes", "2026-11-16T11:00:00Z", 300),
+                          ("nic.tx_bytes", "2026-11-16T11:00:00Z", 200)])
         self.assertTrue(all(p["unit"] == "bytes" and "dims" not in p for p in points))
 
     def test_the_outbox_file_exists_before_the_cursor_moves(self):
