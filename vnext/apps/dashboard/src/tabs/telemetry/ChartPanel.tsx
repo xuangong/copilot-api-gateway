@@ -7,12 +7,21 @@ import { Notice } from "../../ui/notice"
 import { SegmentedControl, type SegmentedOption } from "../../ui/segmented-control"
 import { Select } from "../../ui/select"
 import { CheckStrip, LatencyNote } from "./Panels"
-import { chartFromSeries, formatValue, latencyCheckMetric, metricDescriptionKey, type RangeId } from "./telemetry-format"
+import { chartFromSeries, formatValue, latencyCheckMetric, metricDescriptionKey, windowTotal, type ChartRange } from "./telemetry-format"
 
 export interface ChartPanelProps {
   metrics: TelemetryMetricInfo[]
   metric: string
-  range: RangeId
+  range: ChartRange
+  /** The custom period (UTC dates, both included), used when `range` is "custom". */
+  customStart?: string
+  customEnd?: string
+  /** Today's UTC date, the latest end date. */
+  today?: string
+  /** An already translated message when the custom period cannot be shown. */
+  rangeError?: string
+  /** The window being shown, e.g. "11-01 00:00 – 11-17 06:00 UTC", for the total line. */
+  windowLabel?: string
   groupBy: string
   series: TelemetrySeries | null
   /** When the series was fetched (ms): check hours are judged against this, not the render time. Defaults to now. */
@@ -23,7 +32,8 @@ export interface ChartPanelProps {
   /** An already translated message. */
   error: string
   onMetric: (metric: string) => void
-  onRange: (range: RangeId) => void
+  onRange: (range: ChartRange) => void
+  onCustom?: (start: string, end: string) => void
   onGroupBy: (groupBy: string) => void
 }
 
@@ -33,9 +43,12 @@ export function ChartPanel(props: ChartPanelProps) {
   const { metrics, metric, series, settings } = props
   const isCheck = (settings.checkMetrics ?? []).includes(metric)
   const dims = metrics.find(info => info.metric === metric)?.dims ?? []
-  const ranges: Array<SegmentedOption<RangeId>> = [
+  const ranges: Array<SegmentedOption<ChartRange>> = [
     { value: "24h", label: t("dash.tlmRange24h") }, { value: "7d", label: t("dash.tlmRange7d") }, { value: "30d", label: t("dash.tlmRange30d") },
+    { value: "custom", label: t("dash.tlmRangeCustom") },
   ]
+  const startId = useId()
+  const endId = useId()
   // Stable inputs keep the chart from being rebuilt (and its animation replayed) by unrelated re-renders.
   const { groupBy, dark, surgeHours } = props
   const chart = useMemo(() => series && !isCheck ? chartFromSeries({
@@ -59,10 +72,21 @@ export function ChartPanel(props: ChartPanelProps) {
         {isCheck ? null : <Select value={props.groupBy} ariaLabel={t("dash.tlmGroupBy")} size="sm" onChange={props.onGroupBy}
           options={[{ value: "", label: t("dash.tlmGroupNone") }, ...dims.map(dim => ({ value: dim, label: dim }))]} />}
         <SegmentedControl options={ranges} value={props.range} onChange={props.onRange} ariaLabel={t("dash.tlmRangeLabel")} size="sm" />
+        {props.range === "custom" ? <div className="flex flex-wrap items-center gap-2">
+          <label htmlFor={startId} className="text-xs font-medium text-fg-muted">{t("dash.tlmStartDate")}</label>
+          <input id={startId} type="date" value={props.customStart ?? ""} max={props.today} onChange={event => props.onCustom?.(event.target.value, props.customEnd ?? "")} />
+          <label htmlFor={endId} className="text-xs font-medium text-fg-muted">{t("dash.tlmEndDate")}</label>
+          <input id={endId} type="date" value={props.customEnd ?? ""} max={props.today} onChange={event => props.onCustom?.(props.customStart ?? "", event.target.value)} />
+          <span className="text-xs text-fg-subtle">{t("dash.tlmUtcDates")}</span>
+        </div> : null}
       </div>
+      {props.rangeError ? <Notice tone="warn">{props.rangeError}</Notice> : null}
+      {series !== null && !isCheck && !props.rangeError && windowTotal(series) !== null ? <p className="text-body text-fg-muted" data-testid="tlm-window-total">
+        {t("dash.tlmWindowTotal", { range: props.windowLabel ?? "" })}: <b className="font-medium tabular-nums text-fg">{formatValue(windowTotal(series)!, series.unit)}</b>
+      </p> : null}
       {metricDescriptionKey(metric) ? <p className="text-xs text-fg-muted">{t(metricDescriptionKey(metric)!)}</p> : null}
       <LatencyNote metric={metric} check={latencyCheckMetric(metric, settings.checkMetrics ?? [])} />
-      {series === null ? (props.error ? null : <p className="text-body text-fg-subtle">{t("dash.loadingShort")}</p>)
+      {props.rangeError ? null : series === null ? (props.error ? null : <p className="text-body text-fg-subtle">{t("dash.loadingShort")}</p>)
         : isCheck ? <CheckStrip hours={series.hours} statuses={series.statuses ?? series.hours.map(() => "not monitored" as const)} stages={series.stages ?? []} nowMs={props.fetchedAt} />
         : chart ? <TimeSeriesChart labels={chart.labels} datasets={chart.datasets} height={280} yTickFormat={formatY} tooltipFormat={formatY} yTitle={yTitle} /> : null}
       {series !== null && (isCheck || chart) ? <p className="text-xs text-fg-subtle">{t("dash.tlmUtcNote")}</p> : null}

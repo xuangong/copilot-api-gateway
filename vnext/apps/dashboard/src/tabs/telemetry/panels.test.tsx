@@ -280,3 +280,21 @@ test("the chosen metric is explained, and every built-in explanation exists in E
     } finally { undo() }
   }
 })
+
+test("the traffic chart shows the total for the chosen window, date fields for a custom period, and a notice instead of a chart for a bad period", () => {
+  const restore = installDictionary("en")
+  try {
+    const series = { metric: "nic.tx_bytes", unit: "bytes" as const, from: "2026-11-01T00:00:00Z", to: "2026-11-01T02:00:00Z", hours: ["2026-11-01T00:00:00Z", "2026-11-01T01:00:00Z"], total: [1e9, 2.5e9], groups: [] }
+    const metrics = [{ metric: "nic.tx_bytes", unit: "bytes" as const, firstHour: "", lastHour: "", dims: [] }]
+    const html = renderToStaticMarkup(<ChartPanel metrics={metrics} metric="nic.tx_bytes" range="custom" customStart="2026-11-01" customEnd="2026-11-01" today="2026-11-17"
+      windowLabel="11-01 00:00 – 11-02 00:00 UTC" series={series} groupBy="" settings={{}} surgeHours={new Set()} dark error="" onMetric={noop} onRange={noop} onGroupBy={noop} />)
+    expect(html).toContain('type="date"')
+    expect(html).toContain("Total for 11-01 00:00 – 11-02 00:00 UTC")
+    expect(html).toContain("3.5 GB")
+    const bad = renderToStaticMarkup(<ChartPanel metrics={metrics} metric="nic.tx_bytes" range="custom" customStart="2026-08-01" customEnd="2026-11-17" rangeError="Choose at most 90 days."
+      series={null} groupBy="" settings={{}} surgeHours={new Set()} dark error="" onMetric={noop} onRange={noop} onGroupBy={noop} />)
+    expect(bad).toContain("Choose at most 90 days.")
+    expect(bad).not.toContain("Total for")
+    expect(bad).not.toContain("dash.loadingShort")
+  } finally { restore() }
+})

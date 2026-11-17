@@ -14,7 +14,7 @@ import { BudgetPanel, FlaggedPanel, FreshnessPanel, TopPanel } from "./Panels"
 import { SettingsPanel } from "./SettingsPanel"
 import { IssuedKeyPanel, type CopyTarget, type IssuedKeyView } from "./SourceList"
 import { telemetryErrorKey } from "./telemetry-errors"
-import { availabilityGroups, defaultMetric, isAvailabilityMetric, rangeWindow, type RangeId } from "./telemetry-format"
+import { availabilityGroups, customWindow, defaultCustomDates, defaultMetric, hourShort, isAvailabilityMetric, rangeWindow, utcDate, type ChartRange, type RangeId } from "./telemetry-format"
 import { loadAvailability, loadSeries, type AvailabilitySeries } from "./telemetry-series"
 import { startPolling } from "./telemetry-sources"
 import { editLimit, formToSettings, limitState, reconcileLimit, settingsToForm, shouldResetForm, type FormSource, type SettingsForm, type TextField } from "./telemetry-settings-form"
@@ -30,7 +30,8 @@ export function SourcePage({ source, onBack, onSourceChanged, onDeleted }: {
   const [summary, setSummary] = useState<TelemetrySummary | null>(null)
   const [metrics, setMetrics] = useState<TelemetryMetricInfo[]>([])
   const [metric, setMetric] = useState("")
-  const [range, setRange] = useState<RangeId>("24h")
+  const [range, setRange] = useState<ChartRange>("24h")
+  const [custom, setCustom] = useState(() => defaultCustomDates(Date.now()))
   const [groupBy, setGroupBy] = useState("")
   const [series, setSeries] = useState<TelemetrySeries | null>(null)
   const [fetchedAt, setFetchedAt] = useState(() => Date.now())
@@ -112,18 +113,20 @@ export function SourcePage({ source, onBack, onSourceChanged, onDeleted }: {
     if (metric === "") return
     let live = true
     const started = Date.now()
-    const span = rangeWindow(range, started)
+    const chosen = range === "custom" ? customWindow(custom.start, custom.end, started) : rangeWindow(range, started)
     setSeries(null)
-    loadSeries(telemetrySeries, source.id, { metric, ...span, groupBy, checkMetrics: source.settings.checkMetrics ?? [] })
-      .then(next => { if (live) { setSeries(next); setFetchedAt(started); setSeriesError("") } }).catch(() => { if (live) setSeriesError(t("dash.tlmLoadError")) })
     setTop(null)
     setTopFailed(false)
+    if ("error" in chosen) return
+    const span = chosen
+    loadSeries(telemetrySeries, source.id, { metric, ...span, groupBy, checkMetrics: source.settings.checkMetrics ?? [] })
+      .then(next => { if (live) { setSeries(next); setFetchedAt(started); setSeriesError("") } }).catch(() => { if (live) setSeriesError(t("dash.tlmLoadError")) })
     if (groupBy !== "") {
       telemetryTop(source.id, { metric, ...span, groupBy, limit: 20 })
         .then(next => { if (live) setTop(next) }).catch(() => { if (live) setTopFailed(true) })
     }
     return () => { live = false }
-  }, [source.id, source.settings.checkMetrics, metric, range, groupBy, tick, t])
+  }, [source.id, source.settings.checkMetrics, metric, range, custom, groupBy, tick, t])
 
   // Availability checks have their own panel and range; the traffic chart lists every other metric.
   const checkMetrics = source.settings.checkMetrics
@@ -139,6 +142,11 @@ export function SourcePage({ source, onBack, onSourceChanged, onDeleted }: {
       .catch(() => { if (live) setAvailError(t("dash.tlmLoadError")) })
     return () => { live = false }
   }, [source.id, groups, availRange, tick, t])
+
+  // The custom period's problem, if any, and the label of the window the traffic chart shows.
+  const rangeWindowNow = range === "custom" ? customWindow(custom.start, custom.end, fetchedAt) : rangeWindow(range, fetchedAt)
+  const rangeError = "error" in rangeWindowNow ? t(rangeWindowNow.error === "too_long" ? "dash.tlmRangeTooLong" : rangeWindowNow.error === "order" ? "dash.tlmRangeOrder" : "dash.tlmRangeInvalid") : ""
+  const windowLabel = "error" in rangeWindowNow ? "" : `${hourShort(rangeWindowNow.from)} – ${hourShort(rangeWindowNow.to)} UTC`
 
   // A dim that the newly chosen metric lacks cannot stay selected.
   const dims = useMemo(() => metrics.find(info => info.metric === metric)?.dims ?? [], [metrics, metric])
@@ -196,7 +204,8 @@ export function SourcePage({ source, onBack, onSourceChanged, onDeleted }: {
     <FreshnessPanel summary={summary} failed={summaryError !== ""} />
     <BudgetPanel budget={summary?.budget ?? null} />
     {groups.length > 0 ? <AvailabilityPanel data={availability} range={availRange} fetchedAt={availFetchedAt} dark={dark} error={availError} onRange={setAvailRange} /> : null}
-    <ChartPanel metrics={trafficMetrics} metric={metric} range={range} groupBy={groupBy} series={series} fetchedAt={fetchedAt} settings={source.settings} surgeHours={surgeHours} dark={dark}
+    <ChartPanel metrics={trafficMetrics} metric={metric} range={range} customStart={custom.start} customEnd={custom.end} today={utcDate(Date.now())}
+      rangeError={rangeError} windowLabel={windowLabel} onCustom={(start, end) => setCustom({ start, end })} groupBy={groupBy} series={series} fetchedAt={fetchedAt} settings={source.settings} surgeHours={surgeHours} dark={dark}
       error={seriesError} onMetric={setMetric} onRange={setRange} onGroupBy={setGroupBy} />
     <TopPanel top={top} settings={source.settings} groupBy={groupBy} failed={topFailed} />
     <FlaggedPanel summary={summary} settings={source.settings} units={units} failed={summaryError !== ""} />

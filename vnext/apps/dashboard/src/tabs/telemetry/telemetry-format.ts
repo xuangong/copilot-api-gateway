@@ -101,6 +101,40 @@ export function rangeWindow(range: RangeId, nowMs: number): { from: string; to: 
   return { from: iso(to - RANGE_HOURS[range] * 3_600_000), to: iso(to) }
 }
 
+/** The traffic chart's range: a preset, or whole UTC days the owner picks. */
+export type ChartRange = RangeId | "custom"
+export const MAX_CUSTOM_DAYS = 90
+const DAY_MS = 86_400_000
+const DATE = /^\d{4}-\d{2}-\d{2}$/
+
+/** Today's UTC date as YYYY-MM-DD. */
+export const utcDate = (ms: number): string => new Date(ms).toISOString().slice(0, 10)
+/** The default custom period: the first of this UTC month through today. */
+export const defaultCustomDates = (nowMs: number): { start: string; end: string } => ({ start: `${utcDate(nowMs).slice(0, 8)}01`, end: utcDate(nowMs) })
+
+/**
+ * Whole UTC days from `start` through `end`, both included. The window stops at the end of the current hour, so
+ * today counts up to now. Errors: a missing or malformed date, end before start, a start in the future, or more than 90 days.
+ */
+export function customWindow(start: string, end: string, nowMs: number): { from: string; to: string } | { error: "invalid" | "order" | "too_long" } {
+  if (!DATE.test(start) || !DATE.test(end)) return { error: "invalid" }
+  const from = Date.parse(`${start}T00:00:00Z`)
+  const endDay = Date.parse(`${end}T00:00:00Z`)
+  if (!Number.isFinite(from) || !Number.isFinite(endDay)) return { error: "invalid" }
+  if (endDay < from) return { error: "order" }
+  if ((endDay - from) / DAY_MS + 1 > MAX_CUSTOM_DAYS) return { error: "too_long" }
+  const nowEnd = Math.floor(nowMs / 3_600_000) * 3_600_000 + 3_600_000
+  const to = Math.min(endDay + DAY_MS, nowEnd)
+  if (to <= from) return { error: "order" }
+  return { from: iso(from), to: iso(to) }
+}
+
+/** The sum over the window, skipping gaps; null for `ms` metrics, whose sum means nothing. */
+export function windowTotal(series: TelemetrySeries): number | null {
+  if (series.unit === "ms") return null
+  return series.total.reduce((sum, value) => Number.isFinite(value) ? sum + value : sum, 0)
+}
+
 export function defaultMetric(metrics: readonly TelemetryMetricInfo[], settings: TelemetrySettings): string {
   if (settings.budgetMetric && metrics.some(info => info.metric === settings.budgetMetric)) return settings.budgetMetric
   const checks = settings.checkMetrics ?? []

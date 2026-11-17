@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test"
 import type { TelemetryBudget, TelemetrySeries, TelemetrySummary } from "../../api/telemetry"
 import {
-  availabilityGroups, budgetView, chartFromSeries, defaultMetric, isAvailabilityMetric, dimsLabel, formatChange, formatShare, formatValue, freshnessNotices, groupLabel, hourRange, hourShort,
+  availabilityGroups, budgetView, customWindow, defaultCustomDates, windowTotal, chartFromSeries, defaultMetric, isAvailabilityMetric, dimsLabel, formatChange, formatShare, formatValue, freshnessNotices, groupLabel, hourRange, hourShort,
   displayStatus, formatUtc, latencyCheckMetric, maskUnpassed, rangeWindow, statusTone, visibleGroups,
 } from "./telemetry-format"
 
@@ -176,4 +176,23 @@ test("availability metrics are the check metrics and their namespace, and the tr
   expect(availabilityGroups([info("probe.ok"), info("probe.latency_ms")], checks)).toEqual([{ check: "probe.ok", latency: "probe.latency_ms" }])
   expect(availabilityGroups([info("probe.ok")], checks)).toEqual([{ check: "probe.ok", latency: null }])
   expect(availabilityGroups([info("proxy.connections")], checks)).toEqual([])
+})
+
+test("a custom period is whole UTC days, both included, ends at the current hour and is at most 90 days", () => {
+  const now = Date.parse("2026-11-17T05:30:00Z")
+  expect(defaultCustomDates(now)).toEqual({ start: "2026-11-01", end: "2026-11-17" })
+  expect(customWindow("2026-11-01", "2026-11-10", now)).toEqual({ from: "2026-11-01T00:00:00Z", to: "2026-11-11T00:00:00Z" })
+  expect(customWindow("2026-11-10", "2026-11-17", now)).toEqual({ from: "2026-11-10T00:00:00Z", to: "2026-11-17T06:00:00Z" })
+  expect(customWindow("2026-11-17", "2026-11-17", now)).toEqual({ from: "2026-11-17T00:00:00Z", to: "2026-11-17T06:00:00Z" })
+  expect(customWindow("2026-11-10", "2026-11-09", now)).toEqual({ error: "order" })
+  expect(customWindow("2026-11-18", "2026-11-20", now)).toEqual({ error: "order" })
+  expect(customWindow("", "2026-11-09", now)).toEqual({ error: "invalid" })
+  expect(customWindow("2026-08-20", "2026-11-17", now)).toEqual({ from: "2026-08-20T00:00:00Z", to: "2026-11-17T06:00:00Z" })
+  expect(customWindow("2026-08-19", "2026-11-17", now)).toEqual({ error: "too_long" })
+})
+
+test("the window total sums the hours, skips gaps and is not given for milliseconds", () => {
+  const series = (unit: "bytes" | "ms", total: number[]) => ({ metric: "m", unit, from: "", to: "", hours: [], total, groups: [] })
+  expect(windowTotal(series("bytes", [1, 2, Number.NaN, 3]))).toBe(6)
+  expect(windowTotal(series("ms", [1, 2]))).toBeNull()
 })
