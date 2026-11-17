@@ -9,6 +9,8 @@ export interface SelectOption {
   label: string
   /** A pill after the label, e.g. "shared" on a shared API key. */
   badge?: string
+  /** A muted second line under the label in the open list (not shown on the closed trigger). */
+  description?: string
 }
 
 // Radix reserves the empty string for "no value", but our filters use "" for "all".
@@ -78,12 +80,15 @@ export function Select({ value, options, onChange, id, labelledBy, ariaLabel, de
                   <Check className="size-3.5" aria-hidden="true" />
                 </RadixSelect.ItemIndicator>
                 {/* The badge sits inside ItemText so it is part of the option's accessible name; textValue keeps typeahead on the label. */}
-                <RadixSelect.ItemText>
-                  <span className="flex min-w-0 items-center gap-1.5">
-                    <span className="truncate">{option.label}</span>
-                    {option.badge ? <>{" "}<Badge>{option.badge}</Badge></> : null}
-                  </span>
-                </RadixSelect.ItemText>
+                <span className="flex min-w-0 flex-col">
+                  <RadixSelect.ItemText>
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <span className="truncate">{option.label}</span>
+                      {option.badge ? <>{" "}<Badge>{option.badge}</Badge></> : null}
+                    </span>
+                  </RadixSelect.ItemText>
+                  {option.description ? <span className="text-xs text-fg-subtle">{option.description}</span> : null}
+                </span>
               </RadixSelect.Item>
             ))}
           </RadixSelect.Viewport>

@@ -174,3 +174,8 @@ export function chartFromSeries(input: ChartInput): { labels: string[]; datasets
   lines.push({ label: input.totalLabel, data: series.total, color: "#6b7280", dashed: true, fill: false, ...flagged })
   return { labels, datasets: lines }
 }
+
+/** Metrics with a built-in explanation (the trojan agent's); other sources' metrics have none. */
+const DESCRIBED_METRICS = new Set(["nic.tx_bytes", "nic.rx_bytes", "proxy.sent_bytes", "proxy.recv_bytes", "proxy.connections", "probe.ok", "probe.fail", "probe.latency_ms"])
+/** The i18n key explaining why a metric matters, or null when it has none. */
+export const metricDescriptionKey = (metric: string): string | null => DESCRIBED_METRICS.has(metric) ? `dash.tlmAbout.${metric}` : null

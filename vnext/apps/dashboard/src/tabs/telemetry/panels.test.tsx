@@ -260,3 +260,23 @@ test("the availability panel shows one marker per hour with the failing stage an
     expect(html).not.toContain("%")
   } finally { restore() }
 })
+
+test("the chosen metric is explained, and every built-in explanation exists in English and Chinese", () => {
+  const restore = installDictionary("en")
+  try {
+    const html = renderToStaticMarkup(<ChartPanel metrics={[{ metric: "nic.tx_bytes", unit: "bytes", firstHour: "", lastHour: "", dims: [] }]}
+      metric="nic.tx_bytes" range="24h" groupBy="" series={null} settings={{}} surgeHours={new Set()} dark error="" onMetric={noop} onRange={noop} onGroupBy={noop} />)
+    expect(html).toContain("Azure bills outbound traffic")
+  } finally { restore() }
+  for (const language of ["en", "zh"] as const) {
+    const undo = installDictionary(language)
+    try {
+      for (const metric of ["nic.tx_bytes", "nic.rx_bytes", "proxy.sent_bytes", "proxy.recv_bytes", "proxy.connections", "probe.ok", "probe.fail", "probe.latency_ms", "custom.metric"]) {
+        const html = renderToStaticMarkup(<ChartPanel metrics={[{ metric, unit: "count", firstHour: "", lastHour: "", dims: [] }]}
+          metric={metric} range="24h" groupBy="" series={null} settings={{}} surgeHours={new Set()} dark error="" onMetric={noop} onRange={noop} onGroupBy={noop} />)
+        expect(html).not.toContain("dash.tlmAbout")
+        if (metric !== "custom.metric") expect(html).toMatch(/<p class="text-xs text-fg-muted">[^<]{20,}<\/p>/)
+      }
+    } finally { undo() }
+  }
+})

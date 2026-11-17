@@ -7,7 +7,7 @@ import { Notice } from "../../ui/notice"
 import { SegmentedControl, type SegmentedOption } from "../../ui/segmented-control"
 import { Select } from "../../ui/select"
 import { CheckStrip, LatencyNote } from "./Panels"
-import { chartFromSeries, formatValue, latencyCheckMetric, type RangeId } from "./telemetry-format"
+import { chartFromSeries, formatValue, latencyCheckMetric, metricDescriptionKey, type RangeId } from "./telemetry-format"
 
 export interface ChartPanelProps {
   metrics: TelemetryMetricInfo[]
@@ -52,11 +52,15 @@ export function ChartPanel(props: ChartPanelProps) {
     {metrics.length === 0 ? (props.error ? null : <p className="text-body text-fg-subtle">{t("dash.tlmNoMetrics")}</p>) : <>
       <div className="flex flex-wrap items-center gap-2">
         <Select value={metric} ariaLabel={t("dash.tlmMetric")} size="sm" onChange={props.onMetric}
-          options={metrics.map(info => ({ value: info.metric, label: unitName(info.unit) ? `${info.metric} (${unitName(info.unit)})` : info.metric }))} />
+          options={metrics.map(info => {
+            const about = metricDescriptionKey(info.metric)
+            return { value: info.metric, label: unitName(info.unit) ? `${info.metric} (${unitName(info.unit)})` : info.metric, ...(about ? { description: t(about) } : {}) }
+          })} />
         {isCheck ? null : <Select value={props.groupBy} ariaLabel={t("dash.tlmGroupBy")} size="sm" onChange={props.onGroupBy}
           options={[{ value: "", label: t("dash.tlmGroupNone") }, ...dims.map(dim => ({ value: dim, label: dim }))]} />}
         <SegmentedControl options={ranges} value={props.range} onChange={props.onRange} ariaLabel={t("dash.tlmRangeLabel")} size="sm" />
       </div>
+      {metricDescriptionKey(metric) ? <p className="text-xs text-fg-muted">{t(metricDescriptionKey(metric)!)}</p> : null}
       <LatencyNote metric={metric} check={latencyCheckMetric(metric, settings.checkMetrics ?? [])} />
       {series === null ? (props.error ? null : <p className="text-body text-fg-subtle">{t("dash.loadingShort")}</p>)
         : isCheck ? <CheckStrip hours={series.hours} statuses={series.statuses ?? series.hours.map(() => "not monitored" as const)} stages={series.stages ?? []} nowMs={props.fetchedAt} />
