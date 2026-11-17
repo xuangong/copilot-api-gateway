@@ -53,6 +53,8 @@ import type { SdfProviderConfig as PkgSdfConfig } from '@vibe-llm/provider-sdf'
 
 import { serializeUpstream } from './public-dto.ts'
 import { SYNCED_LOCKED_FIELDS, isSynced, syncOriginFor, syncedReadOnlyResponse } from '../sync/read-only.ts'
+import { normalizeProtection, resolveProtection } from '../../protection/settings.ts'
+import type { ProtectionSettings } from '../../repo/protection.ts'
 import { codexQuotaRouter } from './codex-quota-routes.ts'
 import { codexCredentialsRouter } from './codex-credentials-routes.ts'
 import { UpstreamGoneError, UpstreamReplacedError, UpstreamContentionError } from '@vibe-core/upstream-repo'
@@ -89,6 +91,7 @@ const upstreamBody = z.object({
   proxyFallbackList: z
     .array(z.object({ id: z.string(), colos: z.array(z.string()).optional() }))
     .optional(),
+  protection: z.unknown().optional(),
 })
 
 
@@ -113,6 +116,18 @@ function jsonError(message: string, status = 400) {
     status,
     headers: { 'Content-Type': 'application/json' },
   })
+}
+
+/** The protection tables may be missing (code deployed before the migration ran): reads fall back to defaults, writes answer 503. */
+function protectionUnavailable(): Response {
+  return new Response(JSON.stringify({ error: 'upstream protection is unavailable: run the pending database migration', code: 'protection_unavailable' }), {
+    status: 503,
+    headers: { 'Content-Type': 'application/json' },
+  })
+}
+
+function warnProtection(evt: string, error: unknown): void {
+  console.warn(JSON.stringify({ evt, error: error instanceof Error ? error.name : 'unknown' }))
 }
 
 function sanitizeIdPart(s: string): string {
@@ -410,7 +425,11 @@ upstreamsRouter.get('/', async (c) => {
   const includeDisabled = url.searchParams.get('includeDisabled') === '1'
   const upstreams = await getRepo().upstreams.list({ ownerId, includeDisabled })
   const syncOrigin = await syncOriginFor(upstreams)
-  return c.json({ upstreams: upstreams.map((upstream) => serializeUpstream(upstream, { syncOrigin })) })
+  let settings = new Map<string, Record<string, unknown>>()
+  try {
+    settings = await getRepo().protection.getSettingsMany(upstreams.map((upstream) => upstream.id))
+  } catch (err) { warnProtection('protection_settings_read_failed', err) }
+  return c.json({ upstreams: upstreams.map((upstream) => serializeUpstream(upstream, { syncOrigin, protection: resolveProtection(settings.get(upstream.id)) })) })
 })
 
 upstreamsRouter.post('/', zValidator('json', upstreamBody), async (c) => {
@@ -446,10 +465,13 @@ upstreamsRouter.post('/', zValidator('json', upstreamBody), async (c) => {
       createdAt: now,
       updatedAt: now,
     }))
+    // Validated before anything is written (a bad `protection` creates nothing), then stored in the side table after the row.
+    const protection = body.protection === undefined ? undefined : input(() => normalizeProtection(body.protection))
     if (isSynced(await getRepo().upstreams.getById(upstream.id as UpstreamId))) return syncedReadOnlyResponse()
     await getRepo().upstreams.save(upstream)
     await invalidateUpstreamCaches(null, upstream)
-    return new Response(JSON.stringify({ upstream: serializeUpstream(upstream) }), {
+    if (protection) await getRepo().protection.setSettings(upstream.id, protection, Date.now())
+    return new Response(JSON.stringify({ upstream: serializeUpstream(upstream, protection ? { protection } : {}) }), {
       status: 201,
       headers: { 'Content-Type': 'application/json' },
     })
@@ -484,6 +506,15 @@ upstreamsRouter.patch('/:id', zValidator('json', upstreamBody), async (c) => {
     if (existing.provider === 'loki' && body.ownerId !== undefined && body.ownerId !== existing.ownerId) {
       return jsonError('Loki ownership cannot be transferred; create a new paired upstream', 400)
     }
+    // Validated before anything is written, so a bad `protection` leaves the upstream untouched. Missing keys keep their stored value.
+    let protection: ProtectionSettings | undefined
+    if (body.protection !== undefined) {
+      let stored: Record<string, unknown> | null = null
+      let unavailable = false
+      try { stored = await getRepo().protection.getSettings(id) } catch (err) { unavailable = true; warnProtection('protection_settings_read_failed', err) }
+      protection = input(() => normalizeProtection(body.protection, resolveProtection(stored)))
+      if (unavailable) return protectionUnavailable()
+    }
     const next = await getRepo().upstreams.patchMetadata(existing, current => input(() => {
       const name = typeof body.name === 'string' ? body.name.trim() : current.name
       if (!name) throw new Error('name required')
@@ -499,7 +530,22 @@ upstreamsRouter.patch('/:id', zValidator('json', upstreamBody), async (c) => {
       }
     }))
     await invalidateUpstreamCaches(existing, next)
-    return c.json({ upstream: serializeUpstream(next, { syncOrigin: await syncOriginFor([next]) }) })
+    // Not atomic with patchMetadata (separate table, possibly separate D1 statements): the metadata is written first, so a failure here
+    // leaves the old protection settings in force and the client may retry the PATCH (validation already passed above).
+    if (protection) {
+      try { await getRepo().protection.setSettings(id, protection, Date.now()) } catch (err) {
+        warnProtection('protection_settings_write_failed', err)
+        return protectionUnavailable()
+      }
+    }
+    let effective = protection
+    if (!effective) {
+      try { effective = resolveProtection(await getRepo().protection.getSettings(id)) } catch (err) {
+        warnProtection('protection_settings_read_failed', err)
+        effective = resolveProtection(null)
+      }
+    }
+    return c.json({ upstream: serializeUpstream(next, { syncOrigin: await syncOriginFor([next]), protection: effective }) })
   } catch (err) {
     return writeError(err)
   }

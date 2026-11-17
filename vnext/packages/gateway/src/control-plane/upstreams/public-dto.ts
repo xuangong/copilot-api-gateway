@@ -7,6 +7,7 @@ import { substrateTokenExpiry } from "@vibe-llm/provider-sdf"
 import { isSynced } from "../sync/read-only.ts"
 import { isSyncableProvider } from "../../data-plane/providers/registry.ts"
 import { isSyncableWireUpstream } from "../../sync/protocol.ts"
+import type { ProtectionSettings } from "../../repo/protection.ts"
 import { readLokiState, publicLokiStatus } from "@vibe-llm/provider-loki"
 
 export type PublicUpstream = Pick<UpstreamRecord<unknown>,
@@ -21,6 +22,8 @@ export type PublicUpstream = Pick<UpstreamRecord<unknown>,
     syncBlocked?: "provider" | "synced" | "wire"
     /** Present on rows created by a sync source; `origin` is null when the source row is gone. */
     syncedFrom?: { origin: string | null }
+    /** Upstream error protection settings, resolved with defaults. */
+    protection?: ProtectionSettings
   }
 
 export interface PublicCodexCredentialStatus {
@@ -138,7 +141,7 @@ export function publicUpstreamConfig(upstream: UpstreamRecord<unknown>): Record<
   return out
 }
 
-export function serializeUpstream(upstream: UpstreamRecord<unknown>, options: { syncOrigin?: string | null } = {}): PublicUpstream {
+export function serializeUpstream(upstream: UpstreamRecord<unknown>, options: { syncOrigin?: string | null; protection?: ProtectionSettings } = {}): PublicUpstream {
   const dto: PublicUpstream = {
     id: upstream.id, ownerId: upstream.ownerId, provider: upstream.provider, name: upstream.name,
     enabled: upstream.enabled, sortOrder: upstream.sortOrder, config: publicUpstreamConfig(upstream),
@@ -163,5 +166,6 @@ export function serializeUpstream(upstream: UpstreamRecord<unknown>, options: { 
   dto.syncable = blocked === undefined
   if (blocked) dto.syncBlocked = blocked
   if (isSynced(upstream)) dto.syncedFrom = { origin: options.syncOrigin ?? null }
+  if (options.protection) dto.protection = options.protection
   return dto
 }

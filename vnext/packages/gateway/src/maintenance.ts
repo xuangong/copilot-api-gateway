@@ -3,6 +3,7 @@ import { getRepo } from "./repo/index.ts"
 import { sweepCatalogs } from "./catalog-maintenance.ts"
 import type { FileProvider, SqlDatabase } from "@vibe-core/platform"
 import { collectDumpFiles, sweepDumpRecords } from "./repo/dump-maintenance.ts"
+import { PROTECTION_PURGE_CHUNK } from "./repo/protection.ts"
 import { TELEMETRY_PURGE_CHUNK } from "./repo/telemetry.ts"
 import { sweepResponsesSnapshots } from "./responses-maintenance.ts"
 
@@ -19,7 +20,18 @@ export const TELEMETRY_RETENTION_MINUTE = 17
 export const isTelemetryRetentionDue = (now: number): boolean => new Date(now).getUTCMinutes() === TELEMETRY_RETENTION_MINUTE
 
 let orphanBacklog = false
-export const resetTelemetryRetentionState = (): void => { orphanBacklog = false }
+let protectionOrphanBacklog = false
+export const resetTelemetryRetentionState = (): void => { orphanBacklog = false; protectionOrphanBacklog = false }
+
+/**
+ * Protection retention: the date-based deletes run on every sweep; the two orphan scans (samples and settings of vanished upstreams,
+ * anti-joins against `upstreams`) run hourly at the telemetry orphan minute, and again while the previous scan used up a full chunk.
+ */
+async function sweepProtection(now: number): Promise<void> {
+  const orphans = protectionOrphanBacklog || isTelemetryRetentionDue(now)
+  const result = await getRepo().protection.deleteExpired(now, { orphans })
+  protectionOrphanBacklog = orphans && (result.samples >= PROTECTION_PURGE_CHUNK || result.settings >= PROTECTION_PURGE_CHUNK)
+}
 
 async function sweepTelemetry(now: number): Promise<void> {
   const orphans = orphanBacklog || isTelemetryRetentionDue(now)
@@ -40,6 +52,9 @@ export async function sweepMaintenance(db: SqlDatabase, files: FileProvider, now
     ["dump_expiration", () => sweepDumpRecords(db, files, now)],
     ["dump_file_collection", () => collectDumpFiles(db, files, now)],
     ["telemetry_retention", () => sweepTelemetry(now)],
+    // One idle sweep is about three statements (stamp, minutes, pauses), five in an orphan-scan hour. A backlog is capped at 41 statements
+    // (the stamp plus at most 10 chunked DELETEs on each of four tables) and continues on the next sweep.
+    ["protection_retention", () => sweepProtection(now)],
   ] as const) {
     try { await run() } catch { console.warn(JSON.stringify({ evt: "maintenance_failed", operation })) }
   }

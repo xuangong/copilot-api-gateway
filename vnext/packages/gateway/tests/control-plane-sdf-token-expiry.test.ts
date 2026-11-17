@@ -36,6 +36,8 @@ function inMemoryRepo() {
   return {
     upstreams,
     repo: {
+      // The list route reads protection settings next to the upstreams.
+      protection: { getSettingsMany: async () => new Map(), getSettings: async () => null, setSettings: async () => {} },
       upstreams: {
         list: async () => [...upstreams.values()],
         getById: async (id: string) => upstreams.get(id) ?? null,

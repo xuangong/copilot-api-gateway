@@ -35,6 +35,7 @@ import { controlPlaneAuthMiddleware } from './auth/control-plane-auth.ts'
 import { lokiManagementRouter } from './loki/routes.ts'
 import { syncManagementRouter } from './sync/routes.ts'
 import { telemetryManagementRouter } from './telemetry/routes.ts'
+import { protectionRouter, upstreamProtectionRouter } from './protection/routes.ts'
 
 export const controlPlane = new Hono<{ Bindings: Env }>()
 
@@ -45,6 +46,8 @@ controlPlane.route('/api/telemetry', telemetryManagementRouter)
 
 controlPlane.route('/api', capabilitiesRouter)
 controlPlane.route('/api/upstreams', upstreamsRouter)
+controlPlane.route('/api/protection', protectionRouter)
+controlPlane.route('/api/upstreams', upstreamProtectionRouter)
 controlPlane.route('/api', upstreamMiscRouter)
 controlPlane.route('/api/keys', apiKeysRouter)
 controlPlane.route('/api/keys', setupRouter)
