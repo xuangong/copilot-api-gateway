@@ -12,6 +12,7 @@ import { sessionAuthMiddleware } from './control-plane/auth/session-auth.ts'
 import { setupExchangeRouter } from './control-plane/setup/routes.ts'
 import { lokiSyncRouter } from './control-plane/loki/sync.ts'
 import { syncSnapshotRouter } from './control-plane/sync/snapshot.ts'
+import { telemetryPushRouter } from './control-plane/telemetry/push.ts'
 import { dmrRouter } from './data-plane/dmr/routes.ts'
 import { isDmrCompatEnabled } from './data-plane/dmr/config.ts'
 
@@ -88,6 +89,7 @@ app.route('/', agentRemoteRouter)
 app.route('/', setupExchangeRouter)
 app.route('/api/loki', lokiSyncRouter)
 app.route('/api/sync', syncSnapshotRouter)
+app.route('/api/telemetry', telemetryPushRouter)
 
 app.use('*', sessionAuthMiddleware)
 app.use('*', (c, next) => /^\/api\/keys\/[^/]+\/setup\//.test(c.req.path) ? next() : devAuthMiddleware(c, next))

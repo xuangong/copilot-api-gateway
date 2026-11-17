@@ -266,6 +266,7 @@ authRouter.delete('/admin/users/:id', async (c) => {
   await repo.observabilityShares.deleteByOwner(userId)
   await repo.observabilityShares.deleteByViewer(userId)
   await repo.syncDevices.deleteByOwner(userId)
+  await repo.telemetry.deleteSourcesByOwner(userId)
   // A device gateway's single sync source belongs to the user who connected it; its synced rows go with it.
   // Under the sync lock so an in-flight tick finishes first and cannot re-create rows afterwards.
   await withSyncLock(async () => {

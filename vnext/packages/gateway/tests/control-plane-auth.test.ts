@@ -26,6 +26,7 @@ function inMemoryRepo() {
   const keyAssignments: KeyAssignment[] = []
   const observabilityShareDeletes: string[] = []
   const syncDeviceDeletes: string[] = []
+  const telemetryDeletes: string[] = []
 
   const repo = {
     users: {
@@ -113,9 +114,10 @@ function inMemoryRepo() {
     },
     syncDevices: { deleteByOwner: async (oid: string) => { syncDeviceDeletes.push(oid) } },
     syncSources: { get: async () => null },
+    telemetry: { deleteSourcesByOwner: async (oid: string) => { telemetryDeletes.push(oid) } },
   } as unknown as Repo
 
-  return { repo, users, sessions, invites, apiKeys, githubAccounts, keyAssignments, observabilityShareDeletes, syncDeviceDeletes }
+  return { repo, users, sessions, invites, apiKeys, githubAccounts, keyAssignments, observabilityShareDeletes, syncDeviceDeletes, telemetryDeletes }
 }
 
 function buildApp(auth?: AuthCtx) {
@@ -411,4 +413,5 @@ test('DELETE /admin/users/:id cascades across repos', async () => {
   expect(store.observabilityShareDeletes).toContain('owner:u1')
   expect(store.observabilityShareDeletes).toContain('viewer:u1')
   expect(store.syncDeviceDeletes).toEqual(['u1'])
+  expect(store.telemetryDeletes).toEqual(['u1'])
 })

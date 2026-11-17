@@ -3,6 +3,7 @@ import { sweepMaintenance } from "@vibe-llm/gateway/maintenance"
 import { app } from "@vibe-llm/gateway"
 import { startDeviceSync } from "@vibe-llm/gateway/sync"
 import { bootstrapBunPlatform } from "./bootstrap.ts"
+import { createMaintenanceSweep } from "./maintenance-sweep.ts"
 import { createResponsesWebSocketHandlers } from "./responses-websocket.ts"
 
 const dbPath = process.env.VNEXT_DB_PATH ?? ".vnext-local.sqlite"
@@ -11,18 +12,7 @@ const { db } = bootstrapBunPlatform({
   cacheBackend: process.env.CACHE_BACKEND,
 })
 
-let sweeping = false
-const sweep = async () => {
-  if (sweeping) return
-  sweeping = true
-  try {
-    await sweepMaintenance(db, getFileProvider(), Date.now())
-  } catch {
-    console.warn(JSON.stringify({ evt: "maintenance_sweep_failed" }))
-  } finally {
-    sweeping = false
-  }
-}
+const sweep = createMaintenanceSweep(now => sweepMaintenance(db, getFileProvider(), now))
 void sweep()
 setInterval(() => { void sweep() }, 60_000).unref()
 
