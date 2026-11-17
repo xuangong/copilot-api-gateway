@@ -84,7 +84,7 @@ export function CheckStrip({ hours, statuses, stages, nowMs = Date.now() }: { ho
       {cells.map(cell => <span key={cell.hour} role="listitem" aria-label={cell.label} title={cell.label} data-status={cell.status}
         className={cn("block w-full rounded-[2px] transition-opacity hover:opacity-70", BAR_CLASS[cell.status])} />)}
     </div>
-    {hours.length > 0 ? <div className="flex justify-between font-mono text-[11px] text-fg-subtle"><span>{hourShort(hours[0]!)}</span><span>{hourShort(hours[hours.length - 1]!)}</span></div> : null}
+    {hours.length > 0 ? <div className="flex justify-between font-mono text-xs text-fg-subtle"><span>{hourShort(hours[0]!)}</span><span>{hourShort(hours[hours.length - 1]!)}</span></div> : null}
     <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1 pt-0.5">
       <p className="text-xs text-fg-muted">
         {failed.length === 0 && missing.length === 0
@@ -94,7 +94,7 @@ export function CheckStrip({ hours, statuses, stages, nowMs = Date.now() }: { ho
             {missing.length > 0 ? <span><b className="font-medium text-fg">{t("dash.tlmStatusNoCheck")}</b>: {list(missing)}</span> : null}
           </>}
       </p>
-      <ul className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-fg-subtle">
+      <ul className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-fg-subtle">
         {LEGEND_ORDER.filter(status => present.has(status)).map(status => <li key={status} className="flex items-center gap-1.5">
           <span aria-hidden="true" className="flex h-2.5 w-1.5 items-end"><span className={cn("block w-full rounded-[1px]", status === "not monitored" || status === "pending" ? "h-1" : "h-full", BAR_CLASS[status].replace(/\bh-(full|1)\b/, ""))} /></span>{t(STATUS_KEYS[status])}
         </li>)}
