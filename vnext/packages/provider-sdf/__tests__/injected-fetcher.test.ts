@@ -163,3 +163,14 @@ test('an upstream with no proxy configured still constructs and reaches the netw
     'https://fe-26.qas.bing.net/sdf/images/generations',
   ])
 })
+
+test('a transport failure is an HTTPError marked as transport, with the original error as cause', async () => {
+  const provider = new SdfProvider(
+    { ...CONFIG, passport: { enabled: false } },
+    async () => { throw new TypeError('socket closed') },
+  )
+  const caught = await provider.fetch(imageRequest()).catch(e => e)
+  expect(caught.response.status).toBe(502)
+  expect(caught.transport).toBe(true)
+  expect(caught.cause).toBeInstanceOf(TypeError)
+})

@@ -168,6 +168,10 @@ export interface InternalErrorResult {
   readonly status: number
   readonly error: Error
   readonly performance?: PerformanceTelemetryContext
+  /** Machine-readable error code rendered into the body (e.g. `upstream_paused`). */
+  readonly code?: string
+  /** Rendered as a `Retry-After` header. */
+  readonly retryAfterSeconds?: number
   /**
    * Free-form failure tag used by translator/dispatch layers to distinguish
    * categories of internal error (e.g. `'translator-validation'`,
@@ -205,13 +209,20 @@ export const llmInternalErrorResult = (
   error: Error,
   performance?: PerformanceTelemetryContext,
   reason?: string,
+  extras?: { code?: string; retryAfterSeconds?: number },
 ): InternalErrorResult => ({
   type: 'internal-error',
   status,
   error,
   performance,
   reason,
+  ...(extras?.code !== undefined ? { code: extras.code } : {}),
+  ...(extras?.retryAfterSeconds !== undefined ? { retryAfterSeconds: extras.retryAfterSeconds } : {}),
 })
+
+/** `Retry-After` for an internal error that asks the client to come back later; undefined otherwise. */
+export const retryAfterHeaders = (result: Pick<InternalErrorResult, 'retryAfterSeconds'>): Record<string, string> | undefined =>
+  result.retryAfterSeconds === undefined ? undefined : { 'retry-after': String(result.retryAfterSeconds) }
 
 export const readUpstreamError = async (
   response: Response,

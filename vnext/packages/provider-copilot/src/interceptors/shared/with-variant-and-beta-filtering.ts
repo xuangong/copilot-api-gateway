@@ -1,3 +1,4 @@
+import { markGatewayResponse } from "@vibe-llm/provider-llm"
 import type { ModelsResponse } from "../../models"
 // src/providers/copilot/interceptors/shared/with-variant-and-beta-filtering.ts
 import type { AccountType } from "../../account-type"
@@ -129,7 +130,7 @@ const applyVariantAndBetaFiltering = async (
   }
 
   if (requiresFast && inv.endpoint !== "messages_count_tokens" && selection?.serviceTier !== "priority") {
-    return Response.json({ type: "error", error: { type: "invalid_request_error", message: "Fast mode is not supported for this model and endpoint." } }, { status: 400 })
+    return markGatewayResponse(Response.json({ type: "error", error: { type: "invalid_request_error", message: "Fast mode is not supported for this model and endpoint." } }, { status: 400 }))
   }
   if (inv.endpoint !== "messages_count_tokens" && modelId) {
     onSelection?.(selection ?? { modelKey: typeof payload.model === "string" ? payload.model : modelId, serviceTier: "default" })

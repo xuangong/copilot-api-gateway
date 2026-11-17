@@ -87,6 +87,54 @@ describe('fetchWithRetry', () => {
     expect(calls).toHaveLength(2)
   })
 
+  test('a final timeout is a TimeoutError that keeps its message', async () => {
+    responses.push(() => new Promise<Response>((_resolve, reject) => {
+      calls[0]?.init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), { once: true })
+    }))
+    const error = await fetchWithRetry('https://example.com', { timeout: 5, maxRetries: 0 }).catch(e => e)
+    expect(error).toBeInstanceOf(Error)
+    expect(error.name).toBe('TimeoutError')
+    expect(error.message).toMatch(/Request timeout after 5ms/)
+  })
+
+  test('onRetry sees every attempt that will be retried, not the final response', async () => {
+    responses.push(() => new Response('a', { status: 429 }))
+    responses.push(() => new Response('b', { status: 429 }))
+    responses.push(() => new Response('ok', { status: 200 }))
+    const seen: Array<{ status?: number; error?: unknown }> = []
+    const res = await fetchWithRetry('https://example.com', { retryDelay: 1, maxRetries: 3, onRetry: a => { seen.push(a) } })
+    expect(res.status).toBe(200)
+    expect(seen).toEqual([{ status: 429 }, { status: 429 }])
+  })
+
+  test('onRetry does not see the last response when retries run out, nor a 4xx', async () => {
+    responses.push(() => new Response('a', { status: 503 }))
+    responses.push(() => new Response('b', { status: 503 }))
+    const seen: unknown[] = []
+    const res = await fetchWithRetry('https://example.com', { retryDelay: 1, maxRetries: 1, onRetry: a => { seen.push(a) } })
+    expect(res.status).toBe(503)
+    expect(seen).toEqual([{ status: 503 }])
+    responses.push(() => new Response('c', { status: 404 }))
+    await fetchWithRetry('https://example.com', { retryDelay: 1, onRetry: a => { seen.push(a) } })
+    expect(seen).toHaveLength(1)
+  })
+
+  test('onRetry reports retried thrown errors (timeouts as TimeoutError); a throwing observer changes nothing', async () => {
+    responses.push(() => new Promise<Response>((_resolve, reject) => {
+      calls[0]?.init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), { once: true })
+    }))
+    responses.push(() => { throw new TypeError('fetch failed') })
+    responses.push(() => new Response('ok'))
+    const seen: Array<{ status?: number; error?: unknown }> = []
+    const result = await fetchWithRetry('https://example.com', {
+      timeout: 5, maxRetries: 2, retryDelay: 1,
+      onRetry: a => { seen.push(a); throw new Error('observer bug') },
+    })
+    expect(await result.text()).toBe('ok')
+    expect((seen[0]?.error as Error).name).toBe('TimeoutError')
+    expect(seen[1]?.error).toBeInstanceOf(TypeError)
+  })
+
   test('pre-aborted caller stops before the first fetch and preserves its reason', async () => {
     const controller = new AbortController()
     const reason = new Error('client left')

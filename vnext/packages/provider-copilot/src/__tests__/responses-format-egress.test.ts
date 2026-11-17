@@ -19,6 +19,8 @@ for (const reasoningEffort of [false, true]) {
       expect(result.status).toBe(translated ? 400 : 200)
       expect(inferenceCalls).toBe(translated ? 0 : 1)
       if (translated) expect(await new Response(result.body).json()).toMatchObject({ error: { param: 'text.format' } })
+      // The 400 is built by the gateway; protection must not count it as an upstream rejection.
+      expect(result.gatewayGenerated).toBe(translated ? true : undefined)
     })
   }
 }

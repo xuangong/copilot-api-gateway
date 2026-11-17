@@ -30,7 +30,7 @@ import { readClaudeCodeCredential, type ClaudeCodeCredentialSnapshot, type Claud
 import { assertClaudeCodeExecutionAuthority, claudeCodeAffinityTarget, ClaudeCodeAffinityChangedError, type ClaudeCodeExecutionAuthority } from './affinity-execution'
 import { waitUntil } from '@vibe-core/platform'
 import type { MessagesPayload } from '@vibe-llm/protocols/messages'
-import type { ProviderRequest, ProviderResponse } from '@vibe-llm/provider-llm'
+import { markGatewayResponse, type ProviderRequest, type ProviderResponse } from '@vibe-llm/provider-llm'
 const ANTHROPIC_MESSAGES_ENDPOINT = 'https://api.anthropic.com/v1/messages?beta=true'
 
 export interface CallClaudeCodeMessagesOptions {
@@ -42,6 +42,7 @@ export interface CallClaudeCodeMessagesOptions {
   fetcher: Fetcher
   executionFetcher?: Fetcher
   beforeInference?: ProviderRequest['beforeInference']
+  onRetriedAttempt?: ProviderRequest['onRetriedAttempt']
   /**
    * True when `isClaudeCodeShapedRequest` recognised the caller as a real
    * Claude Code client. The caller's own already-filtered fingerprint then
@@ -238,6 +239,8 @@ const performStreamingMessagesCall = async (
     await response.body?.cancel()
     opts.signal?.throwIfAborted()
     const ensured = await ensureOrSession503(opts, undefined, accessToken)
+    // The 401 reached the upstream and is replaced by the replay (or a gateway 503): tell the observer, never awaited.
+    try { opts.onRetriedAttempt?.({ status: 401, outcome: ensured instanceof Response ? 'replaced' : 'replayed' }) } catch { /* observation only */ }
     if (ensured instanceof Response) return { response: ensured }
     return await performStreamingMessagesCall(opts, upstreamModelId, bodyText, ensured, true)
   }
@@ -249,21 +252,21 @@ const performStreamingMessagesCall = async (
 }
 
 const synthetic503 = (message: string): Response =>
-  new Response(
+  markGatewayResponse(new Response(
     JSON.stringify({ error: { type: 'claude_code_upstream_unavailable', message } }),
     { status: 503, headers: { 'content-type': 'application/json' } },
-  )
+  ))
 
 const synthetic429 = (message: string, retryAtIso: string | null, now: Date): Response => {
   const retryAfterSeconds =
     retryAtIso === null
       ? 60
       : Math.max(0, Math.ceil((new Date(retryAtIso).getTime() - now.getTime()) / 1000))
-  return new Response(
+  return markGatewayResponse(new Response(
     JSON.stringify({ error: { type: 'claude_code_rate_limited', message, retry_at: retryAtIso } }),
     {
       status: 429,
       headers: { 'content-type': 'application/json', 'retry-after': String(retryAfterSeconds) },
     },
-  )
+  ))
 }

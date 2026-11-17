@@ -42,7 +42,7 @@ import type { Fetcher } from './fetcher'
 import { sha256UuidFromParts, uuidV7 } from './ids'
 import { codexModelUsesResponsesLite, type CodexProviderModel } from './models'
 import { encodeCodexResponsesLiteRequest, createCodexResponsesLiteAdapter, restoreCodexResponsesCompactionResult, type CodexResponsesBody as LiteBody, type CodexResponsesLiteRequest } from './responses-lite'
-import type { ProviderRequest, ProviderResponse } from '@vibe-llm/provider-llm'
+import { markGatewayResponse, type ProviderRequest, type ProviderResponse } from '@vibe-llm/provider-llm'
 import { parseCodexQuotaHeaders, putCodexQuota } from './quota'
 import type { CodexAccountCredential, CodexQuotaSnapshotEntryMap } from './state'
 import type {
@@ -113,6 +113,7 @@ interface CodexBackendCallBase {
   fetcher: Fetcher
   executionFetcher?: Fetcher
   beforeInference?: ProviderRequest["beforeInference"]
+  onRetriedAttempt?: ProviderRequest["onRetriedAttempt"]
 }
 
 export interface CallCodexResponsesOptions extends CodexBackendCallBase {
@@ -606,6 +607,7 @@ const dispatchCodexHttpCall = async (
     const { code } = parseUpstreamError(bodyText)
     if (code === 'token_invalidated') {
       await persistCodexTerminalState(codexBearerEffect(accessToken), 'session_terminated', 'token_invalidated')
+      reportRetried(opts, 401, 'replaced') // the real answer; the 503 below is gateway-generated
       return synthetic503('session_terminated')
     }
     return new Response(bodyText, { status: 401, headers: response.headers })
@@ -706,6 +708,7 @@ const performPreparedResponsesCall = async (
   )
   if (response.status === 401 && !alreadyRetried) {
     const fresh = await refreshAccessTokenForRetry(opts, accessToken)
+    reportRetried(opts, 401, fresh.ok ? 'replayed' : 'replaced')
     if (!fresh.ok) return fresh.response
     return performPreparedResponsesCall(opts, fresh.accessToken, compact, prepared, true)
   }
@@ -747,6 +750,7 @@ const performAlphaSearchCall = async (
 
   if (response.status === 401 && !alreadyRetried) {
     const fresh = await refreshAccessTokenForRetry(opts, accessToken)
+    reportRetried(opts, 401, fresh.ok ? 'replayed' : 'replaced')
     if (!fresh.ok) return fresh.response
     return await performAlphaSearchCall(opts, fresh.accessToken, true, prepared)
   }
@@ -771,14 +775,19 @@ const parseUpstreamError = (rawText: string): { code: string | null } => {
   }
 }
 
+// An upstream attempt that this module replaces (terminal 401, refresh-and-replay): told to the observer, never awaited.
+const reportRetried = (opts: CodexBackendCallBase, status: number, outcome: 'replayed' | 'replaced'): void => {
+  try { opts.onRetriedAttempt?.({ status, outcome }) } catch { /* observation only */ }
+}
+
 const synthetic503 = (message: string): Response =>
-  new Response(
+  markGatewayResponse(new Response(
     JSON.stringify({ error: { type: 'codex_upstream_unavailable', message } }),
     { status: 503, headers: { 'content-type': 'application/json' } },
-  )
+  ))
 
 const synthetic429 = (message: string, retryAtIso: string, now: Date): Response =>
-  new Response(
+  markGatewayResponse(new Response(
     JSON.stringify({ error: { type: 'codex_rate_limited', message, retry_at: retryAtIso } }),
     {
       status: 429,
@@ -789,7 +798,7 @@ const synthetic429 = (message: string, retryAtIso: string, now: Date): Response 
         ),
       },
     },
-  )
+  ))
 
 // Codex backend serves SSE without setting `content-type: text/event-stream`
 // (observed in production). Downstream consumers gate SSE parsing on the

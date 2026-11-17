@@ -248,3 +248,35 @@ test('concurrent auth retries keep each request body isolated', async () => {
   expect(attempts.get('b')).toEqual(['{"model":"gpt-4o","id":"b","input":"b-first"}', '{"model":"gpt-4o","id":"b","input":"b-first"}'])
   expect([aSerializations, bSerializations]).toEqual([1, 1])
 })
+
+const chatRequest = (extra: Record<string, unknown> = {}) => ({
+  endpoint: 'chat_completions' as const,
+  payload: { model: 'gpt-4o', messages: [{ role: 'user', content: 'hi' }] },
+  headers: new Headers({ 'content-type': 'application/json' }),
+  sourceApi: 'openai' as const,
+  flags: { isStreaming: false },
+  ...extra,
+})
+
+test('onRetriedAttempt — the 403 that triggered a successful re-exchange is reported, the final response is not', async () => {
+  const seen: Array<{ status?: number; outcome?: string }> = []
+  const { provider } = providerWithRefresh([403, 200], async () => ({ token: 'fresh' }))
+  const res = await provider.fetch(chatRequest({ onRetriedAttempt: (a: { status?: number; outcome?: string }) => { seen.push(a) } }))
+  expect(res.status).toBe(200)
+  expect(seen).toEqual([{ status: 403, outcome: 'replayed' }])
+})
+
+test('onRetriedAttempt — a rejection that is not replayed is left for the caller to report', async () => {
+  const seen: unknown[] = []
+  const { provider } = providerWithRefresh([403, 200], async () => ({ token: 'stale' }))
+  await expect(provider.fetch(chatRequest({ onRetriedAttempt: (a: unknown) => { seen.push(a) } }))).rejects.toThrow()
+  expect(seen).toEqual([])
+})
+
+test('onRetriedAttempt — a retried 429 inside the transport is reported', async () => {
+  const seen: Array<{ status?: number; outcome?: string }> = []
+  const { provider } = providerWithRefresh([429, 200], async () => ({ token: 'fresh' }))
+  const res = await provider.fetch(chatRequest({ onRetriedAttempt: (a: { status?: number; outcome?: string }) => { seen.push(a) } }))
+  expect(res.status).toBe(200)
+  expect(seen).toEqual([{ status: 429 }])
+})

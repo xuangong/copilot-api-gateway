@@ -550,3 +550,40 @@ test('unshaped request is re-mimicked by the interceptor chain', async () => {
   // And the pinned mimicry UA, not whatever the caller sent (nothing here).
   expect(call.headers.get('user-agent')).toMatch(/^claude-cli\//)
 })
+
+// ─── Gateway-built responses and the real 401s behind them (upstream protection) ───
+
+test('protection: the quota-gate 429 and a refresh-failure 503 are gateway-generated; a real 429 is not', async () => {
+  repo.put(baseRecord({ quotaSnapshot: quotaSnapshot({ status: 'rejected', reset: isoIn(15 * 60 * 1000) }) }))
+  const gated = await new ClaudeCodeProvider(await storedRecord(), makeHarness(() => okSSE()).fetcher).fetch(makeRequest())
+  expect(gated.status).toBe(429)
+  expect(gated.gatewayGenerated).toBe(true)
+
+  repo.put(baseRecord())
+  const real = await new ClaudeCodeProvider(await storedRecord(), makeHarness(() => new Response('{"error":{"type":"rate_limit_error"}}', { status: 429 })).fetcher).fetch(makeRequest())
+  expect(real.status).toBe(429)
+  expect(real.gatewayGenerated).toBeUndefined()
+})
+
+test('protection: a 401 that is refreshed and replayed is reported once', async () => {
+  repo.put(baseRecord())
+  const seen: Array<{ status?: number; outcome?: string }> = []
+  const harness = makeHarness((_call, attempt) => attempt === 1 ? new Response('{"error":{"type":"authentication_error"}}', { status: 401 }) : okSSE())
+  const resp = await new ClaudeCodeProvider(await storedRecord(), harness.fetcher).fetch({ ...makeRequest(), onRetriedAttempt: a => { seen.push(a) } })
+  expect(resp.status).toBe(200)
+  expect(resp.gatewayGenerated).toBeUndefined()
+  expect(seen).toEqual([{ status: 401, outcome: 'replayed' }])
+})
+
+test('protection: a 401 whose refresh then fails reports the real 401, and the 503 shown to the caller is gateway-generated', async () => {
+  repo.put(baseRecord())
+  const seen: Array<{ status?: number; outcome?: string }> = []
+  const harness = makeHarness(
+    () => new Response('{"error":{"type":"authentication_error"}}', { status: 401 }),
+    () => new Response(JSON.stringify({ error: 'invalid_grant' }), { status: 400, headers: { 'content-type': 'application/json' } }),
+  )
+  const resp = await new ClaudeCodeProvider(await storedRecord(), harness.fetcher).fetch({ ...makeRequest(), onRetriedAttempt: a => { seen.push(a) } })
+  expect(resp.status).toBe(503)
+  expect(resp.gatewayGenerated).toBe(true)
+  expect(seen).toEqual([{ status: 401, outcome: 'replaced' }])
+})

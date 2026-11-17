@@ -67,6 +67,7 @@ test("missing Messages Fast returns a protocol error without inference, includin
     provider.setModelCatalog(catalog("claude-opus-4.8"))
     const response = await provider.fetch({ endpoint, sourceApi: "anthropic", sourceProtocol: "messages", headers: new Headers(), payload: { model: "claude-opus-4.8", ...(endpoint === "messages" ? { speed: "fast", messages: [], max_tokens: 8 } : { service_tier: "priority", input: [] }) } })
     expect(response.status).toBe(400)
+    expect(response.gatewayGenerated).toBe(true) // never sent upstream: protection must not record it
     expect(await new Response(response.body).json()).toMatchObject({ type: "error", error: { type: "invalid_request_error" } })
   }
 })

@@ -21,6 +21,8 @@ interface CallCopilotAPIOptions {
   extraHeaders?: Record<string, string>
   fetcher?: Fetcher
   preparedCall?: PreparedCopilotCall
+  /** Reports each transport attempt that is retried (see ProviderRequest.onRetriedAttempt). */
+  onRetriedAttempt?: (attempt: { status?: number; error?: unknown }) => void
 }
 
 export interface PreparedCopilotCall {
@@ -44,6 +46,7 @@ export async function callCopilotAPI({
   extraHeaders,
   fetcher,
   preparedCall,
+  onRetriedAttempt,
 }: CallCopilotAPIOptions): Promise<Response> {
   if (!copilotToken) {
     throw new Error("Copilot token not found")
@@ -105,6 +108,7 @@ export async function callCopilotAPI({
       body,
       timeout,
       fetchImpl: fetcher,
+      ...(onRetriedAttempt ? { onRetry: onRetriedAttempt } : {}),
     })
   } catch (error) {
     if (!isStreaming && endpoint === "/v1/messages") {

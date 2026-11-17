@@ -815,3 +815,60 @@ test('bucket at 100% used but never 429d does not gate', async () => {
   expect(resp.status).toBe(200)
   expect(harness.calls.filter((c) => c.url.endsWith(CODEX_RESPONSES_PATH))).toHaveLength(1)
 })
+
+// ─── Gateway-built responses and the real 401s behind them (upstream protection) ───
+
+const retried = (): { seen: Array<{ status?: number; outcome?: string }>; hook: (a: { status?: number; outcome?: string }) => void } => {
+  const seen: Array<{ status?: number; outcome?: string }> = []
+  return { seen, hook: a => { seen.push(a) } }
+}
+
+test('protection: the quota-snapshot 429 and credential 503s are gateway-generated; a real upstream 429 is not', async () => {
+  const limited = baseRecord(limitedBucket(isoIn(10 * 60 * 1000)))
+  repo.put(limited)
+  const gated = await new CodexProvider(limited, makeHarness(() => okSSE()).fetcher).fetch(makeRequest())
+  expect(gated.status).toBe(429)
+  expect(gated.gatewayGenerated).toBe(true)
+
+  repo.put(baseRecord())
+  const real = await new CodexProvider(baseRecord(), makeHarness(() => new Response('{"error":{"code":"rate_limit"}}', { status: 429 })).fetcher).fetch(makeRequest())
+  expect(real.status).toBe(429)
+  expect(real.gatewayGenerated).toBeUndefined()
+})
+
+test('protection: token_invalidated reports the real 401 and the replacement 503 is gateway-generated', async () => {
+  repo.put(baseRecord())
+  const { seen, hook } = retried()
+  const harness = makeHarness(() => new Response(JSON.stringify({ error: { code: 'token_invalidated' } }), { status: 401 }))
+  const resp = await new CodexProvider(baseRecord(), harness.fetcher).fetch({ ...makeRequest(), onRetriedAttempt: hook })
+  expect(resp.status).toBe(503)
+  expect(resp.gatewayGenerated).toBe(true)
+  expect(seen).toEqual([{ status: 401, outcome: 'replaced' }])
+})
+
+test('protection: a 401 that is refreshed and replayed is reported once; a second 401 is the final response, not reported', async () => {
+  repo.put(baseRecord())
+  const a = retried()
+  const ok = makeHarness((_call, attempt) => attempt === 1 ? new Response('{"error":{"code":"expired_token"}}', { status: 401 }) : okSSE())
+  const replayed = await new CodexProvider(baseRecord(), ok.fetcher).fetch({ ...makeRequest(), onRetriedAttempt: a.hook })
+  expect(replayed.status).toBe(200)
+  expect(replayed.gatewayGenerated).toBeUndefined()
+  expect(a.seen).toEqual([{ status: 401, outcome: 'replayed' }])
+
+  const b = retried()
+  const twice = makeHarness(() => new Response('{"error":{"code":"expired_token"}}', { status: 401 }))
+  const final = await new CodexProvider(baseRecord(), twice.fetcher).fetch({ ...makeRequest(), onRetriedAttempt: b.hook })
+  expect(final.status).toBe(401)
+  expect(b.seen).toEqual([{ status: 401, outcome: 'replayed' }])
+})
+
+test('protection: an alpha_search 401 that is refreshed and replayed is reported as replayed', async () => {
+  repo.put(baseRecord())
+  const { seen, hook } = retried()
+  const harness = makeHarness((_call, attempt) => attempt === 1
+    ? new Response(JSON.stringify({ error: { code: 'expired_token' } }), { status: 401 })
+    : okJson({ encrypted_output: null, output: 'ok' }))
+  const resp = await new CodexProvider(baseRecord(), harness.fetcher).fetch({ ...makeAlphaSearchRequest(), onRetriedAttempt: hook })
+  expect(resp.status).toBe(200)
+  expect(seen).toEqual([{ status: 401, outcome: 'replayed' }])
+})

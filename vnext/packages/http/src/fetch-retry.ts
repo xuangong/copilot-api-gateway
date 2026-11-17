@@ -17,6 +17,23 @@ export interface FetchOptions extends RequestInit {
   // straight into fetch(), so on Workers the runtime saw our retry helper where
   // it expected a binding.
   fetchImpl?: FetchLike
+  /**
+   * Observer for every attempt that is about to be retried: the response status (429/5xx) or the thrown
+   * error (a per-attempt timeout is reported as a `TimeoutError`). Never awaited; its errors are swallowed.
+   * The final response or error is not reported here: the caller of fetchWithRetry receives it.
+   */
+  onRetry?: (attempt: RetriedAttempt) => void
+}
+
+export interface RetriedAttempt {
+  status?: number
+  error?: unknown
+}
+
+const timeoutError = (message: string): Error => Object.assign(new Error(message), { name: "TimeoutError" })
+
+function notifyRetry(observer: ((attempt: RetriedAttempt) => void) | undefined, attempt: RetriedAttempt): void {
+  try { observer?.(attempt) } catch { /* observation never changes the request */ }
 }
 
 function waitForRetry(delay: number, signal?: AbortSignal | null, cleanup?: Promise<void>): Promise<void> {
@@ -49,7 +66,7 @@ export async function fetchWithRetry(
   input: string | URL,
   init?: FetchOptions,
 ): Promise<Response> {
-  const { maxRetries = 3, retryDelay = 1000, timeout, fetchImpl = fetch, ...requestInit } = init ?? {}
+  const { maxRetries = 3, retryDelay = 1000, timeout, fetchImpl = fetch, onRetry, ...requestInit } = init ?? {}
   const lifetime = (fetchImpl as FetchLike).signal
   const callerSignal = lifetime && init?.signal ? AbortSignal.any([lifetime, init.signal]) : lifetime ?? init?.signal
 
@@ -83,6 +100,7 @@ export async function fetchWithRetry(
           console.log(`[fetch] Failed after ${attempt + 1} attempts: HTTP ${response.status}`)
           return response
         }
+        notifyRetry(onRetry, { status: response.status })
         const delay = Math.min(retryDelay * Math.pow(2, attempt), 10000)
         const cleanup = response.body?.cancel().catch(() => {})
         console.log(`[fetch] Attempt ${attempt + 1} got HTTP ${response.status}, retrying in ${delay}ms...`)
@@ -100,11 +118,12 @@ export async function fetchWithRetry(
       if (attempt === maxRetries) {
         console.log(`[fetch] Failed after ${attempt + 1} attempts: ${errMsg}`)
         if (isTimeout) {
-          throw new Error(`Request timeout after ${timeout}ms (${maxRetries + 1} attempts)`)
+          throw timeoutError(`Request timeout after ${timeout}ms (${maxRetries + 1} attempts)`)
         }
         throw error
       }
 
+      notifyRetry(onRetry, { error: isTimeout ? timeoutError(`Request timeout after ${timeout}ms`) : error })
       const delay = Math.min(retryDelay * Math.pow(2, attempt), 10000)
       console.log(`[fetch] Attempt ${attempt + 1} failed (${errMsg}), retrying in ${delay}ms...`)
       await waitForRetry(delay, callerSignal)

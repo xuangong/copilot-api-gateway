@@ -372,6 +372,8 @@ describe('CustomProvider.fetch', () => {
       } catch (e) { caught = e as Error }
       expect(caught!.message).toMatch(/Failed to call chat_completions via x: network down/)
       expect((caught as { response?: Response }).response?.status).toBe(502)
+      expect((caught as { transport?: boolean }).transport).toBe(true)
+      expect(((caught as { cause?: Error }).cause)?.message).toMatch(/connection refused|network down/)
     } finally { globalThis.fetch = realFetch }
   })
 

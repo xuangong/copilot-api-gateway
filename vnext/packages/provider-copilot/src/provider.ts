@@ -33,9 +33,10 @@ import type {
   ProviderResponse,
   SourceApi,
   ExecutionFetcherForRequest,
+  RetriedUpstreamAttempt,
 } from '@vibe-llm/provider-llm'
 import { probeViaModels, resolveExecutionFetcher } from '@vibe-llm/provider-llm'
-import { HTTPError } from '@vibe-llm/provider-llm'
+import { HTTPError, isGatewayResponse, markGatewayResponse } from '@vibe-llm/provider-llm'
 import { directFetcher, type Fetcher } from '@vibe-core/upstream'
 import { invalidateRawModelsForToken } from './raw-models-cache'
 import { createVariantAndBetaFilteringInterceptor } from './interceptors/shared/with-variant-and-beta-filtering'
@@ -241,7 +242,7 @@ export class CopilotProvider implements LlmModelProvider {
 
     const preservesFormat = responsesFormatGuard(req.sourceProtocol, req.endpoint, req.payload)
     const response = await runInterceptors(inv, ctx, interceptors, async () => {
-      if (!preservesFormat(inv.payload)) return Promise.resolve(Response.json({ error: { type: "invalid_request_error", message: responsesFormatMismatchMessage, param: "text.format", code: null } }, { status: 400 }))
+      if (!preservesFormat(inv.payload)) return Promise.resolve(markGatewayResponse(Response.json({ error: { type: "invalid_request_error", message: responsesFormatMismatchMessage, param: "text.format", code: null } }, { status: 400 })))
       affinityExecution = selection ? req.beforeInference
         ? await this.affinityAuthority?.prepare(selection.modelKey)
         : this.affinityAuthority?.capture(selection.modelKey) : undefined
@@ -269,12 +270,15 @@ export class CopilotProvider implements LlmModelProvider {
           requireModel,
           fetcher: fenced,
           preparedCall,
+          ...(req.onRetriedAttempt ? { onRetriedAttempt: req.onRetriedAttempt } : {}),
         }),
         guard,
+        req.onRetriedAttempt,
       )
     })
     return { status: response.status, headers: response.headers, body: response.body, affinityExecution,
       ...(response.ok && selection ? { execution: selection } : {}),
+      ...(isGatewayResponse(response) ? { gatewayGenerated: true as const } : {}),
     }
   }
 
@@ -290,7 +294,11 @@ export class CopilotProvider implements LlmModelProvider {
    * when it declines to issue a new token (cooldown) the unchanged token tells
    * us to give up rather than repeat a request that will fail identically.
    */
-  private async withAuthRetry<T>(op: () => Promise<T>, beforeRefresh?: () => Promise<void>): Promise<T> {
+  private async withAuthRetry<T>(
+    op: () => Promise<T>,
+    beforeRefresh?: () => Promise<void>,
+    onRetriedAttempt?: (attempt: RetriedUpstreamAttempt) => void,
+  ): Promise<T> {
     try {
       return await op()
     } catch (err) {
@@ -313,6 +321,8 @@ export class CopilotProvider implements LlmModelProvider {
       invalidateRawModelsForToken(staleToken, this.accountType, this.baseUrl)
       this.copilotToken = refreshed.token
       if (refreshed.baseUrl) this.baseUrl = refreshed.baseUrl
+      // The rejected call reached the upstream and is replaced by the replay: report it, since only the replay is returned.
+      try { onRetriedAttempt?.({ status: (err as { response: Response }).response.status, outcome: 'replayed' }) } catch { /* observation only */ }
       return await op()
     }
   }

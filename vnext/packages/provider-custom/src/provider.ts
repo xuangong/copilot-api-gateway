@@ -311,6 +311,7 @@ export class CustomProvider implements LlmModelProvider {
       throw new HTTPError(
         `Failed to ${operationName} via ${this.name}: ${msg}`,
         new Response(msg, { status: 502 }),
+        { transport: true, cause: err },
       )
     }
     if (!response.ok) {

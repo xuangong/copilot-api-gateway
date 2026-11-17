@@ -51,6 +51,8 @@ export interface ProviderResponsesAdapter {
 
 /** LLM-only extension: transport wrappers must preserve these per-call extras. */
 export interface ProviderResponse extends TransportProviderResponse {
+  /** True when the provider built this response itself (it never reached the upstream): protection must not count it. */
+  readonly gatewayGenerated?: true
   readonly affinityExecution?: AffinityExecutionTarget
   readonly execution?: ProviderExecutionIdentity
   readonly responsesAdapter?: ProviderResponsesAdapter
@@ -64,6 +66,17 @@ export interface ProviderRequestFlags {
   isStreaming: boolean
   hasWebSearch?: boolean
   hasImageGen?: boolean
+}
+
+/** One upstream attempt the provider retried or replaced (see ProviderRequest.onRetriedAttempt). */
+export interface RetriedUpstreamAttempt {
+  status?: number
+  error?: unknown
+  /**
+   * Set on auth rejections the provider handled itself: `replayed` = it refreshed the credential and sent the request
+   * again (the caller never sees the rejection); `replaced` = the caller gets a gateway-generated answer instead (the credential is gone).
+   */
+  outcome?: 'replayed' | 'replaced'
 }
 
 export interface ProviderRequest {
@@ -82,6 +95,13 @@ export interface ProviderRequest {
   sourceProtocol?: 'messages' | 'chat_completions' | 'responses' | 'gemini'
   flags?: ProviderRequestFlags
   signal?: AbortSignal
+  /**
+   * Optional observer for upstream attempts the provider made and then retried or replaced (transport retries,
+   * an auth re-exchange replay): the response status or the thrown error. Never awaited, errors ignored. The
+   * attempt whose result `fetch` returns or throws is not reported. Providers that do not retry never call it.
+   * An auth rejection (401/403) carries `outcome` (see RetriedUpstreamAttempt).
+   */
+  onRetriedAttempt?: (attempt: RetriedUpstreamAttempt) => void
   /** Optional log-friendly label. Defaults to `call ${endpoint}` in the provider. */
   operationName?: string
   /** Defaults to true. Copilot-specific: count_tokens is the only endpoint where model is optional. Other providers ignore this field. */

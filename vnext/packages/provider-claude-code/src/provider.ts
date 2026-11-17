@@ -45,6 +45,7 @@ import {
   type ProviderRequest,
   type ProviderResponse,
   type InboundHeaderMatcher,
+  isGatewayResponse,
 } from '@vibe-llm/provider-llm'
 
 const CLAUDE_CODE_SUPPORTED: readonly EndpointKey[] = ['messages']
@@ -208,6 +209,7 @@ export class ClaudeCodeProvider implements LlmModelProvider {
           shaped,
           inboundHeaders: req.headers,
           beforeInference: req.beforeInference,
+          onRetriedAttempt: req.onRetriedAttempt,
         })
         return prepared.response
       }
@@ -242,10 +244,12 @@ export class ClaudeCodeProvider implements LlmModelProvider {
         body: upstreamResp.body,
         affinityExecution: prepared?.affinityExecution,
         execution: prepared?.execution,
+        ...(isGatewayResponse(upstreamResp) ? { gatewayGenerated: true as const } : {}),
       }
     } catch (err) {
       if (err instanceof ClaudeCodeOAuthSessionTerminatedError || err instanceof ClaudeCodeCredentialUnavailableError) {
         return {
+          gatewayGenerated: true as const,
           status: 503,
           headers: new Headers({ 'content-type': 'application/json' }),
           body: new Response(

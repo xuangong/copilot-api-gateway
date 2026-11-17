@@ -56,6 +56,7 @@ import {
   type ProviderResponse,
   type ProviderModelsResponse,
   type SourceApi,
+  isGatewayResponse,
 } from '@vibe-llm/provider-llm'
 
 const CODEX_SUPPORTED: readonly EndpointKey[] = ['responses', 'alpha_search']
@@ -203,6 +204,7 @@ export class CodexProvider implements LlmModelProvider {
         fetcher: this.fetcher,
         executionFetcher: resolveExecutionFetcher(this.fetcher, this.executionFetcher, req),
         beforeInference: req.beforeInference,
+        onRetriedAttempt: req.onRetriedAttempt,
       }
       preparedResult = inv.action === 'compact'
         ? await callCodexResponsesCompactPrepared({ ...backendCallBase, body: wireBody })
@@ -218,6 +220,7 @@ export class CodexProvider implements LlmModelProvider {
       execution: preparedResult?.execution,
       responsesAdapter: preparedResult?.responsesAdapter,
       compactAdapter: preparedResult?.compactAdapter,
+      ...(isGatewayResponse(upstreamResp) ? { gatewayGenerated: true as const } : {}),
     }
   }
 
@@ -251,12 +254,14 @@ export class CodexProvider implements LlmModelProvider {
       signal: req.signal,
       fetcher: this.fetcher,
       executionFetcher: resolveExecutionFetcher(this.fetcher, this.executionFetcher, req),
+      onRetriedAttempt: req.onRetriedAttempt,
       body,
     })
     return {
       status: upstreamResp.status,
       headers: upstreamResp.headers,
       body: upstreamResp.body,
+      ...(isGatewayResponse(upstreamResp) ? { gatewayGenerated: true as const } : {}),
     }
   }
 }
