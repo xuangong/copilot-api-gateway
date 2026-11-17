@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react"
-import { Activity, ChartColumn, Boxes, Cable, CircleDollarSign, KeyRound, Network, RadioTower, Users } from "lucide-react"
+import { Activity, ChartColumn, Boxes, Cable, CircleDollarSign, KeyRound, Network, Radar, RadioTower, Users } from "lucide-react"
 
 export interface NavItem {
   /** The hash address, e.g. "usage" for #usage. */
@@ -41,6 +41,7 @@ function navConfig(t: Translate): NavConfigGroup[] {
       items: [
         { id: "usage", label: t("dash.usage"), icon: ChartColumn },
         { id: "latency", label: t("dash.latency"), icon: Activity },
+        { id: "telemetry", label: t("dash.telemetry"), icon: Radar },
       ],
     },
     {

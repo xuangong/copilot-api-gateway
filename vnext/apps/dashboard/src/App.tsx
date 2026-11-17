@@ -11,6 +11,7 @@ import { UsersTab } from "./tabs/users/UsersTab"
 import { SettingsTab } from "./tabs/settings/SettingsTab"
 import { ClientsTab } from "./tabs/clients/ClientsTab"
 import { LatencyTab } from "./tabs/latency/LatencyTab"
+import { TelemetryTab } from "./tabs/telemetry/TelemetryTab"
 import { UsageTab } from "./tabs/usage/UsageTab"
 import { ModelsTab } from "./tabs/models/ModelsTab"
 import { PricingTab } from "./tabs/pricing/PricingTab"
@@ -64,6 +65,8 @@ function TabBody({ tab }: { tab: string }) {
       return <UsageTab />
     case "latency":
       return <LatencyTab />
+    case "telemetry":
+      return <TelemetryTab />
     case "clients":
       return <ClientsTab />
     case "settings":

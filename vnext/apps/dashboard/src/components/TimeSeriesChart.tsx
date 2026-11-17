@@ -31,6 +31,15 @@ export function paletteFor(theme: "dark" | "light"): string[] {
   return theme === "dark" ? PALETTE_DARK : PALETTE_LIGHT
 }
 
+/** Per-point radius and fill for a dataset: flagged points are large and in the alert colour, the rest are hidden. */
+export function pointStyle(dataset: Pick<ChartDataset, "color" | "highlight">, alertColor = "#dc2626"): { radius: number | number[]; background: string | string[] } {
+  if (!dataset.highlight) return { radius: 0, background: dataset.color }
+  return {
+    radius: dataset.highlight.map(flag => flag ? 5 : 0),
+    background: dataset.highlight.map(flag => flag ? alertColor : dataset.color),
+  }
+}
+
 export interface ChartDataset {
   label: string
   data: number[]
@@ -50,6 +59,11 @@ export interface ChartDataset {
    * in the tooltip so a token count can be read as fresh versus cached.
    */
   cacheData?: number[]
+  /**
+   * Per-bucket flags, aligned with `data`. Flagged points are drawn as large alert-coloured markers (surge hours);
+   * the rest stay hidden, as on every other line.
+   */
+  highlight?: boolean[]
 }
 
 export interface ChartPointLink {
@@ -80,6 +94,8 @@ interface Props {
   sortTooltip?: boolean
   /** Tooltip note for a row's cache tokens, e.g. "incl. 1,234 cache". Localised by the caller. */
   formatCache?: (tokens: number) => string
+  /** Formats a row's value in the tooltip (e.g. bytes as "1.5 GB"); by default the number with `unitLabel`. */
+  tooltipFormat?: (value: number) => string
 }
 
 function isDarkTheme(): boolean {
@@ -129,7 +145,7 @@ function hexToRgba(hex: string, alpha: number): string {
  * Chart.js-backed time-series chart. Bundled — no CDN.
  * Dark-mode aware via `theme-changed` window event.
  */
-export function TimeSeriesChart({ labels, datasets, height = 300, unitLabel = "", yTickFormat, pointLink, totalCostLabel = "Total cost", sortTooltip = false, formatCache }: Props) {
+export function TimeSeriesChart({ labels, datasets, height = 300, unitLabel = "", yTickFormat, pointLink, totalCostLabel = "Total cost", sortTooltip = false, formatCache, tooltipFormat }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const chartRef = useRef<Chart | null>(null)
   const tooltipRef = useRef<HTMLDivElement | null>(null)
@@ -148,6 +164,8 @@ export function TimeSeriesChart({ labels, datasets, height = 300, unitLabel = ""
   // function every render, and the chart must not rebuild for it.
   const formatCacheRef = useRef(formatCache)
   formatCacheRef.current = formatCache
+  const tooltipFormatRef = useRef(tooltipFormat)
+  tooltipFormatRef.current = tooltipFormat
   // Legend choices by line name. The chart is rebuilt whenever its data
   // changes — every auto-refresh — and a model the user switched on or off
   // should stay that way rather than snap back to the default. A choice, once
@@ -190,7 +208,8 @@ export function TimeSeriesChart({ labels, datasets, height = 300, unitLabel = ""
       borderWidth: d.dashed ? 1.5 : 2,
       borderDash: d.dashed ? [4, 4] : undefined,
       fill: d.fill !== false,
-      pointRadius: 0,
+      pointRadius: pointStyle(d).radius,
+      pointBackgroundColor: pointStyle(d).background,
       pointHoverRadius: 4,
       tension: 0.25,
       hidden: legendChoices.current.get(d.label) ?? d.hidden ?? false,
@@ -218,7 +237,7 @@ export function TimeSeriesChart({ labels, datasets, height = 300, unitLabel = ""
             },
           },
           tooltip: hasPointLink
-            ? { enabled: false, external: (ctx) => renderLinkTooltip(ctx, tooltipRef.current, unitLabel, linkRef, hideTimer, overTip, costRef, totalCostLabel, { cacheRef, formatCacheRef, sort: sortTooltip }) }
+            ? { enabled: false, external: (ctx) => renderLinkTooltip(ctx, tooltipRef.current, unitLabel, linkRef, hideTimer, overTip, costRef, totalCostLabel, { cacheRef, formatCacheRef, tooltipFormatRef, sort: sortTooltip }) }
             : {
                 ...(sortTooltip ? { itemSort: (a, b) => Number(b.parsed.y) - Number(a.parsed.y) } : {}),
                 callbacks: {
@@ -233,7 +252,7 @@ export function TimeSeriesChart({ labels, datasets, height = 300, unitLabel = ""
                     const cost = costRef.current[c.datasetIndex]?.[c.dataIndex]
                     const cache = cacheRef.current[c.datasetIndex]?.[c.dataIndex]
                     const suffix = typeof cost === "number" && cost > 0 ? `  ·  ${formatTooltipCost(cost)}` : ""
-                    return `${c.dataset.label}: ${tooltipValueText(Number(c.parsed.y), unitLabel, cache, formatCacheRef.current)}${suffix}`
+                    return `${c.dataset.label}: ${tooltipValueText(Number(c.parsed.y), unitLabel, cache, formatCacheRef.current, tooltipFormatRef.current)}${suffix}`
                   },
                 },
               },
@@ -399,9 +418,10 @@ export function tooltipValueText(
   unitLabel: string,
   cache: number | undefined,
   formatCache?: (tokens: number) => string,
+  format?: (value: number) => string,
 ): string {
   const note = formatCache && typeof cache === "number" && cache > 0 ? ` (${formatCache(cache)})` : ""
-  return `${value.toLocaleString()}${unitLabel}${note}`
+  return `${format ? format(value) : `${value.toLocaleString()}${unitLabel}`}${note}`
 }
 
 function hideTooltip(el: HTMLDivElement | null) {
@@ -421,6 +441,7 @@ function renderLinkTooltip(
   extras: {
     cacheRef: { current: Array<number[] | null> }
     formatCacheRef: { current: ((tokens: number) => string) | undefined }
+    tooltipFormatRef: { current: ((value: number) => string) | undefined }
     sort: boolean
   },
 ) {
@@ -465,7 +486,7 @@ function renderLinkTooltip(
         typeof r.cost === "number" && r.cost > 0
           ? `<span class="pg-chart-tip-cost">${escapeHtml(formatTooltipCost(r.cost))}</span>`
           : ""
-      const valueText = tooltipValueText(r.value, unitLabel, r.cache, extras.formatCacheRef.current)
+      const valueText = tooltipValueText(r.value, unitLabel, r.cache, extras.formatCacheRef.current, extras.tooltipFormatRef.current)
       return `<div class="pg-chart-tip-row"><span class="pg-chart-tip-dot" style="background:${escapeHtml(r.color)}"></span>${escapeHtml(r.label)}<b>${escapeHtml(valueText)}${costHtml}</b></div>`
     })
     .join("")

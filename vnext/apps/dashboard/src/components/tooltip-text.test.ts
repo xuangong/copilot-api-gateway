@@ -26,3 +26,10 @@ describe("tooltipValueText", () => {
     expect(tooltipValueText(3, " req", undefined, cache)).toBe("3 req")
   })
 })
+
+describe("tooltipValueText with a custom format", () => {
+  test("the format replaces the plain number and unit label", () => {
+    expect(tooltipValueText(1500, "", undefined, undefined, value => `${value / 1000} KB`)).toBe("1.5 KB")
+    expect(tooltipValueText(1500, " tokens", undefined, undefined)).toBe(`${(1500).toLocaleString()} tokens`)
+  })
+})

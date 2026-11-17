@@ -7,7 +7,7 @@ const ids = (groups: ReturnType<typeof buildNavGroups>) => groups.map((g) => [g.
 
 test("an admin sees every page, grouped observe → models → access → connect", () => {
   expect(ids(buildNavGroups(t, { isAdmin: true }))).toEqual([
-    ["observe", ["usage", "latency"]],
+    ["observe", ["usage", "latency", "telemetry"]],
     ["models", ["models", "pricing"]],
     ["access", ["keys", "users"]],
     ["connect", ["upstreams", "proxies", "clients"]],
@@ -16,7 +16,7 @@ test("an admin sees every page, grouped observe → models → access → connec
 
 test("a non-admin loses Users and Proxies and nothing else", () => {
   expect(ids(buildNavGroups(t, { isAdmin: false }))).toEqual([
-    ["observe", ["usage", "latency"]],
+    ["observe", ["usage", "latency", "telemetry"]],
     ["models", ["models", "pricing"]],
     ["access", ["keys"]],
     ["connect", ["upstreams", "clients"]],
@@ -44,7 +44,7 @@ test("the default page is Usage, which every viewer can see", () => {
 
 test("pages outside the sidebar stay reachable by their old addresses", () => {
   const allowed = allowedTabIds(buildNavGroups(t, { isAdmin: true }))
-  for (const id of ["upstreams", "proxies", "users", "keys", "models", "pricing", "usage", "latency", "clients", "agent-remote", "settings"]) {
+  for (const id of ["upstreams", "proxies", "users", "keys", "models", "pricing", "usage", "latency", "telemetry", "clients", "agent-remote", "settings"]) {
     expect(allowed).toContain(id)
   }
 })

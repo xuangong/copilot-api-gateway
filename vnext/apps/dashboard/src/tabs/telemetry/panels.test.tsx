@@ -1,0 +1,234 @@
+import { expect, test } from "bun:test"
+import { renderToStaticMarkup } from "react-dom/server"
+import type { TelemetryBudget, TelemetrySummary, TelemetryTop } from "../../api/telemetry"
+import { installDictionary } from "../../state/i18n-fixture"
+import { ChartPanel } from "./ChartPanel"
+import { BudgetPanel, CheckStrip, FlaggedPanel, FreshnessPanel, LatencyNote, TopPanel } from "./Panels"
+import { SETTINGS_FIELDS, SettingsPanel, type SettingsPanelProps } from "./SettingsPanel"
+import { settingsToForm } from "./telemetry-settings-form"
+
+const summary = (over: Partial<TelemetrySummary> = {}): TelemetrySummary => ({
+  now: "2026-11-16T12:30:00.000Z", freshness: { lastPushAt: "2026-11-16T09:00:00.000Z", stale: false, staleAfterHours: 2, hoursSincePush: 3 }, budget: null,
+  surges: [], flags: [], checks: [], ...over,
+})
+const check = (status: "passed" | "failed" | "no check" | "not monitored", stage: string | null = null) => ({ metric: "probe.ok", hour: "2026-11-16T11:00:00Z", status, stage })
+
+test("freshness shows the last push, and a stale source gets the staleness warning", () => {
+  expect(renderToStaticMarkup(<FreshnessPanel summary={null} />)).toContain("dash.loadingShort")
+  const fresh = renderToStaticMarkup(<FreshnessPanel summary={summary()} />)
+  expect(fresh).toContain("dash.tlmLastPush")
+  expect(fresh).not.toContain("dash.tlmStaleWarning")
+  expect(renderToStaticMarkup(<FreshnessPanel summary={summary({ freshness: { lastPushAt: null, stale: false, staleAfterHours: 2, hoursSincePush: null } })} />)).toContain("dash.tlmNeverPushed")
+  expect(renderToStaticMarkup(<FreshnessPanel summary={summary({ freshness: { lastPushAt: "x", stale: true, staleAfterHours: 2, hoursSincePush: 5 } })} />)).toContain("dash.tlmStaleWarning")
+})
+
+test("each check status is worded as a single check, and only no check warns, alongside a staleness warning when both apply", () => {
+  const html = (status: Parameters<typeof check>[0], stage: string | null = null, stale = false) => renderToStaticMarkup(
+    <FreshnessPanel summary={summary({ checks: [check(status, stage)], freshness: { lastPushAt: "2026-11-16T09:00:00.000Z", stale, staleAfterHours: 2, hoursSincePush: 3 } })} />)
+  expect(html("passed")).toContain("dash.tlmCheckPassed")
+  expect(html("passed")).not.toContain("dash.tlmNoCheckWarning")
+  const failed = html("failed", "tls")
+  expect(failed).toContain("dash.tlmCheckFailed")
+  expect(failed).toContain("dash.tlmCheckStage")
+  expect(html("not monitored")).toContain("dash.tlmCheckNotMonitored")
+  expect(html("not monitored")).not.toContain("dash.tlmNoCheckWarning")
+  const none = html("no check")
+  expect(none).toContain("dash.tlmCheckNoCheck")
+  expect(none).toContain("dash.tlmNoCheckWarning")
+  expect(none).not.toContain("dash.tlmStaleWarning")
+  const both = html("no check", null, true)
+  expect(both).toContain("dash.tlmStaleWarning")
+  expect(both).toContain("dash.tlmNoCheckWarning")
+})
+
+test("the single-check sentence says it reflects only the moment of the check, in both languages", () => {
+  for (const language of ["en", "zh"] as const) {
+    const restore = installDictionary(language)
+    try {
+      const html = renderToStaticMarkup(<FreshnessPanel summary={summary({ checks: [check("passed")] })} />)
+      expect(html).toContain("11:00–12:00 UTC")
+      expect(html).not.toContain("dash.tlmCheckPassed")
+    } finally { restore() }
+  }
+  const zh = installDictionary("zh")
+  try {
+    expect(renderToStaticMarkup(<FreshnessPanel summary={summary({ checks: [check("passed")] })} />)).toContain("11:00–12:00 UTC 期间的一次检测：正常（只代表检测时那一刻）")
+  } finally { zh() }
+  const restore = installDictionary("en")
+  try {
+    expect(renderToStaticMarkup(<FreshnessPanel summary={summary({ checks: [check("passed")] })} />)).toContain("One check during 11:00–12:00 UTC: passed (this reflects only the moment of the check)")
+    expect(renderToStaticMarkup(<FreshnessPanel summary={summary({ checks: [check("no check")] })} />)).toContain("the VM may be down or the agent not running")
+  } finally { restore() }
+})
+
+const budget = (over: Partial<TelemetryBudget> = {}): TelemetryBudget => ({
+  metric: "nic.tx_bytes", unit: "bytes", monthStart: "2026-11-01T00:00:00Z", mtd: 372e9, projection: 719.5e9, averageDaily: 24e9, monthlyLimit: 500e9,
+  mtdPercent: 74.4, projectionPercent: 143.9, overLimit: true, cost: { mtd: 27.2, projection: 61.95 }, ...over,
+})
+
+test("the budget panel shows month-to-date, the projection, a red bar and an alert when the projection exceeds the limit, and the cost", () => {
+  expect(renderToStaticMarkup(<BudgetPanel budget={null} />)).toContain("dash.tlmBudgetUnset")
+  const html = renderToStaticMarkup(<BudgetPanel budget={budget()} />)
+  expect(html).toContain("372 GB")
+  expect(html).toContain("719.5 GB")
+  expect(html).toContain("500 GB")
+  expect(html).toContain("bg-danger")
+  expect(html).toContain("dash.tlmOverLimit")
+  expect(html).toContain('role="alert"')
+  expect(html).toContain("dash.tlmCost")
+  const calm = renderToStaticMarkup(<BudgetPanel budget={budget({ overLimit: false, mtdPercent: 40, projection: 450e9, cost: null })} />)
+  expect(calm).toContain("bg-brand")
+  expect(calm).not.toContain("dash.tlmOverLimit")
+  expect(calm).not.toContain("dash.tlmCost")
+  expect(renderToStaticMarkup(<BudgetPanel budget={budget({ monthlyLimit: null, mtdPercent: null, projectionPercent: null, overLimit: null, cost: null })} />)).not.toContain("dash.tlmPercentOfLimit")
+})
+
+test("the check strip marks every hour: passed green, failed red, no check amber and not monitored neutral, never a percentage", () => {
+  const hours = ["2026-11-16T09:00:00Z", "2026-11-16T10:00:00Z", "2026-11-16T11:00:00Z", "2026-11-16T12:00:00Z"]
+  const html = renderToStaticMarkup(<CheckStrip hours={hours} statuses={["not monitored", "passed", "failed", "no check"]} stages={[null, null, "tls", null]} />)
+  const markers = html.match(/<span[^>]*data-status="[^"]*"[^>]*>/g) ?? []
+  expect(markers).toHaveLength(4)
+  expect(markers[0]).toContain("border-dashed")
+  expect(markers[1]).toContain("bg-success")
+  expect(markers[2]).toContain("bg-danger")
+  expect(markers[3]).toContain("bg-warn")
+  expect(html).toContain("11-16 11:00 dash.tlmStatusFailed (tls)")
+  expect(html).not.toContain("%")
+})
+
+const top = (over: Partial<TelemetryTop> = {}): TelemetryTop => ({
+  metric: "proxy.sent_bytes", unit: "bytes", groupBy: "user", from: "a", to: "b", previousFrom: "c", previousTo: "d", total: 100e9,
+  rows: [{ key: "#1", value: 60e9, share: 0.6, previous: 30e9, change: 1 }, { key: "", value: 20e9, share: 0.2, previous: 0, change: null }], otherCurrent: 20e9, otherShare: 0.2, ...over,
+})
+
+test("the top table shows labelled groups with value, share and change, the empty group and the remainder", () => {
+  const html = renderToStaticMarkup(<TopPanel top={top()} settings={{ labels: { user: { "#1": "MacBook" } } }} groupBy="user" />)
+  expect(html).toContain("MacBook")
+  expect(html).toContain("60 GB")
+  expect(html).toContain("60.0%")
+  expect(html).toContain("+100%")
+  expect(html).toContain("dash.tlmNoGroup")
+  expect(html).toContain("dash.tlmOtherLabel")
+  expect(html).toContain("—")
+  expect(renderToStaticMarkup(<TopPanel top={null} settings={{}} groupBy="" />)).toContain("dash.tlmTopPick")
+  expect(renderToStaticMarkup(<TopPanel top={top({ rows: [], total: 0, otherCurrent: 0, otherShare: 0 })} settings={{}} groupBy="user" />)).toContain("dash.tlmNoData")
+})
+
+test("flagged hours list surges with ratio and contributors and non-zero hours with their breakdown", () => {
+  const html = renderToStaticMarkup(<FlaggedPanel units={{ "nic.tx_bytes": "bytes", "probe.fail": "count" }} settings={{ labels: { user: { "#1": "MacBook" } } }} summary={summary({
+    surges: [{ metric: "nic.tx_bytes", hour: "2026-11-16T11:00:00Z", value: 5e9, baseline: 1e9, ratio: 5, contributors: [{ dims: { user: "#1" }, value: 4e9 }] }],
+    flags: [{ metric: "probe.fail", hour: "2026-11-16T09:00:00Z", total: 1, breakdown: [{ dims: { stage: "tls" }, value: 1 }] }],
+  })} />)
+  expect(html).toContain("dash.tlmSurges")
+  expect(html).toContain("5 GB")
+  expect(html).toContain("×5.0")
+  expect(html).toContain("user=MacBook")
+  expect(html).toContain("dash.tlmNonZero")
+  expect(html).toContain("stage=tls")
+  expect(renderToStaticMarkup(<FlaggedPanel units={{}} settings={{}} summary={summary()} />)).toContain("dash.tlmNoFlags")
+})
+
+const noop = () => {}
+const settingsProps = (over: Partial<SettingsPanelProps> = {}): SettingsPanelProps => ({
+  form: settingsToForm({}, null), name: "trojan-vm", busy: false, error: "", saved: false, invalidField: null, onField: noop, onName: noop, onSave: noop,
+  onRename: noop, onRotate: noop, onDelete: noop, limitState: "ready", ...over,
+})
+
+test("the settings panel has every setting, rename, rotate and delete, and marks an invalid field", () => {
+  const html = renderToStaticMarkup(<SettingsPanel {...settingsProps()} />)
+  for (const field of SETTINGS_FIELDS) expect(html).toContain(field.labelKey)
+  expect(html).toContain("dash.save")
+  expect(html).toContain("dash.tlmRename")
+  expect(html).toContain("dash.tlmRotate")
+  expect(html).toContain("dash.delete")
+  expect(renderToStaticMarkup(<SettingsPanel {...settingsProps({ invalidField: "surgeFactor" })} />)).toContain('aria-invalid="true"')
+  expect(renderToStaticMarkup(<SettingsPanel {...settingsProps({ saved: true })} />)).toContain("dash.tlmSettingsSaved")
+  expect(renderToStaticMarkup(<SettingsPanel {...settingsProps({ error: "dash.tlmError" })} />)).toContain('role="alert"')
+})
+
+test("every settings label exists in English and Chinese", () => {
+  for (const language of ["en", "zh"] as const) {
+    const restore = installDictionary(language)
+    try {
+      const html = renderToStaticMarkup(<SettingsPanel {...settingsProps()} />)
+      expect(html).not.toContain("dash.tlm")
+    } finally { restore() }
+  }
+})
+
+test("the top table and flagged contributors hide groups whose value is zero", () => {
+  const rows = [{ key: "#1", value: 60e9, share: 1, previous: 0, change: null }, { key: "ghost", value: 0, share: 0, previous: 0, change: null }]
+  const html = renderToStaticMarkup(<TopPanel top={top({ rows, otherCurrent: 0, otherShare: 0 })} settings={{}} groupBy="user" />)
+  expect(html).toContain("#1")
+  expect(html).not.toContain("ghost")
+  expect(renderToStaticMarkup(<TopPanel top={top({ rows: [rows[1]!], total: 0, otherCurrent: 0, otherShare: 0 })} settings={{}} groupBy="user" />)).toContain("dash.tlmNoData")
+  const flagged = renderToStaticMarkup(<FlaggedPanel units={{ m: "count" }} settings={{}} summary={summary({
+    flags: [{ metric: "m", hour: "2026-11-16T09:00:00Z", total: 1, breakdown: [{ dims: { stage: "tls" }, value: 1 }, { dims: { stage: "tcp" }, value: 0 }] }],
+  })} />)
+  expect(flagged).toContain("stage=tls")
+  expect(flagged).not.toContain("stage=tcp")
+})
+
+test("a latency chart says that only passed hours are shown", () => {
+  expect(renderToStaticMarkup(<LatencyNote check="probe.ok" metric="probe.latency_ms" />)).toContain("dash.tlmLatencyPassedOnly")
+  expect(renderToStaticMarkup(<LatencyNote check={null} metric="probe.latency_ms" />)).toContain("dash.tlmLatencyUnpaired")
+  expect(renderToStaticMarkup(<LatencyNote check={null} metric="nic.tx_bytes" />)).toBe("")
+})
+
+test("check markers carry a non-colour cue, distinct per state, and the legend repeats them", () => {
+  const hours = ["2026-11-16T09:00:00Z", "2026-11-16T10:00:00Z", "2026-11-16T11:00:00Z", "2026-11-16T12:00:00Z", "2026-11-16T13:00:00Z"]
+  const now = Date.parse("2026-11-16T13:30:00Z")
+  const html = renderToStaticMarkup(<CheckStrip hours={hours} statuses={["not monitored", "passed", "failed", "no check", "no check"]} stages={[]} nowMs={now} />)
+  const marker = (status: string) => ((html.match(new RegExp(`<span[^>]*data-status="${status}"[^>]*>(.*?)</span></span>`)) ?? [])[1] ?? "").replace(/<[^>]*>/g, "")
+  const cues = ["not monitored", "passed", "failed", "no check", "pending"].map(marker)
+  expect(cues.every(cue => cue.length > 0)).toBe(true)
+  expect(new Set(cues).size).toBe(5)
+  const legend = html.slice(html.indexOf("<ul"))
+  for (const cue of cues) expect(legend).toContain(cue)
+  expect(legend).toContain("dash.tlmStatusPending")
+})
+
+test("a failed load is shown instead of an endless Loading", () => {
+  expect(renderToStaticMarkup(<FreshnessPanel summary={null} failed />)).toContain("dash.tlmLoadError")
+  expect(renderToStaticMarkup(<FreshnessPanel summary={null} failed />)).not.toContain("dash.loadingShort")
+  expect(renderToStaticMarkup(<FlaggedPanel units={{}} settings={{}} summary={null} failed />)).toContain("dash.tlmLoadError")
+  expect(renderToStaticMarkup(<TopPanel top={null} settings={{}} groupBy="user" failed />)).toContain("dash.tlmLoadError")
+  const chart = renderToStaticMarkup(<ChartPanel metrics={[]} metric="" range="24h" groupBy="" series={null} settings={{}} surgeHours={new Set()} dark error="dash.tlmLoadError" onMetric={noop} onRange={noop} onGroupBy={noop} />)
+  expect(chart).toContain("dash.tlmLoadError")
+  expect(chart).not.toContain("dash.tlmNoMetrics")
+})
+
+test("hours in flagged tables and the last push are marked UTC", () => {
+  const html = renderToStaticMarkup(<FlaggedPanel units={{ m: "count" }} settings={{}} summary={summary({
+    flags: [{ metric: "m", hour: "2026-11-16T09:00:00Z", total: 1, breakdown: [] }],
+  })} />)
+  expect(html).toContain("11-16 09:00 UTC")
+})
+
+test("settings fields match the form fields exactly", () => {
+  expect((SETTINGS_FIELDS.map(field => field.key) as string[]).sort()).toEqual(Object.keys(settingsToForm({}, null)).filter(key => key !== "limitUnit").sort())
+})
+
+test("the limit field and Save are disabled until the unit is known, with a hint for each limit state", () => {
+  const disabledSave = (html: string) => /<button[^>]*\sdisabled=""[^>]*>[^<]*dash\.save/.test(html)
+  const loading = renderToStaticMarkup(<SettingsPanel {...settingsProps({ limitState: "loading" })} />)
+  expect(loading).toContain("dash.tlmLimitLoading")
+  expect(disabledSave(loading)).toBe(true)
+  expect(/<input[^>]*disabled=""[^>]*value=""[^>]*>/.test(loading)).toBe(true)
+  expect(renderToStaticMarkup(<SettingsPanel {...settingsProps({ limitState: "raw" })} />)).toContain("dash.tlmLimitRaw")
+  const mismatch = renderToStaticMarkup(<SettingsPanel {...settingsProps({ limitState: "mismatch" })} />)
+  expect(mismatch).toContain("dash.tlmLimitMismatch")
+  expect(disabledSave(mismatch)).toBe(true)
+  const ready = renderToStaticMarkup(<SettingsPanel {...settingsProps()} />)
+  expect(disabledSave(ready)).toBe(false)
+  expect(ready).not.toContain("dash.tlmLimit")
+})
+
+test("a check series is judged by when it was fetched, so a later render does not turn the open hour into a no-check warning", () => {
+  const series = { metric: "probe.ok", unit: "count" as const, from: "2026-11-16T12:00:00Z", to: "2026-11-16T14:00:00Z", hours: ["2026-11-16T12:00:00Z", "2026-11-16T13:00:00Z"],
+    total: [1, 0], groups: [], statuses: ["passed" as const, "no check" as const], stages: [null, null] }
+  const html = renderToStaticMarkup(<ChartPanel metrics={[{ metric: "probe.ok", unit: "count", firstHour: "", lastHour: "", dims: [] }]} metric="probe.ok" range="24h" groupBy=""
+    series={series} fetchedAt={Date.parse("2026-11-16T13:02:00Z")} settings={{ checkMetrics: ["probe.ok"] }} surgeHours={new Set()} dark error="" onMetric={noop} onRange={noop} onGroupBy={noop} />)
+  expect(html).toContain('data-status="pending"')
+  expect(html).not.toContain('data-status="no check"')
+})

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { tooltipPlacement } from "./TimeSeriesChart"
+import { pointStyle, tooltipPlacement } from "./TimeSeriesChart"
 
 // Tooltip box and canvas used throughout; the numbers only have to be
 // self-consistent.
@@ -135,5 +135,15 @@ describe("chartFont", () => {
     expect(chartFont((name) => (name === "--font-sans" ? ' "Geist", sans-serif ' : ""), "sans")).toBe('"Geist", sans-serif')
     expect(chartFont(() => "", "mono")).toBe("ui-monospace, monospace")
     expect(chartFont(() => "", "sans")).toBe("ui-sans-serif, system-ui, sans-serif")
+  })
+})
+
+describe("pointStyle", () => {
+  test("a dataset without highlights draws no markers", () => {
+    expect(pointStyle({ color: "#112233" })).toEqual({ radius: 0, background: "#112233" })
+  })
+
+  test("highlighted points become large alert-coloured markers and the rest stay hidden", () => {
+    expect(pointStyle({ color: "#112233", highlight: [false, true] }, "#ff0000")).toEqual({ radius: [0, 5], background: ["#112233", "#ff0000"] })
   })
 })

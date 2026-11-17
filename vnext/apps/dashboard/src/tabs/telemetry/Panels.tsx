@@ -1,0 +1,150 @@
+import { useId } from "react"
+import type { CheckStatus, TelemetryBudget, TelemetrySettings, TelemetrySummary, TelemetryTop, TelemetryUnit } from "../../api/telemetry"
+import { useT } from "../../state/i18n"
+import { Badge } from "../../ui/badge"
+import { Card, SectionHeading } from "../../ui/card"
+import { cn } from "../../ui/cn"
+import { Meter } from "../../ui/meter"
+import { Notice } from "../../ui/notice"
+import { Table, TBody, Td, Th } from "../../ui/table"
+import {
+  type DisplayStatus, CHECK_SENTENCE_KEYS, STATUS_GLYPHS, STATUS_KEYS, budgetView, displayStatus, formatUtc, dimsLabel, formatChange, formatShare, formatValue, freshnessNotices, groupLabel, hourRange, hourShort, isLatencyMetric, statusTone,
+} from "./telemetry-format"
+
+const money = (value: number | null) => value === null ? "—" : `$${value.toFixed(2)}`
+
+export function FreshnessPanel({ summary, failed = false }: { summary: TelemetrySummary | null; failed?: boolean }) {
+  const t = useT()
+  const titleId = useId()
+  return <Card aria-labelledby={titleId} className="space-y-3">
+    <SectionHeading id={titleId}>{t("dash.tlmFreshness")}</SectionHeading>
+    {summary === null ? <p className="text-body text-fg-subtle">{t(failed ? "dash.tlmLoadError" : "dash.loadingShort")}</p> : <>
+      <p className="text-body text-fg-muted">
+        {summary.freshness.lastPushAt ? t("dash.tlmLastPush", { at: formatUtc(summary.freshness.lastPushAt) }) : t("dash.tlmNeverPushed")}
+      </p>
+      {freshnessNotices(summary).map(notice => notice.kind === "stale"
+        ? <Notice key="stale" tone="warn" role="status">{t("dash.tlmStaleWarning", { n: notice.hours })}</Notice>
+        : <Notice key={`no-check-${notice.metric}`} tone="warn" role="status">{t("dash.tlmNoCheckWarning", { range: hourRange(notice.hour) })}</Notice>)}
+      {summary.checks.map(check => <p key={check.metric} className="flex flex-wrap items-center gap-2 text-body text-fg-muted">
+        <Badge tone={statusTone(check.status)}>{t(STATUS_KEYS[check.status])}</Badge>
+        <span>{t(CHECK_SENTENCE_KEYS[check.status], { range: hourRange(check.hour) })}{check.status === "failed" && check.stage ? ` ${t("dash.tlmCheckStage", { stage: check.stage })}` : ""}</span>
+      </p>)}
+    </>}
+  </Card>
+}
+
+export function BudgetPanel({ budget }: { budget: TelemetryBudget | null }) {
+  const t = useT()
+  const titleId = useId()
+  const view = budget ? budgetView(budget) : null
+  return <Card aria-labelledby={titleId} className="space-y-3">
+    <SectionHeading id={titleId}>{t("dash.tlmBudget")}</SectionHeading>
+    {budget === null || view === null ? <p className="text-body text-fg-subtle">{t("dash.tlmBudgetUnset")}</p> : <>
+      <div className="flex flex-wrap gap-x-6 gap-y-1 text-body text-fg-muted">
+        <span>{t("dash.tlmMtd")}: <b className="text-fg">{formatValue(budget.mtd, budget.unit)}</b></span>
+        <span>{t("dash.tlmProjection")}: <b className="text-fg">{formatValue(budget.projection, budget.unit)}</b></span>
+        {budget.monthlyLimit !== null ? <span>{t("dash.tlmMonthlyLimit")}: <b className="text-fg">{formatValue(budget.monthlyLimit, budget.unit)}</b></span> : null}
+      </div>
+      {view.percent !== null ? <>
+        <Meter percent={view.percent} tone={view.tone} />
+        <p className="text-xs text-fg-subtle">{t("dash.tlmPercentOfLimit", { p: view.percent.toFixed(1) })}</p>
+      </> : null}
+      {view.over && budget.projectionPercent !== null ? <Notice tone="danger">{t("dash.tlmOverLimit", { p: budget.projectionPercent.toFixed(0) })}</Notice> : null}
+      {budget.cost ? <p className="text-body text-fg-muted">{t("dash.tlmCost", { mtd: money(budget.cost.mtd), projection: money(budget.cost.projection) })}</p> : null}
+    </>}
+  </Card>
+}
+
+const MARKER_CLASS: Record<DisplayStatus, string> = {
+  passed: "bg-success text-white", failed: "bg-danger text-white", "no check": "bg-warn text-black",
+  "not monitored": "border border-dashed border-fg-subtle text-fg-subtle", pending: "border border-fg-subtle text-fg-subtle",
+}
+
+/** One marker per hour; a check is one point in time, so it is never summarised as a percentage. */
+export function CheckStrip({ hours, statuses, stages, nowMs = Date.now() }: { hours: string[]; statuses: CheckStatus[]; stages: Array<string | null>; nowMs?: number }) {
+  const t = useT()
+  return <div className="space-y-2">
+    <div role="list" className="flex flex-wrap gap-0.5">
+      {hours.map((hour, index) => {
+        const status = displayStatus(statuses[index] ?? "not monitored", hour, nowMs)
+        const label = `${hourShort(hour)} ${t(STATUS_KEYS[status])}${stages[index] ? ` (${stages[index]})` : ""}`
+        return <span key={hour} role="listitem" aria-label={label} title={label} data-status={status}
+          className={cn("inline-flex h-5 w-4 items-center justify-center rounded-sm text-xs leading-none", MARKER_CLASS[status])}><span aria-hidden="true">{STATUS_GLYPHS[status]}</span></span>
+      })}
+    </div>
+    <ul className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-fg-muted">
+      {(Object.keys(STATUS_KEYS) as DisplayStatus[]).map(status => <li key={status} className="flex items-center gap-1">
+        <span aria-hidden="true" className={cn("inline-flex h-4 w-4 items-center justify-center rounded-sm text-xs leading-none", MARKER_CLASS[status])}>{STATUS_GLYPHS[status]}</span>{t(STATUS_KEYS[status])}
+      </li>)}
+    </ul>
+  </div>
+}
+
+export function TopPanel({ top, settings, groupBy, failed = false }: { top: TelemetryTop | null; settings: TelemetrySettings; groupBy: string; failed?: boolean }) {
+  const t = useT()
+  const titleId = useId()
+  const none = t("dash.tlmNoGroup")
+  const rows = (top?.rows ?? []).filter(row => row.value !== 0)
+  return <Card aria-labelledby={titleId} className="space-y-3">
+    <SectionHeading id={titleId}>{t("dash.tlmTop")}</SectionHeading>
+    {groupBy === "" ? <p className="text-body text-fg-subtle">{t("dash.tlmTopPick")}</p>
+      : top === null ? <p className="text-body text-fg-subtle">{t(failed ? "dash.tlmLoadError" : "dash.loadingShort")}</p>
+      : rows.length === 0 && top.otherCurrent <= 0 ? <p className="text-body text-fg-subtle">{t("dash.tlmNoData")}</p>
+      : <Table label={t("dash.tlmTop")}>
+        <thead><tr><Th>{t("dash.tlmColGroup")}</Th><Th numeric>{t("dash.tlmColValue")}</Th><Th numeric>{t("dash.tlmColShare")}</Th><Th numeric>{t("dash.tlmColChange")}</Th></tr></thead>
+        <TBody>
+          {rows.map(row => <tr key={row.key}>
+            <Td>{groupLabel(settings, groupBy, row.key, none)}</Td><Td numeric>{formatValue(row.value, top.unit)}</Td>
+            <Td numeric>{formatShare(row.share)}</Td><Td numeric>{formatChange(row.change)}</Td>
+          </tr>)}
+          {top.otherCurrent > 0 ? <tr>
+            <Td>{t("dash.tlmOtherLabel")}</Td><Td numeric>{formatValue(top.otherCurrent, top.unit)}</Td><Td numeric>{formatShare(top.otherShare)}</Td><Td numeric>—</Td>
+          </tr> : null}
+        </TBody>
+      </Table>}
+  </Card>
+}
+
+export function FlaggedPanel({ summary, settings, units, failed = false }: { summary: TelemetrySummary | null; settings: TelemetrySettings; units: Record<string, TelemetryUnit>; failed?: boolean }) {
+  const t = useT()
+  const titleId = useId()
+  const surges = summary?.surges ?? []
+  const flags = summary?.flags ?? []
+  return <Card aria-labelledby={titleId} className="space-y-3">
+    <SectionHeading id={titleId}>{t("dash.tlmFlagged")}</SectionHeading>
+    {summary === null ? <p className="text-body text-fg-subtle">{t(failed ? "dash.tlmLoadError" : "dash.loadingShort")}</p>
+      : surges.length === 0 && flags.length === 0 ? <p className="text-body text-fg-subtle">{t("dash.tlmNoFlags")}</p> : <>
+      {surges.length ? <>
+        <SectionHeading as="h3">{t("dash.tlmSurges")}</SectionHeading>
+        <Table label={t("dash.tlmSurges")}>
+          <thead><tr>
+            <Th>{t("dash.tlmColHour")}</Th><Th>{t("dash.tlmMetric")}</Th><Th numeric>{t("dash.tlmColValue")}</Th><Th numeric>{t("dash.tlmColBaseline")}</Th>
+            <Th numeric>{t("dash.tlmColRatio")}</Th><Th>{t("dash.tlmColContributors")}</Th>
+          </tr></thead>
+          <TBody>{surges.map(surge => <tr key={`${surge.metric}-${surge.hour}`}>
+            <Td>{hourShort(surge.hour)} UTC</Td><Td>{surge.metric}</Td><Td numeric>{formatValue(surge.value, units[surge.metric] ?? null)}</Td>
+            <Td numeric>{formatValue(surge.baseline, units[surge.metric] ?? null)}</Td><Td numeric>{surge.ratio === null ? "—" : `×${surge.ratio.toFixed(1)}`}</Td>
+            <Td>{surge.contributors.filter(c => c.value !== 0).map(c => `${dimsLabel(settings, c.dims)} (${formatValue(c.value, units[surge.metric] ?? null)})`).join("; ")}</Td>
+          </tr>)}</TBody>
+        </Table>
+      </> : null}
+      {flags.length ? <>
+        <SectionHeading as="h3">{t("dash.tlmNonZero")}</SectionHeading>
+        <Table label={t("dash.tlmNonZero")}>
+          <thead><tr><Th>{t("dash.tlmColHour")}</Th><Th>{t("dash.tlmMetric")}</Th><Th numeric>{t("dash.tlmColTotal")}</Th><Th>{t("dash.tlmColBreakdown")}</Th></tr></thead>
+          <TBody>{flags.map(flag => <tr key={`${flag.metric}-${flag.hour}`}>
+            <Td>{hourShort(flag.hour)} UTC</Td><Td>{flag.metric}</Td><Td numeric>{formatValue(flag.total, units[flag.metric] ?? null)}</Td>
+            <Td>{flag.breakdown.filter(entry => entry.value !== 0).map(entry => dimsLabel(settings, entry.dims)).join("; ")}</Td>
+          </tr>)}</TBody>
+        </Table>
+      </> : null}
+    </>}
+  </Card>
+}
+
+/** Says that a latency chart shows only hours whose check passed, or how to get that. Empty for other metrics. */
+export function LatencyNote({ metric, check }: { metric: string; check: string | null }) {
+  const t = useT()
+  if (!isLatencyMetric(metric)) return null
+  return <p className="text-xs text-fg-subtle">{check ? t("dash.tlmLatencyPassedOnly") : t("dash.tlmLatencyUnpaired", { check: `${metric.slice(0, -".latency_ms".length)}.ok` })}</p>
+}
