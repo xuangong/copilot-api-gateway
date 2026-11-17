@@ -1,0 +1,90 @@
+name: Telemetry agent release
+
+# Publishes the trojan telemetry agent when a telemetry-agent-v<semver> tag is pushed. Pushing the tag is an
+# owner-confirmed rollout step; nothing here runs on branches or pull requests.
+on:
+  push:
+    tags:
+      - 'telemetry-agent-v*'
+
+permissions: {}
+
+jobs:
+  release:
+    name: Build and publish the agent
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - name: Check the tag against every version source
+        id: version
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#telemetry-agent-v}"
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::the tag must look like telemetry-agent-v1.2.3"
+            exit 1
+          fi
+          file_version="$(tr -d '[:space:]' < vnext/tools/trojan-telemetry/VERSION)"
+          script_version="$(sed -n 's/^AGENT_VERSION = "\(.*\)"$/\1/p' vnext/tools/trojan-telemetry/trojan-telemetry.py)"
+          gateway_version="$(sed -n 's/^export const TELEMETRY_AGENT_VERSION = "\(.*\)"$/\1/p' vnext/packages/gateway/src/control-plane/telemetry/agent-release.ts)"
+          echo "tag=$version VERSION=$file_version AGENT_VERSION=$script_version TELEMETRY_AGENT_VERSION=$gateway_version"
+          for found in "$file_version" "$script_version" "$gateway_version"; do
+            if [ "$found" != "$version" ]; then
+              echo "::error::the tag ($version) does not match every version source"
+              exit 1
+            fi
+          done
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.8'
+
+      - name: Test the agent
+        working-directory: vnext/tools/trojan-telemetry
+        run: python3 -m unittest discover -s tests -v
+
+      - name: Build the release assets
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: bash vnext/tools/trojan-telemetry/build-release.sh "$VERSION" dist
+
+      - name: Verify the built assets match the hashes the gateway pins
+        run: |
+          set -euo pipefail
+          constants=vnext/packages/gateway/src/control-plane/telemetry/agent-release.ts
+          pinned_agent="$(sed -n 's/^export const TELEMETRY_AGENT_SHA256 = "\([0-9a-f]\{64\}\)"$/\1/p' "$constants")"
+          pinned_installer="$(sed -n 's/^export const TELEMETRY_INSTALLER_SHA256 = "\([0-9a-f]\{64\}\)"$/\1/p' "$constants")"
+          built_agent="$(sha256sum dist/trojan-telemetry.py | cut -d' ' -f1)"
+          built_installer="$(sha256sum dist/install.sh | cut -d' ' -f1)"
+          if [ -z "$pinned_agent" ] || [ -z "$pinned_installer" ]; then
+            echo "::error::could not read the pinned hashes from agent-release.ts"
+            exit 1
+          fi
+          if [ "$built_agent" != "$pinned_agent" ]; then
+            echo "::error::trojan-telemetry.py does not match TELEMETRY_AGENT_SHA256 in agent-release.ts"
+            exit 1
+          fi
+          if [ "$built_installer" != "$pinned_installer" ]; then
+            echo "::error::install.sh does not match TELEMETRY_INSTALLER_SHA256 in agent-release.ts"
+            exit 1
+          fi
+          echo "built assets match the pinned hashes"
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/trojan-telemetry.py dist/install.sh dist/SHA256SUMS \
+            --verify-tag \
+            --title "Telemetry agent v$VERSION" \
+            --notes "Trojan telemetry agent $VERSION. Install from the dashboard's Telemetry page; verify downloads against SHA256SUMS."

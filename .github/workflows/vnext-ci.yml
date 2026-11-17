@@ -1,7 +1,7 @@
 name: vNext CI (local gate)
 
 # Runs the same gate as `cd vnext && bun run ci:local`:
-#   framework-purity → typecheck → tests → lint → dashboard build → CFW dry-run
+#   framework-purity → typecheck → tests → agent tests → lint → dashboard build → CFW dry-run
 #
 # No repository secrets are required — the Cloudflare dry-run uses
 # `wrangler deploy --dry-run` which does not authenticate.
@@ -55,8 +55,16 @@ jobs:
       - name: Typecheck
         run: bun run typecheck
 
+      - name: Setup Python (telemetry agent)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.8'
+
       - name: Tests
         run: bun test
+
+      - name: Telemetry agent tests
+        run: bun run test:agent
 
       - name: Lint
         run: bun run lint
