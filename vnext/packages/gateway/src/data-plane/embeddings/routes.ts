@@ -1,3 +1,4 @@
+import { retriedAttemptObserver } from '../../protection/observe.ts'
 import { withDumpExceptionCleanup } from '@vibe-core/chat-flow-kit'
 /**
  * Embeddings data-plane router — Week 5a-impl port of old src/routes/embeddings.ts.
@@ -118,6 +119,7 @@ export async function embeddingsHandler(
             sourceApi: 'openai',
             operationName: 'create embeddings',
             flags: { isStreaming: false },
+            onRetriedAttempt: retriedAttemptObserver({ upstreamId: binding.upstream, keyId: auth.apiKeyId ?? '', model: body.model }),
           })
           return new Response(pr.body, { status: pr.status, headers: pr.headers })
         },

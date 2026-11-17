@@ -1,3 +1,4 @@
+import { retriedAttemptObserver } from '../../protection/observe.ts'
 import { withDumpExceptionCleanup } from '@vibe-core/chat-flow-kit'
 /**
  * Images data-plane router — Week 5a-impl port of old src/routes/images.ts.
@@ -131,6 +132,7 @@ async function handleGenerations(c: ImagesCtx): Promise<Response> {
             sourceApi: 'openai',
             operationName: 'create image',
             flags: { isStreaming: false },
+            onRetriedAttempt: retriedAttemptObserver({ upstreamId: binding.upstream, keyId: auth.apiKeyId ?? '', model: resolved.routedModel }),
           })
           return new Response(pr.body, { status: pr.status, headers: pr.headers })
         },
@@ -283,6 +285,7 @@ async function handleEdits(c: ImagesCtx): Promise<Response> {
             sourceApi: 'openai',
             operationName: 'edit image',
             flags: { isStreaming: false },
+            onRetriedAttempt: retriedAttemptObserver({ upstreamId: binding.upstream, keyId: auth.apiKeyId ?? '', model: resolved.routedModel }),
           })
           return new Response(pr.body, { status: pr.status, headers: pr.headers })
         },

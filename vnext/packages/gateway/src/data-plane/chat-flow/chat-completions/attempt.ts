@@ -45,6 +45,7 @@ import { chatCompletionsInterceptors } from './interceptors'
 import { synthesizeChatCompletionsFramesFromJson, type ChatCompletionsJsonBody } from './events/json-to-frames'
 import { traverseTranslation } from '../shared/traverse-translation.ts'
 import { pickHubAttempt, type HubAttemptProtocol } from '../shared/hub-attempt-dispatch.ts'
+import { protectionIdentity, withUpstreamProtection } from '../../../protection/observe.ts'
 
 export type ChatCompletionsAttemptResult = LlmExecuteResult<ProtocolFrame<ChatCompletionsStreamEvent>>
 
@@ -115,6 +116,7 @@ export const chatCompletionsAttempt = {
     if (sel.kind === 'catalog-unavailable') return llmInternalErrorResult(503, new Error(modelCatalogUnavailableMessage(sel.bareModel, sel.failedCatalogs?.length ?? 0)))
     if (sel.kind === 'model-not-found') return llmInternalErrorResult(404, new Error(`model not found: ${sel.bareModel}`))
     if (sel.kind === 'no-eligible-binding') return llmInternalErrorResult(404, new Error(`no eligible binding for: ${sel.bareModel}`))
+    if (sel.kind === 'upstream-paused') return llmInternalErrorResult(503, new Error(sel.message), undefined, 'upstream-paused', { code: 'upstream_paused', retryAfterSeconds: sel.retryAfterSeconds })
     if (sel.kind === 'no-translator') return llmInternalErrorResult(500, new Error(`no translator for chat_completions → ${sel.targetEndpoint}`))
 
     const payload = args.affinityMaterialized ? args.payload : materializeAffinity(args.affinity, args.payload, sel.bareModel)
@@ -209,7 +211,8 @@ export const chatCompletionsAttempt = {
       // upstream.name + upstreamModel.id + provider.getPricingForModelKey).
       const bindingForTelemetry = sel.binding as unknown as AttemptBindingShape
       const publicModel = sel.bareModel
-      upstreamResp = await fetchWithPerformance(telemetryCtx.metrics, "chat_completions", providerReq, () => fetchAffinityUpstream(affinityExecution, providerReq, request => binding.provider.fetch(request)))
+      const observedFetch = withUpstreamProtection(protectionIdentity(telemetryCtx, bindingForTelemetry.upstream, publicModel), request => binding.provider.fetch(request))
+      upstreamResp = await fetchWithPerformance(telemetryCtx.metrics, "chat_completions", providerReq, () => fetchAffinityUpstream(affinityExecution, providerReq, observedFetch))
       if (upstreamResp.status >= 200 && upstreamResp.status < 300) acceptAffinityExecution(affinityExecution, upstreamResp)
       const execution = upstreamResp.execution ? Object.freeze({ ...upstreamResp.execution }) : undefined
       const providerModelKey = execution?.modelKey ?? initialProviderModelKey(bindingForTelemetry, publicModel)

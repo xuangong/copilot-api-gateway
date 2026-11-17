@@ -1,3 +1,4 @@
+import type { UpstreamPausedSelection } from '../shared/select-binding'
 import { AffinityRoutingUnavailableError } from "../../../shared/affinity/analysis.ts"
 import { affinityExecutionState, materializeAffinity, type AttemptAffinity, type AffinityPreparationOptions } from "../../shared/affinity-request"
 import type { DumpAccumulator } from "../../../shared/dump/accumulator.ts"
@@ -131,6 +132,7 @@ export type SelectGeminiBindingResult =
   | { kind: 'catalog-unavailable'; bareModel: string; failedCatalogs?: readonly string[] }
   | { kind: 'model-not-found'; bareModel: string }
   | { kind: 'no-eligible-binding'; bareModel: string }
+  | UpstreamPausedSelection
   | { kind: 'no-translator'; bareModel: string; targetEndpoint: EndpointKey }
 
 export type SelectGeminiBinding = (
@@ -163,6 +165,7 @@ export const geminiAttempt = {
     if (sel.kind === 'catalog-unavailable') return llmInternalErrorResult(503, new Error(modelCatalogUnavailableMessage(sel.bareModel, sel.failedCatalogs?.length ?? 0)))
     if (sel.kind === 'model-not-found') return llmInternalErrorResult(404, new Error(`model not found: ${sel.bareModel}`))
     if (sel.kind === 'no-eligible-binding') return llmInternalErrorResult(404, new Error(`no eligible binding for: ${sel.bareModel}`))
+    if (sel.kind === 'upstream-paused') return llmInternalErrorResult(503, new Error(sel.message), undefined, 'upstream-paused', { code: 'upstream_paused', retryAfterSeconds: sel.retryAfterSeconds })
     if (sel.kind === 'no-translator') return llmInternalErrorResult(500, new Error(`no translator for gemini → ${sel.targetEndpoint}`))
 
     // Gemini has no identity target — selectPair('gemini', …) never returns

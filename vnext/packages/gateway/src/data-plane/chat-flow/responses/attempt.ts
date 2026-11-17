@@ -1,3 +1,4 @@
+import type { UpstreamPausedSelection } from '../shared/select-binding'
 import { upstreamBodyDisposal } from "../shared/producer-ownership"
 import { AffinityRoutingUnavailableError } from "../../../shared/affinity/analysis.ts"
 import { affinityExecutionState, fetchAffinityUpstream, materializeAffinity, affinityFence, acceptAffinityExecution, type AttemptAffinity, type AffinityPreparationOptions } from "../../shared/affinity-request"
@@ -83,6 +84,7 @@ import { getTranslator, type PairTranslator } from '../../dispatch/translator-re
 import { traverseTranslation } from '../shared/traverse-translation.ts'
 import { pickHubAttempt, type HubAttemptProtocol } from '../shared/hub-attempt-dispatch.ts'
 import { invocationSourceApi } from '../shared/invocation-source-api.ts'
+import { protectionIdentity, withUpstreamProtection } from '../../../protection/observe.ts'
 
 // ─── Public types ─────────────────────────────────────────────────────────
 
@@ -138,6 +140,7 @@ export type SelectResponsesBindingResult =
   | { kind: 'catalog-unavailable'; bareModel: string; failedCatalogs?: readonly string[] }
   | { kind: 'model-not-found'; bareModel: string }
   | { kind: 'no-eligible-binding'; bareModel: string }
+  | UpstreamPausedSelection
   | { kind: 'no-translator'; bareModel: string; targetEndpoint: EndpointKey }
 
 export type SelectResponsesBinding = (
@@ -318,6 +321,7 @@ async function selectResponsesAttempt(args: ResponsesAttemptArgs) {
   if (sel.kind === 'catalog-unavailable') return llmInternalErrorResult(503, new Error(modelCatalogUnavailableMessage(sel.bareModel, sel.failedCatalogs?.length ?? 0)))
   if (sel.kind === 'model-not-found') return llmInternalErrorResult(404, new Error(`model not found: ${sel.bareModel}`))
   if (sel.kind === 'no-eligible-binding') return llmInternalErrorResult(404, new Error(`no eligible binding for: ${sel.bareModel}`))
+  if (sel.kind === 'upstream-paused') return llmInternalErrorResult(503, new Error(sel.message), undefined, 'upstream-paused', { code: 'upstream_paused', retryAfterSeconds: sel.retryAfterSeconds })
   if (sel.kind === 'no-translator') return llmInternalErrorResult(500, new Error(`no translator for responses → ${sel.targetEndpoint}`))
 
   return sel
@@ -439,7 +443,8 @@ export const responsesAttempt = {
       }
       const bindingForTelemetry = sel.binding as unknown as AttemptBindingShape
       const publicModel = sel.bareModel
-      upstreamResp = await fetchWithPerformance(telemetryCtx.metrics, "responses", providerReq, () => fetchAffinityUpstream(affinity, providerReq, request => sel.binding.provider.fetch(request)))
+      const observedFetch = withUpstreamProtection(protectionIdentity(telemetryCtx, bindingForTelemetry.upstream, publicModel), request => sel.binding.provider.fetch(request))
+      upstreamResp = await fetchWithPerformance(telemetryCtx.metrics, "responses", providerReq, () => fetchAffinityUpstream(affinity, providerReq, observedFetch))
       if (upstreamResp.status >= 200 && upstreamResp.status < 300) acceptAffinityExecution(affinity, upstreamResp)
       const execution = upstreamResp.execution ? Object.freeze({ ...upstreamResp.execution }) : undefined
       const providerModelKey = execution?.modelKey ?? initialProviderModelKey(bindingForTelemetry, publicModel)
