@@ -105,7 +105,7 @@ class TopTest(unittest.TestCase):
         self.assertEqual(agent.fold_top({("#1", "b.com"): [1, 0, 1], ("#1", "a.com"): [1, 0, 1]}, 1)[("#1", "a.com")], [1, 0, 1])
         self.assertNotIn(("#1", "(other)"), agent.fold_top(self.totals(), 10))
 
-    def test_points_carry_three_proxy_metrics_with_user_and_domain_dims(self):
+    def test_points_carry_four_proxy_metrics_with_user_and_domain_dims(self):
         hour = 1_794_000_000 - 1_794_000_000 % 3600
         points = agent.build_proxy_points(hour, {("#1", "a.com"): [10, 20, 2]}, 50)
         label = agent.iso_hour(hour)
@@ -113,6 +113,7 @@ class TopTest(unittest.TestCase):
         self.assertEqual(points, [
             {"metric": "proxy.sent_bytes", "hour": label, "dims": dims, "value": 10, "unit": "bytes"},
             {"metric": "proxy.recv_bytes", "hour": label, "dims": dims, "value": 20, "unit": "bytes"},
+            {"metric": "proxy.total_bytes", "hour": label, "dims": dims, "value": 30, "unit": "bytes"},
             {"metric": "proxy.connections", "hour": label, "dims": dims, "value": 2, "unit": "count"},
         ])
 
@@ -120,7 +121,7 @@ class TopTest(unittest.TestCase):
         totals = {("#1", "d%02d.com" % i): [i + 1, 0, 1] for i in range(10)}
         with mock.patch.object(agent, "MAX_BATCH_POINTS", 12):
             points = agent.build_proxy_points(0, totals, 10)
-        self.assertEqual(len(points), 9)
+        self.assertEqual(len(points), 12)
         self.assertIn("(other)", [p["dims"]["domain"] for p in points])
 
 

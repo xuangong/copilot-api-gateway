@@ -119,7 +119,7 @@ test.skipIf(!python)("the real agent pushes computed hours and the gateway repor
   expect(first.code, first.err).toBe(0)
 
   const metrics = (await get("/metrics")).metrics.map((m: { metric: string }) => m.metric)
-  expect(metrics).toEqual(["nic.rx_bytes", "nic.total_bytes", "nic.tx_bytes", "probe.fail", "probe.ok", "proxy.connections", "proxy.recv_bytes", "proxy.sent_bytes"])
+  expect(metrics).toEqual(["nic.rx_bytes", "nic.total_bytes", "nic.tx_bytes", "probe.fail", "probe.ok", "proxy.connections", "proxy.recv_bytes", "proxy.sent_bytes", "proxy.total_bytes"])
 
   const byDomain = await get(`/series?metric=proxy.sent_bytes&groupBy=domain&top=10&${window}`)
   const values = (key: string) => byDomain.groups.find((g: { key: string }) => g.key === key)?.values
@@ -135,6 +135,9 @@ test.skipIf(!python)("the real agent pushes computed hours and the gateway repor
   expect(byUser.total).toBe(2 * 1024 ** 2 + 1024 ** 3 + 512 * 1024 + 1024)
   expect(byUser.otherCurrent).toBe(0)
 
+  const proxyBoth = await get(`/series?metric=proxy.total_bytes&${window}`)
+  const up = await get(`/series?metric=proxy.recv_bytes&${window}`)
+  expect(proxyBoth.total).toEqual(byDomain.total.map((down: number, index: number) => down + up.total[index]))
   const connections = await get(`/top?metric=proxy.connections&groupBy=domain&${window}`)
   expect(connections.rows.find((r: { key: string }) => r.key === "google.com").value).toBe(2)
 

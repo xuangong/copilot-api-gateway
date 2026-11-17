@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-AGENT_VERSION = "1.0.1"
+AGENT_VERSION = "1.0.2"
 
 HOUR = 3600
 DAY = 86400
@@ -317,6 +317,8 @@ def build_proxy_points(hour_epoch, totals, top_n):
             dims = {"user": user, "domain": domain}
             points.append(point("proxy.sent_bytes", label, dict(dims), sent, "bytes"))
             points.append(point("proxy.recv_bytes", label, dict(dims), recv, "bytes"))
+            # Both directions leave the VM again, so their sum is this group's share of the outbound traffic.
+            points.append(point("proxy.total_bytes", label, dict(dims), sent + recv, "bytes"))
             points.append(point("proxy.connections", label, dict(dims), connections, "count"))
         if (len(points) <= MAX_BATCH_POINTS and sum(len(json.dumps(p, separators=(",", ":"))) + 1 for p in points) <= MAX_BATCH_BYTES) or top_n <= 1:
             return points
