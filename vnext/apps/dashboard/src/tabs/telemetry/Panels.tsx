@@ -125,6 +125,7 @@ export function TopPanel({ top, settings, groupBy, failed = false }: { top: Tele
           </tr> : null}
         </TBody>
       </Table>}
+    {top !== null && top.comparable === false && rows.length > 0 ? <p className="text-xs text-fg-subtle">{t("dash.tlmNotComparable")}</p> : null}
   </Card>
 }
 

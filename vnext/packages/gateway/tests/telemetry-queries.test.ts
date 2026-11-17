@@ -135,14 +135,25 @@ test("a check series reports a status per hour and the failing stage from the ma
   expect((await json("/series?metric=proxy.sent_bytes")).statuses).toBeUndefined()
 })
 
+test("no change is reported when the previous period starts before the metric's first data", async () => {
+  await seed([pt("u", "2026-11-16T03:00:00Z", 60, { user: "a" }), pt("u", "2026-11-15T15:00:00Z", 30, { user: "a" })])
+  const body = await json("/top?metric=u&groupBy=user&from=2026-11-16T00:00:00Z&to=2026-11-16T12:00:00Z")
+  expect(body.comparable).toBe(false)
+  expect(body.rows[0]).toMatchObject({ key: "a", value: 60, change: null })
+  // Data starts at 11-15 15:00: a previous period starting at or after it is comparable.
+  const later = await json("/top?metric=u&groupBy=user&from=2026-11-16T03:00:00Z&to=2026-11-16T06:00:00Z")
+  expect(later.comparable).toBe(true)
+})
+
 test("the top table ranks groups, compares with the previous period and reports the remainder", async () => {
   await seed([
     pt("t", "2026-11-16T03:00:00Z", 60, { user: "a" }), pt("t", "2026-11-16T03:00:00Z", 30, { user: "b" }), pt("t", "2026-11-16T03:00:00Z", 5, { user: "c" }),
-    pt("t", "2026-11-15T15:00:00Z", 30, { user: "a" }),
+    pt("t", "2026-11-15T12:00:00Z", 30, { user: "a" }),
   ])
   const body = await json("/top?metric=t&groupBy=user&from=2026-11-16T00:00:00Z&to=2026-11-16T12:00:00Z&limit=2")
   expect(body).toMatchObject({ metric: "t", unit: "bytes", groupBy: "user", previousFrom: "2026-11-15T12:00:00Z", previousTo: "2026-11-16T00:00:00Z", total: 95 })
   expect(body.rows).toHaveLength(2)
+  expect(body.comparable).toBe(true)
   expect(body.rows[0]).toMatchObject({ key: "a", value: 60, previous: 30, change: 1 })
   expect(body.rows[0].share).toBeCloseTo(60 / 95, 9)
   expect(body.rows[1]).toMatchObject({ key: "b", value: 30, previous: 0, change: null })

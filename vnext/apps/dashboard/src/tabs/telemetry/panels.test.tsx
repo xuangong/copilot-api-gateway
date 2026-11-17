@@ -301,3 +301,10 @@ test("the traffic chart shows the total for the chosen window, date fields for a
     expect(bad).not.toContain("dash.loadingShort")
   } finally { restore() }
 })
+
+test("the top table says why no change is shown when the previous period has no data", () => {
+  const html = renderToStaticMarkup(<TopPanel top={top({ comparable: false, rows: [{ key: "#1", value: 60e9, share: 1, previous: 0, change: null }], otherCurrent: 0, otherShare: 0 })} settings={{}} groupBy="user" />)
+  expect(html).toContain("dash.tlmNotComparable")
+  expect(html).toContain("—")
+  expect(renderToStaticMarkup(<TopPanel top={top()} settings={{}} groupBy="user" />)).not.toContain("dash.tlmNotComparable")
+})

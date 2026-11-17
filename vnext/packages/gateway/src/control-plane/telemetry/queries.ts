@@ -99,10 +99,12 @@ telemetryQueriesRouter.get("/sources/:id/top", async c => {
     const length = window.to - window.from
     const current = await repo.topGroups(source.id, metric, groupBy, window.from, window.to, limit)
     const previous = await repo.groupTotals(source.id, metric, groupBy, window.from - length, window.from, current.groups.map(group => group.key))
-    const top = buildTop(current.total, current.groups, previous)
+    const first = (await repo.firstHours(source.id, [metric])).get(metric)
+    const comparable = first !== undefined && first <= window.from - length
+    const top = buildTop(current.total, current.groups, previous, comparable)
     return telemetryJson({
       metric, unit: current.unit, groupBy, from: formatHour(window.from), to: formatHour(window.to),
-      previousFrom: formatHour(window.from - length), previousTo: formatHour(window.from),
+      previousFrom: formatHour(window.from - length), previousTo: formatHour(window.from), comparable,
       total: top.total, rows: top.rows, otherCurrent: top.otherCurrent, otherShare: top.otherShare,
     })
   } catch (error) { return telemetryFailure(error) }

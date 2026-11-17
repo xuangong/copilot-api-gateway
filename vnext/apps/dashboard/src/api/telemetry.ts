@@ -59,6 +59,8 @@ export interface TelemetryTop {
   metric: string
   unit: TelemetryUnit | null
   groupBy: string
+  /** False when the previous period starts before the metric's first data, so no change is given. */
+  comparable?: boolean
   from: string
   to: string
   previousFrom: string

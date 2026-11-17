@@ -209,11 +209,12 @@ export function buildSeries(window: { from: number; to: number }, totals: readon
 export interface TopRow { key: string; value: number; share: number; previous: number; change: number | null }
 export interface TopResult { total: number; rows: TopRow[]; otherCurrent: number; otherShare: number }
 
-export function buildTop(total: number, groups: readonly TelemetryGroupTotal[], previous: readonly TelemetryGroupTotal[]): TopResult {
+/** `comparable` is false when the previous period starts before the metric's first data: its missing hours would read as growth. */
+export function buildTop(total: number, groups: readonly TelemetryGroupTotal[], previous: readonly TelemetryGroupTotal[], comparable = true): TopResult {
   const before = new Map(previous.map(group => [group.key, group.value]))
   const rows = groups.map((group): TopRow => {
     const prior = before.get(group.key) ?? 0
-    return { key: group.key, value: group.value, share: total > 0 ? group.value / total : 0, previous: prior, change: prior > 0 ? (group.value - prior) / prior : null }
+    return { key: group.key, value: group.value, share: total > 0 ? group.value / total : 0, previous: prior, change: comparable && prior > 0 ? (group.value - prior) / prior : null }
   })
   const otherCurrent = remainder(total, groups.reduce((sum, group) => sum + group.value, 0))
   return { total, rows, otherCurrent, otherShare: total > 0 ? otherCurrent / total : 0 }
