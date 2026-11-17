@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test"
 import type { TelemetryBudget, TelemetrySeries, TelemetrySummary } from "../../api/telemetry"
 import {
-  budgetView, chartFromSeries, defaultMetric, dimsLabel, formatChange, formatShare, formatValue, freshnessNotices, groupLabel, hourRange, hourShort,
+  availabilityGroups, budgetView, chartFromSeries, defaultMetric, isAvailabilityMetric, dimsLabel, formatChange, formatShare, formatValue, freshnessNotices, groupLabel, hourRange, hourShort,
   displayStatus, formatUtc, latencyCheckMetric, maskUnpassed, rangeWindow, statusTone, visibleGroups,
 } from "./telemetry-format"
 
@@ -162,4 +162,18 @@ test("the open hour is never judged by the latency mask: a gap unless its check 
 
 test("instants are shown in UTC", () => {
   expect(formatUtc("2026-11-16T09:05:00.000Z")).toBe("2026-11-16 09:05 UTC")
+})
+
+test("availability metrics are the check metrics and their namespace, and the traffic default skips them", () => {
+  const info = (metric: string) => ({ metric, unit: "count" as const, firstHour: "", lastHour: "", dims: [] })
+  const checks = ["probe.ok"]
+  expect(["probe.ok", "probe.fail", "probe.latency_ms"].every(metric => isAvailabilityMetric(metric, checks))).toBe(true)
+  expect(["proxy.sent_bytes", "nic.tx_bytes", "prober.x"].some(metric => isAvailabilityMetric(metric, checks))).toBe(false)
+  expect(isAvailabilityMetric("probe.fail", [])).toBe(false)
+  expect(isAvailabilityMetric("ok", ["ok"])).toBe(true)
+  expect(isAvailabilityMetric("ok_rate", ["ok"])).toBe(false)
+  expect(defaultMetric([info("probe.fail"), info("probe.latency_ms"), info("probe.ok"), info("proxy.connections")], { checkMetrics: checks })).toBe("proxy.connections")
+  expect(availabilityGroups([info("probe.ok"), info("probe.latency_ms")], checks)).toEqual([{ check: "probe.ok", latency: "probe.latency_ms" }])
+  expect(availabilityGroups([info("probe.ok")], checks)).toEqual([{ check: "probe.ok", latency: null }])
+  expect(availabilityGroups([info("proxy.connections")], checks)).toEqual([])
 })

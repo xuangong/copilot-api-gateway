@@ -96,6 +96,8 @@ interface Props {
   formatCache?: (tokens: number) => string
   /** Formats a row's value in the tooltip (e.g. bytes as "1.5 GB"); by default the number with `unitLabel`. */
   tooltipFormat?: (value: number) => string
+  /** Y-axis title, e.g. "Bytes per hour". */
+  yTitle?: string
 }
 
 function isDarkTheme(): boolean {
@@ -145,7 +147,7 @@ function hexToRgba(hex: string, alpha: number): string {
  * Chart.js-backed time-series chart. Bundled — no CDN.
  * Dark-mode aware via `theme-changed` window event.
  */
-export function TimeSeriesChart({ labels, datasets, height = 300, unitLabel = "", yTickFormat, pointLink, totalCostLabel = "Total cost", sortTooltip = false, formatCache, tooltipFormat }: Props) {
+export function TimeSeriesChart({ labels, datasets, height = 300, unitLabel = "", yTickFormat, pointLink, totalCostLabel = "Total cost", sortTooltip = false, formatCache, tooltipFormat, yTitle }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const chartRef = useRef<Chart | null>(null)
   const tooltipRef = useRef<HTMLDivElement | null>(null)
@@ -265,6 +267,7 @@ export function TimeSeriesChart({ labels, datasets, height = 300, unitLabel = ""
           y: {
             ticks: { color: tickC, font: { family: mono, size: 12 }, callback: (v) => tickFmt(Number(v)) },
             grid: { color: gridC },
+            title: yTitle ? { display: true, text: yTitle, color: tickC, font: { family: sans, size: 12 } } : { display: false },
           },
         },
       },
@@ -286,7 +289,7 @@ export function TimeSeriesChart({ labels, datasets, height = 300, unitLabel = ""
         chartRef.current = null
       }
     }
-  }, [labels, datasets, height, unitLabel, yTickFormat, themeTick, hasPointLink, totalCostLabel, sortTooltip])
+  }, [labels, datasets, height, unitLabel, yTickFormat, yTitle, themeTick, hasPointLink, totalCostLabel, sortTooltip])
 
   useEffect(() => {
     const handler = () => setThemeTick((n) => n + 1)

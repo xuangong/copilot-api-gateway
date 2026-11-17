@@ -8,13 +8,14 @@ import { useT } from "../../state/i18n"
 import { Button } from "../../ui/button"
 import { Notice } from "../../ui/notice"
 import { PageHeader } from "../../ui/page-header"
+import { AvailabilityPanel } from "./AvailabilityPanel"
 import { ChartPanel } from "./ChartPanel"
 import { BudgetPanel, FlaggedPanel, FreshnessPanel, TopPanel } from "./Panels"
 import { SettingsPanel } from "./SettingsPanel"
 import { IssuedKeyPanel, type CopyTarget, type IssuedKeyView } from "./SourceList"
 import { telemetryErrorKey } from "./telemetry-errors"
-import { defaultMetric, rangeWindow, type RangeId } from "./telemetry-format"
-import { loadSeries } from "./telemetry-series"
+import { availabilityGroups, defaultMetric, isAvailabilityMetric, rangeWindow, type RangeId } from "./telemetry-format"
+import { loadAvailability, loadSeries, type AvailabilitySeries } from "./telemetry-series"
 import { startPolling } from "./telemetry-sources"
 import { editLimit, formToSettings, limitState, reconcileLimit, settingsToForm, shouldResetForm, type FormSource, type SettingsForm, type TextField } from "./telemetry-settings-form"
 
@@ -40,6 +41,10 @@ export function SourcePage({ source, onBack, onSourceChanged, onDeleted }: {
   const [topFailed, setTopFailed] = useState(false)
   const [tick, setTick] = useState(0)
   const [pollTick, setPollTick] = useState(0)
+  const [availRange, setAvailRange] = useState<RangeId>("24h")
+  const [availability, setAvailability] = useState<AvailabilitySeries[] | null>(null)
+  const [availFetchedAt, setAvailFetchedAt] = useState(() => Date.now())
+  const [availError, setAvailError] = useState("")
 
   const [form, setForm] = useState<SettingsForm>(() => settingsToForm(source.settings, null))
   const [name, setName] = useState(source.name)
@@ -87,7 +92,8 @@ export function SourcePage({ source, onBack, onSourceChanged, onDeleted }: {
       if (seq === summarySeq.current) setSummary(nextSummary)
       setMetrics(nextMetrics.metrics)
       setMetricsLoaded(true)
-      setMetric(current => nextMetrics.metrics.some(info => info.metric === current) ? current : defaultMetric(nextMetrics.metrics, source.settings))
+      const checks = source.settings.checkMetrics ?? []
+      setMetric(current => nextMetrics.metrics.some(info => info.metric === current) && !isAvailabilityMetric(current, checks) ? current : defaultMetric(nextMetrics.metrics, source.settings))
       setSummaryError("")
     }).catch(() => { if (live && seq === summarySeq.current) setSummaryError(t("dash.tlmLoadError")) })
     return () => { live = false }
@@ -118,6 +124,21 @@ export function SourcePage({ source, onBack, onSourceChanged, onDeleted }: {
     }
     return () => { live = false }
   }, [source.id, source.settings.checkMetrics, metric, range, groupBy, tick, t])
+
+  // Availability checks have their own panel and range; the traffic chart lists every other metric.
+  const checkMetrics = source.settings.checkMetrics
+  const groups = useMemo(() => availabilityGroups(metrics, checkMetrics ?? []), [metrics, checkMetrics])
+  const trafficMetrics = useMemo(() => metrics.filter(info => !isAvailabilityMetric(info.metric, checkMetrics ?? [])), [metrics, checkMetrics])
+  useEffect(() => {
+    if (groups.length === 0) { setAvailability(null); return }
+    let live = true
+    const started = Date.now()
+    setAvailability(null)
+    loadAvailability(telemetrySeries, source.id, groups, rangeWindow(availRange, started))
+      .then(next => { if (live) { setAvailability(next); setAvailFetchedAt(started); setAvailError("") } })
+      .catch(() => { if (live) setAvailError(t("dash.tlmLoadError")) })
+    return () => { live = false }
+  }, [source.id, groups, availRange, tick, t])
 
   // A dim that the newly chosen metric lacks cannot stay selected.
   const dims = useMemo(() => metrics.find(info => info.metric === metric)?.dims ?? [], [metrics, metric])
@@ -174,7 +195,8 @@ export function SourcePage({ source, onBack, onSourceChanged, onDeleted }: {
     {summaryError ? <Notice tone="danger">{summaryError}</Notice> : null}
     <FreshnessPanel summary={summary} failed={summaryError !== ""} />
     <BudgetPanel budget={summary?.budget ?? null} />
-    <ChartPanel metrics={metrics} metric={metric} range={range} groupBy={groupBy} series={series} fetchedAt={fetchedAt} settings={source.settings} surgeHours={surgeHours} dark={dark}
+    {groups.length > 0 ? <AvailabilityPanel data={availability} range={availRange} fetchedAt={availFetchedAt} dark={dark} error={availError} onRange={setAvailRange} /> : null}
+    <ChartPanel metrics={trafficMetrics} metric={metric} range={range} groupBy={groupBy} series={series} fetchedAt={fetchedAt} settings={source.settings} surgeHours={surgeHours} dark={dark}
       error={seriesError} onMetric={setMetric} onRange={setRange} onGroupBy={setGroupBy} />
     <TopPanel top={top} settings={source.settings} groupBy={groupBy} failed={topFailed} />
     <FlaggedPanel summary={summary} settings={source.settings} units={units} failed={summaryError !== ""} />

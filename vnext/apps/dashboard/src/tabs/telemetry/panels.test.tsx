@@ -2,6 +2,7 @@ import { expect, test } from "bun:test"
 import { renderToStaticMarkup } from "react-dom/server"
 import type { TelemetryBudget, TelemetrySummary, TelemetryTop } from "../../api/telemetry"
 import { installDictionary } from "../../state/i18n-fixture"
+import { AvailabilityPanel } from "./AvailabilityPanel"
 import { ChartPanel } from "./ChartPanel"
 import { BudgetPanel, CheckStrip, FlaggedPanel, FreshnessPanel, LatencyNote, TopPanel } from "./Panels"
 import { SETTINGS_FIELDS, SettingsPanel, type SettingsPanelProps } from "./SettingsPanel"
@@ -231,4 +232,29 @@ test("a check series is judged by when it was fetched, so a later render does no
     series={series} fetchedAt={Date.parse("2026-11-16T13:02:00Z")} settings={{ checkMetrics: ["probe.ok"] }} surgeHours={new Set()} dark error="" onMetric={noop} onRange={noop} onGroupBy={noop} />)
   expect(html).toContain('data-status="pending"')
   expect(html).not.toContain('data-status="no check"')
+})
+
+test("the metric picker names the metric's unit", () => {
+  const restore = installDictionary("en")
+  try {
+    const html = renderToStaticMarkup(<ChartPanel metrics={[{ metric: "proxy.connections", unit: "count", firstHour: "", lastHour: "", dims: [] }, { metric: "proxy.sent_bytes", unit: "bytes", firstHour: "", lastHour: "", dims: [] }]}
+      metric="proxy.connections" range="24h" groupBy="" series={null} settings={{}} surgeHours={new Set()} dark error="" onMetric={noop} onRange={noop} onGroupBy={noop} />)
+    expect(html).toContain("proxy.connections (count)")
+  } finally { restore() }
+})
+
+test("the availability panel shows one marker per hour with the failing stage and the single-check hint, never a percentage", () => {
+  const restore = installDictionary("en")
+  try {
+    const hours = ["2026-11-16T12:00:00Z", "2026-11-16T13:00:00Z"]
+    const checkSeries = { metric: "probe.ok", unit: "count" as const, from: hours[0]!, to: "2026-11-16T14:00:00Z", hours, total: [1, 0], groups: [],
+      statuses: ["passed" as const, "failed" as const], stages: [null, "tls"] }
+    const html = renderToStaticMarkup(<AvailabilityPanel data={[{ check: "probe.ok", checkSeries, latency: null }]} range="24h" fetchedAt={Date.parse("2026-11-16T15:00:00Z")} dark error="" onRange={noop} />)
+    expect(html).toContain("Availability")
+    expect(html).toContain('data-status="passed"')
+    expect(html).toContain('data-status="failed"')
+    expect(html).toContain("(tls)")
+    expect(html).toContain("reflects only the moment of that check")
+    expect(html).not.toContain("%")
+  } finally { restore() }
 })

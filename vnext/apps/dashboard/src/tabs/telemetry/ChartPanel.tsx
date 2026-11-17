@@ -44,13 +44,15 @@ export function ChartPanel(props: ChartPanelProps) {
   }) : null, [series, isCheck, settings, groupBy, dark, surgeHours, t])
   const unit = series?.unit ?? null
   const formatY = useCallback((value: number) => formatValue(value, unit), [unit])
+  const unitName = (u: string | null | undefined) => u === "bytes" ? t("dash.tlmUnitBytes") : u === "count" ? t("dash.tlmUnitCount") : u === "ms" ? t("dash.tlmUnitMs") : ""
+  const yTitle = unit === "bytes" ? t("dash.tlmAxisBytes") : unit === "count" ? t("dash.tlmAxisCount") : unit === "ms" ? t("dash.tlmAxisMs") : undefined
   return <Card aria-labelledby={titleId} className="space-y-3">
     <SectionHeading id={titleId}>{t("dash.tlmChart")}</SectionHeading>
     {props.error ? <Notice tone="danger">{props.error}</Notice> : null}
     {metrics.length === 0 ? (props.error ? null : <p className="text-body text-fg-subtle">{t("dash.tlmNoMetrics")}</p>) : <>
       <div className="flex flex-wrap items-center gap-2">
         <Select value={metric} ariaLabel={t("dash.tlmMetric")} size="sm" onChange={props.onMetric}
-          options={metrics.map(info => ({ value: info.metric, label: info.metric }))} />
+          options={metrics.map(info => ({ value: info.metric, label: unitName(info.unit) ? `${info.metric} (${unitName(info.unit)})` : info.metric }))} />
         {isCheck ? null : <Select value={props.groupBy} ariaLabel={t("dash.tlmGroupBy")} size="sm" onChange={props.onGroupBy}
           options={[{ value: "", label: t("dash.tlmGroupNone") }, ...dims.map(dim => ({ value: dim, label: dim }))]} />}
         <SegmentedControl options={ranges} value={props.range} onChange={props.onRange} ariaLabel={t("dash.tlmRangeLabel")} size="sm" />
@@ -58,7 +60,7 @@ export function ChartPanel(props: ChartPanelProps) {
       <LatencyNote metric={metric} check={latencyCheckMetric(metric, settings.checkMetrics ?? [])} />
       {series === null ? (props.error ? null : <p className="text-body text-fg-subtle">{t("dash.loadingShort")}</p>)
         : isCheck ? <CheckStrip hours={series.hours} statuses={series.statuses ?? series.hours.map(() => "not monitored" as const)} stages={series.stages ?? []} nowMs={props.fetchedAt} />
-        : chart ? <TimeSeriesChart labels={chart.labels} datasets={chart.datasets} height={280} yTickFormat={formatY} tooltipFormat={formatY} /> : null}
+        : chart ? <TimeSeriesChart labels={chart.labels} datasets={chart.datasets} height={280} yTickFormat={formatY} tooltipFormat={formatY} yTitle={yTitle} /> : null}
       {series !== null && (isCheck || chart) ? <p className="text-xs text-fg-subtle">{t("dash.tlmUtcNote")}</p> : null}
     </>}
   </Card>

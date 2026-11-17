@@ -105,7 +105,26 @@ export function rangeWindow(range: RangeId, nowMs: number): { from: string; to: 
 export function defaultMetric(metrics: readonly TelemetryMetricInfo[], settings: TelemetrySettings): string {
   if (settings.budgetMetric && metrics.some(info => info.metric === settings.budgetMetric)) return settings.budgetMetric
   const checks = settings.checkMetrics ?? []
-  return (metrics.find(info => !checks.includes(info.metric)) ?? metrics[0])?.metric ?? ""
+  return (metrics.find(info => !isAvailabilityMetric(info.metric, checks)) ?? metrics[0])?.metric ?? ""
+}
+
+/** The namespace a check metric belongs to: `probe.ok` → `probe.`; a metric without a dot is its own namespace. */
+const checkNamespace = (check: string): string => check.includes(".") ? check.slice(0, check.lastIndexOf(".") + 1) : check
+
+/** Metrics shown in the availability panel: every check metric and the other metrics of its namespace (e.g. `probe.fail`, `probe.latency_ms`). */
+export function isAvailabilityMetric(metric: string, checkMetrics: readonly string[]): boolean {
+  return checkMetrics.some(check => metric === check || (check.includes(".") && metric.startsWith(checkNamespace(check))))
+}
+
+export interface AvailabilityGroup { check: string; latency: string | null }
+
+/** One group per configured check metric that has data, with its `<namespace>latency_ms` metric when present. */
+export function availabilityGroups(metrics: readonly TelemetryMetricInfo[], checkMetrics: readonly string[]): AvailabilityGroup[] {
+  const known = new Set(metrics.map(info => info.metric))
+  return checkMetrics.filter(check => known.has(check)).map(check => {
+    const latency = check.includes(".") ? `${checkNamespace(check)}latency_ms` : null
+    return { check, latency: latency !== null && known.has(latency) ? latency : null }
+  })
 }
 
 export interface ChartInput {
