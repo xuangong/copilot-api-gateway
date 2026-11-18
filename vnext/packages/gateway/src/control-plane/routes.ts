@@ -27,7 +27,6 @@ import { performanceRouter } from './performance/routes.ts'
 import { presenceRouter } from './presence/routes.ts'
 import { dataTransferRouter } from './data-transfer/routes.ts'
 import { dumpRoutes } from './dump/routes.ts'
-import { pricingRouter } from './pricing/routes.ts'
 import { proxiesRouter, proxyOptionsRouter } from './proxies/routes.ts'
 import { capabilitiesRouter } from './capabilities/routes.ts'
 import { setupRouter } from './setup/routes.ts'
@@ -72,8 +71,6 @@ controlPlane.route('/api', performanceRouter)
 controlPlane.route('/api', presenceRouter)
 // /api/export + /api/import
 controlPlane.route('/api', dataTransferRouter)
-// /api/pricing
-controlPlane.route('/api', pricingRouter)
 // /api/proxies/options — label-only, any authenticated user. MUST be mounted
 // before proxiesRouter: that router's `use('*')` admin gate also matches this
 // path, and Hono runs handlers in registration order.

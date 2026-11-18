@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react"
-import { Activity, ChartColumn, Boxes, Cable, CircleDollarSign, KeyRound, Network, Radar, RadioTower, Users } from "lucide-react"
+import { Activity, ChartColumn, Boxes, Cable, KeyRound, Network, Radar, RadioTower, Users } from "lucide-react"
 
 export interface NavItem {
   /** The hash address, e.g. "usage" for #usage. */
@@ -49,7 +49,6 @@ function navConfig(t: Translate): NavConfigGroup[] {
       label: t("dash.nav.groupModels"),
       items: [
         { id: "models", label: t("dash.models"), icon: Boxes },
-        { id: "pricing", label: t("dash.pricing"), icon: CircleDollarSign },
       ],
     },
     {

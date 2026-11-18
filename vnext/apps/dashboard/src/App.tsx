@@ -14,7 +14,6 @@ import { LatencyTab } from "./tabs/latency/LatencyTab"
 import { TelemetryTab } from "./tabs/telemetry/TelemetryTab"
 import { UsageTab } from "./tabs/usage/UsageTab"
 import { ModelsTab } from "./tabs/models/ModelsTab"
-import { PricingTab } from "./tabs/pricing/PricingTab"
 import { useT } from "./state/i18n"
 import { EmptyState } from "./ui/empty-state"
 import { ProtectionProvider } from "./state/protection"
@@ -63,8 +62,6 @@ function TabBody({ tab }: { tab: string }) {
       return <KeysTab />
     case "models":
       return <ModelsTab />
-    case "pricing":
-      return <PricingTab />
     case "usage":
       return <UsageTab />
     case "latency":

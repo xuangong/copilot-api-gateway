@@ -18,7 +18,7 @@ const render = (isAdmin: boolean, current = "usage") =>
 
 test("every sidebar page is a real link to its old hash address", () => {
   const html = render(true)
-  for (const id of ["usage", "latency", "models", "pricing", "keys", "users", "upstreams", "proxies", "clients"]) {
+  for (const id of ["usage", "latency", "models", "keys", "users", "upstreams", "proxies", "clients"]) {
     expect(html).toContain(`href="#${id}"`)
   }
 })
