@@ -8,8 +8,8 @@
  * tokens, aligned with sst/models.dev `Cost`.
  *
  * `tiers[0]` is the default tier and is the only tier billing reads. Later
- * tiers are the long-context bands GitHub publishes; they are displayed by the
- * dashboard Pricing tab but are not yet billed (see the design spec).
+ * tiers are the long-context bands GitHub publishes; they are recorded for
+ * reference but are not yet billed (see the design spec).
  *
  * The entry list is order-sensitive: the first matcher that hits wins, so a
  * specific id must precede any prefix regex that would also match it.
@@ -24,7 +24,7 @@ import type { ModelPricing } from "@vibe-llm/protocols/common"
 // carry their own source date below; historical/internal prices stay lookup-only.
 export const COPILOT_PRICING_SOURCE = {
   url: "https://docs.github.com/en/copilot/reference/copilot-billing/models-and-pricing",
-  verifiedOn: "2026-09-29",
+  verifiedOn: "2026-11-18",
 } as const
 
 export interface PricingTier {
@@ -101,6 +101,13 @@ export const COPILOT_MODEL_PRICING: readonly CopilotModelPricing[] = [
     match: "claude-fable-5",
     tiers: only({ input: 10, input_cache_read: 1, input_cache_write: 12.5, output: 50 }),
   },
+  // Verified against COPILOT_PRICING_SOURCE on 2026-11-18. The upstream id is
+  // inferred from the Claude naming above and has not been seen in /models.
+  {
+    displayName: "Claude Fable 5.2",
+    match: /^claude-fable-5[.-]2$/,
+    tiers: only({ input: 8, input_cache_read: 0.2, input_cache_write: 10, output: 40 }),
+  },
   { displayName: "Claude Fable 5.1", match: /^claude-fable-5[.-]1$/, tiers: only({ input: 10, input_cache_read: 0.25, input_cache_write: 12.5, output: 50 }) },
   {
     displayName: "Claude Haiku 4.5",
@@ -128,6 +135,25 @@ export const COPILOT_MODEL_PRICING: readonly CopilotModelPricing[] = [
     tiers: [
       { label: "Default", pricing: { input: 2, input_cache_read: 0.1, input_cache_write: 2.5, output: 10 } },
       { label: "Long context", contextThreshold: 272_000, pricing: { input: 4, input_cache_read: 0.2, input_cache_write: 5, output: 15 } },
+    ],
+  },
+  // Verified against COPILOT_PRICING_SOURCE on 2026-11-18. Currently priced the
+  // same as GPT-6.1 Sol; kept as its own entry so either can change alone.
+  {
+    displayName: "GPT-6.2 Sol",
+    match: "gpt-6.2-sol",
+    tiers: [
+      { label: "Default", pricing: { input: 2, input_cache_read: 0.1, input_cache_write: 2.5, output: 10 } },
+      { label: "Long context", contextThreshold: 272_000, pricing: { input: 4, input_cache_read: 0.2, input_cache_write: 5, output: 15 } },
+    ],
+  },
+  // Verified against COPILOT_PRICING_SOURCE on 2026-11-18.
+  {
+    displayName: "GPT-6.2 Astra",
+    match: "gpt-6.2-astra",
+    tiers: [
+      { label: "Default", pricing: { input: 8, input_cache_read: 0.4, input_cache_write: 10, output: 40 } },
+      { label: "Long context", contextThreshold: 272_000, pricing: { input: 16, input_cache_read: 0.8, input_cache_write: 20, output: 60 } },
     ],
   },
   // Verified against COPILOT_PRICING_SOURCE on 2026-11-06.
@@ -322,6 +348,22 @@ export const COPILOT_MODEL_PRICING: readonly CopilotModelPricing[] = [
     match: "gemini-4-argon",
     tiers: only({ input: 2, input_cache_read: 0.1, output: 10 }),
   },
+  // Verified against COPILOT_PRICING_SOURCE on 2026-11-18. Promotional rate
+  // valid until 2026-12-01. TODO(2026-12-01): switch to the standard rate GitHub
+  // lists from that date: input 4, cache read 0.2, output 20. The upstream id is
+  // inferred from the Gemini naming above and has not been seen in /models.
+  {
+    displayName: "Gemini 4 Carbon",
+    match: "gemini-4-carbon",
+    tiers: only({ input: 2, input_cache_read: 0.1, output: 10 }),
+  },
+  // Verified against COPILOT_PRICING_SOURCE on 2026-11-18. Upstream id inferred
+  // from the Gemini naming above; not yet seen in /models.
+  {
+    displayName: "Gemini 4 Hydrogen",
+    match: "gemini-4-hydrogen",
+    tiers: only({ input: 1.5, input_cache_read: 0.075, output: 7.5 }),
+  },
 
   // ── xAI ──────────────────────────────────────────────────────────────────
   { match: /^grok-code-fast/, tiers: only({ input: 0.2, output: 1.5 }) },
@@ -361,11 +403,13 @@ export const COPILOT_MODEL_PRICING: readonly CopilotModelPricing[] = [
   // ── Billing-only: not listed on the docs page ────────────────────────────
   { match: "goldeneye", tiers: only({ input: 1.25, input_cache_read: 0.125, output: 10 }) },
   { match: "minimax-m2.5", tiers: only({ input: 0.3, output: 1.2 }) },
-  // From the live catalog's `billing.token_prices` on 2026-11-06 (credits per
-  // million tokens, 1 credit = $0.01). Both quote a cache-read rate and a zero
-  // cache-write rate, so no write column is recorded.
-  { match: "mai-code-2", tiers: only({ input: 1, input_cache_read: 0.05, output: 5 }) },
-  { match: "mai-code-2-flash", tiers: only({ input: 0.1, input_cache_read: 0.01, output: 0.5 }) },
+  // Listed on the docs page as "MAI Code 2" and "MAI Code 2 Flash"
+  // (verified 2026-11-18). Both are at a promotional rate until 2027-05-17;
+  // standard rates afterwards: mai-code-2 1 / 0.05 / 5, mai-code-2-flash
+  // 0.1 / 0.01 / 0.5 (input / cache read / output). Neither lists a cache-write
+  // rate, so no write column is recorded.
+  { displayName: "MAI Code 2", match: "mai-code-2", tiers: only({ input: 0.5, input_cache_read: 0.025, output: 2.5 }) },
+  { displayName: "MAI Code 2 Flash", match: "mai-code-2-flash", tiers: only({ input: 0.05, input_cache_read: 0.005, output: 0.25 }) },
   { match: /^text-embedding-3-small/, tiers: only({ input: 0.02, output: 0 }) },
   { match: "text-embedding-ada-002", tiers: only({ input: 0.1, output: 0 }) },
 
@@ -376,6 +420,7 @@ export const COPILOT_MODEL_PRICING: readonly CopilotModelPricing[] = [
   //   trajectory-compaction  — Fireworks; present on all six tenants
   //   deepseek-v4-flash      — seen in usage 2026-08-18, since delisted
   //   deepseek-v4-pro        — ditto
+  //   gpt-61-sol             — unknown alias of unclear target; not priced
   // Their tokens still accumulate in `usage`; only the cost column is blank.
 ]
 
@@ -397,26 +442,3 @@ export const pricingForCopilotPublicModelId = (publicName: string): ModelPricing
 
 export const pricingForCopilotModelKey = (modelKey: string): ModelPricing | null =>
   matchPricing(copilotPublicModelId(modelKey))
-
-/** A catalog row: a model the docs page lists, with its tiers. */
-export interface CopilotCatalogModel {
-  readonly displayName: string
-  readonly tiers: readonly PricingTier[]
-}
-
-export interface CopilotPricingCatalog {
-  readonly source: typeof COPILOT_PRICING_SOURCE
-  readonly models: readonly CopilotCatalogModel[]
-}
-
-/**
- * The audited public table: only entries carrying a `displayName`. Historical,
- * internal, and billing-only fallbacks remain lookup-only. Regex matchers are
- * never exposed.
- */
-export const copilotPricingCatalog = (): CopilotPricingCatalog => ({
-  source: COPILOT_PRICING_SOURCE,
-  models: COPILOT_MODEL_PRICING.filter(
-    (m): m is CopilotModelPricing & { displayName: string } => Boolean(m.displayName),
-  ).map((m) => ({ displayName: m.displayName, tiers: m.tiers })),
-})

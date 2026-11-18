@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test"
-import { pricingForCopilotModelKey, pricingForCopilotPublicModelId, copilotPricingCatalog, COPILOT_PRICING_SOURCE, COPILOT_MODEL_PRICING } from "../pricing"
+import { pricingForCopilotModelKey, pricingForCopilotPublicModelId, COPILOT_PRICING_SOURCE, COPILOT_MODEL_PRICING } from "../pricing"
 
 test("claude-opus-4-7 → 6-dim pricing with cache columns", () => {
   expect(pricingForCopilotPublicModelId("claude-opus-4-7")).toEqual({
@@ -91,27 +91,29 @@ test("every entry has at least one tier", () => {
   }
 })
 
+/** Entries the docs page lists (carry a displayName); the rest are lookup-only. */
+const docsRows = () =>
+  COPILOT_MODEL_PRICING.filter((m): m is typeof m & { displayName: string } => Boolean(m.displayName))
+
 test("display names are unique so no two rows render identically", () => {
-  const names = copilotPricingCatalog().models.map((m) => m.displayName)
+  const names = docsRows().map((m) => m.displayName)
   expect(new Set(names).size).toBe(names.length)
 })
 
-test("the catalog excludes billing-only entries", () => {
-  expect(copilotPricingCatalog().models.length).toBeLessThan(COPILOT_MODEL_PRICING.length)
-  for (const model of copilotPricingCatalog().models) {
-    expect(model.displayName.length).toBeGreaterThan(0)
-  }
+test("billing-only entries carry no display name", () => {
+  expect(docsRows().length).toBeLessThan(COPILOT_MODEL_PRICING.length)
 })
 
 test("the public catalog contains the audited baseline and individually verified additions", () => {
-  expect(copilotPricingCatalog().models.map((model) => model.displayName).sort()).toEqual([
-    "Claude Fable 5", "Claude Fable 5.1", "Claude Haiku 4.5", "Claude Haiku 5.5",
+  expect(docsRows().map((model) => model.displayName).sort()).toEqual([
+    "Claude Fable 5", "Claude Fable 5.1", "Claude Fable 5.2", "Claude Haiku 4.5", "Claude Haiku 5.5",
     "Claude Opus 4.7", "Claude Opus 4.8", "Claude Opus 4.8 (fast mode) (preview)",
     "Claude Opus 5", "Claude Opus 5.5", "Claude Sonnet 4", "Claude Sonnet 4.6", "Claude Sonnet 5", "Claude Sonnet 5.5",
     "GPT-5 mini", "GPT-5.3-Codex", "GPT-5.4", "GPT-5.4 mini", "GPT-5.4 nano",
     "GPT-5.5", "GPT-5.6 Luna", "GPT-5.6 Sol", "GPT-5.6 Terra",
-    "GPT-6 Astra", "GPT-6 Luna", "GPT-6 Sol", "GPT-6.1 Sol", "GPT-6.1 Terra", "GPT Image 2.5 Flare",
+    "GPT-6 Astra", "GPT-6 Luna", "GPT-6 Sol", "GPT-6.1 Sol", "GPT-6.1 Terra", "GPT-6.2 Astra", "GPT-6.2 Sol", "GPT Image 2.5 Flare",
     "Gemini 3.5 Flash", "Gemini 3.6 Flash", "Gemini 3.7 Flash", "Gemini 3.8 Flash", "Gemini 4 Argon",
+    "Gemini 4 Carbon", "Gemini 4 Hydrogen", "MAI Code 2", "MAI Code 2 Flash",
     "Grok 4.5", "Grok 4.6", "Grok 4.7",
     "Kimi K2.7 Code", "Kimi K3", "MAI-Code-1.1-Flash",
   ].sort())
@@ -132,14 +134,15 @@ test("historical and internal fallback rates remain available outside the dated 
   }
 })
 
-test("the catalog carries its source url and verification date", () => {
-  const { source } = copilotPricingCatalog()
-  expect(source.url).toBe(COPILOT_PRICING_SOURCE.url)
-  expect(source.verifiedOn).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+test("the pricing source carries its url and verification date", () => {
+  expect(COPILOT_PRICING_SOURCE.url).toBe(
+    "https://docs.github.com/en/copilot/reference/copilot-billing/models-and-pricing",
+  )
+  expect(COPILOT_PRICING_SOURCE.verifiedOn).toBe("2026-11-18")
 })
 
 function catalogRow(displayName: string) {
-  const row = copilotPricingCatalog().models.find((m) => m.displayName === displayName)
+  const row = docsRows().find((m) => m.displayName === displayName)
   if (!row) throw new Error(`no catalog row for ${displayName}`)
   return row
 }
@@ -223,7 +226,7 @@ test("Grok 4.5 public and Gemini 3.1 Pro historical fallback retain their long-c
 })
 
 test("the audited Claude rows are distinct in the public catalog", () => {
-  const names = copilotPricingCatalog().models.map((m) => m.displayName)
+  const names = docsRows().map((m) => m.displayName)
   for (const n of [
     "Claude Opus 4.7",
     "Claude Opus 4.8",
@@ -259,7 +262,7 @@ test("MAI-Code-1.1-Flash is priced separately from MAI-Code-1-Flash", () => {
 })
 
 test("legacy and internal models stay out of the catalog", () => {
-  const names = copilotPricingCatalog().models.map((m) => m.displayName)
+  const names = docsRows().map((m) => m.displayName)
   for (const n of ["goldeneye", "gpt-3.5-turbo", "gpt-4o", "minimax-m2.5"]) {
     expect(names).not.toContain(n)
   }
@@ -269,7 +272,7 @@ test("legacy and internal models stay out of the catalog", () => {
 })
 
 test("the catalog includes each newly verified price row", () => {
-  const names = copilotPricingCatalog().models.map((m) => m.displayName)
+  const names = docsRows().map((m) => m.displayName)
   for (const name of ["Claude Opus 5.5", "Claude Fable 5.1", "GPT-6 Sol", "GPT-6 Luna", "Gemini 3.8 Flash", "Grok 4.7"]) {
     expect(names).toContain(name)
   }
@@ -401,11 +404,50 @@ test("GPT Image 2.5 Flare prices text and image tokens separately", () => {
   expect(pricingForCopilotModelKey("gpt-image-2.5-flare")).toEqual(pricing)
 })
 
-// Neither MAI-Code-2 model is on the docs page; both rates come from the live
-// Copilot catalog's `billing.token_prices`, so they price without a catalog row.
-test("MAI-Code-2 and MAI-Code-2-Flash price from the live catalog outside the docs table", () => {
-  expect(pricingForCopilotModelKey("mai-code-2")).toEqual({ input: 1, input_cache_read: 0.05, output: 5 })
-  expect(pricingForCopilotModelKey("mai-code-2-flash")).toEqual({ input: 0.1, input_cache_read: 0.01, output: 0.5 })
-  const names = copilotPricingCatalog().models.map((m) => m.displayName)
-  expect(names.filter((name) => name.startsWith("MAI-Code-2"))).toEqual([])
+test("MAI Code 2 and MAI Code 2 Flash use the listed promotional rates", () => {
+  expect(pricingForCopilotModelKey("mai-code-2")).toEqual({ input: 0.5, input_cache_read: 0.025, output: 2.5 })
+  expect(pricingForCopilotModelKey("mai-code-2-flash")).toEqual({ input: 0.05, input_cache_read: 0.005, output: 0.25 })
+  expect(catalogRow("MAI Code 2").tiers[0]?.pricing.input).toBe(0.5)
+  expect(catalogRow("MAI Code 2 Flash").tiers[0]?.pricing.input).toBe(0.05)
+})
+
+test("GPT-6.2 Astra bills its default band and records the >272K band", () => {
+  const pricing = { input: 8, input_cache_read: 0.4, input_cache_write: 10, output: 40 }
+  expect(catalogRow("GPT-6.2 Astra").tiers).toEqual([
+    { label: "Default", pricing },
+    { label: "Long context", contextThreshold: 272_000, pricing: { input: 16, input_cache_read: 0.8, input_cache_write: 20, output: 60 } },
+  ])
+  expect(pricingForCopilotModelKey("gpt-6.2-astra")).toEqual(pricing)
+})
+
+test("GPT-6.2 Sol is a separate entry priced like GPT-6.1 Sol", () => {
+  const pricing = { input: 2, input_cache_read: 0.1, input_cache_write: 2.5, output: 10 }
+  expect(catalogRow("GPT-6.2 Sol").tiers).toEqual([
+    { label: "Default", pricing },
+    { label: "Long context", contextThreshold: 272_000, pricing: { input: 4, input_cache_read: 0.2, input_cache_write: 5, output: 15 } },
+  ])
+  expect(pricingForCopilotModelKey("gpt-6.2-sol")).toEqual(pricing)
+  expect(COPILOT_MODEL_PRICING.filter((m) => m.match === "gpt-6.2-sol")).toHaveLength(1)
+})
+
+test("GPT-6.1 Sol alias gpt-61-sol stays unpriced", () => {
+  expect(pricingForCopilotModelKey("gpt-61-sol")).toBeNull()
+})
+
+test("Claude Fable 5.2 resolves in dot and dash form without disturbing Fable 5 and 5.1", () => {
+  const fable52 = { input: 8, input_cache_read: 0.2, input_cache_write: 10, output: 40 }
+  for (const id of ["claude-fable-5.2", "claude-fable-5-2"]) expect(pricingForCopilotPublicModelId(id)).toEqual(fable52)
+  expect(pricingForCopilotModelKey("claude-fable-5.2-1m")).toEqual(fable52)
+  expect(pricingForCopilotPublicModelId("claude-fable-5")).toEqual({ input: 10, input_cache_read: 1, input_cache_write: 12.5, output: 50 })
+  expect(pricingForCopilotPublicModelId("claude-fable-5.1")).toEqual({ input: 10, input_cache_read: 0.25, input_cache_write: 12.5, output: 50 })
+  expect(pricingForCopilotPublicModelId("claude-fable-5.22")).toBeNull()
+})
+
+test("Gemini 4 Carbon records the promotional rate (standard 4 / 0.2 / 20 from 2026-12-01)", () => {
+  expect(pricingForCopilotModelKey("gemini-4-carbon")).toEqual({ input: 2, input_cache_read: 0.1, output: 10 })
+  expect(pricingForCopilotModelKey("gemini-4-carbon-preview")).toBeNull()
+})
+
+test("Gemini 4 Hydrogen is priced", () => {
+  expect(pricingForCopilotModelKey("gemini-4-hydrogen")).toEqual({ input: 1.5, input_cache_read: 0.075, output: 7.5 })
 })
