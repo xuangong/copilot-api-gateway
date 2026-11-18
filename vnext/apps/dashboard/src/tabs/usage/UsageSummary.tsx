@@ -5,6 +5,7 @@ import type { UsageSummary } from "../../state/usage"
 import { WEIGHTED_FORMULA_PARTS, formatWeight } from "../../components/weighted-formula"
 import { useT } from "../../state/i18n"
 import { Tooltip } from "../../ui/tooltip"
+import { CostInfo } from "./CostInfo"
 
 interface Props {
   summary: UsageSummary
@@ -58,7 +59,7 @@ export function UsageSummaryCards({ summary }: Props) {
           </div>
         }
       />
-      <Cell label={t("dash.cost")} value={summary.costUSD > 0 ? "$" + summary.costUSD.toFixed(4) : "—"} />
+      <Cell label={t("dash.cost")} value={summary.costUSD > 0 ? "$" + summary.costUSD.toFixed(4) : "—"} labelAddon={<CostInfo />} />
     </div>
   )
 }
@@ -69,12 +70,15 @@ function Cell({
   note,
   valueClass = "text-fg",
   info,
+  labelAddon,
 }: {
   label: string
   value: string
   note?: string
   valueClass?: string
   info?: ReactNode
+  /** Extra control beside the label, rendered after any `info` tooltip. */
+  labelAddon?: ReactNode
 }) {
   const [open, setOpen] = useState(false)
   // Whether the tooltip was open when the press began. Radix closes an open
@@ -82,7 +86,7 @@ function Cell({
   // click time would reopen it and a second tap could never close it.
   const openAtPress = useRef<boolean | null>(null)
   return (
-    <div className="text-center">
+    <div className="relative text-center">
       <p className="text-xs text-fg-subtle mb-1 flex items-center justify-center gap-1">
         {label}
         {info ? (
@@ -109,6 +113,7 @@ function Cell({
             </button>
           </Tooltip>
         ) : null}
+        {labelAddon}
       </p>
       <p className={`text-lg font-bold tabular-nums ${valueClass}`}>{value}</p>
       {note ? <p className="text-xs text-fg-subtle mt-0.5">{note}</p> : null}
