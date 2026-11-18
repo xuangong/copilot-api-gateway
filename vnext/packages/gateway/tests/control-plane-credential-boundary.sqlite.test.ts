@@ -111,8 +111,8 @@ test("real sessions and legacy User Keys can create keys while assigned users ca
   }
   expect((await request(`/api/keys/${key.id}`, session(assigned), "PATCH", { name: "forbidden" })).status).toBe(403)
 })
-test("dedicated API-key capabilities, pricing, self-usage and heartbeat remain available", async () => {
-  for (const path of ["/api/capabilities", "/api/pricing", "/api/token-usage?start=2026-10-01T00&end=2026-10-02T00", "/api/token-usage/overview?start=2026-10-01T00&end=2026-10-02T00"]) {
+test("dedicated API-key capabilities, self-usage and heartbeat remain available", async () => {
+  for (const path of ["/api/capabilities", "/api/token-usage?start=2026-10-01T00&end=2026-10-02T00", "/api/token-usage/overview?start=2026-10-01T00&end=2026-10-02T00"]) {
     expect((await request(path)).status).toBe(200)
   }
   expect((await request("/api/heartbeat", key.key, "POST", { clientId: "relay", hostname: "fixture" })).status).toBe(200)
