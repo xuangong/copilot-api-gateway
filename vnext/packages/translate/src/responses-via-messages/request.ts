@@ -21,6 +21,7 @@ import { prepareResponsesTools, type ResponsesToolMapping } from '../shared/resp
 import { projectMessagesToolOutput, type ResponsesToolOutput } from '../shared/responses-tool-output.ts'
 import { messagesReasoningFromEffort } from '../shared/messages-reasoning-effort.ts'
 import { agentMessageContent } from '../shared/responses-via/agent-message.ts'
+import { isStandaloneToolOutput, standaloneToolOutputContent } from '../shared/responses-via/standalone-tool-output.ts'
 import { customToolParameters } from '../shared/responses-via/custom-tool-wrap.ts'
 
 const DEFAULT_MAX_TOKENS = 8192
@@ -196,6 +197,13 @@ function translateInput(input: ResponsesPayload['input'], inputBoundaries: Reado
       case 'function_call_output':
       case 'custom_tool_call_output': {
         const fco = item
+        if (isStandaloneToolOutput(fco)) {
+          // Answers no call (Codex injected context): lower to a user message.
+          const delivery: MessageLike = { role: 'user', content: translateUserContent(standaloneToolOutputContent(fco, `input[${index}]`, 'messages')) }
+          messages.push(delivery)
+          lastUserBoundary = delivery
+          break
+        }
         appendUserBlock(messages, {
           type: 'tool_result',
           tool_use_id: fco.call_id,

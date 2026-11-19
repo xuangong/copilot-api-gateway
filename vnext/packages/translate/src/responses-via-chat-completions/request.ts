@@ -25,6 +25,7 @@ import { projectResponsesTextFormat } from '../shared/responses-text-format.ts'
 import { prepareResponsesTools, type ResponsesToolMapping } from '../shared/responses-namespace-tools'
 import { projectChatToolOutput, type ChatToolImagePart, type ResponsesToolOutput } from '../shared/responses-tool-output.ts'
 import { agentMessageContent } from '../shared/responses-via/agent-message.ts'
+import { isStandaloneToolOutput, standaloneToolOutputContent } from '../shared/responses-via/standalone-tool-output.ts'
 import { customToolParameters, wrapCustomInput } from '../shared/responses-via/custom-tool-wrap.ts'
 
 export interface ResponsesToChatRequestResult {
@@ -123,6 +124,17 @@ function translateInput(items: ResponsesInputItem[], inputBoundaries: ReadonlySe
       } else {
         out.push({ role: 'assistant', content: null, tool_calls: [tc] })
       }
+      continue
+    }
+    if (isStandaloneToolOutput(item)) {
+      // Answers no call (Codex injected context): lower to a user message.
+      flushImages()
+      const content = standaloneToolOutputContent(item, `input[${index}]`, 'chat').map((part) =>
+        part.type === 'input_text'
+          ? { type: 'text', text: part.text }
+          : { type: 'image_url', image_url: { url: part.image_url, ...(part.detail !== undefined ? { detail: part.detail } : {}) } },
+      )
+      out.push({ role: 'user', content } as ChatMessage)
       continue
     }
     if (item.type === 'function_call_output' || item.type === 'custom_tool_call_output') {

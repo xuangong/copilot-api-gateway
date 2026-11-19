@@ -4,7 +4,7 @@ export type AgentMessagePart =
   | { type: 'input_text'; text: string }
   | { type: 'input_image'; image_url: string; detail?: 'auto' | 'low' | 'high' }
 
-type AgentMessageTarget = 'chat' | 'messages'
+export type AgentMessageTarget = 'chat' | 'messages'
 
 function fail(path: string, message: string): never {
   throw new TranslatorValidationError(message, path)
@@ -56,7 +56,7 @@ function imageDetail(value: unknown, path: string, target: AgentMessageTarget): 
   return value
 }
 
-function imagePart(part: Record<string, unknown>, path: string, target: AgentMessageTarget): AgentMessagePart {
+export function imagePart(part: Record<string, unknown>, path: string, target: AgentMessageTarget): AgentMessagePart {
   optionalNullableString(part.file_id, `${path}.file_id`)
   const detail = imageDetail(part.detail, `${path}.detail`, target)
   const url = part.image_url

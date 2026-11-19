@@ -289,4 +289,26 @@ describe('responses-via-messages :: request', () => {
     expect((out.target as unknown as { temperature?: number }).temperature).toBe(0.7)
     expect((out.target as unknown as { top_p?: number }).top_p).toBe(0.95)
   })
+
+  // Adapted from reference copilot-gateway 730f2dcad (#739): Codex /goal context arrives as a
+  // function_call_output without call_id; it answers no call, so it must become user context.
+  it('lowers a call_id-less function_call_output to an external_{name} user message', () => {
+    const out = translateResponsesToMessages({ model: 'm', input: [
+      { type: 'message', role: 'user', content: 'Write tests' },
+      { type: 'function_call', call_id: 'c1', name: 'create_goal', arguments: '{}' },
+      { type: 'function_call_output', call_id: 'c1', output: 'ok' },
+      { type: 'function_call_output', id: 'fco', name: 'goal_objective', namespace: 'agent', output: 'Write <tests>' },
+    ] } as never).target
+    expect(out.messages[out.messages.length - 1]).toEqual({ role: 'user', content: [{ type: 'text', text: '<external_goal_objective>Write <tests></external_goal_objective>', cache_control: { type: 'ephemeral' } }] } as never)
+  })
+
+  it('rejects a call_id-less function_call_output without a name', () => {
+    try {
+      translateResponsesToMessages({ model: 'm', input: [{ type: 'function_call_output', output: 'orphan' }] } as never)
+      throw new Error('expected validation error')
+    } catch (error) {
+      expect(error).toBeInstanceOf(TranslatorValidationError)
+      expect((error as TranslatorValidationError).field).toBe('input[0].name')
+    }
+  })
 })
