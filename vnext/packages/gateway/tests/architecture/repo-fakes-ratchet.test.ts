@@ -5,14 +5,15 @@
  * SQLite from `setupTestPlatform()` (tests/_setup-platform.ts), storing rows
  * instead of stubbing lookups; see control-plane-copilot-quota.test.ts.
  *
- * This is a ratchet: the count may only go down. When you migrate a file,
- * lower MAX to the new count.
+ * This is a ratchet: the count may only go down. The two left are deliberate:
+ * the shared route-fixture source in tests/helpers/catalog-test-repo.ts
+ * (`upstreamListRepo`) and a fault injection in providers-registry.test.ts.
  */
 import { expect, test } from "bun:test"
 import { Glob } from "bun"
 import { join } from "node:path"
 
-const MAX = 21
+const MAX = 2
 const ROOT = join(import.meta.dir, "../..")
 
 test("hand-written Repo fakes do not grow", async () => {

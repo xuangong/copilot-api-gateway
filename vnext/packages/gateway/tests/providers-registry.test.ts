@@ -202,6 +202,10 @@ test('listProviderBindings hides all Copilot raw variants when its public base i
 })
 
 test('listProviderBindings strictCatalog propagates upstream discovery failures while ordinary catalogs stay best effort', async () => {
+  // Deliberate fault injection, kept as a fake: through the real repo every
+  // listing failure arrives as ConfigurationUnavailableError, which
+  // listRoutingBindings always rethrows (fail closed, 503). Only a
+  // non-configuration error reaches the best-effort branch tested here.
   initRepo({
     upstreams: { list: async () => { throw new Error('discovery failed') } },
   } as unknown as Repo)

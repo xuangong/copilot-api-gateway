@@ -5,7 +5,7 @@
  * copilot-gateway/packages/gateway/__tests__/data-plane/alpha-search/routes_test.ts)
  * but avoids Bun's leaky `mock.module()` (per MEMORY note
  * `bun_mock_module_unrestorable`). Instead:
- *   - `initRepo` with a stub Repo whose `apiKeys.getById` returns the calling
+ *   - the real repo (`setupTestPlatform`) with the calling key stored as `key_test`, whose
  *     key, which is where both the engines and the passthrough target live
  *   - real `CustomProvider` for the passthrough branch, driven by a
  *     `globalThis.fetch` shim that captures the outbound alpha_search call
@@ -16,13 +16,15 @@
 import { test, expect, afterEach, beforeEach, describe } from 'bun:test'
 import { Hono } from 'hono'
 import { app as innerApp } from '../../../app.ts'
-import { initCatalogTestRepo as initRepo, syntheticCopilotTokenResponse } from '../../../../tests/helpers/catalog-test-repo.ts'
+import { syntheticCopilotTokenResponse } from '../../../../tests/helpers/catalog-test-repo.ts'
+import { setupTestPlatform } from '../../../../tests/_setup-platform.ts'
+import { seedApiKey } from '../../../../tests/helpers/seed-fixtures.ts'
 import {
   __resetPlatformForTests,
   initBackground,
   initRuntimeLocation,
 } from '@vibe-core/platform'
-import type { Repo, UpstreamRecord } from '../../../repo/types.ts'
+import type { UpstreamRecord } from '../../../repo/types.ts'
 import type { DataPlaneAuthCtx } from '../../models/routes.ts'
 import type { ApiKeyId } from '../../../repo/branded-ids.ts'
 
@@ -34,14 +36,13 @@ interface StubRepoOpts {
   apiKey?: Record<string, unknown> | null
 }
 
-const stubRepo = (opts: StubRepoOpts = {}): Repo => ({
-  upstreams: { list: async () => opts.upstreams ?? [] },
-  apiKeys: { getById: async () => opts.apiKey ?? null },
-  // web-search usage recorders are called by search.ts even in error paths;
-  // stub as no-ops.
-  webSearchUsage: { record: async () => {} },
-  webSearchEngineUsage: { record: async () => {} },
-} as unknown as Repo)
+// The real repo (setupTestPlatform's in-memory SQLite): upstream rows and the
+// calling key `key_test` are stored, and web-search usage really records.
+async function seedRepo(opts: StubRepoOpts = {}): Promise<void> {
+  const { repo } = setupTestPlatform()
+  for (const upstream of opts.upstreams ?? []) await repo.upstreams.save(upstream)
+  if (opts.apiKey) await seedApiKey(repo, { id: 'key_test', key: 'alpha-search-fixture-key', ...opts.apiKey } as Parameters<typeof seedApiKey>[1])
+}
 
 const customUpstream = (id: string, apiKey = 'sk-test'): UpstreamRecord<unknown> => ({
   id,
@@ -133,15 +134,15 @@ const post = (path: string, body: unknown) => new Request(`http://local${path}`,
 })
 
 describe('local mode (key cannot search)', () => {
-  const setup = () => {
-    initRepo(stubRepo())
+  const setup = async () => {
+    await seedRepo()
   }
 
   // Search engines now come from the caller's API key, same as the chat shims.
   // A key that can't search gets the endpoint's ordinary text shape — Codex
   // renders `output` to the user, so a 500 would be worse than an explanation.
   test('both /alpha/search and /v1/alpha/search hit the handler', async () => {
-    setup()
+    await setup()
     const app = buildApp()
     for (const path of ['/alpha/search', '/v1/alpha/search']) {
       const res = await app.fetch(post(path, { commands: { search_query: [{ q: 'x' }] } }), env)
@@ -153,7 +154,7 @@ describe('local mode (key cannot search)', () => {
   })
 
   test('unknown command → unsupported feature text', async () => {
-    setup()
+    await setup()
     const app = buildApp()
     const res = await app.fetch(post('/v1/alpha/search', { commands: { unknown: {} } }), env)
     expect(res.status).toBe(200)
@@ -163,7 +164,7 @@ describe('local mode (key cannot search)', () => {
   })
 
   test('unknown sub-field → unsupported feature at exact path', async () => {
-    setup()
+    await setup()
     const app = buildApp()
     const res = await app.fetch(post('/v1/alpha/search', {
       commands: { search_query: [{ q: 'x', foo: 'bar' }] },
@@ -174,7 +175,7 @@ describe('local mode (key cannot search)', () => {
   })
 
   test('empty commands → hint text', async () => {
-    setup()
+    await setup()
     const app = buildApp()
     const res = await app.fetch(post('/v1/alpha/search', {}), env)
     expect(res.status).toBe(200)
@@ -184,7 +185,7 @@ describe('local mode (key cannot search)', () => {
   })
 
   test('invalid JSON body → 400', async () => {
-    setup()
+    await setup()
     const app = buildApp()
     const res = await app.fetch(new Request('http://local/v1/alpha/search', {
       method: 'POST',
@@ -208,10 +209,10 @@ describe('passthrough mode', () => {
   })
 
   test('happy path — relays upstream response verbatim; strips content-encoding/length', async () => {
-    initRepo(stubRepo({
+    await seedRepo({
       upstreams: [customUpstream('custom:u1')],
       apiKey: passthroughKey('custom:u1', 'gpt-5-search'),
-    }))
+    })
     const captured = installFetch((req, url) => {
       if (url.pathname.endsWith('/alpha/search')) {
         return new Response(JSON.stringify({
@@ -252,10 +253,10 @@ describe('passthrough mode', () => {
   })
 
   test('forwards x-codex-turn-metadata header when present', async () => {
-    initRepo(stubRepo({
+    await seedRepo({
       upstreams: [customUpstream('custom:u1')],
       apiKey: passthroughKey('custom:u1', 'gpt-5-search'),
-    }))
+    })
     const captured = installFetch(() => new Response('{}', {
       status: 200, headers: { 'content-type': 'application/json' },
     }))
@@ -277,10 +278,10 @@ describe('passthrough mode', () => {
   // codex implementation reads `payload.model` and throws without it. Only
   // `custom` upstreams survived, which is why nothing noticed.
   test('forwards the configured model, not the caller body alone', async () => {
-    initRepo(stubRepo({
+    await seedRepo({
       upstreams: [customUpstream('custom:u1')],
       apiKey: passthroughKey('custom:u1', 'gpt-5-search'),
-    }))
+    })
     const captured = installFetch(() =>
       new Response(JSON.stringify({ encrypted_output: null, output: 'ok' }), {
         status: 200, headers: { 'content-type': 'application/json' },
@@ -295,10 +296,10 @@ describe('passthrough mode', () => {
   })
 
   test('pinned upstream not in registry → 500', async () => {
-    initRepo(stubRepo({
+    await seedRepo({
       upstreams: [],
       apiKey: passthroughKey('custom:missing', 'gpt-5-search'),
-    }))
+    })
     installFetch(() => new Response('{}', { status: 200 }))
     const app = buildApp({ apiKeyId: 'key_test' as ApiKeyId })
     const res = await app.fetch(post('/v1/alpha/search', { commands: {} }), env)
@@ -306,10 +307,10 @@ describe('passthrough mode', () => {
   })
 
   test('pinned upstream is copilot (not codex/custom) → 500', async () => {
-    initRepo(stubRepo({
+    await seedRepo({
       upstreams: [copilotUpstream()],
       apiKey: passthroughKey('copilot:u1', 'gpt-4o'),
-    }))
+    })
     // Copilot binding won't publish alpha_search endpoint anyway → 500 from
     // "unavailable" branch; either 500 path is acceptable evidence that we
     // refuse non-codex/custom passthrough.

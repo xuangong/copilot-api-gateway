@@ -113,6 +113,6 @@ export function syntheticCopilotTokenResponse(request: Request): Response | null
  * repository for catalog discovery. Shared here so the cast to `Repo` exists
  * once instead of in every test file.
  */
-export function upstreamListRepo(upstreams: UpstreamRecord[]): Repo {
+export function upstreamListRepo(upstreams: UpstreamRecord<unknown>[]): Repo {
   return { upstreams: { list: async () => upstreams } } as unknown as Repo
 }
