@@ -40,6 +40,7 @@ COPY packages/dial/package.json packages/dial/
 COPY packages/proxy/package.json packages/proxy/
 COPY packages/proxy-repo/package.json packages/proxy-repo/
 COPY packages/translate/package.json packages/translate/
+COPY packages/test-utils/package.json packages/test-utils/
 
 RUN --mount=type=secret,id=npmrc,target=/root/.npmrc NODE_TLS_REJECT_UNAUTHORIZED=0 bun install --frozen-lockfile
 
