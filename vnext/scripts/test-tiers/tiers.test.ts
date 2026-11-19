@@ -40,3 +40,25 @@ test("every test that starts a real process is named .proc/.d1/.workerd", async 
   // Allowed exception: this file names the APIs it detects.
   expect(misnamed.filter(rel => rel !== "scripts/test-tiers/tiers.test.ts")).toEqual([])
 })
+
+/**
+ * Each package keeps its tests in one place — `tests/`, `__tests__/`,
+ * `src/<dir>/__tests__/`, or next to the source (the dashboard's component tests) —
+ * so a reader knows where to look and a package's tsconfig either covers its
+ * tests or doesn't, uniformly. Moving the mixed ones surfaced 20 type errors
+ * in tests that had never been type-checked.
+ */
+test("every package keeps its tests in a single location", async () => {
+  const layouts = new Map<string, Set<string>>()
+  for (const rel of await listTestFiles(ROOT)) {
+    const [area, pkg, ...rest] = rel.split("/")
+    if (area !== "packages" && area !== "apps") continue
+    const inner = rest.join("/")
+    const layout = inner.startsWith("tests/") ? "tests/" : inner.startsWith("__tests__/") ? "__tests__/"
+      : inner.startsWith("src/") && inner.includes("/__tests__/") ? "src/**/__tests__/" : "colocated"
+    const key = `${area}/${pkg}`
+    layouts.set(key, (layouts.get(key) ?? new Set()).add(layout))
+  }
+  const mixed = [...layouts].filter(([, set]) => set.size > 1).map(([pkg, set]) => `${pkg}: ${[...set].join(", ")}`)
+  expect(mixed).toEqual([])
+})
