@@ -163,11 +163,17 @@ From the 2026-11-19 audit (731 test files; three test-folder conventions;
 `globalThis.fetch =` in 89; Copilot logic split across gateway and
 provider-copilot; ~27 gateway files branch on provider kind).
 
-- [ ] Keep `docs/**` research harnesses out of the default `bun test`
-  (`bunfig.toml`), with an explicit `test:research` script.
-- [ ] Selectable test tiers: consistent suffixes (`.sqlite`, `.d1`, `.workerd`,
-  `.proc`), fake `.e2e.` renamed to `.app.`; `test:unit` / `test:fast` /
-  `test:slow` scripts.
+- [-] Exclude `docs/**` research harnesses from `bun test` — not needed: they
+  pass here since `fd7fa8bf`, CI prepares their reference snapshot on purpose,
+  and Bun 1.3.0 has no ignore option. They are their own `research` tier.
+- [x] Selectable test tiers (`scripts/test-tiers/`): `test:fast` (685 files,
+  ~78 s), `test:slow` (`.proc`/`.d1`/`.workerd`, 14 files, ~19 s),
+  `test:research`. Six process-spawning tests renamed `.proc.test.ts`; a guard
+  test fails when a spawning test is not named for its tier.
+- [x] `test:isolation` runs each fast file in its own process (~23 s, in CI and
+  `ci:local`). It found three files that passed only because earlier files left
+  the platform initialized (`compact-window`, `attempt`, `stream-failure-wire`);
+  each now calls `setupTestPlatform()`.
 - [ ] Shared test-utils package (`jsonResponse`, `sseResponse`, stream readers,
   `withMockedFetch` with a lock and automatic restore, recording fetcher,
   stub upstream/model); migrate call sites incrementally.

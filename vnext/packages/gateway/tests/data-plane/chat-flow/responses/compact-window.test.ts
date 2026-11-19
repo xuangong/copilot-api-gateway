@@ -1,5 +1,6 @@
 import { Database } from 'bun:sqlite'
-import { afterEach, expect, test } from 'bun:test'
+import { afterEach, beforeEach, expect, test } from 'bun:test'
+import { setupTestPlatform } from '../../../_setup-platform.ts'
 import { eventFrame, type ProtocolFrame } from '@vibe-core/result'
 import { llmEventResult, type TelemetryModelIdentity } from '@vibe-llm/protocols/common'
 import type { ResponsesStreamEvent } from '@vibe-llm/protocols/responses'
@@ -15,6 +16,9 @@ const identity: TelemetryModelIdentity = {
 }
 
 const databases: Database[] = []
+// respondResponses schedules snapshot writes on the platform background; set
+// it up here instead of relying on another test file's leftovers.
+beforeEach(() => { setupTestPlatform() })
 afterEach(() => {
   for (const db of databases.splice(0)) db.close()
 })

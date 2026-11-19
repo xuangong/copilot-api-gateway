@@ -1,5 +1,6 @@
 import { translatedFixture } from "./translated-fixture"
-import { expect, test } from "bun:test"
+import { beforeEach, expect, test } from "bun:test"
+import { setupTestPlatform } from "../../../_setup-platform.ts"
 import type { ProtocolFrame } from "@vibe-core/result"
 import { llmEventResult, type LlmEventResult } from "@vibe-llm/protocols/common"
 import { translateChatToResponsesEvents } from "@vibe-llm/translate/responses-via-chat-completions"
@@ -11,6 +12,10 @@ import { respondMessages } from "../../../../src/data-plane/chat-flow/messages/r
 import { respondChatCompletions } from "../../../../src/data-plane/chat-flow/chat-completions/respond"
 import { withUpstreamTelemetry } from "../../../../src/data-plane/chat-flow/shared/upstream-telemetry"
 import { parseResponsesStream } from "@vibe-llm/protocols/responses"
+
+// respond* schedules work on the platform background; own the setup instead of
+// inheriting another test file's.
+beforeEach(() => { setupTestPlatform() })
 
 const identity = { incomingModel: "m", model: "m", upstream: "test", modelKey: "m", cost: null }
 async function* frames(events: unknown[], thrown = false): AsyncGenerator<ProtocolFrame<never>> {

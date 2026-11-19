@@ -63,6 +63,11 @@ jobs:
       - name: Tests
         run: bun test
 
+      # Each fast-tier file alone: catches tests that only pass because an
+      # earlier file left platform singletons initialized.
+      - name: Test isolation
+        run: bun run test:isolation
+
       - name: Telemetry agent tests
         run: bun run test:agent
 

@@ -9,7 +9,8 @@
 // binding selection. Tests use a non-image-gen payload (no tools with type:
 // 'image_generation') to avoid that path.
 
-import { test, expect, mock, spyOn } from 'bun:test'
+import { test, expect, mock, spyOn, beforeEach } from 'bun:test'
+import { setupTestPlatform } from '../../../_setup-platform.ts'
 import { responsesAttempt } from '../../../../src/data-plane/chat-flow/responses/attempt'
 import type { TelemetryRequestContext } from '../../../../src/data-plane/chat-flow/shared/telemetry-ctx'
 import type { RequestContext } from '@vibe-llm/protocols/common'
@@ -36,6 +37,11 @@ const okJsonBody = JSON.stringify({
   output: [{ type: 'message', id: 'item_1', status: 'completed', role: 'assistant', content: [{ type: 'output_text', text: 'hello' }] }],
   usage: { input_tokens: 5, output_tokens: 3, total_tokens: 8 },
 })
+
+// Each test gets its own platform (repo, background, cache): the attempt records
+// upstream-protection state through the repo, and must not depend on another
+// test file having initialized it first.
+beforeEach(() => { setupTestPlatform() })
 
 const baseCtx: RequestContext = { requestStartedAt: Date.now() }
 const baseAuth = { ownerId: 'o', copilot: false }

@@ -9,12 +9,16 @@
   "scripts": {
     "agent-remote:fixture": "bun packages/gateway/tests/fixtures/agent-remote-gateway.ts",
     "test": "bun run build:ui && bun run scripts/check-framework-purity.ts && bun test",
+    "test:fast": "bun scripts/test-tiers/run.ts fast",
+    "test:slow": "bun scripts/test-tiers/run.ts slow",
+    "test:research": "bun scripts/test-tiers/run.ts research",
+    "test:isolation": "bun scripts/test-tiers/isolation.ts",
     "test:agent": "cd tools/trojan-telemetry && python3 -m unittest discover -s tests",
     "typecheck": "bun run build:setup && bun run --filter '*' typecheck",
     "lint": "eslint .",
     "build:ui": "bun run build:setup && bun scripts/build-dashboard.ts",
     "ci:prepare": "bun scripts/ci-reference.ts",
-    "ci:local": "bun run ci:prepare && bun run build:ui && bun run scripts/check-framework-purity.ts && bun run typecheck && bun test && bun run test:agent && bun run lint && bun run --filter '@vibe-llm/platform-cloudflare' deploy:dry",
+    "ci:local": "bun run ci:prepare && bun run build:ui && bun run scripts/check-framework-purity.ts && bun run typecheck && bun test && bun run test:isolation && bun run test:agent && bun run lint && bun run --filter '@vibe-llm/platform-cloudflare' deploy:dry",
     "build:setup": "bun scripts/build-setup-assets.ts"
   },
   "dependencies": {
