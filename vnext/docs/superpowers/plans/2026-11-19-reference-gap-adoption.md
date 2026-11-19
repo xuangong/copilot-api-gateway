@@ -183,16 +183,13 @@ provider-copilot; ~27 gateway files branch on provider kind).
   per-file `createFetchStub`). Migrated gateway's `_stub-global-fetch.ts` and
   the 18 exact-duplicate helper definitions; the audit's larger counts were
   name/shape variants, left for incremental migration when files are touched.
-- [x] Real repo instead of hand-written fakes: `copilot-quota` and
-  `github-accounts` tests now store rows in `setupTestPlatform()`'s SQLite
-  repo (−100 lines; chain tests still fail under the bypass mutation). A
-  ratchet test (`repo-fakes-ratchet`, MAX 77) stops new `as unknown as Repo`
-  fakes; the rest migrate when their files are touched. No `fakeRepo()`
-  builder was needed — storing rows covered every override.
-- [x] (0192bf96) Move Copilot/GitHub ownership (host helpers, token exchange,
-  account-type detection, management-plane calls, device-flow requests) into
-  `@vibe-llm/provider-copilot/github`; gateway copies and dead constants
-  removed; one table test in provider-copilot covers every call × host.
+- [x] Real repo instead of hand-written fakes (95f56d7f … de1f2680): every
+  gateway test now stores rows in `setupTestPlatform()`'s SQLite repo or uses
+  the shared `upstreamListRepo` route fixture; write spies wrap single real
+  methods (`helpers/repo-write-spy.ts`). `as unknown as Repo` went 77 → 2,
+  both deliberate (the shared fixture and one fault injection); the ratchet
+  test holds it there. The migration exposed one fiction: a fake answered a
+  bogus API key on /v1/models with 200 where production returns 401.
 - [x] (b8818763) Provider plugin hooks `publicConfig` / `normalizeConfig` /
   `probeConfig` replace the gateway's per-kind switches for the dashboard DTO,
   generic create/edit validation and draft probing; SDF validation moved into
