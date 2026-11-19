@@ -760,19 +760,42 @@ export const rewriteMessagesWebSearchEventsToNative = async function* (
     hasRemainingClientToolUse: false,
   }
 
-  let activeBlock: ActiveBlock | undefined
+  // Ordinary blocks are tracked by upstream index: translated streams (e.g. Chat
+  // with parallel tool calls) may keep an earlier block open across later ones.
+  const activeBlocks = new Map<number, ActiveBlock>()
+  // An intercepted search stays serialized: a web_search_tool_result carries its whole
+  // content in content_block_start, so later frames are held until it has been emitted
+  // and downstream indexes are known.
+  let activeWebSearchIndex: number | undefined
+  let deferredFrames: ProtocolFrame<MessagesStreamEvent>[] = []
+  let terminated = false
 
-  for await (const frame of frames) {
+  const processFrame = async function* (
+    frame: ProtocolFrame<MessagesStreamEvent>,
+  ): AsyncGenerator<ProtocolFrame<MessagesStreamEvent>> {
+    if (activeWebSearchIndex !== undefined) {
+      const event = frame.type === 'event' ? frame.event : undefined
+      const belongsToSearch =
+        event !== undefined
+        && (event.type === 'content_block_delta' || event.type === 'content_block_stop')
+        && event.index === activeWebSearchIndex
+      // Errors and pings are never hidden behind the buffer.
+      if (!belongsToSearch && event?.type !== 'error' && event?.type !== 'ping') {
+        deferredFrames.push(frame)
+        return
+      }
+    }
+
     if (frame.type === 'done') {
       yield frame
-      continue
+      return
     }
 
     const event = frame.event
 
     if (event.type === 'content_block_start') {
-      if (activeBlock !== undefined) {
-        throw new Error('upstream Messages SSE interleaved content blocks; web-search shim cannot renumber.')
+      if (activeBlocks.has(event.index)) {
+        throw new Error(`upstream Messages SSE opened content block ${event.index} twice.`)
       }
       const downstreamBase = event.index + shimState.downstreamIndexOffset
 
@@ -781,71 +804,88 @@ export const rewriteMessagesWebSearchEventsToNative = async function* (
         && event.content_block.type === 'tool_use'
         && (event.content_block as { name?: string }).name === WEB_SEARCH_TOOL_NAME
       ) {
-        activeBlock = {
+        activeBlocks.set(event.index, {
           kind: 'web-search-tool-use',
           upstreamToolUseId: (event.content_block as { id: string }).id,
           serverToolUseIndex: downstreamBase,
           resultIndex: downstreamBase + 1,
           inputJson: '',
-        }
-        continue
+        })
+        activeWebSearchIndex = event.index
+        return
       }
 
       if (event.content_block.type === 'text') {
-        activeBlock = { kind: 'text', downstreamIndex: downstreamBase }
+        activeBlocks.set(event.index, { kind: 'text', downstreamIndex: downstreamBase })
         yield eventFrame({ ...rewriteContentBlockStartCitations(event, state), index: downstreamBase })
-        continue
+        return
       }
 
       if (event.content_block.type === 'tool_use') {
         shimState.hasRemainingClientToolUse = true
       }
 
-      activeBlock = { kind: 'passthrough', downstreamIndex: downstreamBase }
+      activeBlocks.set(event.index, { kind: 'passthrough', downstreamIndex: downstreamBase })
       yield eventFrame({ ...event, index: downstreamBase })
-      continue
+      return
     }
 
     if (event.type === 'content_block_delta') {
+      const activeBlock = activeBlocks.get(event.index)
       if (activeBlock === undefined) {
-        throw new Error('upstream Messages SSE emitted content_block_delta without an open block.')
+        throw new Error(`upstream Messages SSE emitted content_block_delta for unopened block ${event.index}.`)
       }
       if (activeBlock.kind === 'web-search-tool-use') {
         if (event.delta.type === 'input_json_delta') {
-          activeBlock = { ...activeBlock, inputJson: activeBlock.inputJson + event.delta.partial_json }
+          activeBlocks.set(event.index, { ...activeBlock, inputJson: activeBlock.inputJson + event.delta.partial_json })
         }
-        continue
+        return
       }
       if (activeBlock.kind === 'text') {
         yield eventFrame({ ...rewriteContentBlockDeltaCitations(event, state), index: activeBlock.downstreamIndex })
-        continue
+        return
       }
       yield eventFrame({ ...event, index: activeBlock.downstreamIndex })
-      continue
+      return
     }
 
     if (event.type === 'content_block_stop') {
+      const activeBlock = activeBlocks.get(event.index)
       if (activeBlock === undefined) {
-        throw new Error('upstream Messages SSE emitted content_block_stop without an open block.')
+        throw new Error(`upstream Messages SSE emitted content_block_stop for unopened block ${event.index}.`)
       }
+      activeBlocks.delete(event.index)
       if (activeBlock.kind === 'web-search-tool-use') {
         if (state.mode !== 'active') {
           throw new Error('web-search shim entered intercept path without active state.')
         }
         yield* runWebSearchStopHandler(activeBlock, shimState, state, provider!)
-        activeBlock = undefined
-        continue
+        activeWebSearchIndex = undefined
+        const resume = deferredFrames
+        deferredFrames = []
+        for (const deferred of resume) {
+          yield* processFrame(deferred)
+          if (terminated) return
+        }
+        return
       }
       yield eventFrame({ type: 'content_block_stop', index: activeBlock.downstreamIndex })
-      activeBlock = undefined
-      continue
+      return
     }
 
     if (event.type === 'message_delta') {
       const interceptedAny = shimState.interceptedSearches > 0
+      // Some upstreams (vLLM-derived) omit usage; synthesize the zero delta first.
       const baseUsage = event.usage ?? { output_tokens: 0 }
+      const webFetch = (baseUsage as { server_tool_use?: { web_fetch_requests?: number } | null }).server_tool_use?.web_fetch_requests
       const newUsage = shimState.executedSearchCount > 0
-        ? { ...baseUsage, server_tool_use: { web_search_requests: shimState.executedSearchCount } }
+        ? {
+            ...baseUsage,
+            server_tool_use: {
+              web_search_requests: shimState.executedSearchCount,
+              ...(webFetch === undefined ? {} : { web_fetch_requests: webFetch }),
+            },
+          }
         : baseUsage
       yield eventFrame({
         type: 'message_delta',
@@ -854,15 +894,25 @@ export const rewriteMessagesWebSearchEventsToNative = async function* (
           : event.delta,
         usage: newUsage,
       })
-      continue
+      return
     }
 
     if (event.type === 'error') {
+      deferredFrames = []
+      terminated = true
       yield frame
       return
     }
 
     yield frame
+  }
+
+  for await (const frame of frames) {
+    yield* processFrame(frame)
+    if (terminated) return
+  }
+  if (activeWebSearchIndex !== undefined || deferredFrames.length > 0) {
+    throw new Error('intercepted web search ended before its content block closed.')
   }
 }
 

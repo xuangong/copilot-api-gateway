@@ -302,3 +302,76 @@ describe('Loki Opus forced native search compatibility', () => {
     }
   })
 })
+
+// Adapted from reference copilot-gateway f086e5845 (#658): the shim assumed a strictly serial
+// stream of complete blocks. Translated Messages streams (e.g. a Chat upstream with two
+// parallel tool calls) keep an earlier block open across later block lifecycles, and
+// vLLM-derived streams omit `usage` on message_delta.
+describe('sparse and interleaved Messages streams', () => {
+  const start = ev({ type: 'message_start', message: { usage: { input_tokens: 1, output_tokens: 0 } } })
+  const end = (reason: string) => [
+    ev({ type: 'message_delta', delta: { stop_reason: reason } }),
+    ev({ type: 'message_stop' }),
+  ]
+  const searchOpen = (): MessagesStreamEvent[] => [
+    ev({ type: 'content_block_start', index: 0, content_block: { type: 'tool_use', id: 'toolu_1', name: 'web_search', input: {} } }),
+    ev({ type: 'content_block_delta', index: 0, delta: { type: 'input_json_delta', partial_json: '{"query":"react 19"}' } }),
+  ]
+  const run = async (turn: MessagesStreamEvent[]) =>
+    events(await collect(await withMessagesWebSearchShim(invocation('messages'), ctx, scriptedRun([turn]).run)))
+  const blocks = (out: Array<Record<string, unknown>>) =>
+    out.filter(e => String(e.type).startsWith('content_block')).map(e => [e.type, e.index])
+
+  test('passes overlapping ordinary blocks through unchanged', async () => {
+    const out = await run([
+      start,
+      ev({ type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } }),
+      ev({ type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'answer' } }),
+      ev({ type: 'content_block_start', index: 1, content_block: { type: 'redacted_thinking', data: 'sidecar' } }),
+      ev({ type: 'content_block_stop', index: 1 }),
+      ev({ type: 'content_block_stop', index: 0 }),
+      ...end('end_turn'),
+    ])
+    expect(blocks(out)).toEqual([
+      ['content_block_start', 0], ['content_block_delta', 0],
+      ['content_block_start', 1], ['content_block_stop', 1], ['content_block_stop', 0],
+    ])
+  })
+
+  test('tolerates a message_delta without usage and still reports the search', async () => {
+    const out = await run([start, ...searchOpen(), ev({ type: 'content_block_stop', index: 0 }), ...end('tool_use')])
+    const delta = out.find(e => e.type === 'message_delta')!
+    expect((delta.usage as { output_tokens: number }).output_tokens).toBe(0)
+    expect((delta.usage as { server_tool_use: unknown }).server_tool_use).toMatchObject({ web_search_requests: 1 })
+  })
+
+  test('places a sidecar block that opens during a pending search after the search result', async () => {
+    const out = await run([
+      start, ...searchOpen(),
+      ev({ type: 'content_block_start', index: 1, content_block: { type: 'redacted_thinking', data: 'sidecar' } }),
+      ev({ type: 'content_block_stop', index: 1 }),
+      ev({ type: 'content_block_stop', index: 0 }),
+      ...end('tool_use'),
+    ])
+    const starts = out.filter(e => e.type === 'content_block_start')
+    expect(starts.map(e => [e.index, (e.content_block as { type: string }).type])).toEqual([
+      [0, 'server_tool_use'], [1, 'web_search_tool_result'], [2, 'redacted_thinking'],
+    ])
+  })
+
+  test('holds later content until the intercepted search result is complete', async () => {
+    const out = await run([
+      start, ...searchOpen(),
+      ev({ type: 'content_block_start', index: 1, content_block: { type: 'text', text: '' } }),
+      ev({ type: 'content_block_delta', index: 1, delta: { type: 'text_delta', text: 'answer' } }),
+      ev({ type: 'content_block_stop', index: 1 }),
+      ev({ type: 'content_block_stop', index: 0 }),
+      ...end('tool_use'),
+    ])
+    expect(blocks(out)).toEqual([
+      ['content_block_start', 0], ['content_block_stop', 0],
+      ['content_block_start', 1], ['content_block_stop', 1],
+      ['content_block_start', 2], ['content_block_delta', 2], ['content_block_stop', 2],
+    ])
+  })
+})
