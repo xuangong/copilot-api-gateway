@@ -1047,3 +1047,52 @@ test('consumeTurnStreaming: dispatcher slot start frames use slot.id as item_id'
   )
   expect(added).toBeDefined()
 })
+
+// ─── Hosted tools declared inside input items ─
+// Adapted from reference copilot-gateway 659f185dc (#558): Codex declares tools
+// positionally in `additional_tools` / `tool_search_output`. A hosted
+// `web_search` there must be rewritten in place and dispatched locally, not
+// forwarded to an upstream that cannot run it.
+
+const hostedRegistration: ServerToolRegistration<Invocation, Record<string, unknown>> = () => ({
+  type: 'active',
+  baseToolName: 'web_search',
+  hosted: {
+    hostedTypes: ['web_search'],
+    canonicalize: (raw) => (raw.type === 'web_search' ? { type: 'web_search' } : undefined),
+    buildFunctionTool: (_c, name) => ({ type: 'function', name }),
+    dispatcher: () => [],
+  },
+})
+
+const runShimCapturingPayload = async (payload: Record<string, unknown>): Promise<Record<string, any>> => {
+  const inv = baseInv()
+  inv.payload = { ...inv.payload, ...payload } as never
+  let seen: Record<string, any> = {}
+  await withResponsesServerToolShim([hostedRegistration], createInMemoryPrivatePayloadStore())(inv, baseCtx, async () => {
+    seen = inv.payload as Record<string, any>
+    return llmEventResult((async function* () { yield doneFrame() })(), stubIdentity)
+  })
+  return seen
+}
+
+for (const item of [
+  { type: 'additional_tools', role: 'developer', id: 'at_1', tools: [{ type: 'web_search' }] },
+  { type: 'tool_search_output', call_id: 'search_1', execution: 'client', tools: [{ type: 'web_search' }] },
+] as const) {
+  test(`withResponsesServerToolShim rewrites hosted tools inside ${item.type} at their input position`, async () => {
+    const seen = await runShimCapturingPayload({
+      tool_choice: { type: 'web_search' },
+      input: [
+        { type: 'message', role: 'user', content: 'before' },
+        item,
+        { type: 'message', role: 'user', content: 'after' },
+      ],
+    })
+    expect(seen.tools).toBeUndefined()
+    expect(seen.tool_choice).toEqual({ type: 'function', name: 'web_search' })
+    expect(seen.input[0]).toEqual({ type: 'message', role: 'user', content: 'before' })
+    expect(seen.input[1]).toEqual({ ...item, tools: [{ type: 'function', name: 'web_search' }] })
+    expect(seen.input[2]).toEqual({ type: 'message', role: 'user', content: 'after' })
+  })
+}

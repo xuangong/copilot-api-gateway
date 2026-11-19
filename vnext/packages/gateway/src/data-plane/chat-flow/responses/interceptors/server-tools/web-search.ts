@@ -24,6 +24,7 @@
 import { decodeWebSearchPrivatePayload, type WebSearchCallPrivatePayload } from '../../../../orchestrator/server-tools/private-payload'
 export type { WebSearchCallPrivatePayload } from '../../../../orchestrator/server-tools/private-payload'
 
+import { collectResponsesToolEntries } from '../../../../orchestrator/server-tools/declarations'
 import { shortId } from '../../../../../data-plane/shared/short-id.ts'
 import { normalizeDomainEntry } from '../../../../tools/web-search/domain-normalize.ts'
 import {
@@ -294,12 +295,22 @@ const validateHostedEntry = (tool: ResponsesTool): PrepareToolsError | null => {
 // https://github.com/Menci/Floway/pull/172#issuecomment-4971739422
 export const prepareToolsForShim = (
   tools: ResponsesTool[],
+  paths?: readonly string[],
 ): PrepareToolsResult => {
   let selectedFilters: WebSearchFilters = {}
-  for (const tool of tools) {
+  for (const [index, tool] of tools.entries()) {
     if (isHostedWebSearchTool(tool)) {
       const reject = validateHostedEntry(tool)
-      if (reject !== null) return { ok: false, error: reject }
+      if (reject !== null) {
+        // Report the declaration's own location when it sits in an input item.
+        const path = paths?.[index]
+        return {
+          ok: false,
+          error: path?.startsWith('input[')
+            ? { ...reject, param: reject.param === 'tools' ? path : `${path}.search_context_size` }
+            : reject,
+        }
+      }
       selectedFilters = extractFilters(tool as ResponsesHostedTool)
     }
   }
@@ -527,13 +538,14 @@ export const webSearchServerTool: ServerToolRegistration<Invocation, ServerToolR
     return { type: 'inactive' }
   }
 
-  const tools = Array.isArray(invocation.payload.tools) ? (invocation.payload.tools as ResponsesTool[]) : []
+  const declarations = collectResponsesToolEntries(invocation.payload)
+  const tools = declarations.map((entry) => entry.tool)
   const hasHostedWebSearch = tools.some(isHostedWebSearchTool)
   const input = Array.isArray(invocation.payload.input) ? (invocation.payload.input as ResponsesInputItem[]) : []
   const hasReplayInput = input.some((i) => i.type === 'web_search_call')
   if (!hasHostedWebSearch && !hasReplayInput) return { type: 'inactive' }
 
-  const prepared = prepareToolsForShim(tools)
+  const prepared = prepareToolsForShim(tools, declarations.map((entry) => entry.path))
   if (!prepared.ok) {
     return {
       type: 'invalid-request',

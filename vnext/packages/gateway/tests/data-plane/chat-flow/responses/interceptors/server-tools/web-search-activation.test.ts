@@ -91,6 +91,24 @@ describe('Responses web_search shim activation', () => {
 
   // The flag keeps its original meaning: an upstream that can serve hosted
   // search natively is opted out for every caller, translated ones included.
+  // Adapted from reference copilot-gateway 659f185dc (#558): Codex declares
+  // tools in input items; a hosted web_search there must activate the shim and
+  // report validation errors at its own `input[i].tools[j]` path.
+  test.each(['additional_tools', 'tool_search_output'] as const)('activates for a hosted web_search inside %s', async (type) => {
+    const item = type === 'additional_tools'
+      ? { type, role: 'developer', tools: [{ type: 'web_search' }] }
+      : { type, execution: 'client', call_id: 'c1', tools: [{ type: 'web_search' }] }
+    expect(await activationOf({ sourceApi: 'messages', payload: { model: 'm', input: [item], tools: [] } as never })).toBe('active')
+  })
+
+  test('reports an invalid nested hosted web_search at its input path', async () => {
+    const result = await webSearchServerTool(invocation({
+      sourceApi: 'messages',
+      payload: { model: 'm', tools: [], input: [{ type: 'additional_tools', role: 'developer', tools: [{ type: 'web_search', search_context_size: 'invalid' }] }] } as never,
+    }), requestCtx())
+    expect(result).toMatchObject({ type: 'invalid-request', param: 'input[0].tools[0].search_context_size' })
+  })
+
   test('stays off when the flag is off', async () => {
     expect(await activationOf({ sourceApi: 'chat_completions', enabledFlags: new Set() })).toBe('inactive')
   })

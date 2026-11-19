@@ -338,6 +338,41 @@ export const rewriteToolsForHostedShim = (
   return { rewritten, canonicalHostedTool }
 }
 
+// Hosted declarations are rewritten inside whichever carrier declared them
+// (top-level `tools`, `additional_tools`, `tool_search_output`) so positional
+// tool order survives; only the top-level replacement takes part in
+// `response.tools` echo restoration.
+// Adapted from reference copilot-gateway 659f185dc (#558).
+const rewriteHostedDeclarations = (
+  payload: Invocation['payload'],
+  hosted: ServerToolHostedDispatch,
+  toolName: string,
+): { payload: Invocation['payload']; canonicalTopLevelHostedTool: ResponsesHostedToolLoose | undefined } => {
+  let canonicalHostedTool: ResponsesHostedToolLoose | undefined = undefined
+  const rewrite = (tools: ResponsesTool[]): ResponsesTool[] => {
+    if (!tools.some((tool) => hosted.canonicalize(tool) !== undefined)) return tools
+    const result = rewriteToolsForHostedShim(tools, hosted, toolName)
+    canonicalHostedTool = result.canonicalHostedTool
+    return result.rewritten
+  }
+  const tools = Array.isArray(payload.tools) ? rewrite(payload.tools as ResponsesTool[]) : undefined
+  const canonicalTopLevelHostedTool = canonicalHostedTool
+  const input = Array.isArray(payload.input)
+    ? (payload.input as ResponsesInputItem[]).map((item) => {
+        if ((item.type !== 'additional_tools' && item.type !== 'tool_search_output') || !Array.isArray(item.tools)) return item
+        const rewritten = rewrite(item.tools as ResponsesTool[])
+        return rewritten === item.tools ? item : { ...item, tools: rewritten }
+      })
+    : payload.input
+  if (canonicalHostedTool === undefined) {
+    throw new Error('Hosted server-tool registration did not match any request tool')
+  }
+  return {
+    payload: { ...payload, ...(tools === undefined ? {} : { tools }), ...(input === undefined ? {} : { input }) } as Invocation['payload'],
+    canonicalTopLevelHostedTool,
+  }
+}
+
 // Re-exported from its shared home so the Chat Completions web-search shim
 // can parse tool arguments the same way without importing this module.
 export { parseServerToolArguments }
@@ -1155,9 +1190,9 @@ export const withResponsesServerToolShim = (
       }
       let canonicalHostedTool: ResponsesHostedToolLoose | undefined = undefined
       if (hosted !== undefined) {
-        const rewrite = rewriteToolsForHostedShim(currentTools, hosted, toolName)
-        canonicalHostedTool = rewrite.canonicalHostedTool
-        ctx.payload = { ...ctx.payload, tools: rewrite.rewritten }
+        const rewrite = rewriteHostedDeclarations(ctx.payload, hosted, toolName)
+        canonicalHostedTool = rewrite.canonicalTopLevelHostedTool
+        ctx.payload = rewrite.payload
         // The hosted item is synthesized here, never upstream, so its `include`
         // opt-ins are dead weight on the wire — and grok-* / mai-code-* reject
         // rather than ignore them. Registrations have already read whatever they
