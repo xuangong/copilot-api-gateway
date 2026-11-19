@@ -9,7 +9,7 @@ import { __resetPlatformForTests } from "@vibe-core/platform"
 import { initRepo } from "../../../../src/repo/index.ts"
 import { createWebSearchExecutionScope, type WebSearchExecutionScope } from "../../../../src/data-plane/tools/web-search/execution-scope.ts"
 import { DEFAULT_WEB_SEARCH_CAPACITY_POLICY, validateWebSearchCapacityPolicy, WebSearchCapacityError } from "../../../../src/data-plane/tools/web-search/capacity.ts"
-import type { WebSearchExecutionSession } from "../../../../src/data-plane/tools/web-search/operations.ts"
+import { assertLocalWebSearchSupport, type WebSearchExecutionSession } from "../../../../src/data-plane/tools/web-search/operations.ts"
 import type { ConfiguredWebSearchProvider, WebSearchProvider, WebSearchProviderResult } from "../../../../src/data-plane/tools/web-search/types.ts"
 
 const deferred = <T>() => {
@@ -510,6 +510,58 @@ test("open_page does not guess among several redirected pages", async () => {
     { url: "https://two.test/", content: "two" },
   ])
   for (const ir of irs) expect(ir.results[0]?.snippet).toContain("No page returned")
+})
+
+// Adapted from reference copilot-gateway da86923c7 (#657): Codex sessions kept
+// failing with "provider does not implement `commands.response_length`" /
+// `search_query[0].domains` although the shim advertises the complete
+// SearchCommands shape. response_length caps results, query `domains`
+// intersect the operator's allow-list (an empty intersection must not widen to
+// "no filter"), `recency` reaches the provider, and null means "not provided".
+const searchRequests = async (args: Record<string, unknown>, filters: Record<string, unknown> = {}) => {
+  const requests: Array<Record<string, unknown>> = []
+  const scope = createWebSearchExecutionScope({ ...session, filters: { maxResults: 3, ...filters }, getProvider: async () => configured(provider({
+    search: async request => { requests.push(request as unknown as Record<string, unknown>); return ok },
+  })) })
+  const batch = scope.prepare(scope.admit(args)).start()
+  const irs = await Promise.all(batch.calls.map(call => call.result()))
+  await scope.settled()
+  return { requests, irs }
+}
+
+test("response_length, query domains and recency reach the provider request", async () => {
+  const { requests } = await searchRequests({
+    search_query: [{ q: "react", domains: ["example.com", "blocked.com"], recency: 7 }],
+    response_length: "short",
+  }, { allowedDomains: ["example.com", "other.com"] })
+  expect(requests).toHaveLength(1)
+  expect(requests[0]).toMatchObject({ maxResults: 10, allowedDomains: ["example.com"], recencyDays: 7 })
+})
+
+test("query domains without an operator allow-list apply as given", async () => {
+  const { requests } = await searchRequests({ search_query: [{ q: "react", domains: ["example.com"] }] })
+  expect(requests[0]).toMatchObject({ maxResults: 3, allowedDomains: ["example.com"] })
+})
+
+test("a disjoint query domain list returns no results instead of widening to unfiltered search", async () => {
+  const { requests, irs } = await searchRequests({ search_query: [{ q: "react", domains: ["other.com"] }] }, { allowedDomains: ["example.com"] })
+  expect(requests).toHaveLength(0)
+  expect(irs[0]?.results).toEqual([])
+})
+
+test("null optional search fields are treated as not provided", async () => {
+  const { requests } = await searchRequests({ search_query: [{ q: "react", domains: null, recency: null }], response_length: null })
+  expect(requests).toHaveLength(1)
+  expect(requests[0]!.allowedDomains).toBeUndefined()
+  expect(requests[0]!.recencyDays).toBeUndefined()
+  expect(requests[0]!.maxResults).toBe(3)
+})
+
+test("local alpha-search support accepts the new fields and still rejects unknown ones", () => {
+  assertLocalWebSearchSupport({ search_query: [{ q: "x", recency: 2, domains: ["example.com"] }], response_length: "short" })
+  assertLocalWebSearchSupport({ search_query: [{ q: "x", recency: null, domains: null }], response_length: null })
+  expect(() => assertLocalWebSearchSupport({ response_length: "huge" })).toThrow("commands.response_length")
+  expect(() => assertLocalWebSearchSupport({ search_query: [{ q: "x", foo: 1 }] })).toThrow("commands.search_query[0].foo")
 })
 
 test("page bytes admit actual normalized title graph instead of trusting source size", async () => {

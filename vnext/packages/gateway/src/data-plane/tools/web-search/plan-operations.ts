@@ -21,10 +21,12 @@
 import type { ResponsesWebSearchAction } from '@vibe-llm/protocols/responses'
 import {
   executeOperationToIr,
+  isSearchResponseLength,
   parseWebSearchOperations,
   runBackendSearchMulti,
   schemaErrorIr,
   startBatchFetch,
+  type SearchResponseLength,
   type WebSearchCallIR,
   type WebSearchExecutionSession,
   type WebSearchOperation,
@@ -52,6 +54,11 @@ export interface WebSearchCallPlan {
   ops: WebSearchOperation[]
   action?: ResponsesWebSearchAction
   arguments: Record<string, unknown>
+  /**
+   * The call's own `response_length`. Bound to this plan rather than written to
+   * the shared session, so a later call cannot change an earlier one's budget.
+   */
+  responseLength?: SearchResponseLength
 }
 
 const subPropertyOf = (op: WebSearchOperation): string => {
@@ -115,8 +122,10 @@ const planFor = (
   ops: WebSearchOperation[],
 ): WebSearchCallPlan => {
   const action = actionFor(ops)
+  const responseLength = isSearchResponseLength(args.response_length) ? args.response_length : undefined
   return {
     ops,
+    ...(responseLength !== undefined ? { responseLength } : {}),
     ...(action !== undefined ? { action } : {}),
     arguments: sliceArguments(args, ops),
   }
@@ -169,10 +178,11 @@ export const startWebSearchCallFetches = (
 
 export const runWebSearchCallPlan = async (
   plan: WebSearchCallPlan,
-  session: WebSearchExecutionSession,
+  sharedSession: WebSearchExecutionSession,
   fetches: Promise<WebSearchPageFetchMap>,
   work?: WebSearchWorkTracker,
 ): Promise<WebSearchCallIR> => {
+  const session = plan.responseLength === undefined ? sharedSession : { ...sharedSession, responseLength: plan.responseLength }
   session.signal?.throwIfAborted()
   if (plan.ops.length === 0) {
     return schemaErrorIr(

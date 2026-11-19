@@ -43,6 +43,8 @@ export const countWebSearchOperations = (args: Record<string, unknown> | null, l
       if (!Object.hasOwn(args, key)) continue
       const value = args[key]
       if ((key === "search_query" || key === "open" || key === "find") && value === undefined) continue
+      // A tuning scalar, not an operation to execute.
+      if (key === "response_length") continue
       const charge = Array.isArray(value) ? value.length : 1
       if (charge > limit - count) return limit + 1
       count += charge

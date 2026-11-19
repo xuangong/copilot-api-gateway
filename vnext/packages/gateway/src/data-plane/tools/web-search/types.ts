@@ -28,6 +28,10 @@ export interface WebSearchProviderRequest {
   }
   /** When undefined, the provider applies its own default count. */
   maxResults?: number
+  /** OpenAI Codex `SearchQuery.recency`: only results published or updated
+   *  within this many days are relevant. Providers without a native date
+   *  filter ignore it rather than failing or inventing an empty result. */
+  recencyDays?: number
   /** Aborted when the downstream client disconnects — providers MUST pass
    *  through to the underlying fetch so cancellation stops upstream load. */
   signal?: AbortSignal

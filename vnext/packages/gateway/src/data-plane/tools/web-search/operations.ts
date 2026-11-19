@@ -45,6 +45,25 @@ export const isSearchContextSize = (v: unknown): v is keyof typeof CONTEXT_SIZE_
 export const maxResultsForContextSize = (size: keyof typeof CONTEXT_SIZE_TO_MAX_RESULTS | undefined): number =>
   CONTEXT_SIZE_TO_MAX_RESULTS[size ?? DEFAULT_SEARCH_CONTEXT_SIZE]
 
+// Codex documents `response_length` as the result-count control.
+// https://github.com/openai/codex/blob/2f19a57704fb7b1db032bc38cf995034254eaebb/codex-rs/ext/web-search/web_run_description.md#L25-L27
+// Reference probes show `medium` equals an omitted value, `short` trims count
+// and text, `long` keeps the `medium` count and expands text. Local adapters
+// express it as a result-count cap reusing the context-size slots.
+// Adapted from reference copilot-gateway da86923c7 (#657).
+export const SEARCH_RESPONSE_LENGTHS = ['short', 'medium', 'long'] as const
+export type SearchResponseLength = typeof SEARCH_RESPONSE_LENGTHS[number]
+export const isSearchResponseLength = (value: unknown): value is SearchResponseLength =>
+  typeof value === 'string' && (SEARCH_RESPONSE_LENGTHS as readonly string[]).includes(value)
+
+export const maxResultsForResponseLength = (length: SearchResponseLength): number => {
+  switch (length) {
+    case 'short': return CONTEXT_SIZE_TO_MAX_RESULTS.low
+    case 'medium': return CONTEXT_SIZE_TO_MAX_RESULTS.medium
+    case 'long': return CONTEXT_SIZE_TO_MAX_RESULTS.high
+  }
+}
+
 // Per-snippet char cap on a search result's rendered text. Providers like
 // Tavily can return multi-KB snippets per hit; without this cap a single
 // noisy query can blow the upstream context window. Independent of the
@@ -67,7 +86,7 @@ export interface WebSearchFilters {
 // converts the throw into a `{ encrypted_output: null, output: <message> }`
 // text response so no request field disappears silently.
 const LOCAL_SUPPORTED_COMMAND_FIELDS: Readonly<Record<'search_query' | 'open' | 'find', ReadonlySet<string>>> = {
-  search_query: new Set(['q']),
+  search_query: new Set(['q', 'recency', 'domains']),
   open: new Set(['ref_id']),
   find: new Set(['ref_id', 'pattern']),
 }
@@ -83,15 +102,24 @@ export class UnsupportedLocalWebSearchFeatureError extends Error {
 
 const assertObjectHasOnly = (value: unknown, allowed: ReadonlySet<string>, path: string): void => {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return
-  for (const key of Object.keys(value)) {
+  for (const [key, field] of Object.entries(value)) {
+    // Clients serialize absent optional fields as explicit nulls.
+    if (field === null) continue
     if (!allowed.has(key)) throw new UnsupportedLocalWebSearchFeatureError(`${path}.${key}`)
   }
 }
 
 const LOCAL_SUPPORTED_COMMAND_KEYS: ReadonlySet<string> = new Set(['search_query', 'open', 'find'])
+// Top-level scalar commands that tune a search rather than name an operation.
+const SUPPORTED_SCALAR_COMMANDS: ReadonlySet<string> = new Set(['response_length'])
 
 export const assertLocalWebSearchSupport = (commands: Record<string, unknown>): void => {
   for (const [key, value] of Object.entries(commands)) {
+    if (value === null) continue
+    if (SUPPORTED_SCALAR_COMMANDS.has(key)) {
+      if (!isSearchResponseLength(value)) throw new UnsupportedLocalWebSearchFeatureError(`commands.${key}`)
+      continue
+    }
     if (!LOCAL_SUPPORTED_COMMAND_KEYS.has(key)) throw new UnsupportedLocalWebSearchFeatureError(`commands.${key}`)
     if (!Array.isArray(value)) continue
     const allowed = LOCAL_SUPPORTED_COMMAND_FIELDS[key as keyof typeof LOCAL_SUPPORTED_COMMAND_FIELDS]
@@ -116,6 +144,10 @@ export type WebSearchOperation =
     kind: 'search'
     arrayIndex: number
     query: string
+    /** OpenAI `SearchQuery.domains`, an allow-list for this query. */
+    domains?: string[]
+    /** OpenAI `SearchQuery.recency`, in days. */
+    recencyDays?: number
     error?: string
     errorKind?: WebSearchOperationErrorKind
   }
@@ -188,12 +220,27 @@ export const parseWebSearchOperations = (args: Record<string, unknown> | null): 
       ops.push({ kind: 'wrong-type', subProperty: 'search_query', actualType: describeJsonType(searchQuery) })
     } else {
       for (let i = 0; i < searchQuery.length; i++) {
-        const q = stringField(searchQuery[i], 'q')
+        const entry = searchQuery[i]
+        const q = stringField(entry, 'q')
         if (q === '') {
           ops.push({ kind: 'search', arrayIndex: i, query: '', error: missingArgError('q'), errorKind: 'missing-arg' })
           continue
         }
-        ops.push({ kind: 'search', arrayIndex: i, query: q })
+        const record = entry !== null && typeof entry === 'object' ? entry as Record<string, unknown> : {}
+        // `null` and malformed values both read as "not provided".
+        const domains = Array.isArray(record.domains)
+          ? record.domains.filter((domain): domain is string => typeof domain === 'string')
+          : undefined
+        const recencyDays = typeof record.recency === 'number' && Number.isInteger(record.recency) && record.recency >= 0
+          ? record.recency
+          : undefined
+        ops.push({
+          kind: 'search',
+          arrayIndex: i,
+          query: q,
+          ...(domains !== undefined && domains.length > 0 ? { domains } : {}),
+          ...(recencyDays !== undefined ? { recencyDays } : {}),
+        })
       }
     }
   }
@@ -244,7 +291,7 @@ export const parseWebSearchOperations = (args: Record<string, unknown> | null): 
   }
 
   for (const key of Object.keys(args)) {
-    if (SUPPORTED_KEYS.has(key)) continue
+    if (SUPPORTED_KEYS.has(key) || SUPPORTED_SCALAR_COMMANDS.has(key)) continue
     const value = args[key]
     if (Array.isArray(value)) {
       for (let i = 0; i < value.length; i++) {
@@ -268,6 +315,8 @@ interface PageCacheEntry {
 }
 
 export interface WebSearchExecutionSession {
+  /** Codex `SearchCommands.response_length`; caps every search it governs. */
+  responseLength?: SearchResponseLength
   getProvider: () => Promise<ConfiguredWebSearchProvider>
   filters: WebSearchFilters
   apiKeyId: ApiKeyId
@@ -498,19 +547,39 @@ interface SearchQueryOutcome {
   sources?: { type: 'url'; url: string }[]
 }
 
+// Both lists are allow-lists, so a query that narrows the same dimension
+// intersects with the operator's policy instead of replacing it.
+const intersectAllowedDomains = (
+  filters: readonly string[] | undefined,
+  queryDomains: readonly string[] | undefined,
+): string[] | undefined => {
+  if (queryDomains === undefined) return filters === undefined ? undefined : [...filters]
+  if (filters === undefined) return [...queryDomains]
+  const allowed = new Set(filters)
+  return queryDomains.filter((domain) => allowed.has(domain))
+}
+
 const runOneSearchQuery = async (
-  query: string,
+  op: Extract<WebSearchOperation, { kind: 'search' }>,
   session: WebSearchExecutionSession,
   active: { provider: WebSearchProvider; providerName: WebSearchProviderName },
   work?: WebSearchWorkTracker,
 ): Promise<SearchQueryOutcome> => {
   try {
+    const allowedDomains = intersectAllowedDomains(session.filters.allowedDomains, op.domains)
+    // Every provider reads an empty allow-list as "no filter", so an empty
+    // intersection must short-circuit to an empty result set rather than
+    // silently dropping both the query's domains and the operator's policy.
+    if (allowedDomains?.length === 0) return { results: [] }
     const searchRequest = {
-      query,
-      maxResults: session.filters.maxResults,
-      allowedDomains: session.filters.allowedDomains,
+      query: op.query,
+      maxResults: session.responseLength !== undefined
+        ? maxResultsForResponseLength(session.responseLength)
+        : session.filters.maxResults,
+      allowedDomains,
       blockedDomains: session.filters.blockedDomains,
       userLocation: session.filters.userLocation,
+      ...(op.recencyDays !== undefined ? { recencyDays: op.recencyDays } : {}),
       ...(session.signal !== undefined ? { signal: session.signal } : {}),
       ...(session.ingress !== undefined ? { ingress: session.ingress } : {}),
     }
@@ -560,7 +629,7 @@ const runBackendSearch = async (
   if ('unavailable' in active) {
     return searchIr(op.query, [errorSnippet('Search error', searchFailedText(active.unavailable))])
   }
-  const { results, sources } = await runOneSearchQuery(op.query, session, active, work)
+  const { results, sources } = await runOneSearchQuery(op, session, active, work)
   session.signal?.throwIfAborted()
   return searchIr(op.query, results, sources)
 }
@@ -575,7 +644,7 @@ export const runBackendSearchMulti = async (
   if ('unavailable' in active) {
     return searchIrFromQueries(queries, [errorSnippet('Search error', searchFailedText(active.unavailable))])
   }
-  const perQuery = await Promise.all(ops.map(op => runOneSearchQuery(op.query, session, active, work)))
+  const perQuery = await Promise.all(ops.map(op => runOneSearchQuery(op, session, active, work)))
   session.signal?.throwIfAborted()
   const mergedResults = perQuery.flatMap(r => r.results)
   const mergedSources = session.includeSearchActionSources

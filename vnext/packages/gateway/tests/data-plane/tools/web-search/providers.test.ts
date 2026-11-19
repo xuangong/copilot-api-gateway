@@ -262,6 +262,20 @@ for (const name of ['jina reader', 'microsoft browse', 'microsoft search'] as co
   })
 }
 
+// Adapted from reference copilot-gateway da86923c7 (#657): Tavily exposes only
+// fixed publish-date windows, so recencyDays rounds up to the smallest window
+// containing it; absent means no time_range. Jina and Microsoft have no
+// date parameter and ignore it rather than failing.
+test("tavily: recencyDays maps to a time_range window and is omitted when absent", async () => {
+  const bodies: Array<Record<string, unknown>> = []
+  const impl = createTavilyWebSearchProvider("tvly", { fetch: (async (_url: unknown, init?: RequestInit) => {
+    bodies.push(JSON.parse(String(init?.body)))
+    return Response.json({ results: [] })
+  }) as typeof fetch })
+  for (const days of [1, 3, 10, 400, undefined]) await impl.search({ query: "React", ...(days === undefined ? {} : { recencyDays: days }) })
+  expect(bodies.map(body => body.time_range)).toEqual(["day", "week", "month", "year", undefined])
+})
+
 // Successful-body capacity applies to all built-in search and reader paths,
 // including standalone calls that have no hosted invocation capability.
 

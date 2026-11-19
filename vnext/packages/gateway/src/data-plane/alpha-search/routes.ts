@@ -30,6 +30,7 @@ import type { ConfiguredWebSearchProvider } from '../tools/web-search/types.ts'
 import {
   assertLocalWebSearchSupport,
   executeOperationToText,
+  isSearchResponseLength,
   maxResultsForContextSize,
   parseWebSearchOperations,
   startBatchFetch,
@@ -183,7 +184,9 @@ const runAlphaSearch = async (
     impl: resolvedSearch.impl,
   })
 
+  const responseLength = (body.commands as Record<string, unknown> | undefined)?.response_length
   const session: WebSearchExecutionSession = {
+    ...(isSearchResponseLength(responseLength) ? { responseLength } : {}),
     getProvider: () => configuredProvider,
     filters: filtersFromSettings(body.settings),
     apiKeyId: (auth.apiKeyId ?? ('' as ApiKeyId)),
