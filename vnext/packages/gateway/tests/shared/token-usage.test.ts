@@ -1,6 +1,6 @@
 import { test, expect } from 'bun:test'
+import { setupTestPlatform } from '../_setup-platform.ts'
 import { recordTokenUsage, tokenUsageFromImagesBody } from '../../src/data-plane/shared/token-usage.ts'
-import type { Repo, UsageRecord } from '../../src/repo/types.ts'
 
 test('tokenUsageFromImagesBody returns null for non-usage bodies', () => {
   expect(tokenUsageFromImagesBody(null)).toBeNull()
@@ -47,21 +47,17 @@ test('tokenUsageFromImagesBody drops present-but-empty details objects to the ba
   ).toEqual({ input: 7 })
 })
 
-const makeRepo = (): { repo: Repo; recorded: UsageRecord[] } => {
-  const recorded: UsageRecord[] = []
-  const repo = {
-    usage: {
-      record: async (r: UsageRecord) => { recorded.push(r) },
-    },
-  } as unknown as Repo
-  return { repo, recorded }
+// Real in-memory SQLite repo; assertions read the stored rows back.
+const makeRepo = () => {
+  const { repo } = setupTestPlatform()
+  return { repo, recorded: () => repo.usage.listAll() }
 }
 
 test('recordTokenUsage no-ops when usage is null or all zeros', async () => {
   const { repo, recorded } = makeRepo()
   await recordTokenUsage('k1', { incomingModel: 'outer-alias', model: 'm', upstream: 'u', modelKey: 'mk', cost: null, client: '' }, null, repo)
   await recordTokenUsage('k1', { incomingModel: 'outer-alias', model: 'm', upstream: 'u', modelKey: 'mk', cost: null, client: '' }, { input: 0, output: 0 }, repo)
-  expect(recorded).toEqual([])
+  expect(await recorded()).toEqual([])
 })
 
 test('recordTokenUsage uses explicit outer incoming model rather than image backend model', async () => {
@@ -79,11 +75,12 @@ test('recordTokenUsage uses explicit outer incoming model rather than image back
     { output_image: 3 },
     repo,
   )
-  expect(recorded).toHaveLength(1)
-  expect(recorded[0]?.incomingModel).toBe('outer-responses-alias')
-  expect(recorded[0]?.model).toBe('gpt-image-2')
-  expect(recorded[0]?.modelKey).toBe('gpt-image-backend')
-  expect(recorded[0]?.client).toBe('curl')
+  const rows = await recorded()
+  expect(rows).toHaveLength(1)
+  expect(rows[0]?.incomingModel).toBe('outer-responses-alias')
+  expect(rows[0]?.model).toBe('gpt-image-2')
+  expect(rows[0]?.modelKey).toBe('gpt-image-backend')
+  expect(rows[0]?.client).toBe('curl')
 })
 
 test('recordTokenUsage writes a single row carrying the frozen pricing snapshot', async () => {
@@ -94,8 +91,9 @@ test('recordTokenUsage writes a single row carrying the frozen pricing snapshot'
     { input: 12, output_image: 3 },
     repo,
   )
-  expect(recorded).toHaveLength(1)
-  const row = recorded[0]
+  const rows = await recorded()
+  expect(rows).toHaveLength(1)
+  const row = rows[0]!
   expect(row.keyId).toBe('key-1')
   expect(row.model).toBe('gpt-image-2')
   expect(row.upstream).toBe('copilot:acct')

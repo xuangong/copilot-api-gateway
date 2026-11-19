@@ -1,77 +1,22 @@
 /**
  * token-usage control-plane tests — Week 5b.
  *
- * Per bun_mock_module_unrestorable: in-memory repo + setRepoForTest.
+ * Real in-memory SQLite repo (setupTestPlatform); rows are stored, not stubbed.
  * Covers 4 scoping branches + redaction in shared view.
  *
  * Cost in the response is summed from each row's frozen per-dimension price
  * snapshot (UsageRecord.cost), not from a global pricing table — see
  * aggregate.ts.
  */
-import { test, expect, beforeEach, afterEach } from 'bun:test'
+import { test, expect, beforeEach, afterEach, spyOn, type Mock } from 'bun:test'
 import { Hono } from 'hono'
-import { initRepo } from '../src/repo/index.ts'
-import { __resetPlatformForTests } from '@vibe-core/platform'
-import type {
-  ApiKey,
-  KeyAssignment,
-  Repo,
-  UsageRecord,
-  User,
-} from '../src/repo/types.ts'
+import { setupTestPlatform } from './_setup-platform.ts'
+import type { ApiKeyId, UserId } from '../src/repo/branded-ids.ts'
+import type { ApiKey, UsageRecord, User } from '../src/repo/types.ts'
 import {
   tokenUsageRouter,
   type TokenUsageAuthCtx,
 } from '../src/control-plane/token-usage/routes.ts'
-
-function inMemoryRepo() {
-  const keys = new Map<string, ApiKey>()
-  const usage: UsageRecord[] = []
-  const users = new Map<string, User>()
-  const assignments: KeyAssignment[] = []
-  let usageQueryCount = 0
-
-  const repo = {
-    apiKeys: {
-      list: async () => [...keys.values()],
-      listByOwner: async (ownerId: string) =>
-        [...keys.values()].filter((k) => k.ownerId === ownerId),
-      getById: async (id: string) => keys.get(id) ?? null,
-    },
-    usage: {
-      queryKeyMetadata: async (ids?: readonly string[]) => [...keys.values()]
-        .filter(k => ids === undefined || ids.includes(k.id))
-        .map(k => ({ keyId: k.id, keyName: k.name, ownerId: k.ownerId ?? null,
-          ownerName: k.ownerId ? users.get(k.ownerId)?.name ?? null : null, createdAt: k.createdAt })),
-      queryAssigneeMetadata: async (ids: readonly string[]) => assignments.filter(a => ids.includes(a.keyId))
-        .map(a => ({ keyId: a.keyId, userId: a.userId, name: users.get(a.userId)?.name ?? null })),
-      query: async (opts: { keyId?: string; keyIds?: string[]; start: string; end: string }) => {
-        usageQueryCount += 1
-        return usage.filter((u) => {
-          if (opts.keyId && u.keyId !== opts.keyId) return false
-          if (opts.keyIds && !opts.keyIds.includes(u.keyId)) return false
-          return u.hour >= opts.start && u.hour <= opts.end
-        })
-      },
-    },
-    users: {
-      getById: async (id: string) => users.get(id) ?? null,
-    },
-    keyAssignments: {
-      listByUser: async (userId: string) => assignments.filter((a) => a.userId === userId),
-      listByKey: async (keyId: string) => assignments.filter((a) => a.keyId === keyId),
-    },
-  } as unknown as Repo
-
-  return {
-    repo,
-    keys,
-    usage,
-    users,
-    assignments,
-    getUsageQueryCount: () => usageQueryCount,
-  }
-}
 
 const TEST_ENV = { SERVER_SECRET: 'test-secret' }
 
@@ -108,16 +53,23 @@ function mkUsage(
   }
 }
 
-let store: ReturnType<typeof inMemoryRepo>
+let repo: ReturnType<typeof setupTestPlatform>['repo']
+let usageQuery: Mock<typeof repo.usage.query>
 
 beforeEach(() => {
-  store = inMemoryRepo()
-  initRepo(store.repo)
+  ;({ repo } = setupTestPlatform())
+  // Pass-through spy: counts reads without changing what the real repo returns.
+  usageQuery = spyOn(repo.usage, 'query')
 })
 
 afterEach(() => {
-  __resetPlatformForTests()
+  usageQuery.mockRestore()
 })
+
+const addUser = (id: string, name: string) =>
+  repo.users.create({ id, name, createdAt: '2026-01-01T00:00:00Z', disabled: false } as User)
+const assign = (keyId: string, userId: string) =>
+  repo.keyAssignments.assign(keyId as ApiKeyId, userId as UserId, 'admin' as UserId)
 
 test('GET /api/token-usage missing start/end → 400', async () => {
   const res = await call(buildApp({ userId: 'u1' }), '/api/token-usage')
@@ -131,13 +83,13 @@ test('GET /api/token-usage user with no keys → []', async () => {
 })
 
 test('GET /api/token-usage user scopes to own + assigned keys; aggregates cost from per-row snapshot + keyName', async () => {
-  store.keys.set('k1', mkKey('k1', 'mine', 'u1'))
-  store.keys.set('k2', mkKey('k2', 'other', 'u2'))
-  store.keys.set('k3', mkKey('k3', 'assigned', 'u3'))
-  store.assignments.push({ keyId: 'k3', userId: 'u1', assignedBy: 'admin', assignedAt: '' })
-  store.usage.push(mkUsage('k1', '2026-03-01T00'))
-  store.usage.push(mkUsage('k2', '2026-03-01T00'))
-  store.usage.push(mkUsage('k3', '2026-03-01T01'))
+  await repo.apiKeys.save(mkKey('k1', 'mine', 'u1'))
+  await repo.apiKeys.save(mkKey('k2', 'other', 'u2'))
+  await repo.apiKeys.save(mkKey('k3', 'assigned', 'u3'))
+  await assign('k3', 'u1')
+  await repo.usage.record(mkUsage('k1', '2026-03-01T00'))
+  await repo.usage.record(mkUsage('k2', '2026-03-01T00'))
+  await repo.usage.record(mkUsage('k3', '2026-03-01T01'))
 
   const res = await call(buildApp({ userId: 'u1' }), '/api/token-usage?start=2026-03-01T00&end=2026-03-01T23')
   expect(res.status).toBe(200)
@@ -152,10 +104,10 @@ test('GET /api/token-usage user scopes to own + assigned keys; aggregates cost f
 })
 
 test('GET /api/token-usage user exposes distinct incoming aliases without duplicating requests', async () => {
-  store.keys.set('k1', mkKey('k1', 'mine', 'u1'))
-  store.usage.push(mkUsage('k1', '2026-03-01T00', 'target-model', 'alias-a'))
-  store.usage.push(mkUsage('k1', '2026-03-01T00', 'target-model', 'alias-b'))
-  store.usage.push(mkUsage('k1', '2026-03-01T01', 'target-model', ''))
+  await repo.apiKeys.save(mkKey('k1', 'mine', 'u1'))
+  await repo.usage.record(mkUsage('k1', '2026-03-01T00', 'target-model', 'alias-a'))
+  await repo.usage.record(mkUsage('k1', '2026-03-01T00', 'target-model', 'alias-b'))
+  await repo.usage.record(mkUsage('k1', '2026-03-01T01', 'target-model', ''))
 
   const res = await call(buildApp({ userId: 'u1' }), '/api/token-usage?start=2026-03-01T00&end=2026-03-01T23')
   expect(res.status).toBe(200)
@@ -173,16 +125,16 @@ test('GET /api/token-usage without an identity → 401', async () => {
 
   expect(res.status).toBe(401)
   expect(await res.json()).toEqual({ error: 'Unauthorized' })
-  expect(store.getUsageQueryCount()).toBe(0)
+  expect(usageQuery.mock.calls.length).toBe(0)
 })
 
 test('GET /api/token-usage API-key caller is scoped to its key and retains aliases and legacy incoming model', async () => {
-  store.keys.set('k1', mkKey('k1', 'public-key', 'u1'))
-  store.keys.set('k2', mkKey('k2', 'other-key', 'u2'))
-  store.usage.push(mkUsage('k1', '2026-03-01T00', 'target-model', 'alias-a'))
-  store.usage.push(mkUsage('k1', '2026-03-01T00', 'target-model', 'alias-b'))
-  store.usage.push(mkUsage('k1', '2026-03-01T01', 'target-model', ''))
-  store.usage.push(mkUsage('k2', '2026-03-01T00', 'target-model', 'other-alias'))
+  await repo.apiKeys.save(mkKey('k1', 'public-key', 'u1'))
+  await repo.apiKeys.save(mkKey('k2', 'other-key', 'u2'))
+  await repo.usage.record(mkUsage('k1', '2026-03-01T00', 'target-model', 'alias-a'))
+  await repo.usage.record(mkUsage('k1', '2026-03-01T00', 'target-model', 'alias-b'))
+  await repo.usage.record(mkUsage('k1', '2026-03-01T01', 'target-model', ''))
+  await repo.usage.record(mkUsage('k2', '2026-03-01T00', 'target-model', 'other-alias'))
 
   const res = await call(buildApp({ apiKeyId: 'k1' }), '/api/token-usage?start=2026-03-01T00&end=2026-03-01T23')
   expect(res.status).toBe(200)
@@ -196,26 +148,26 @@ test('GET /api/token-usage API-key caller is scoped to its key and retains alias
 })
 
 test('GET /api/token-usage API-key caller cannot use key_id to read another key', async () => {
-  store.keys.set('k1', mkKey('k1', 'public-key', 'u1'))
-  store.keys.set('k2', mkKey('k2', 'other-key', 'u2'))
-  store.usage.push(mkUsage('k1', '2026-03-01T00'))
-  store.usage.push(mkUsage('k2', '2026-03-01T00'))
+  await repo.apiKeys.save(mkKey('k1', 'public-key', 'u1'))
+  await repo.apiKeys.save(mkKey('k2', 'other-key', 'u2'))
+  await repo.usage.record(mkUsage('k1', '2026-03-01T00'))
+  await repo.usage.record(mkUsage('k2', '2026-03-01T00'))
 
   const res = await call(buildApp({ apiKeyId: 'k1' }), '/api/token-usage?key_id=k2&start=2026-03-01T00&end=2026-03-01T23')
 
   expect(res.status).toBe(200)
   expect(await res.json()).toEqual([expect.objectContaining({ keyId: 'k1' })])
-  expect(store.getUsageQueryCount()).toBe(1)
+  expect(usageQuery.mock.calls.length).toBe(1)
 })
 
 test('GET /api/token-usage API-key caller remains limited to its key even when it has an owner session identity', async () => {
-  store.keys.set('k1', mkKey('k1', 'authenticated-key', 'u1'))
-  store.keys.set('k2', mkKey('k2', 'owner-sibling', 'u1'))
-  store.keys.set('k3', mkKey('k3', 'assigned-key', 'u2'))
-  store.assignments.push({ keyId: 'k3', userId: 'u1', assignedBy: 'admin', assignedAt: '' })
-  store.usage.push(mkUsage('k1', '2026-03-01T00'))
-  store.usage.push(mkUsage('k2', '2026-03-01T00'))
-  store.usage.push(mkUsage('k3', '2026-03-01T00'))
+  await repo.apiKeys.save(mkKey('k1', 'authenticated-key', 'u1'))
+  await repo.apiKeys.save(mkKey('k2', 'owner-sibling', 'u1'))
+  await repo.apiKeys.save(mkKey('k3', 'assigned-key', 'u2'))
+  await assign('k3', 'u1')
+  await repo.usage.record(mkUsage('k1', '2026-03-01T00'))
+  await repo.usage.record(mkUsage('k2', '2026-03-01T00'))
+  await repo.usage.record(mkUsage('k3', '2026-03-01T00'))
 
   const res = await call(buildApp({ userId: 'u1', apiKeyId: 'k1' }), '/api/token-usage?start=2026-03-01T00&end=2026-03-01T23')
 
@@ -224,12 +176,12 @@ test('GET /api/token-usage API-key caller remains limited to its key even when i
 })
 
 test('GET /api/token-usage admin sees all keys + ownerId/ownerName enrichment', async () => {
-  store.keys.set('k1', mkKey('k1', 'alpha', 'u1'))
-  store.keys.set('k2', mkKey('k2', 'beta', 'u2'))
-  store.users.set('u1', { id: 'u1', name: 'Alice' } as User)
-  store.users.set('u2', { id: 'u2', name: 'Bob' } as User)
-  store.usage.push(mkUsage('k1', '2026-03-01T00'))
-  store.usage.push(mkUsage('k2', '2026-03-01T00'))
+  await repo.apiKeys.save(mkKey('k1', 'alpha', 'u1'))
+  await repo.apiKeys.save(mkKey('k2', 'beta', 'u2'))
+  await addUser('u1', 'Alice')
+  await addUser('u2', 'Bob')
+  await repo.usage.record(mkUsage('k1', '2026-03-01T00'))
+  await repo.usage.record(mkUsage('k2', '2026-03-01T00'))
 
   const res = await call(buildApp({ isAdmin: true, userId: 'admin' }), '/api/token-usage?start=2026-03-01T00&end=2026-03-01T23')
   expect(res.status).toBe(200)
@@ -243,11 +195,11 @@ test('GET /api/token-usage admin sees all keys + ownerId/ownerName enrichment', 
 })
 
 test('GET /api/token-usage shared-view: owned-only + HMAC-redacted keyId', async () => {
-  store.keys.set('k-owned', mkKey('k-owned', 'owned-key', 'owner'))
-  store.keys.set('k-assigned', mkKey('k-assigned', 'assigned-key', 'someone-else'))
-  store.assignments.push({ keyId: 'k-assigned', userId: 'owner', assignedBy: 'admin', assignedAt: '' })
-  store.usage.push(mkUsage('k-owned', '2026-03-01T00'))
-  store.usage.push(mkUsage('k-assigned', '2026-03-01T00'))
+  await repo.apiKeys.save(mkKey('k-owned', 'owned-key', 'owner'))
+  await repo.apiKeys.save(mkKey('k-assigned', 'assigned-key', 'someone-else'))
+  await assign('k-assigned', 'owner')
+  await repo.usage.record(mkUsage('k-owned', '2026-03-01T00'))
+  await repo.usage.record(mkUsage('k-assigned', '2026-03-01T00'))
 
   const res = await call(buildApp({ userId: 'viewer', isViewingShared: true, ownerId: 'owner' }), '/api/token-usage?start=2026-03-01T00&end=2026-03-01T23')
   expect(res.status).toBe(200)
@@ -286,13 +238,13 @@ const participants = async (auth: TokenUsageAuthCtx) => {
 }
 
 test('participants: admin sees every key with its owner and assignees', async () => {
-  store.keys.set('k1', mkKey('k1', 'team', 'u1'))
-  store.keys.set('k2', mkKey('k2', 'solo', 'u2'))
-  store.users.set('u1', { id: 'u1', name: 'Alice' } as User)
-  store.users.set('u2', { id: 'u2', name: 'Bob' } as User)
-  store.users.set('u3', { id: 'u3', name: 'Carol' } as User)
-  store.assignments.push({ keyId: 'k1', userId: 'u2', assignedBy: 'admin', assignedAt: '' })
-  store.assignments.push({ keyId: 'k1', userId: 'u3', assignedBy: 'admin', assignedAt: '' })
+  await repo.apiKeys.save(mkKey('k1', 'team', 'u1'))
+  await repo.apiKeys.save(mkKey('k2', 'solo', 'u2'))
+  await addUser('u1', 'Alice')
+  await addUser('u2', 'Bob')
+  await addUser('u3', 'Carol')
+  await assign('k1', 'u2')
+  await assign('k1', 'u3')
 
   const { res, body } = await participants({ isAdmin: true, userId: 'admin' })
   expect(res.status).toBe(200)
@@ -303,13 +255,13 @@ test('participants: admin sees every key with its owner and assignees', async ()
 })
 
 test('participants: a key with no owner reports null rather than being dropped', async () => {
-  store.keys.set('k1', mkKey('k1', 'orphan'))
+  await repo.apiKeys.save(mkKey('k1', 'orphan'))
   const { body } = await participants({ isAdmin: true, userId: 'admin' })
   expect(body).toEqual([{ keyId: 'k1', ownerId: null, ownerName: null, sharedWith: [] }])
 })
 
 test('participants: response carries no key material', async () => {
-  store.keys.set('k1', mkKey('k1', 'team', 'u1'))
+  await repo.apiKeys.save(mkKey('k1', 'team', 'u1'))
   const { body } = await participants({ isAdmin: true, userId: 'admin' })
   expect(JSON.stringify(body)).not.toContain('k-k1')
 })
@@ -317,14 +269,14 @@ test('participants: response carries no key material', async () => {
 // Matches the Keys tab, which only lists assignees to the key's owner: being
 // given access to a key does not entitle you to the roster of who else has it.
 test('participants: a non-owner sees the owner but not their fellow assignees', async () => {
-  store.keys.set('k-own', mkKey('k-own', 'mine', 'u1'))
-  store.keys.set('k-shared', mkKey('k-shared', 'theirs', 'u9'))
-  store.users.set('u1', { id: 'u1', name: 'Alice' } as User)
-  store.users.set('u2', { id: 'u2', name: 'Bob' } as User)
-  store.users.set('u9', { id: 'u9', name: 'Zoe' } as User)
-  store.assignments.push({ keyId: 'k-own', userId: 'u2', assignedBy: 'admin', assignedAt: '' })
-  store.assignments.push({ keyId: 'k-shared', userId: 'u1', assignedBy: 'admin', assignedAt: '' })
-  store.assignments.push({ keyId: 'k-shared', userId: 'u2', assignedBy: 'admin', assignedAt: '' })
+  await repo.apiKeys.save(mkKey('k-own', 'mine', 'u1'))
+  await repo.apiKeys.save(mkKey('k-shared', 'theirs', 'u9'))
+  await addUser('u1', 'Alice')
+  await addUser('u2', 'Bob')
+  await addUser('u9', 'Zoe')
+  await assign('k-own', 'u2')
+  await assign('k-shared', 'u1')
+  await assign('k-shared', 'u2')
 
   const { body } = await participants({ userId: 'u1' })
   const byKey = Object.fromEntries(body.map((r) => [r.keyId, r]))
@@ -336,21 +288,21 @@ test('participants: a non-owner sees the owner but not their fellow assignees', 
 // The shared view HMAC-rewrites keyIds, so participants could not be joined to
 // usage anyway — and the names would leak identities the viewer never sees.
 test('participants: shared view gets nothing', async () => {
-  store.keys.set('k1', mkKey('k1', 'owned', 'owner'))
-  store.users.set('owner', { id: 'owner', name: 'Olive' } as User)
+  await repo.apiKeys.save(mkKey('k1', 'owned', 'owner'))
+  await addUser('owner', 'Olive')
   const { body } = await participants({ userId: 'viewer', isViewingShared: true, ownerId: 'owner' })
   expect(body).toEqual([])
 })
 
 test('participants: an API-key caller gets nothing', async () => {
-  store.keys.set('k1', mkKey('k1', 'owned', 'owner'))
+  await repo.apiKeys.save(mkKey('k1', 'owned', 'owner'))
   const { res, body } = await participants({ apiKeyId: 'k1' })
   expect(res.status).toBe(200)
   expect(body).toEqual([])
 })
 
 test('participants: a caller with no identity is unauthorized', async () => {
-  store.keys.set('k1', mkKey('k1', 'owned', 'owner'))
+  await repo.apiKeys.save(mkKey('k1', 'owned', 'owner'))
   const { res, body } = await participants({})
   expect(res.status).toBe(401)
   expect(body).toEqual({ error: 'Unauthorized' })

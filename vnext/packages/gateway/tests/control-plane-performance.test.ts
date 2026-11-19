@@ -1,67 +1,18 @@
 /**
  * performance + latency control-plane tests — Week 5b.
  *
- * In-memory repo + setRepoForTest (per bun_mock_module_unrestorable).
+ * Real in-memory SQLite repo (setupTestPlatform); rows are stored, not stubbed.
  * Covers 4 scoping branches + redaction in shared view for both routes.
  */
-import { test, expect, beforeEach, afterEach } from 'bun:test'
+import { test, expect, beforeEach } from 'bun:test'
 import { Hono } from 'hono'
-import { initRepo } from '../src/repo/index.ts'
-import { __resetPlatformForTests } from '@vibe-core/platform'
-import type {
-  ApiKey,
-  KeyAssignment,
-  LatencyRecord,
-  PerformanceBucketRecord,
-  PerformanceSummaryRecord,
-  Repo,
-} from '../src/repo/types.ts'
+import { setupTestPlatform } from './_setup-platform.ts'
+import type { ApiKeyId, UserId } from '../src/repo/branded-ids.ts'
+import type { ApiKey, PerformanceRecordInput } from '../src/repo/types.ts'
 import {
   performanceRouter,
   type PerformanceAuthCtx,
 } from '../src/control-plane/performance/routes.ts'
-
-function inMemoryRepo() {
-  const keys = new Map<string, ApiKey>()
-  const latency: LatencyRecord[] = []
-  const perfSummary: PerformanceSummaryRecord[] = []
-  const perfBuckets: PerformanceBucketRecord[] = []
-  const assignments: KeyAssignment[] = []
-
-  const repo = {
-    apiKeys: {
-      list: async () => [...keys.values()],
-      listByOwner: async (ownerId: string) =>
-        [...keys.values()].filter((k) => k.ownerId === ownerId),
-      getById: async (id: string) => keys.get(id) ?? null,
-    },
-    keyAssignments: {
-      listByUser: async (userId: string) => assignments.filter((a) => a.userId === userId),
-    },
-    latency: {
-      query: async (opts: { keyId?: string; keyIds?: string[]; start: string; end: string }) =>
-        latency.filter((r) => {
-          if (opts.keyId && r.keyId !== opts.keyId) return false
-          if (opts.keyIds && !opts.keyIds.includes(r.keyId)) return false
-          return r.hour >= opts.start && r.hour <= opts.end
-        }),
-    },
-    performance: {
-      query: async (opts: { keyId?: string; keyIds?: string[]; start: string; end: string; metricScope?: string }) => {
-        const filter = <T extends { keyId: string; hour: string; metricScope?: string }>(rows: T[]) =>
-          rows.filter((r) => {
-            if (opts.keyId && r.keyId !== opts.keyId) return false
-            if (opts.keyIds && !opts.keyIds.includes(r.keyId)) return false
-            if (opts.metricScope && r.metricScope !== opts.metricScope) return false
-            return r.hour >= opts.start && r.hour <= opts.end
-          })
-        return { summary: filter(perfSummary), buckets: filter(perfBuckets) }
-      },
-    },
-  } as unknown as Repo
-
-  return { repo, keys, latency, perfSummary, perfBuckets, assignments }
-}
 
 const TEST_ENV = { SERVER_SECRET: 'test-secret' }
 
@@ -83,38 +34,19 @@ function mkKey(id: string, name: string, ownerId?: string): ApiKey {
   return { id, name, key: `k-${id}`, createdAt: '2026-01-01T00:00:00Z', ownerId, modelMappingsEnabled: false, modelMappings: [] } as ApiKey
 }
 
-function mkLatency(keyId: string, hour: string): LatencyRecord {
-  return {
-    keyId, model: 'm', hour, colo: 'c', stream: false,
-    requests: 1, totalMs: 100, upstreamMs: 80, ttfbMs: 50, tokenMiss: 0,
-  }
-}
-
-function mkSummary(keyId: string, hour: string): PerformanceSummaryRecord {
-  return {
+// One recorded request fills both performance_summary and its latency buckets.
+async function seedPerformance(keyId: string, hour: string): Promise<void> {
+  await repo.performance.record({
     hour, metricScope: 'request_total', keyId, model: 'm', upstream: null,
     sourceApi: 'messages', targetApi: 'messages', stream: false, runtimeLocation: 'local',
-    requests: 1, errors: 0, totalMsSum: 100,
-  }
+    durationMs: 100, isError: false,
+  } as PerformanceRecordInput)
 }
 
-function mkBucket(keyId: string, hour: string): PerformanceBucketRecord {
-  return {
-    hour, metricScope: 'request_total', keyId, model: 'm', upstream: null,
-    sourceApi: 'messages', targetApi: 'messages', stream: false, runtimeLocation: 'local',
-    lowerMs: 0, upperMs: 100, count: 1,
-  }
-}
-
-let store: ReturnType<typeof inMemoryRepo>
+let repo: ReturnType<typeof setupTestPlatform>['repo']
 
 beforeEach(() => {
-  store = inMemoryRepo()
-  initRepo(store.repo)
-})
-
-afterEach(() => {
-  __resetPlatformForTests()
+  ;({ repo } = setupTestPlatform())
 })
 
 const RANGE = '?start=2026-03-01T00&end=2026-03-01T23'
@@ -130,11 +62,11 @@ test('GET /api/performance missing start/end → 400', async () => {
 })
 
 test('GET /api/latency user scopes to own + assigned keys', async () => {
-  store.keys.set('k1', mkKey('k1', 'mine', 'u1'))
-  store.keys.set('k2', mkKey('k2', 'other', 'u2'))
+  await repo.apiKeys.save(mkKey('k1', 'mine', 'u1'))
+  await repo.apiKeys.save(mkKey('k2', 'other', 'u2'))
   // Spec-3: /api/latency derives from performance_summary (request_total scope).
-  store.perfSummary.push(mkSummary('k1', '2026-03-01T00'))
-  store.perfSummary.push(mkSummary('k2', '2026-03-01T00'))
+  await seedPerformance('k1', '2026-03-01T00')
+  await seedPerformance('k2', '2026-03-01T00')
 
   const res = await call(buildApp({ userId: 'u1' }), `/api/latency${RANGE}`)
   expect(res.status).toBe(200)
@@ -151,12 +83,12 @@ test('GET /api/latency user with no keys → []', async () => {
 })
 
 test('GET /api/latency shared-view: owned-only + HMAC-redacted keyId', async () => {
-  store.keys.set('k-owned', mkKey('k-owned', 'owned-key', 'owner'))
-  store.keys.set('k-assigned', mkKey('k-assigned', 'a', 'someone'))
-  store.assignments.push({ keyId: 'k-assigned', userId: 'owner', assignedBy: 'admin', assignedAt: '' })
+  await repo.apiKeys.save(mkKey('k-owned', 'owned-key', 'owner'))
+  await repo.apiKeys.save(mkKey('k-assigned', 'a', 'someone'))
+  await repo.keyAssignments.assign('k-assigned' as ApiKeyId, 'owner' as UserId, 'admin' as UserId)
   // Spec-3: /api/latency derives from performance_summary (request_total scope).
-  store.perfSummary.push(mkSummary('k-owned', '2026-03-01T00'))
-  store.perfSummary.push(mkSummary('k-assigned', '2026-03-01T00'))
+  await seedPerformance('k-owned', '2026-03-01T00')
+  await seedPerformance('k-assigned', '2026-03-01T00')
 
   const res = await call(
     buildApp({ userId: 'viewer', isViewingShared: true, ownerId: 'owner' }),
@@ -171,9 +103,8 @@ test('GET /api/latency shared-view: owned-only + HMAC-redacted keyId', async () 
 })
 
 test('GET /api/performance returns {summary, buckets} for user', async () => {
-  store.keys.set('k1', mkKey('k1', 'mine', 'u1'))
-  store.perfSummary.push(mkSummary('k1', '2026-03-01T00'))
-  store.perfBuckets.push(mkBucket('k1', '2026-03-01T00'))
+  await repo.apiKeys.save(mkKey('k1', 'mine', 'u1'))
+  await seedPerformance('k1', '2026-03-01T00')
 
   const res = await call(buildApp({ userId: 'u1' }), `/api/performance${RANGE}`)
   expect(res.status).toBe(200)
@@ -194,9 +125,8 @@ test('GET /api/performance user with no keys → {summary:[], buckets:[]}', asyn
 })
 
 test('GET /api/performance shared-view: HMAC-redacted keyId in both summary and buckets', async () => {
-  store.keys.set('k-owned', mkKey('k-owned', 'owned-key', 'owner'))
-  store.perfSummary.push(mkSummary('k-owned', '2026-03-01T00'))
-  store.perfBuckets.push(mkBucket('k-owned', '2026-03-01T00'))
+  await repo.apiKeys.save(mkKey('k-owned', 'owned-key', 'owner'))
+  await seedPerformance('k-owned', '2026-03-01T00')
 
   const res = await call(
     buildApp({ userId: 'viewer', isViewingShared: true, ownerId: 'owner' }),
@@ -217,7 +147,7 @@ test('GET /api/performance shared-view: HMAC-redacted keyId in both summary and 
 })
 
 test('GET /api/performance metric_scope=upstream_success is honored', async () => {
-  store.keys.set('k1', mkKey('k1', 'mine', 'u1'))
+  await repo.apiKeys.save(mkKey('k1', 'mine', 'u1'))
   // mkSummary uses request_total; this test just verifies the route doesn't error
   // and returns proper shape when metric_scope query is upstream_success
   const res = await call(

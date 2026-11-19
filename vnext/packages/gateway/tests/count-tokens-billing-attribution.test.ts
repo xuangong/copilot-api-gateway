@@ -8,9 +8,9 @@
  * `strip-billing-attribution` flag has to drop the beta marker there.
  */
 import { test, expect, afterEach, beforeEach } from 'bun:test'
-import { initCatalogTestRepo as initRepo } from './helpers/catalog-test-repo.ts'
-import { __resetPlatformForTests, initRuntimeLocation } from '@vibe-core/platform'
-import type { Repo, UpstreamRecord } from '../src/repo/types.ts'
+import { __resetPlatformForTests } from '@vibe-core/platform'
+import { setupTestPlatform } from './_setup-platform.ts'
+import type { UpstreamRecord } from '../src/repo/types.ts'
 import { serveCountTokens } from '../src/data-plane/chat-flow/count-tokens/serve.ts'
 
 const anthropicUpstream = (flagOverrides: Record<string, boolean>): UpstreamRecord => ({
@@ -32,14 +32,15 @@ const anthropicUpstream = (flagOverrides: Record<string, boolean>): UpstreamReco
 })
 
 const originalFetch = globalThis.fetch
-beforeEach(() => { initRuntimeLocation('bun') })
+let repo: ReturnType<typeof setupTestPlatform>['repo']
+beforeEach(() => { ({ repo } = setupTestPlatform()) })
 afterEach(() => {
   globalThis.fetch = originalFetch
   __resetPlatformForTests()
 })
 
 async function forwardedBeta(clientBeta: string, flagOverrides: Record<string, boolean> = {}): Promise<string | null> {
-  initRepo({ upstreams: { list: async () => [anthropicUpstream(flagOverrides)] } } as unknown as Repo)
+  await repo.upstreams.save(anthropicUpstream(flagOverrides))
   let beta: string | null = null
   let counted = false
   globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
