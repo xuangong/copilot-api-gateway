@@ -1,7 +1,6 @@
 import { RoutingProjection, RoutingProjectionCache, type RoutingBindingDescriptor, type RoutingScope } from "./routing-projection.ts"
 import { configurationAffinityAuthority } from "./affinity-authority"
 import { parseOpaqueCompatibilityDeclaration } from "@vibe-llm/provider-llm"
-import { catalogWithCopilotVariants } from "@vibe-llm/provider-copilot"
 import { CatalogCoordinator, CatalogDeadline, CatalogUnavailableError, type CatalogResult } from "./catalog-coordinator.ts"
 import { getRequestSignal } from "../../shared/request-signal.ts"
 import { validCatalogModels } from "../../repo/catalogs.ts"
@@ -15,7 +14,6 @@ import type { UserId } from '../../repo/branded-ids.ts'
 import { getDataPlaneConfiguration, getRepo as getAuthoritativeRepo } from '../../repo/index.ts'
 import { __registerPlatformReset, captureBackgroundExecutor, getRuntimeLocation } from '@vibe-core/platform'
 import type { Model, ModelsResponse } from '@vibe-llm/provider-copilot'
-import { copilotModelEndpoints, copilotPublicModelId } from '@vibe-llm/provider-copilot'
 import type { LlmModelProvider, LlmProviderBinding, LlmProviderPlugin } from '@vibe-llm/provider-llm'
 import type { EndpointKey, ModelEndpoints, UpstreamKind } from '@vibe-llm/protocols/common'
 import { CopilotProvider, copilotProviderPlugin } from '@vibe-llm/provider-copilot'
@@ -24,7 +22,7 @@ import { codexProviderPlugin } from '@vibe-llm/provider-codex'
 import { claudeCodeProviderPlugin } from '@vibe-llm/provider-claude-code'
 import { customProviderPlugin } from '@vibe-llm/provider-custom'
 import { sdfProviderPlugin } from '@vibe-llm/provider-sdf'
-import { lokiProviderPlugin, lokiModelEndpoints } from '@vibe-llm/provider-loki'
+import { lokiProviderPlugin } from '@vibe-llm/provider-loki'
 import { getCachedCopilotToken } from '../../shared/copilot-token-cache.ts'
 import { preparePerRequestFetcher, createSingleUpstreamFetcher, createObservedDirectFetcher } from '../dial/per-request.ts'
 import { directFetcher, type Fetcher } from '@vibe-core/upstream'
@@ -123,7 +121,7 @@ export async function createProviderFromUpstream(
     getCachedCopilotToken,
     deferCredentials: true,
     credentialsReadOnly: isSyncedUpstream(upstream),
-    ...((upstream.provider === "custom" || upstream.provider === "azure" || upstream.provider === "copilot")
+    ...(plugin.opaqueAffinity
       && "rowIncarnation" in upstream && "catalogGeneration" in upstream
       ? { affinityAuthority: configurationAffinityAuthority(upstream as StoredUpstreamRecord, getAuthoritativeRepo().upstreams) } : {}),
     copilotFallback: copilot,
@@ -189,9 +187,8 @@ export function modelToBindingModel(
   kind: UpstreamKind,
   provider: Pick<LlmModelProvider, "supportedEndpoints" | "getOpaqueCompatibilityForModel">,
 ): LlmProviderBinding['model'] {
-  const endpoints = kind === 'copilot'
-    ? copilotModelEndpoints(model as Model)
-    : kind === 'loki' ? lokiModelEndpoints(model) : genericModelEndpoints(model as Model, provider.supportedEndpoints)
+  const endpoints = PROVIDER_PLUGINS.get(kind)?.catalog?.modelEndpoints?.(model, provider.supportedEndpoints)
+    ?? genericModelEndpoints(model as Model, provider.supportedEndpoints)
   const providerData = (model as { providerData?: { upstreamModelId?: unknown } }).providerData
   const providerModelKey = typeof providerData?.upstreamModelId === 'string'
     ? providerData.upstreamModelId
@@ -365,16 +362,16 @@ export async function listRoutingBindings(
       error instanceof CatalogUnavailableError ? error.code : "unavailable")
   }
   const project = (models: ModelsResponse, kind: UpstreamKind, provider: LlmModelProvider) => {
-    const listed = kind === "copilot" ? catalogWithCopilotVariants(models) : models
+    const rules = PROVIDER_PLUGINS.get(kind)?.catalog
+    const listed = rules?.expandCatalog?.(models) ?? models
     const entries = listed.data.map(model => ({
-      publicId: kind === "copilot" ? model.variant_family ?? copilotPublicModelId(model.id) : model.id,
+      publicId: rules?.publicModelId?.(model) ?? model.id,
       model: modelToBindingModel(model as Model, kind, provider),
     }))
-    // Copilot's catalog also carries models no route can serve (its decision
-    // models); listing them only invites requests every route rejects. Custom
-    // rows stay even without an endpoint: the operator configured them, and the
-    // upstream editor shows them as unbound.
-    return new RoutingProjection(kind === "copilot"
+    // A provider may list only routable models (Copilot hides its decision
+    // models). Custom rows stay even without an endpoint: the operator
+    // configured them, and the upstream editor shows them as unbound.
+    return new RoutingProjection(rules?.routableOnly
       ? entries.filter(entry => Object.keys(entry.model.endpoints).length > 0)
       : entries, models)
   }

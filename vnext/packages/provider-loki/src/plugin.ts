@@ -1,6 +1,7 @@
 import { pickScalars, type LlmProviderPlugin } from "@vibe-llm/provider-llm"
 import { getAuthoritativeUpstreamRepo, type StoredUpstreamRecord } from "@vibe-core/upstream-repo"
 import { LokiProvider } from "./provider"
+import { lokiModelEndpoints } from "./models"
 import { normalizeLokiConfig } from "./config"
 import { LOKI_PROFILE_ID } from "./profile"
 import type { LokiState } from "./state"
@@ -8,6 +9,7 @@ import { lokiSyncState, readLokiState } from "./state"
 
 export const lokiProviderPlugin: LlmProviderPlugin = {
   kind: "loki",
+  catalog: { modelEndpoints: model => lokiModelEndpoints(model) },
   backup: {
     validateImport: config => { if (config.profileId !== LOKI_PROFILE_ID) throw new Error("Unsupported Loki profile") },
     // Backups transfer configuration, not an installation's ongoing token-sync authority.

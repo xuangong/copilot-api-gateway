@@ -19,11 +19,23 @@
  * Returns null when neither path can produce a provider.
  */
 import { maskSecret, pickScalars, type LlmProviderPlugin } from '@vibe-llm/provider-llm'
+import { copilotModelEndpoints } from './endpoints'
+import { catalogWithCopilotVariants, copilotPublicModelId } from './variants'
+import type { Model, ModelsResponse } from './models'
 import type { AccountType } from '@vibe-llm/protocols/common'
 import { CopilotProvider } from './provider'
 
 export const copilotProviderPlugin: LlmProviderPlugin = {
   kind: 'copilot',
+  opaqueAffinity: true,
+  catalog: {
+    modelEndpoints: model => copilotModelEndpoints(model as Model),
+    expandCatalog: models => catalogWithCopilotVariants(models as unknown as ModelsResponse) as unknown as typeof models,
+    publicModelId: model => (model as Model).variant_family ?? copilotPublicModelId(model.id),
+    // Copilot's catalog also carries models no route can serve (its decision
+    // models); listing them only invites requests every route rejects.
+    routableOnly: true,
+  },
   backup: {},
   // Admin-entered rows; the dashboard normally creates Copilot upstreams by device login.
   normalizeConfig: config => {

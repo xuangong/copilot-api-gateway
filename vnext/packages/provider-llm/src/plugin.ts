@@ -7,7 +7,7 @@
  * a Copilot-flavored runtime hook context, not part of the Llm* parallel
  * rename.
  */
-import type { AccountType, UpstreamKind, UpstreamRecord } from '@vibe-llm/protocols/common'
+import type { AccountType, EndpointKey, ModelEndpoints, UpstreamKind, UpstreamRecord } from '@vibe-llm/protocols/common'
 import type { Fetcher, ProbeResult, UpstreamPlugin } from '@vibe-core/upstream'
 import type { AffinityExecutionTarget } from './opaque-affinity'
 import type { LlmModelProvider, ProviderRequest } from './types'
@@ -104,6 +104,28 @@ export interface LlmProviderPlugin
    * for example, do not move between installations).
    */
   backup?: ProviderBackupRules
+  /**
+   * The provider binds opaque state (encrypted reasoning, compaction items) to
+   * the accepted configuration, so routing must hand it the configuration
+   * affinity authority.
+   */
+  readonly opaqueAffinity?: true
+  /** How this provider's model catalog becomes routable models. */
+  catalog?: ProviderCatalogRules
+}
+
+/** A model catalog as listed by a provider: `data` entries carry at least an `id`. */
+export interface ProviderModelList { object?: string; data: ReadonlyArray<{ id: string }> }
+
+export interface ProviderCatalogRules {
+  /** Which endpoints a listed model can be routed to. Absent: inferred from the provider's supported endpoints. */
+  modelEndpoints?(model: unknown, supportedEndpoints: readonly EndpointKey[]): ModelEndpoints
+  /** Rewrite the listed catalog before projection (e.g. add variant entries). */
+  expandCatalog?<T extends ProviderModelList>(models: T): T
+  /** The id clients see for a listed model. Absent: the model's own id. */
+  publicModelId?(model: { id: string }): string
+  /** List only models with at least one routable endpoint. */
+  readonly routableOnly?: true
 }
 
 export interface ProviderBackupRules {

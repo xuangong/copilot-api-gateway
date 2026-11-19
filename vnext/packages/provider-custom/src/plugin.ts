@@ -20,6 +20,7 @@ import { normalizeCustomConfig } from './config'
 
 export const customProviderPlugin: LlmProviderPlugin = {
   kind: 'custom',
+  opaqueAffinity: true,
   backup: opaqueCompatibilityBackupRules(parseOpaqueCompatibilityMap),
   normalizeConfig: config => normalizeCustomConfig(config) as unknown as Record<string, unknown>,
   probeConfig: async config => await new CustomProvider(normalizeCustomConfig(config)).probe(),
