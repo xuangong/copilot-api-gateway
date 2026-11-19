@@ -233,12 +233,71 @@ export const rewriteHostedToolChoice = (
   active: readonly ActiveServerTool[],
 ): ResponsesToolChoiceLoose => {
   if (toolChoice == null || typeof toolChoice === 'string') return toolChoice
+  if (toolChoice.type === 'allowed_tools' && Array.isArray(toolChoice.tools)) {
+    const selectors = toolChoice.tools as unknown[]
+    const tools = selectors.map((selector) => {
+      if (typeof selector !== 'object' || selector === null) return selector
+      const { type, namespace } = selector as { type?: unknown; namespace?: unknown }
+      if (typeof type !== 'string' || namespace !== undefined) return selector
+      const entry = active.find((e) => e.hosted?.hostedTypes.includes(type))
+      return entry === undefined ? selector : { ...selector, type: 'function', name: entry.toolName }
+    })
+    return tools.some((tool, index) => tool !== selectors[index]) ? { ...toolChoice, tools } : toolChoice
+  }
   for (const entry of active) {
     if (entry.hosted === undefined) continue
     if (entry.hosted.hostedTypes.includes(toolChoice.type)) return { type: 'function', name: entry.toolName }
   }
   return toolChoice
 }
+
+// The client choice shape to echo back once its hosted selector has been
+// rewritten to the helper function: a forced hosted choice, or an
+// `allowed_tools` list that selects the hosted tool (or, in required mode, the
+// helper function itself).
+// Adapted from reference copilot-gateway 01990a7ef (#549).
+export const hostedToolChoiceToRestore = (
+  choice: ResponsesToolChoiceLoose,
+  hosted: ServerToolHostedDispatch | undefined,
+  toolName: string,
+): Exclude<ResponsesToolChoiceLoose, string | null | undefined> | undefined => {
+  if (hosted === undefined || typeof choice !== 'object' || choice === null) return undefined
+  if (hosted.hostedTypes.includes(choice.type)) return choice
+  if (choice.type !== 'allowed_tools' || !Array.isArray(choice.tools)) return undefined
+  const selectsHosted = (choice.tools as Array<{ type?: unknown; name?: unknown; namespace?: unknown } | null>).some((selector) => {
+    if (typeof selector?.type !== 'string' || selector.namespace !== undefined) return false
+    if (hosted.hostedTypes.includes(selector.type)) return true
+    return choice.mode === 'required' && selector.type === 'function' && selector.name === toolName
+  })
+  return selectsHosted ? choice : undefined
+}
+
+// A choice the model cannot satisfy without calling a server tool again:
+// `required`, a forced helper function, or a required `allowed_tools` list
+// naming a helper.
+export const isForcedServerToolChoice = (
+  choice: ResponsesToolChoiceLoose,
+  dispatchers: ReadonlyMap<string, ServerToolDispatcher>,
+): boolean => {
+  if (choice === 'required') return true
+  if (typeof choice !== 'object' || choice === null) return false
+  if (choice.type === 'function') {
+    return choice.namespace === undefined && typeof choice.name === 'string' && dispatchers.has(choice.name)
+  }
+  if (choice.type !== 'allowed_tools' || choice.mode !== 'required' || !Array.isArray(choice.tools)) return false
+  return (choice.tools as Array<{ type?: unknown; name?: unknown; namespace?: unknown } | null>).some((selector) =>
+    selector?.type === 'function' && selector.namespace === undefined &&
+    typeof selector.name === 'string' && dispatchers.has(selector.name))
+}
+
+// After a server tool ran, the internal continuation relaxes the forced choice
+// so the model may answer; an `allowed_tools` list keeps its subset and only
+// drops `required` (the API requires a call in that mode).
+// https://developers.openai.com/api/reference/resources/responses/methods/create
+export const demoteForcedToolChoice = (choice: ResponsesToolChoiceLoose): ResponsesToolChoiceLoose =>
+  typeof choice === 'object' && choice !== null && choice.type === 'allowed_tools'
+    ? { ...choice, mode: 'auto' }
+    : 'auto'
 
 // The shim demotes forced choice to `auto` after the first turn, so
 // synthesized echoes restore the captured client shape rather than the
@@ -263,7 +322,7 @@ export const restoreEchoedTools = (
 ): ResponsesTool[] | undefined => {
   if (tools === undefined) return undefined
   return tools.map((tool) => {
-    if (tool.type !== 'function') return tool
+    if (tool.type !== 'function' || (tool as { namespace?: unknown }).namespace !== undefined) return tool
     for (const entry of active) {
       if (
         entry.canonicalHostedTool !== undefined &&
@@ -276,15 +335,49 @@ export const restoreEchoedTools = (
   })
 }
 
-export const resolveServerToolName = (baseName: string, tools: readonly ResponsesTool[]): string => {
+// Allocates the helper function's name. Every client-owned callable name is
+// reserved first (declarations, namespace children, history calls, loaded
+// inventories, selectors) so the helper can never collide with one.
+// Adapted from reference copilot-gateway 01990a7ef (#549).
+export const resolveServerToolName = (
+  baseName: string,
+  tools: readonly ResponsesTool[],
+  input: readonly ResponsesInputItem[] = [],
+  choice?: ResponsesToolChoiceLoose,
+): string => {
   const MAX_NAME_RESOLUTION_ATTEMPTS = 1000
-  const taken = new Set(
-    tools.flatMap((tool) =>
-      tool.type === 'function' || tool.type === 'custom'
-        ? [(tool as { name?: string }).name ?? '']
-        : [],
-    ),
-  )
+  const taken = new Set<string>()
+  const reserveTools = (inventory: readonly unknown[]): void => {
+    for (const raw of inventory) {
+      if (typeof raw !== 'object' || raw === null) continue
+      const tool = raw as { type?: unknown; name?: unknown; tools?: unknown }
+      if (tool.type === 'function' || tool.type === 'custom') taken.add(typeof tool.name === 'string' ? tool.name : '')
+      else if (tool.type === 'namespace' && Array.isArray(tool.tools)) {
+        for (const child of tool.tools) {
+          const c = child as { type?: unknown; name?: unknown } | null
+          if (c && (c.type === 'function' || c.type === 'custom') && typeof c.name === 'string') taken.add(c.name)
+        }
+      }
+    }
+  }
+  reserveTools(tools)
+  for (const item of input) {
+    if (item.type === 'function_call' || item.type === 'custom_tool_call') {
+      if (typeof item.name === 'string') taken.add(item.name)
+    }
+    else if ((item.type === 'tool_search_output' || item.type === 'additional_tools') && Array.isArray(item.tools)) reserveTools(item.tools)
+  }
+  if (typeof choice === 'object' && choice !== null) {
+    const selectors = choice.type === 'allowed_tools' ? (Array.isArray(choice.tools) ? choice.tools : []) : [choice]
+    for (const selector of selectors as Array<{ type?: unknown; name?: unknown; namespace?: unknown } | null>) {
+      if (selector && (selector.type === 'function' || selector.type === 'custom') && typeof selector.name === 'string') {
+        // Only the canonical unqualified function name can select this helper;
+        // any other selector must not acquire it through an allocated alias.
+        const selectsHelper = selector.type === 'function' && selector.name === baseName && selector.namespace === undefined
+        if (!selectsHelper) taken.add(selector.name)
+      }
+    }
+  }
   if (!taken.has(baseName)) return baseName
   for (let i = 2; i <= MAX_NAME_RESOLUTION_ATTEMPTS; i++) {
     const candidate = `${baseName}_${i}`
@@ -295,17 +388,6 @@ export const resolveServerToolName = (baseName: string, tools: readonly Response
   )
 }
 
-const historicalClientCallableUsesName = (name: string, input: readonly ResponsesInputItem[]): boolean =>
-  input.some((item) => {
-    if (item.type === 'additional_tools' || item.type === 'tool_search_output') {
-      return Array.isArray(item.tools) && item.tools.some((tool: unknown) =>
-        typeof tool === 'object' && tool !== null &&
-        ('type' in tool) && (tool.type === 'function' || tool.type === 'custom') &&
-        ('name' in tool) && tool.name === name)
-    }
-    return (item.type === 'function_call' || item.type === 'custom_tool_call') &&
-      item.namespace === undefined && item.name === name
-  })
 
 // Azure and Copilot both deduplicate repeated hosted-tool declarations as one
 // family and retain the last complete declaration, including aliases and
@@ -1093,7 +1175,9 @@ async function* runMultiTurnLoop(args: {
       }
       ctx.payload = nextPayload
 
-      if (demoteForcedServerToolChoiceAfterFirstTurn) ctx.payload = { ...ctx.payload, tool_choice: 'auto' }
+      if (demoteForcedServerToolChoiceAfterFirstTurn) {
+        ctx.payload = { ...ctx.payload, tool_choice: demoteForcedToolChoice(ctx.payload.tool_choice as ResponsesToolChoiceLoose) as never }
+      }
       loopState.iterationCount += 1
 
       lifetime.assertOpen()
@@ -1175,19 +1259,13 @@ export const withResponsesServerToolShim = (
         return invalidRequestEnvelope(prepared.message, prepared.param, prepared.code)
       }
       const currentTools = Array.isArray(ctx.payload.tools) ? (ctx.payload.tools as ResponsesTool[]) : []
-      const toolName = resolveServerToolName(prepared.baseToolName, currentTools)
+      const toolName = resolveServerToolName(
+        prepared.baseToolName,
+        currentTools,
+        Array.isArray(ctx.payload.input) ? ctx.payload.input as ResponsesInputItem[] : [],
+        ctx.payload.tool_choice as ResponsesToolChoiceLoose,
+      )
       const { hosted } = prepared
-      if (hosted !== undefined && historicalClientCallableUsesName(
-        toolName, Array.isArray(ctx.payload.input) ? ctx.payload.input as ResponsesInputItem[] : [],
-      )) {
-        if (lifetime) await lifetime.close().catch(() => {})
-        else closeState()
-        return invalidRequestEnvelope(
-          `Historical client callable '${toolName}' conflicts with the hosted tool function name.`,
-          'input',
-          undefined,
-        )
-      }
       let canonicalHostedTool: ResponsesHostedToolLoose | undefined = undefined
       if (hosted !== undefined) {
         const rewrite = rewriteHostedDeclarations(ctx.payload, hosted, toolName)
@@ -1206,14 +1284,8 @@ export const withResponsesServerToolShim = (
           ctx.payload = (kept.length ? { ...rest, include: kept } : rest) as typeof ctx.payload
         }
       }
-      const rawToolChoice = ctx.payload.tool_choice as ResponsesToolChoiceLoose
-      const originalToolChoice =
-        hosted !== undefined &&
-        typeof rawToolChoice === 'object' &&
-        rawToolChoice !== null &&
-        hosted.hostedTypes.includes(rawToolChoice.type)
-          ? rawToolChoice
-          : undefined
+      const originalToolChoice = hostedToolChoiceToRestore(
+        ctx.payload.tool_choice as ResponsesToolChoiceLoose, hosted, toolName)
       active.push({ ...prepared, toolName, canonicalHostedTool, originalToolChoice })
     }
 
@@ -1247,15 +1319,8 @@ export const withResponsesServerToolShim = (
       iterationCount: 1,
       remainingToolCalls: typeof ctx.payload.max_tool_calls === 'number' ? (ctx.payload.max_tool_calls as number) : undefined,
     }
-    const finalToolChoice = ctx.payload.tool_choice as ResponsesToolChoiceLoose
-    const demoteForcedServerToolChoiceAfterFirstTurn =
-      finalToolChoice === 'required' ||
-      (typeof finalToolChoice === 'object' &&
-        finalToolChoice !== null &&
-        finalToolChoice.type === 'function' &&
-        finalToolChoice.namespace === undefined &&
-        typeof finalToolChoice.name === 'string' &&
-        dispatchers.has(finalToolChoice.name))
+    const demoteForcedServerToolChoiceAfterFirstTurn = isForcedServerToolChoice(
+      ctx.payload.tool_choice as ResponsesToolChoiceLoose, dispatchers)
 
     const merge = createMergeState()
     const owner = lifetime

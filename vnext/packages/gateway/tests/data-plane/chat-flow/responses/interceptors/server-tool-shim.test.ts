@@ -15,6 +15,9 @@ import {
   restoreEchoedToolChoice,
   restoreEchoedTools,
   resolveServerToolName,
+  hostedToolChoiceToRestore,
+  isForcedServerToolChoice,
+  demoteForcedToolChoice,
   rewriteToolsForHostedShim,
   parseServerToolArguments,
   consumeTurnStreaming,
@@ -1065,7 +1068,9 @@ const hostedRegistration: ServerToolRegistration<Invocation, Record<string, unkn
   },
 })
 
-const runShimCapturingPayload = async (payload: Record<string, unknown>): Promise<Record<string, any>> => {
+const hostedRegistrationDispatch = (hostedRegistration({} as never, {}) as { hosted: ServerToolHostedDispatch }).hosted
+
+const runShimCapturingPayload =async (payload: Record<string, unknown>): Promise<Record<string, any>> => {
   const inv = baseInv()
   inv.payload = { ...inv.payload, ...payload } as never
   let seen: Record<string, any> = {}
@@ -1096,3 +1101,49 @@ for (const item of [
     expect(seen.input[2]).toEqual({ type: 'message', role: 'user', content: 'after' })
   })
 }
+
+// ─── Hosted-tool alias collisions ─
+// Adapted from reference copilot-gateway 01990a7ef (#549): the helper alias must
+// never collide with a client callable, and a client's allowed_tools selector
+// for the hosted tool must follow the helper. Before: a history call named
+// `web_search` made the request fail with 400, and `allowed_tools` kept naming
+// a hosted type the upstream never sees.
+
+test('allowed_tools selecting the hosted tool is rewritten to the helper function and the original is restorable', async () => {
+  const choice = { type: 'allowed_tools', mode: 'auto', tools: [{ type: 'web_search' }, { type: 'function', name: 'client' }] }
+  const seen = await runShimCapturingPayload({ tools: [{ type: 'web_search' }, { type: 'function', name: 'client' }], tool_choice: choice })
+  expect(seen.tool_choice).toEqual({ type: 'allowed_tools', mode: 'auto', tools: [{ type: 'function', name: 'web_search' }, { type: 'function', name: 'client' }] })
+  expect(hostedToolChoiceToRestore(choice, hostedRegistrationDispatch, 'web_search')).toBe(choice)
+  expect(hostedToolChoiceToRestore({ type: 'allowed_tools', mode: 'auto', tools: [{ type: 'function', name: 'client' }] }, hostedRegistrationDispatch, 'web_search')).toBeUndefined()
+})
+
+test('a required allowed_tools choice demotes to auto after hosted execution but keeps its subset', () => {
+  const dispatchers = new Map<string, ServerToolDispatcher>([['web_search', () => []]])
+  const choice = { type: 'allowed_tools', mode: 'required', tools: [{ type: 'function', name: 'web_search' }] }
+  expect(isForcedServerToolChoice(choice, dispatchers)).toBe(true)
+  expect(isForcedServerToolChoice({ ...choice, mode: 'auto' }, dispatchers)).toBe(false)
+  expect(demoteForcedToolChoice(choice)).toEqual({ ...choice, mode: 'auto' })
+  expect(demoteForcedToolChoice({ type: 'function', name: 'web_search' })).toBe('auto')
+})
+
+test('helper name allocation reserves client names from history, namespace children, loaded inventories and selectors', () => {
+  const tools: ResponsesTool[] = [
+    { type: 'namespace', name: 'functions', tools: [{ type: 'function', name: 'web_search' }] },
+    { type: 'function', name: 'web_search_3' },
+  ]
+  const input = [
+    { type: 'function_call', name: 'web_search_2', call_id: 'old', arguments: '{}' },
+    { type: 'tool_search_output', tools: [{ type: 'function', name: 'web_search_4' }] },
+    { type: 'additional_tools', tools: [{ type: 'custom', name: 'web_search_5' }] },
+  ] as never
+  expect(resolveServerToolName('web_search', tools, input, { type: 'function', namespace: 'x', name: 'web_search_6' })).toBe('web_search_7')
+  expect(resolveServerToolName('web_search', [], [], { type: 'custom', name: 'web_search' })).toBe('web_search_2')
+})
+
+test.each(['function_call', 'custom_tool_call'] as const)('a history %s named like the hosted tool yields the next free alias instead of a 400', async (type) => {
+  const seen = await runShimCapturingPayload({
+    tools: [{ type: 'web_search' }],
+    input: [{ type, name: 'web_search', call_id: 'prior', ...(type === 'function_call' ? { arguments: '{}' } : { input: 'x' }) }],
+  })
+  expect(seen.tools).toEqual([{ type: 'function', name: 'web_search_2' }])
+})

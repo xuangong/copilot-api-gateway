@@ -193,36 +193,36 @@ const invocation = (input: unknown[] = [], tools: unknown[] = [{ type: 'web_sear
   payload: { model: 'model', stream: true, input, tools },
 })
 
+// Reference copilot-gateway 01990a7ef (#549): a client callable that already owns
+// the helper's name is no reason to reject the request; the helper takes the
+// next free alias and the client's declarations and history stay untouched.
 for (const historyType of ['additional_tools', 'tool_search_output']) {
-  test(`historical flat ${historyType} collision rejects hosted alias before upstream`, async () => {
-    const inv = invocation([{
-      type: historyType, tools: [{ type: 'function', name: 'web_search_2' }],
-    }], [{ type: 'web_search' }, { type: 'function', name: 'web_search' }])
+  test(`historical flat ${historyType} collision gets a distinct helper alias`, async () => {
+    const history = { type: historyType, tools: [{ type: 'function', name: 'web_search_2' }] }
+    const inv = invocation([history], [{ type: 'web_search' }, { type: 'function', name: 'web_search' }])
     const result = await withResponsesServerToolShim(
       [hostedRegistration], createInMemoryPrivatePayloadStore(),
-    )(inv, requestCtx, async () => { throw new Error('ambiguous call reached upstream') })
-    expect(result.type).toBe('upstream-error')
-    if (result.type !== 'upstream-error') return
-    expect(result.status).toBe(400)
-    expect(new TextDecoder().decode(result.body)).toContain('web_search_2')
-    expect(inv.payload.tools).toEqual([{ type: 'web_search' }, { type: 'function', name: 'web_search' }])
+    )(inv, requestCtx, async () => llmEventResult(events(turn([])), identity))
+    expect(result.type).toBe('events')
+    expect(inv.payload.tools).toEqual([{ type: 'function', name: 'web_search_3' }, { type: 'function', name: 'web_search' }])
+    expect(inv.payload.input).toEqual([history])
   })
 }
 
 for (const historyType of ['function_call', 'custom_tool_call']) {
-  test(`historical flat ${historyType} collision rejects hosted identity`, async () => {
-    const inv = invocation([{ type: historyType, name: 'web_search', call_id: 'prior' }])
+  test(`historical flat ${historyType} collision gets a distinct helper alias`, async () => {
+    const history = { type: historyType, name: 'web_search', call_id: 'prior' }
+    const inv = invocation([history])
     const result = await withResponsesServerToolShim(
       [hostedRegistration], createInMemoryPrivatePayloadStore(),
-    )(inv, requestCtx, async () => { throw new Error('ambiguous call reached upstream') })
-    expect(result.type).toBe('upstream-error')
-    if (result.type !== 'upstream-error') return
-    expect(result.status).toBe(400)
-    expect(new TextDecoder().decode(result.body)).toContain('web_search')
+    )(inv, requestCtx, async () => llmEventResult(events(turn([])), identity))
+    expect(result.type).toBe('events')
+    expect(inv.payload.tools).toEqual([{ type: 'function', name: 'web_search_2' }])
+    expect(inv.payload.input).toEqual([history])
   })
 }
 
-test('historical namespace child may share the hosted bare name', async () => {
+test('historical namespace child keeps its identity beside an aliased helper', async () => {
   const inv = invocation([{
     type: 'additional_tools', tools: [{
       type: 'namespace', name: 'client', tools: [{ type: 'function', name: 'web_search' }],
@@ -232,7 +232,7 @@ test('historical namespace child may share the hosted bare name', async () => {
     [hostedRegistration], createInMemoryPrivatePayloadStore(),
   )(inv, requestCtx, async () => llmEventResult(events(turn([])), identity))
   expect(result.type).toBe('events')
-  expect(inv.payload.tools).toEqual([{ type: 'function', name: 'web_search' }])
+  expect(inv.payload.tools).toEqual([{ type: 'function', name: 'web_search_2' }])
 })
 
 test('forced namespaced client choice survives a hosted dispatch and retains the injected alias', async () => {
@@ -248,7 +248,7 @@ test('forced namespaced client choice survives a hosted dispatch and retains the
   )(inv, requestCtx, async () => {
     seen.push({ choice: inv.payload.tool_choice, tools: inv.payload.tools })
     return llmEventResult(events(turn(seen.length === 1 ? [
-      added(call({ name: 'web_search_2' })), done(call({ name: 'web_search_2', arguments: '{}' })),
+      added(call({ name: 'web_search_3' })), done(call({ name: 'web_search_3', arguments: '{}' })),
     ] : [])), identity)
   })
   if (result.type !== 'events') throw new Error('expected streaming result')
@@ -257,7 +257,7 @@ test('forced namespaced client choice survives a hosted dispatch and retains the
   expect(seen).toHaveLength(2)
   for (const entry of seen) {
     expect(entry.tools).toEqual([
-      { type: 'function', name: 'web_search_2' },
+      { type: 'function', name: 'web_search_3' },
       { type: 'function', name: 'web_search' },
       { type: 'namespace', name: 'client', tools: [{ type: 'function', name: 'web_search_2' }] },
     ])
