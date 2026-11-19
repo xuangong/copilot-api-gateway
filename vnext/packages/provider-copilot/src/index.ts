@@ -45,9 +45,17 @@ export {
   USER_AGENT,
   COPILOT_API_VERSION,
   GITHUB_API_VERSION,
+  getCopilotBaseUrl,
 } from "./account-type"
 
 export { copilotModelEndpoints } from "./endpoints"
+
+export {
+  GITHUB_DOTCOM_HOST, normalizeGitHubHost, githubWebOrigin, githubApiOrigin, createGithubHeaders,
+  fetchGithubUser, fetchCopilotUser, exchangeCopilotToken, detectCopilotAccountType,
+  GITHUB_CLIENT_ID, GITHUB_SCOPES, requestGithubDeviceCode, pollGithubDeviceToken,
+} from "./github"
+export type { CopilotTokenResponse, GithubDeviceTokenPoll } from "./github"
 
 export { COPILOT_PRICING_SOURCE } from "./pricing"
 export type { PricingTier } from "./pricing"

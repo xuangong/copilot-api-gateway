@@ -4,11 +4,7 @@
  * Cookie / TTL constants, generator helpers, and the error HTML page used by
  * email magic links + OAuth callbacks. Pure functions; no I/O.
  */
-import { GITHUB_DOTCOM_HOST } from '../../shared/config/github-host.ts'
-import { fetchCopilotUser } from '../../shared/github-api.ts'
-import type { Fetcher } from '@vibe-core/upstream'
 
-export const GITHUB_SCOPES = 'read:user'
 export const SESSION_TTL_DAYS = 30
 export const OAUTH_STATE_TTL_MS = 10 * 60 * 1000
 export const EMAIL_CODE_TTL_MS = 10 * 60 * 1000
@@ -91,44 +87,6 @@ h2{color:var(--danger-text);font-size:18px;font-weight:600;margin:0 0 .75rem}p{c
 a{display:inline-block;padding:.5rem 1.25rem;background:var(--brand);color:#fff;border-radius:6px;font-weight:500;text-decoration:none;transition:background-color .15s}
 a:hover{background:var(--brand-hover)}a:focus-visible{outline:2px solid var(--brand-text);outline-offset:2px}</style></head>
 <body><div class="card" role="main"><h2>Error</h2><p>${escapeHtml(message)}</p><a href="/">Back to Login</a></div></body></html>`
-}
-
-export async function detectAccountType(
-  githubToken: string,
-  githubHost: string = GITHUB_DOTCOM_HOST,
-  fetcher: Fetcher = fetch,
-): Promise<string> {
-  try {
-    const resp = await fetchCopilotUser(githubToken, githubHost, fetcher)
-    if (!resp.ok) return 'individual'
-    const data = (await resp.json()) as { copilot_plan?: string }
-    if (
-      data.copilot_plan &&
-      ['individual', 'business', 'enterprise'].includes(data.copilot_plan)
-    ) {
-      return data.copilot_plan
-    }
-    return 'individual'
-  } catch {
-    // Deliberately swallowed, unlike the other proxy-egress paths in this
-    // work item, which fail loud. copilot_internal/user is best-effort
-    // metadata: a wrong value only changes the derived default base URL.
-    // But it is written once when the account is added and never recomputed,
-    // and endpoints.api only overrides the derived default where the session
-    // is built from the upstream token exchange (copilot-token-cache.ts:99 →
-    // provider-copilot/plugin.ts). The session-auth fallback drops
-    // apiEndpoint (session-auth.ts:117, registry.ts:61), so there a
-    // misclassified tenant keeps the wrong base URL until it is re-added.
-    // The production call site — the device-flow poll in github-routes.ts —
-    // passes the request's resolved fetcher, so
-    // on a proxy-only host the probe reaches GitHub instead of failing here.
-    // The `fetcher = fetch` default is left reachable only from tests
-    // (control-plane-auth-utils.test.ts). What this swallow still hides is a
-    // failure of the passed fetcher itself: a dead proxy chain yields
-    // 'individual', so a business tenant is still misclassified whenever the
-    // egress it was given is broken.
-    return 'individual'
-  }
 }
 
 export function cookieFlags(url: URL, httpOnly: boolean): string {

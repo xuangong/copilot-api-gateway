@@ -37,15 +37,15 @@ import {
 } from '../lib/github.ts'
 import { syncedReadOnlyResponseFor } from '../sync/read-only.ts'
 
-import { GITHUB_CLIENT_ID } from '../../shared/config/constants.ts'
 import {
-  githubWebOrigin,
+  detectCopilotAccountType,
+  exchangeCopilotToken,
+  fetchGithubUser,
   normalizeGitHubHost,
+  pollGithubDeviceToken,
+  requestGithubDeviceCode,
   GITHUB_DOTCOM_HOST,
-} from '../../shared/config/github-host.ts'
-import { exchangeGithubToken } from '../../shared/copilot-token-cache.ts'
-import { fetchGithubUser } from '../../shared/github-api.ts'
-import { detectAccountType, GITHUB_SCOPES } from './utils.ts'
+} from '@vibe-llm/provider-copilot/github'
 import type { AuthCtx } from './routes.ts'
 import type { GitHubAccountId, UserId } from '../../repo/branded-ids.ts'
 import { resolveControlPlaneFetcher } from '../upstreams/proxy-resolution.ts'
@@ -158,14 +158,7 @@ githubAuthRouter.post('/github', zValidator('json', startBody), async (c) => {
     return c.json({ error: proxyChainError(e) }, 400)
   }
 
-  const resp = await doFetch(`${githubWebOrigin(host)}/login/device/code`, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      accept: 'application/json',
-    },
-    body: JSON.stringify({ client_id: GITHUB_CLIENT_ID, scope: GITHUB_SCOPES }),
-  })
+  const resp = await requestGithubDeviceCode(host, doFetch)
   if (!resp.ok) {
     const text = await resp.text()
     return c.json({ error: `GitHub error: ${text}` }, 502)
@@ -190,24 +183,7 @@ githubAuthRouter.post('/github/poll', zValidator('json', pollBody), async (c) =>
     return c.json({ status: 'error', error: proxyChainError(e) }, 400)
   }
 
-  const resp = await doFetch(`${githubWebOrigin(host)}/login/oauth/access_token`, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      accept: 'application/json',
-    },
-    body: JSON.stringify({
-      client_id: GITHUB_CLIENT_ID,
-      device_code,
-      grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
-    }),
-  })
-  const data = (await resp.json()) as {
-    access_token?: string
-    error?: string
-    error_description?: string
-    interval?: number
-  }
+  const data = await pollGithubDeviceToken(host, device_code, doFetch)
 
   if (data.error === 'authorization_pending') return c.json({ status: 'pending' })
   if (data.error === 'slow_down') {
@@ -238,7 +214,7 @@ githubAuthRouter.post('/github/poll', zValidator('json', pollBody), async (c) =>
     // Copilot backend.
     let copilotApiEndpoint: string | undefined
     try {
-      copilotApiEndpoint = (await exchangeGithubToken(accessToken, host, doFetch)).endpoints?.api || undefined
+      copilotApiEndpoint = (await exchangeCopilotToken(accessToken, host, doFetch)).endpoints?.api || undefined
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       return c.json({ status: 'error', error: `Copilot token exchange failed: ${msg}` }, 502)
@@ -250,7 +226,7 @@ githubAuthRouter.post('/github/poll', zValidator('json', pollBody), async (c) =>
       )
     }
 
-    const accountType = await detectAccountType(accessToken, host, doFetch)
+    const accountType = await detectCopilotAccountType(accessToken, host, doFetch)
     const blocked = await blockedIfSynced(() => addGithubAccount(accessToken, user, accountType, userId as UserId | undefined, {
       githubHost: host,
       source: 'device-flow',

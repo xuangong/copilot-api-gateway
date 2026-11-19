@@ -1,6 +1,7 @@
 /**
  * Every GitHub REST / OAuth URL must be derived from the account's GitHub host
- * (github.com or a SUBDOMAIN.ghe.com tenant) through shared/config/github-host.ts.
+ * (github.com or a SUBDOMAIN.ghe.com tenant) through @vibe-llm/provider-copilot/github,
+ * which owns the GitHub side of a Copilot account.
  *
  * A hardcoded `https://api.github.com` or `https://github.com/login` elsewhere
  * silently sends a GHE.com tenant's token to github.com: the call fails (quota
@@ -14,7 +15,7 @@ import { Glob } from 'bun'
 import { join } from 'node:path'
 
 const SRC = join(import.meta.dir, '../../src')
-const ALLOWED = new Set(['shared/config/github-host.ts'])
+const ALLOWED = new Set<string>()
 const HARDCODED = /https:\/\/(api\.github\.com|github\.com\/login)/
 
 test('no gateway source file hardcodes a github.com REST or OAuth origin', async () => {

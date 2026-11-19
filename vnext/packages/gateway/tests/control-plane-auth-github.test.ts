@@ -215,9 +215,9 @@ test('POST /github/poll error returns 400', async () => {
 
 test('POST /github/poll complete saves account + mirrors upstream', async () => {
   let call = 0
-  // The `/user` branch also answers detectAccountType's
+  // The `/user` branch also answers detectCopilotAccountType's
   // /copilot_internal/user probe; that payload carries no `copilot_plan`, so
-  // detectAccountType falls back to 'individual' — the same account type the
+  // detectCopilotAccountType falls back to 'individual' — the same account type the
   // previous two-seam setup produced.
   stubGlobalFetch(async (input) => {
     call += 1

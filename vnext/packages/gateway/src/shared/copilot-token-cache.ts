@@ -23,20 +23,8 @@ import { waitUntil } from "@vibe-core/platform"
  * the api.githubcopilot.com family used by github.com accounts.
  */
 import type { Fetcher } from '@vibe-core/upstream'
-import { createGithubHeaders, type AccountType } from './config/constants.ts'
-import { githubApiOrigin, GITHUB_DOTCOM_HOST } from './config/github-host.ts'
-
-interface CopilotTokenResponse {
-  expires_at: number
-  refresh_in: number
-  token: string
-  endpoints?: {
-    api?: string
-    'origin-tracker'?: string
-    proxy?: string
-    telemetry?: string
-  }
-}
+import type { AccountType } from './config/constants.ts'
+import { exchangeCopilotToken, getCopilotBaseUrl, GITHUB_DOTCOM_HOST } from '@vibe-llm/provider-copilot'
 
 export interface CopilotSession {
   token: string
@@ -66,31 +54,6 @@ async function sha256Hex(input: string): Promise<string> {
 
 function isFresh(entry: CachedSession | null | undefined, nowSec: number): boolean {
   return entry !== null && entry !== undefined && entry.expiresAt > nowSec + SAFETY_BUFFER_SEC
-}
-
-function defaultApiEndpoint(accountType: AccountType): string {
-  return accountType === 'individual'
-    ? 'https://api.githubcopilot.com'
-    : `https://api.${accountType}.githubcopilot.com`
-}
-
-export async function exchangeGithubToken(
-  githubToken: string,
-  githubHost: string = GITHUB_DOTCOM_HOST,
-  // Optional so the three call sites — data-plane/providers/registry.ts,
-  // control-plane/auth/session-auth.ts and control-plane/auth/github-routes.ts
-  // — can migrate independently. Defaulting to the global fetch keeps
-  // "no proxy configured" meaning direct egress.
-  fetcher: Fetcher = fetch,
-): Promise<CopilotTokenResponse> {
-  const resp = await fetcher(`${githubApiOrigin(githubHost)}/copilot_internal/v2/token`, {
-    headers: createGithubHeaders(githubToken),
-  })
-  if (!resp.ok) {
-    const text = await resp.text().catch(() => '')
-    throw new Error(`Failed to exchange GitHub token (${resp.status}): ${text}`)
-  }
-  return (await resp.json()) as CopilotTokenResponse
 }
 
 export interface GetCopilotTokenOptions {
@@ -147,11 +110,11 @@ export async function getCachedCopilotToken(
   if (pending) return pending
 
   const exchange: Promise<CopilotSession> = Promise.resolve().then(async (): Promise<CopilotSession> => {
-    const fresh = await exchangeGithubToken(githubToken, githubHost, fetcher)
+    const fresh = await exchangeCopilotToken(githubToken, githubHost, fetcher)
     if (typeof fresh.token !== 'string' || !fresh.token || typeof fresh.expires_at !== 'number') {
       throw new Error('Malformed Copilot token exchange response')
     }
-    const apiEndpoint = fresh.endpoints?.api ?? defaultApiEndpoint(accountType)
+    const apiEndpoint = fresh.endpoints?.api ?? getCopilotBaseUrl(accountType)
     const entry: CachedSession = { token: fresh.token, apiEndpoint, expiresAt: fresh.expires_at }
     if (inflight.get(cacheKey) !== exchange) return { token: entry.token, apiEndpoint: entry.apiEndpoint }
     memCache.delete(cacheKey)

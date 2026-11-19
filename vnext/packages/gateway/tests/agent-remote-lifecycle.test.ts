@@ -110,7 +110,16 @@ test("service proof rejects wrong purpose, audience, issuer, body and time bound
   const now = Math.floor(Date.now() / 1000)
   for (const claims of [
     { op: "renew" }, { aud: "https://elsewhere.example" }, { iss: "https://elsewhere.example" },
-    { bodyHash: "x".repeat(43) }, { exp: now - 1 }, { exp: now + 61 }, { iat: now + 1 }, { iat: now - 61 },
+    { bodyHash: "x".repeat(43) },
+    // Time cases keep a margin from every bound, so a clock
+    // tick between building the proof and verifying it cannot make it valid
+    // (`iat: now + 1` and an implicit-iat `exp: now + 61` both flaked that way).
+    { iat: now - 30, exp: now - 1 }, // expired
+    { iat: now, exp: now + 61 }, // lifetime over 60 s
+    { iat: now + 30, exp: now + 60 }, // issued in the future
+    // Issued too long ago. With exp > now and a 60 s lifetime cap this always
+    // also breaks the lifetime rule; the rules overlap, so no case isolates it.
+    { iat: now - 90, exp: now + 30 },
   ]) {
     expect((await service("user-status", { subject }, claims)).status).toBe(401)
   }

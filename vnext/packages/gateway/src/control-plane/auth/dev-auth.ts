@@ -11,18 +11,9 @@
  * uses a single global token. Compose only sets these env vars in dev.
  */
 import type { Context, MiddlewareHandler } from 'hono'
-import {
-  createGithubHeaders,
-  type AccountType,
-} from '../../shared/config/constants.ts'
-import { githubApiOrigin, GITHUB_DOTCOM_HOST } from '../../shared/config/github-host.ts'
+import type { AccountType } from '../../shared/config/constants.ts'
+import { exchangeCopilotToken, GITHUB_DOTCOM_HOST } from '@vibe-llm/provider-copilot/github'
 import type { UserId } from '../../repo/branded-ids.ts'
-
-interface CopilotTokenResponse {
-  expires_at: number
-  refresh_in: number
-  token: string
-}
 
 interface CachedCopilot {
   token: string
@@ -30,17 +21,6 @@ interface CachedCopilot {
 }
 
 let cached: CachedCopilot | null = null
-
-async function exchangeGithubToken(githubToken: string): Promise<CopilotTokenResponse> {
-  const resp = await fetch(`${githubApiOrigin(GITHUB_DOTCOM_HOST)}/copilot_internal/v2/token`, {
-    headers: createGithubHeaders(githubToken),
-  })
-  if (!resp.ok) {
-    const text = await resp.text().catch(() => '')
-    throw new Error(`Failed to exchange GitHub token (${resp.status}): ${text}`)
-  }
-  return (await resp.json()) as CopilotTokenResponse
-}
 
 async function getCopilotToken(): Promise<string | null> {
   const direct = process.env.VNEXT_DEV_COPILOT_TOKEN
@@ -52,7 +32,7 @@ async function getCopilotToken(): Promise<string | null> {
   const now = Math.floor(Date.now() / 1000)
   if (cached && cached.expiresAt - 60 > now) return cached.token
 
-  const exchanged = await exchangeGithubToken(gh)
+  const exchanged = await exchangeCopilotToken(gh, GITHUB_DOTCOM_HOST)
   cached = { token: exchanged.token, expiresAt: exchanged.expires_at }
   return exchanged.token
 }

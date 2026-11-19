@@ -14,10 +14,7 @@
  */
 import { test, expect, afterEach } from 'bun:test'
 import type { Fetcher } from '@vibe-core/upstream'
-import {
-  exchangeGithubToken,
-  getCachedCopilotToken,
-} from '../src/shared/copilot-token-cache.ts'
+import { getCachedCopilotToken } from '../src/shared/copilot-token-cache.ts'
 import { realFetch, stubGlobalFetch } from './_stub-global-fetch.ts'
 
 afterEach(() => {
@@ -36,35 +33,8 @@ function tokenResponse() {
   )
 }
 
-test('exchangeGithubToken uses the injected fetcher and not the global fetch', async () => {
-  let globalCalls = 0
-  let injectedCalls = 0
-  stubGlobalFetch(async () => {
-    globalCalls++
-    return tokenResponse()
-  })
-
-  const injected: Fetcher = async () => {
-    injectedCalls++
-    return tokenResponse()
-  }
-
-  const res = await exchangeGithubToken('ghu_cachetest_injected', undefined, injected)
-  expect(res.token).toBe('copilot-session-token')
-  expect(injectedCalls).toBe(1)
-  expect(globalCalls).toBe(0)
-})
-
-test('exchangeGithubToken falls back to the global fetch when no fetcher is given', async () => {
-  let globalCalls = 0
-  stubGlobalFetch(async () => {
-    globalCalls++
-    return tokenResponse()
-  })
-
-  await exchangeGithubToken('ghu_cachetest_default')
-  expect(globalCalls).toBe(1)
-})
+// The exchange itself (URL per GitHub host, injected fetcher) is covered in
+// provider-copilot/src/__tests__/github.test.ts, which owns it.
 
 test('getCachedCopilotToken forwards the fetcher to the exchange', async () => {
   let injectedCalls = 0

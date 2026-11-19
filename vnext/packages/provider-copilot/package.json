@@ -6,7 +6,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./models": "./src/models.ts",
-    "./forward": "./src/forward.ts"
+    "./forward": "./src/forward.ts",
+    "./github": "./src/github.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

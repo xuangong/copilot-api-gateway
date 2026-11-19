@@ -20,7 +20,7 @@
 import { Hono } from 'hono'
 import type { Env } from '../../app.ts'
 import { getRepo } from '../../repo/index.ts'
-import { fetchCopilotUser, fetchGithubUser } from '../../shared/github-api.ts'
+import { fetchCopilotUser, fetchGithubUser } from '@vibe-llm/provider-copilot/github'
 import { getRuntimeLocation } from '@vibe-core/platform'
 import { resolveControlPlaneFetcher } from '../upstreams/proxy-resolution.ts'
 import { copilotUpstreamRowId } from '../lib/github.ts'
