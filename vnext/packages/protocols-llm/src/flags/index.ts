@@ -143,6 +143,12 @@ export const OPTIONAL_FLAGS = [
     description: "Any `role:'system'` message that appears after the leading system run is rewritten to `role:'user'`. Applies to Messages, Chat Completions, and Responses. Used for upstreams that reject interleaved system messages mid-conversation.",
     defaultFor: [],
   },
+  {
+    id: "demote-disallowed-system-to-user",
+    label: "Demote disallowed inline system messages to user",
+    description: "Anthropic Messages only: models that support inline `system` messages accept them only at a turn boundary (after a `user` turn or a server-tool result, before an `assistant` turn or the end of the request). Rewrites only content-bearing `system` messages in other positions to `role:'user'`; valid boundaries and directive-only messages are kept. Narrower than `demote-interleaved-system-to-user`, which rewrites every inline system message.",
+    defaultFor: [],
+  },
   // ── Transform toggles ────────────────────────────────────────────────
   // Every entry below defaults ON for copilot (the upstream that needs
   // these compatibility patches). Admins can opt OUT per-upstream when an
