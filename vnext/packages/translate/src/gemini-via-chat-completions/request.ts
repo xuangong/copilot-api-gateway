@@ -85,7 +85,7 @@ interface ChatTargetRequest {
   response_format?:
     | { type: 'json_object' }
     | { type: 'json_schema'; json_schema: { name: string; schema: unknown } }
-  reasoning_effort?: 'none' | 'low' | 'medium' | 'high'
+  reasoning_effort?: string
   tools?: ChatTool[]
   tool_choice?: ChatToolChoice
   web_search_options?: Record<string, never>

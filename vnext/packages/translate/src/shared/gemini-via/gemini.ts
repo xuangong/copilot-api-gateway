@@ -168,25 +168,26 @@ export const geminiFunctionResponsePart = (
   return { response, id: unmatched?.shift() ?? id }
 }
 
+// Gemini's wire enum is uppercase; targets speak lowercase effort names. The
+// default sentinel leaves effort unset and any other value is forwarded
+// verbatim (open-string protocol values are upstream-owned).
+// https://ai.google.dev/api/generate-content#ThinkingLevel
 export const geminiThinkingLevelEffort = (
   thinkingConfig?: GeminiThinkingConfig,
-): 'low' | 'medium' | 'high' | undefined => {
+): string | undefined => {
   switch (thinkingConfig?.thinkingLevel) {
-    case 'minimal':
-    case 'low':
-      return 'low'
-    case 'medium':
-      return 'medium'
-    case 'high':
-      return 'high'
-    default:
-      return undefined
+    case 'LOW': return 'low'
+    case 'MEDIUM': return 'medium'
+    case 'HIGH': return 'high'
+    case 'MINIMAL': return 'minimal'
+    case 'THINKING_LEVEL_UNSPECIFIED': return undefined
+    default: return thinkingConfig?.thinkingLevel
   }
 }
 
 export const geminiReasoningEffort = (
   thinkingConfig?: GeminiThinkingConfig,
-): 'none' | 'low' | 'medium' | 'high' | null => {
+): string | null => {
   if (!thinkingConfig) return null
 
   if (thinkingConfig.thinkingBudget !== undefined) {

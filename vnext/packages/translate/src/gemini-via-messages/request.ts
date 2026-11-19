@@ -1,4 +1,5 @@
 import { translateGeminiToChat as translateSignedGeminiToChat } from '../gemini-via-chat-completions/request.ts'
+import { geminiThinkingLevelEffort } from '../shared/gemini-via/gemini.ts'
 import type { GeminiPayload as StructuredGeminiPayload } from '../shared/gemini-via/types.ts'
 /**
  * Request translator: client Gemini generateContent payload → hub Anthropic
@@ -38,7 +39,7 @@ interface GeminiContent {
 }
 
 interface GeminiThinkingConfig {
-  thinkingLevel?: 'minimal' | 'low' | 'medium' | 'high'
+  thinkingLevel?: string
   thinkingBudget?: number
 }
 
@@ -189,12 +190,9 @@ function translateToolChoice(
 
 function mapThinkingToEffort(
   cfg: GeminiThinkingConfig | undefined,
-): 'low' | 'medium' | 'high' | undefined {
+): string | undefined {
   if (!cfg) return undefined
-  if (cfg.thinkingLevel) {
-    if (cfg.thinkingLevel === 'minimal') return 'low'
-    return cfg.thinkingLevel
-  }
+  if (cfg.thinkingLevel !== undefined) return geminiThinkingLevelEffort(cfg)
   const budget = cfg.thinkingBudget
   if (budget == null || budget <= 0) return undefined
   if (budget <= 2048) return 'low'

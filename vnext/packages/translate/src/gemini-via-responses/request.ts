@@ -102,7 +102,7 @@ interface ResponsesTargetRequest {
           json_schema: { name: string; schema: unknown }
         }
       }
-  reasoning?: { effort: 'none' | 'low' | 'medium' | 'high'; summary?: 'detailed' }
+  reasoning?: { effort: string; summary?: 'detailed' }
   tools?: ResponsesTool[]
   include?: string[]
   tool_choice?:
