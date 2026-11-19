@@ -128,8 +128,8 @@ Status: `[x]` done (commit), `[ ]` adopt, `[-]` deferred with reason.
   intersection, `recency` → time range; `null` = absent.
 - [x] (1df3ff2d) #633 hosted-tool replay grouping. Accept: parallel calls replay as
   `fc_a, fc_b, fco_a, fco_b` with the upstream's raw argument string.
-- [-] #572 compact shim on by default for every provider — policy.
-- [-] #601 gateway-wide stateless Responses flag / Codex `store` default — policy.
+- [x] (fa444409) #572 compact shim on by default for every provider — decided 2026-11-19: follow (reason: gateway-readable compaction state is portable; this gateway cannot decrypt native state).
+- [x] (fa444409) #601 `transform-force-store-false` honoured for every provider; default Copilot only. Codex already pins `store:false` in its body, as the reference's ChatGPT provider does.
 - [-] #663 per-key upstream order randomization — new feature.
 - [-] #741 cross-upstream failover — vNext picks one upstream per request; a
   failover design is a separate decision.
@@ -225,22 +225,12 @@ A single-process `bun test` over all 740 files was SIGKILLed twice on this
 The resulting test conventions and architecture guards are documented in
 `vnext/AGENTS.md` §4 and §7.
 
-## Decisions needed
+## Decisions (2026-11-19)
 
-1. **#614 defaults.** The selective system-turn downgrade exists as flag
-   `demote-disallowed-system-to-user`, off everywhere. The reference enables
-   it for Claude Code and for all Claude models on Copilot.
-2. **#572 / #601 policies.** Compact shim on by default for every provider;
-   gateway-wide stateless-Responses flag and the Codex `store` default.
-3. **#543 Lite tool positions.** Keep hoisting caller `additional_tools`, or
-   rewrite the Lite encoder to keep them positional like the reference.
-4. **#619 hosted tools on non-Responses targets.** The reference rejects a
-   request carrying e.g. `file_search` for a Chat/Messages upstream; vNext
-   still drops it, because throwing would turn Codex requests with
-   `web_search` into 400s when no server-tool plugin is active.
-5. **#713 `/v1beta/models` shape.** The reference returns the OpenAI shape
-   unless the caller identifies as a Gemini SDK; vNext keeps it Gemini-shaped.
-6. **#724** send only `max_completion_tokens` to Chat targets.
-7. **Catalog revision.** #559/#715 change catalog/pricing data; cached
-   catalogs refresh on their own schedule unless `MODEL_CATALOG_REVISION` is
-   bumped.
+1. #614 selective inline-system downgrade: **adopted**, on for Claude Code and Copilot (`fa444409`).
+2. #572 / #601: **follow** — done (`fa444409`).
+3. #543 Lite tool positions: **not followed**; keep hoisting caller `additional_tools`.
+4. #619 hosted tools on non-Responses targets: under analysis.
+5. #713 `/v1beta/models` shape: pending; reference reason is consistency (shape chosen by client identity), not a defect.
+6. #724 `max_completion_tokens`: pending; DeepSeek (production custom upstream) documents only `max_tokens`.
+7. Catalog revision: **bumped to 8** (`fa444409`).
