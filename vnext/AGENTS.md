@@ -116,11 +116,16 @@ export const ADMIN_EMAILS: readonly string[] = ["zhangxian1124@gmail.com", "test
 - **时间边界**:构造 JWT / 过期时间这类用例时留足余量,不要用 `now + 1` 这种跨一秒就变合法的值。
 - **测试要能因为有意义的原因失败**:不复述常量、不写被别的用例完全覆盖的用例;同形重复的用例改成一张表。
 
-### 4.1.2 架构守卫(`packages/gateway/tests/architecture/`)
+### 4.1.2 架构守卫
+
+`packages/gateway/tests/architecture/`:
 
 - `github-host-boundary`:gateway 源码不得写死 github.com 的 REST / OAuth 地址;GitHub 相关调用全部走 `@vibe-llm/provider-copilot/github`(按账号的 host,支持 `*.ghe.com`)。
-- `provider-plugin-contract`:每个内置 provider 插件必须声明 `publicConfig`(Dashboard 能看到哪些配置字段由 provider 自己决定,凭据打码)。通用创建/探测路由按插件的 `normalizeConfig` / `probeConfig` 分派,不要在 gateway 里按 provider kind 写分支。
-- `repo-fakes-ratchet`:见上。
+- `provider-plugin-contract`:每个内置 provider 插件必须声明 `publicConfig`;并且对每个插件跑一致性套件 —— `normalizeConfig` 报错不回显凭据、不改输入;`probeConfig` 无效配置不发请求;`backup.verbatimConfig` 不带凭据;`catalog.modelEndpoints` 能处理最简模型条目。新 provider 注册即继承这些检查。
+- `provider-kind-branches-ratchet`:gateway 源码里 `provider === "copilot"` 这类按种类的字面量比较只许减少。provider 专属行为放到插件钩子里:`publicConfig` / `normalizeConfig` / `probeConfig` / `backup` / `catalog` / `opaqueAffinity` / `syncView`(定义在 `packages/provider-llm/src/plugin.ts`)。
+- `repo-fakes-ratchet`:手写 `… as unknown as Repo` 只剩 2 处有意保留的(共享路由夹具、一处故障注入),不许增加。
+
+`packages/translate/tests/translation-pair-coverage.test.ts`:每个翻译对的 `request` / `body` / `events` 模块都必须在 `tests/<pair>/` 下有同名测试。
 
 ### 4.2 硬性
 
@@ -186,5 +191,5 @@ export const ADMIN_EMAILS: readonly string[] = ["zhangxian1124@gmail.com", "test
 - 参考的代码形状不是规格,它**为什么改**才是:先读提交说明、PR 和测试,写下“输入 → 期望输出”的验收标准。
 - 验收测试必须在旧代码上失败、在新代码上通过;测试里注明参考提交号。
 - 修这一类问题,而不只是这一个输入(共享函数 + 守卫测试)。
-- 改所有用户默认行为的是**策略**,不是 bug,列进“待决定”,不要顺手改。
+- 改所有用户默认行为的是**策略**,不是 bug。先调研同类网关(LiteLLM、Portkey、new-api、OpenRouter、CLIProxyAPI、Vercel AI SDK 等)的做法和理由,按业界共识定,并把结论和出处写进测试注释和计划文档。
 - 上次对齐到参考 `ab7d27239`(#751,2026-11-19)。

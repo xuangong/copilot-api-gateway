@@ -221,12 +221,40 @@ A single-process `bun test` over all 740 files was SIGKILLed twice on this
 The resulting test conventions and architecture guards are documented in
 `vnext/AGENTS.md` §4 and §7.
 
-## Decisions (2026-11-19)
+## Decisions (2026-11-19), settled by surveying other gateways
 
-1. #614 selective inline-system downgrade: **adopted**, on for Claude Code and Copilot (`fa444409`).
-2. #572 / #601: **follow** — done (`fa444409`).
-3. #543 Lite tool positions: **not followed**; keep hoisting caller `additional_tools`.
-4. #619 hosted tools on non-Responses targets: **keep the split behavior** — offered hosted tools are dropped (Codex attaches `web_search` to most requests), forcing one through `tool_choice` / required `allowed_tools` is rejected. Measured: this was already the behavior; now pinned by `translate/tests/shared/target-capability-policy.test.ts`. No drop log (it would fire on most Codex requests).
-5. #713 `/v1beta/models` shape: **not followed**. The reference's reason is consistency (shape chosen by client identity), not a defect; switching would hand non-SDK Gemini-style callers an OpenAI-shaped list.
-6. #724 `max_completion_tokens`: **not followed**. DeepSeek (the only production custom upstream) documents only `max_tokens` and would fall back to its 8K default; no environment has an Azure upstream. Copilot's gpt-5 rename stays in its provider; a future provider needing the modern spelling renames at its own boundary. Pinned by the same policy test.
-7. Catalog revision: **bumped to 8** (`fa444409`).
+The user asked that policy questions be settled by researching how mature
+LLM gateways handle them, not deferred. Sources are cited in the tests.
+
+1. #614 selective inline-system downgrade: adopted, on for Claude Code and Copilot (`fa444409`).
+2. #572 / #601: followed (`fa444409`).
+3. #543 Lite tool positions: not followed (user decision).
+4. Hosted tools on non-Responses targets — **drop offered, reject forced**.
+   LiteLLM's Responses bridge, caozhiyuan/copilot-api and OpenRouter drop
+   unsupported hosted tools rather than fail; Codex attaches web_search by
+   default (codex-rs config `WebSearchMode::Cached`). No gateway ignores a
+   forced tool. Added (`6893abc6`): a `hosted_tools_dropped` warning as
+   LiteLLM logs, and an actionable 400 for forced ones. Pinned by
+   `translate/tests/shared/target-capability-policy.test.ts`.
+5. `/v1beta/models` shape — **path first, headers only on the shared /v1/models**.
+   new-api, CLIProxyAPI and gemini-balance keep /v1beta Gemini by path; the
+   reference is the outlier. Current Gemini SDKs default to v1, so /v1/models
+   now also recognizes Gemini credential carriers (x-goog-api-key, ?key=) as
+   new-api does (`00e88e4c`).
+6. Output cap — **one canonical field, spelled per provider at its boundary**.
+   LiteLLM (openai_like → max_tokens; Azure → max_completion_tokens for
+   reasoning models), Portkey, Vercel AI SDK and new-api all do this; none
+   send max_completion_tokens universally. Translators keep `max_tokens`
+   (DeepSeek and Ollama document nothing else); Copilot routes reasoning
+   models to Responses; Azure now renames for reasoning models (`f6269da1`).
+7. Catalog revision: bumped to 8 (`fa444409`).
+
+## Architecture follow-ups from the gateway survey
+
+- [x] Provider conformance suite run for every bundled plugin (`541c3a02`).
+- [x] Remaining registry kind branches → `catalog` / `opaqueAffinity` hooks, plus a kind-branch ratchet (`fc1c87a4`).
+- [x] Backup rules → `backup` hook (`1d01d297`).
+- [x] Translation pair coverage guard; the five missing Gemini pair test files added.
+- [-] Recorded upstream cassettes (LiteLLM VCR) — needs live credentials to record and a scrubber; L effort.
+- [-] Single test-folder convention (`tests/` vs `__tests__/` vs `src/__tests__/`) — mass rename; do when a package is next restructured.
+- [-] Vendor-constant source-link lint — many existing constants lack links; backfill first.
