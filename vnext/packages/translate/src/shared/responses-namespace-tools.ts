@@ -74,18 +74,39 @@ export function prepareResponsesTools(source: ResponsesPayload): { payload: Resp
     const { namespace: _namespace, ...rest } = tool
     tools.push({ ...rest, name, ...(description ? { description: tool.description ? `${description}\n\n${tool.description}` : description } : {}) })
   }
+  // Codex redeclares the same tools in `tools`, in `additional_tools`, and again
+  // after each compaction (reference copilot-gateway #714: 89 tools / 70 unique
+  // names, rejected by Anthropic with 400). Collapse each callable identity
+  // (type, namespace, name) to its latest declaration — the caller's current
+  // statement of the tool — kept in the slot of its first declaration so the
+  // tool prefix stays stable for prompt caching.
+  type Slot = { tool: Tool; namespace?: string; description?: string }
+  const slots: Slot[] = []
+  const slotOf = new Map<string, number>()
+  const place = (slot: Slot) => {
+    const { tool } = slot
+    if (tool.type !== "function" && tool.type !== "custom") { slots.push(slot); return }
+    const key = JSON.stringify([tool.type, slot.namespace ?? null, tool.name])
+    const index = slotOf.get(key)
+    if (index === undefined) { slotOf.set(key, slots.length); slots.push(slot) } else slots[index] = slot
+  }
   for (const inventory of inventories) for (const tool of inventory) {
     if (tool.type === "namespace") {
       const namespace = nonempty(tool.name, "tools")
       const children = Array.isArray(tool.tools) ? tool.tools : fail("Cannot translate malformed namespace children", "tools")
       if (!declared.has(namespace)) declared.set(namespace, [])
+      const description = typeof tool.description === "string" ? tool.description : undefined
       for (const child of children) {
         if (!record(child)) fail("Cannot translate malformed namespace child", "tools")
-        addCallable(child as Tool, namespace, typeof tool.description === "string" ? tool.description : undefined)
+        place({ tool: child as Tool, namespace, description })
       }
     } else if ((tool.type === "function" || tool.type === "custom") && tool.namespace !== undefined) {
-      addCallable(tool, nonempty(tool.namespace, "tools"))
-    } else tools.push(tool)
+      place({ tool, namespace: nonempty(tool.namespace, "tools") })
+    } else place({ tool })
+  }
+  for (const slot of slots) {
+    if (slot.namespace === undefined) tools.push(slot.tool)
+    else addCallable(slot.tool, slot.namespace, slot.description)
   }
   const inputBoundaries = new Set<number>()
   let inputIndex = 0

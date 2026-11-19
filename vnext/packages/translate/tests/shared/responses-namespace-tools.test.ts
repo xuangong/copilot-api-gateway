@@ -69,6 +69,35 @@ for (const [kind, translate] of [["messages", translateResponsesToMessages], ["c
     expect(target.messages).toHaveLength(2)
   })
 
+  // Codex declares the same tools in `tools`, again in `additional_tools`, and
+  // once more after each compaction; a captured request carried 89 tools with
+  // 70 unique names and Anthropic answered 400. Adapted from reference
+  // copilot-gateway 2e5a4bed6 (#714): each callable identity reaches the target
+  // once, with the latest declaration's content in the first declaration's
+  // slot so the tool prefix stays stable for prompt caching.
+  test(`${kind}: redeclared callables appear once with the latest declaration in the first slot`, () => {
+    const tools = (description: string) => [
+      { type: "namespace", name: "agents", description: "", tools: [{ type: "function", name: "wait", parameters: { type: "object" } }] },
+      { type: "function", name: "exec", description, parameters: { type: "object" } },
+    ]
+    const payload = (tool_choice: unknown) => ({
+      tools: [...tools("first"), { type: "function", name: "read", parameters: { type: "object" } }],
+      input: [
+        { type: "additional_tools", role: "developer", tools: tools("second") },
+        { type: "message", role: "user", content: "hi" },
+        { type: "additional_tools", role: "developer", tools: tools("latest") },
+      ],
+      tool_choice,
+    })
+    const described = (target: ReturnType<typeof run>) => (target.tools as Array<{ name?: string; description?: string; function?: { name: string; description?: string } }>)
+      .map(tool => [tool.name ?? tool.function?.name, tool.description ?? tool.function?.description])
+    expect(described(run(payload("auto")))).toEqual([["agents_wait", undefined], ["exec", "latest"], ["read", undefined]])
+    // allowed_tools narrows the declared set; its group expansion must not
+    // reintroduce the duplicates either.
+    const narrowed = run(payload({ type: "allowed_tools", mode: "auto", tools: [{ type: "namespace", name: "agents" }, { type: "function", name: "exec" }] }))
+    expect(described(narrowed)).toEqual([["agents_wait", undefined], ["exec", "latest"]])
+  })
+
   test(`${kind}: malformed children and ambiguous kinds remain rejected`, () => {
     for (const tools of [
       [{ type: "namespace", name: "n", tools: [{ type: "web_search" }] }],
