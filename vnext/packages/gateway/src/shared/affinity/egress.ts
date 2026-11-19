@@ -286,7 +286,7 @@ export class AffinityEgress {
   }
   private async *naturalMessages<T>(frames: AsyncIterable<ProtocolFrame<T>>): AsyncGenerator<ProtocolFrame<T>> {
     if (!this.affinity?.actual) { yield* frames; return }
-    const blocks = new Map<number, { thinking: string; thinkingBudget: JsonStringBudget; signature: string }>()
+    const blocks = new Map<number, { thinking: string; thinkingBudget: JsonStringBudget; signature: string; hasSignature: boolean }>()
     for await (const frame of frames) {
       if (frame.type !== "event" || !object(frame.event)) { yield frame; continue }
       const event = frame.event
@@ -295,7 +295,7 @@ export class AffinityEgress {
         const block = event.content_block
         if (block.type === "thinking") {
           const thinking = typeof block.thinking === "string" ? block.thinking : ""
-          blocks.set(index, { thinking, thinkingBudget: new JsonStringBudget(thinking), signature: typeof block.signature === "string" ? block.signature : "" })
+          blocks.set(index, { thinking, thinkingBudget: new JsonStringBudget(thinking), signature: typeof block.signature === "string" ? block.signature : "", hasSignature: typeof block.signature === "string" })
           const accumulated = blocks.get(index)
           if (accumulated) boundedBlock(accumulated)
           const { signature: _signature, ...rest } = block
@@ -310,7 +310,7 @@ export class AffinityEgress {
       const block = blocks.get(index)
       if (!block && event.type === "content_block_delta" && object(event.delta) && event.delta.type === "signature_delta") throw new InvalidAffinityStateError()
       if (block && event.type === "content_block_delta" && object(event.delta)) {
-        if (event.delta.type === "signature_delta" && typeof event.delta.signature === "string") { block.signature += event.delta.signature; boundedBlock(block); continue }
+        if (event.delta.type === "signature_delta" && typeof event.delta.signature === "string") { block.signature += event.delta.signature; block.hasSignature = true; boundedBlock(block); continue }
         if (event.delta.type === "thinking_delta" && typeof event.delta.thinking === "string") {
           block.thinking += event.delta.thinking
           block.thinkingBudget.append(event.delta.thinking)
@@ -318,7 +318,8 @@ export class AffinityEgress {
         }
       }
       if (block && event.type === "content_block_stop") {
-        if (block.signature) {
+        // Presence, not truthiness: an empty signature is still a signature to restore.
+        if (block.hasSignature) {
           const stamped = await this.item("messages", { type: "thinking", thinking: block.thinking, signature: block.signature })
           yield { ...frame, event: { type: "content_block_delta", index, delta: { type: "signature_delta", signature: stamped.signature } } as T }
         }

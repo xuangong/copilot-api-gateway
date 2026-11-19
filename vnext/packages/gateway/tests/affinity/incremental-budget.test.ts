@@ -40,7 +40,8 @@ test.each(["summary", "messages", "chat"] as const)("%s delta budgets do not res
       : kind === "chat" ? new AffinityEgress(affinity).chat(guarded) : guarded
     for await (const _frame of output) emitted++
   } finally { observer.mockRestore() }
-  expect(emitted).toBe(events.length)
+  // Messages starts with signature "" (#631): the empty signature is restored, adding one signature_delta.
+  expect(emitted).toBe(events.length + (kind === "messages" ? 1 : 0))
   expect(serializedUnits).toBeLessThanOrEqual(fragment.length * 128 * 2)
 })
 

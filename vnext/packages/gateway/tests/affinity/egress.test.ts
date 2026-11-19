@@ -55,6 +55,23 @@ test("Messages accumulates all signature fragments and complete whitespace befor
   expect(events[3]?.type).toBe("content_block_stop")
 })
 
+// Adapted from reference copilot-gateway 52cf3893f (#631): a thinking block whose
+// start carries signature "" and which never receives a signature delta must come
+// back as "" after a round trip (typeof check, not truthiness).
+test("Messages initial empty signature without a delta round-trips as an empty string", async () => {
+  const egress = new AffinityEgress(await state())
+  const out = await collect(egress.messages(frames([
+    { type: "content_block_start", index: 0, content_block: { type: "thinking", thinking: "", signature: "" } },
+    { type: "content_block_delta", index: 0, delta: { type: "thinking_delta", thinking: "visible" } },
+    { type: "content_block_stop", index: 0 },
+  ])))
+  const events = out.flatMap(frame => frame.type === "event" ? [frame.event] : [])
+  const delta = events.find(event => event.type === "content_block_delta" && (event.delta as { type?: string }).type === "signature_delta")?.delta as { signature?: string } | undefined
+  expect(delta?.signature).toStartWith("vnext-affinity:1:")
+  const analysis = await analyzeAffinityRequest("messages", { messages: [{ role: "assistant", content: [{ type: "thinking", thinking: "visible", signature: delta?.signature }] }] }, codec)
+  expect(analysis.materialize(target).messages).toEqual([{ role: "assistant", content: [{ type: "thinking", thinking: "visible", signature: "" }] }])
+})
+
 test("Messages rejects oversized accumulation and never leaks incomplete raw signature", async () => {
   const egress = new AffinityEgress(await state())
   const start = { type: "content_block_start", index: 0, content_block: { type: "thinking", thinking: "", signature: "raw" } }
