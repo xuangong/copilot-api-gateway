@@ -10,9 +10,10 @@
  */
 import { test, expect, afterEach, beforeEach } from 'bun:test'
 import { app } from '../../../src/app.ts'
-import { initCatalogTestRepo as initRepo } from '../../helpers/catalog-test-repo.ts'
-import { __resetPlatformForTests, initRuntimeLocation } from '@vibe-core/platform'
-import type { Repo, UpstreamRecord } from '../../../src/repo/types.ts'
+import { setupTestPlatform } from '../../_setup-platform.ts'
+import { seedApiKey } from '../../helpers/seed-fixtures.ts'
+import { __resetPlatformForTests } from '@vibe-core/platform'
+import type { UpstreamRecord } from '../../../src/repo/types.ts'
 import type { Model, ModelsResponse } from '@vibe-llm/provider-copilot'
 
 const env = {} as never
@@ -58,24 +59,14 @@ const ownerUpstream: UpstreamRecord = {
  * observable as "did the catalog come back non-empty?" — no need to reach
  * into middleware internals.
  */
-const scopedRepo = (): Repo => ({
-  upstreams: {
-    list: async (f: { ownerId?: string } = {}) => (f.ownerId === OWNER ? [ownerUpstream] : []),
-  },
-  apiKeys: {
-    findByRawKey: async (raw: string) =>
-      raw === BOUND_KEY ? { id: 'k1', name: 'bound', key: raw, ownerId: OWNER, modelMappingsEnabled: false, modelMappings: [] } : null,
-  },
-  users: { findByKey: async () => null },
-} as unknown as Repo)
-
 const originalFetch = globalThis.fetch
 
-beforeEach(() => {
+beforeEach(async () => {
   process.env.DMR_COMPAT = '1'
   process.env.DMR_BOUND_KEY = BOUND_KEY
-  initRuntimeLocation('bun')
-  initRepo(scopedRepo())
+  const { repo } = setupTestPlatform()
+  await repo.upstreams.save(ownerUpstream)
+  await seedApiKey(repo, { key: BOUND_KEY, ownerId: OWNER, name: 'bound' })
   globalThis.fetch = (async (input: RequestInfo | URL) => {
     const url = new URL(typeof input === 'string' ? input : input instanceof Request ? input.url : String(input))
     if (url.pathname.endsWith('/copilot_internal/v2/token')) {
@@ -120,14 +111,17 @@ test('a request with no credential at all still binds on the DMR surface', async
 })
 
 test('the bound key never leaks onto /v1/* — that would be an open relay', async () => {
-  // Same header, ordinary API path. "null" is a real (bogus) key here, it
-  // resolves to nobody, and nothing fills in for it. An unresolved caller sees
-  // an empty catalog (reference 516441b20, #659), never the bound key's models.
-  for (const init of [bearerNull, {}]) {
-    const res = await app.request('/v1/models', init, env)
-    expect(res.status).toBe(200)
-    expect(((await res.json()) as { data: unknown[] }).data).toEqual([])
-  }
+  // Same header, ordinary API path. "null" is a real (bogus) key here: it
+  // resolves to nobody and is refused, as in production. With no key at all
+  // the caller sees an empty catalog (reference 516441b20, #659). Neither ever
+  // sees the bound key's models. (A hand-written repo fake used to answer the
+  // bogus key with 200; the real repo shows the actual 401.)
+  const bogus = await app.request('/v1/models', bearerNull, env)
+  expect(bogus.status).toBe(401)
+  expect(await bogus.text()).not.toContain('gpt-5.6-sol')
+  const anonymous = await app.request('/v1/models', {}, env)
+  expect(anonymous.status).toBe(200)
+  expect(((await anonymous.json()) as { data: unknown[] }).data).toEqual([])
 })
 
 test('with DMR_COMPAT off the bound key is not applied anywhere', async () => {

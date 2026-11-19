@@ -7,11 +7,12 @@
  * `globalThis.fetch`, so everything between — binding resolution, the attempt,
  * `respondChatCompletions` — is the production path.
  */
-import { test, expect, afterEach, beforeEach } from 'bun:test'
+import { test, expect, afterEach, beforeEach, spyOn } from 'bun:test'
 import { app } from '../../../src/app.ts'
-import { initCatalogTestRepo as initRepo } from '../../helpers/catalog-test-repo.ts'
-import { __resetPlatformForTests, initBackground, initRuntimeLocation } from '@vibe-core/platform'
-import type { Repo, UpstreamRecord } from '../../../src/repo/types.ts'
+import { setupTestPlatform } from '../../_setup-platform.ts'
+import { __resetPlatformForTests } from '@vibe-core/platform'
+import type { ApiKeyId, UserId } from '../../../src/repo/branded-ids.ts'
+import type { UpstreamRecord } from '../../../src/repo/types.ts'
 import type { Model, ModelsResponse } from '@vibe-llm/provider-copilot'
 
 const env = {} as never
@@ -21,7 +22,6 @@ const MODEL = 'gpt-4o-mini'
 const EMBEDDING_MODEL = 'text-embedding-3-small'
 const EMBEDDING_SOURCE_MODEL = 'embedding-source'
 const SOURCE_MODEL = 'source-model'
-let modelMappingsEnabled = false
 let capturedUpstreamModel: string | null = null
 let capturedUpstreamStream: boolean | null = null
 let capturedUpstreamIncludeUsage: boolean | null = null
@@ -61,25 +61,6 @@ const upstream: UpstreamRecord = {
   updatedAt: '2026-01-01T00:00:00Z',
 }
 
-const repo = (): Repo => ({
-  upstreams: { list: async (f: { ownerId?: string } = {}) => (f.ownerId === OWNER ? [upstream] : []) },
-  apiKeys: {
-    findByRawKey: async (raw: string) =>
-      raw === KEY ? {
-        id: 'k1', name: 'real', key: raw, ownerId: OWNER, modelMappingsEnabled,
-        modelMappings: [
-          { source: SOURCE_MODEL, destination: MODEL },
-          { source: EMBEDDING_SOURCE_MODEL, destination: EMBEDDING_MODEL },
-        ],
-      } : null,
-    getById: async () => null,
-    touchLastUsed: async () => {},
-  },
-  users: { findByKey: async () => null },
-  usage: { record: async (row) => { recordedUsage.push({ incomingModel: row.incomingModel, model: row.model }) } },
-  performance: { record: async () => {} },
-} as unknown as Repo)
-
 const completion = {
   id: 'chatcmpl-1',
   object: 'chat.completion',
@@ -102,15 +83,29 @@ const sseFrames = [
 
 const originalFetch = globalThis.fetch
 
-beforeEach(() => {
-  modelMappingsEnabled = false
+const keyMappings = [
+  { source: SOURCE_MODEL, destination: MODEL },
+  { source: EMBEDDING_SOURCE_MODEL, destination: EMBEDDING_MODEL },
+]
+let repo: ReturnType<typeof setupTestPlatform>['repo']
+const setMappingsEnabled = (enabled: boolean) => repo.apiKeys.patchModelMappings('k1' as ApiKeyId, { modelMappingsEnabled: enabled })
+
+beforeEach(async () => {
   capturedUpstreamModel = null
   capturedUpstreamStream = null
   capturedUpstreamIncludeUsage = null
   recordedUsage.length = 0
-  initRuntimeLocation('bun')
-  initBackground({ waitUntil: (p) => { void p.catch(() => {}) } })
-  initRepo(repo(), { apiKeys: [{ id: "k1", ownerId: OWNER }] })
+  repo = setupTestPlatform().repo
+  await repo.upstreams.save(upstream)
+  await repo.apiKeys.save({
+    id: 'k1' as ApiKeyId, name: 'real', key: KEY, ownerId: OWNER as UserId, createdAt: '2026-01-01T00:00:00Z',
+    modelMappingsEnabled: false, modelMappings: keyMappings,
+  })
+  const record = repo.usage.record.bind(repo.usage)
+  spyOn(repo.usage, 'record').mockImplementation(async (row) => {
+    recordedUsage.push({ incomingModel: row.incomingModel, model: row.model })
+    return record(row)
+  })
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(typeof input === 'string' ? input : input instanceof Request ? input.url : String(input))
     if (url.pathname.endsWith('/copilot_internal/v2/token')) {
@@ -176,19 +171,19 @@ test('stream:false aggregates upstream SSE into a single Ollama envelope', async
 })
 
 test('API-key routing maps Ollama embed model names only when enabled', async () => {
-  modelMappingsEnabled = true
+  await setMappingsEnabled(true)
   const routed = await embed({ model: EMBEDDING_SOURCE_MODEL, input: 'hi' })
   expect(routed.status).toBe(200)
   expect(capturedUpstreamModel).toBe(EMBEDDING_MODEL)
 
-  modelMappingsEnabled = false
+  await setMappingsEnabled(false)
   const original = await embed({ model: EMBEDDING_SOURCE_MODEL, input: 'hi' })
   expect(original.status).toBe(200)
   expect(capturedUpstreamModel).toBe(EMBEDDING_SOURCE_MODEL)
 })
 
 test('Ollama embed preserves the normalized source model in recorded usage', async () => {
-  modelMappingsEnabled = true
+  await setMappingsEnabled(true)
 
   const response = await embed({ model: EMBEDDING_SOURCE_MODEL, input: 'hi' })
 
@@ -200,13 +195,13 @@ test('Ollama embed preserves the normalized source model in recorded usage', asy
 })
 
 test('API-key routing maps Ollama model names only when enabled', async () => {
-  modelMappingsEnabled = true
+  await setMappingsEnabled(true)
   const routed = await chat({ model: SOURCE_MODEL, stream: false, messages: [{ role: 'user', content: 'hi' }] })
   expect(routed.status).toBe(200)
   expect(capturedUpstreamModel).toBe(MODEL)
   expect((await routed.json() as { model?: unknown }).model).toBe(MODEL)
 
-  modelMappingsEnabled = false
+  await setMappingsEnabled(false)
   const original = await chat({ model: SOURCE_MODEL, stream: false, messages: [{ role: 'user', content: 'hi' }] })
   expect(original.status).toBe(200)
   expect(capturedUpstreamModel).toBe(SOURCE_MODEL)
@@ -214,7 +209,7 @@ test('API-key routing maps Ollama model names only when enabled', async () => {
 })
 
 test('mapped stream uses the destination model in every Ollama frame', async () => {
-  modelMappingsEnabled = true
+  await setMappingsEnabled(true)
   const res = await chat({ model: SOURCE_MODEL, stream: true, messages: [{ role: 'user', content: 'hi' }] })
 
   expect(res.status).toBe(200)

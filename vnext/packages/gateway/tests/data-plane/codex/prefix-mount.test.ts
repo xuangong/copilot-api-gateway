@@ -13,9 +13,10 @@
  */
 import { test, expect, afterEach, beforeEach } from 'bun:test'
 import { app } from '../../../src/app.ts'
-import { initCatalogTestRepo as initRepo } from '../../helpers/catalog-test-repo.ts'
-import { __resetPlatformForTests, initBackground, initRuntimeLocation } from '@vibe-core/platform'
-import type { Repo, UpstreamRecord } from '../../../src/repo/types.ts'
+import { setupTestPlatform } from '../../_setup-platform.ts'
+import { seedApiKey } from '../../helpers/seed-fixtures.ts'
+import { __resetPlatformForTests } from '@vibe-core/platform'
+import type { UpstreamRecord } from '../../../src/repo/types.ts'
 import type { Model, ModelsResponse } from '@vibe-llm/provider-copilot'
 
 const env = {} as never
@@ -57,25 +58,12 @@ const upstream: UpstreamRecord = {
   updatedAt: '2026-01-01T00:00:00Z',
 }
 
-const repo = (): Repo => ({
-  upstreams: { list: async (f: { ownerId?: string } = {}) => (f.ownerId === OWNER ? [upstream] : []) },
-  apiKeys: {
-    findByRawKey: async (raw: string) =>
-      raw === KEY ? { id: 'k1', name: 'bound', key: raw, ownerId: OWNER, modelMappingsEnabled: false, modelMappings: [] } : null,
-    getById: async () => null,
-  },
-  users: { findByKey: async () => null },
-  usage: { record: async () => {} },
-} as unknown as Repo)
-
 const originalFetch = globalThis.fetch
 
-beforeEach(() => {
-  initRuntimeLocation('bun')
-  // Usage/perf persistence runs off the response path; swallow it here so a
-  // stub repo without those tables doesn't fail the request under test.
-  initBackground({ waitUntil: (p) => { void p.catch(() => {}) } })
-  initRepo(repo())
+beforeEach(async () => {
+  const { repo } = setupTestPlatform()
+  await repo.upstreams.save(upstream)
+  await seedApiKey(repo, { key: KEY, ownerId: OWNER, name: 'bound' })
   globalThis.fetch = (async (input: RequestInfo | URL) => {
     const url = new URL(typeof input === 'string' ? input : input instanceof Request ? input.url : String(input))
     if (url.pathname.endsWith('/copilot_internal/v2/token')) {
