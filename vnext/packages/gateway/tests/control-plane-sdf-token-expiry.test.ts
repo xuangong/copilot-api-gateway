@@ -16,9 +16,8 @@
  */
 import { test, expect, beforeEach } from 'bun:test'
 import { Hono } from 'hono'
-import { initRepo } from '../src/repo/index.ts'
-import { __resetPlatformForTests, initRuntimeLocation } from '@vibe-core/platform'
-import type { Repo, UpstreamRecord } from '../src/repo/types.ts'
+import { setupTestPlatform } from './_setup-platform.ts'
+import type { UpstreamRecord } from '../src/repo/types.ts'
 import { upstreamsRouter, type AuthCtx } from '../src/control-plane/upstreams/routes.ts'
 
 /** An unsigned JWT carrying exactly these claims. Only the payload is ever read. */
@@ -30,24 +29,6 @@ function jwt(claims: Record<string, unknown>): string {
 
 const HOUR = 3600
 const nowSec = () => Math.floor(Date.now() / 1000)
-
-function inMemoryRepo() {
-  const upstreams = new Map<string, UpstreamRecord>()
-  return {
-    upstreams,
-    repo: {
-      // The list route reads protection settings next to the upstreams.
-      protection: { getSettingsMany: async () => new Map(), getSettings: async () => null, setSettings: async () => {} },
-      upstreams: {
-        list: async () => [...upstreams.values()],
-        getById: async (id: string) => upstreams.get(id) ?? null,
-        save: async (u: UpstreamRecord) => { upstreams.set(u.id, u) },
-        delete: async (id: string) => upstreams.delete(id),
-        deleteAll: async () => { upstreams.clear() },
-      },
-    } as unknown as Repo,
-  }
-}
 
 function upstream(over: Partial<UpstreamRecord> = {}): UpstreamRecord {
   const now = new Date().toISOString()
@@ -77,18 +58,15 @@ function buildApp(auth: AuthCtx) {
   return app
 }
 
-let store: ReturnType<typeof inMemoryRepo>
+let repo: ReturnType<typeof setupTestPlatform>['repo']
 
 beforeEach(() => {
-  __resetPlatformForTests()
-  store = inMemoryRepo()
-  initRepo(store.repo)
-  initRuntimeLocation('bun')
+  ;({ repo } = setupTestPlatform())
 })
 
 /** Serialise one upstream through the real list route. */
 async function serve(u: UpstreamRecord) {
-  store.upstreams.set(u.id, u)
+  await repo.upstreams.save(u)
   const res = await buildApp({ isAdmin: true }).request('/api/upstreams?includeDisabled=1')
   expect(res.status).toBe(200)
   const body = (await res.json()) as { upstreams: Array<Record<string, unknown>> }

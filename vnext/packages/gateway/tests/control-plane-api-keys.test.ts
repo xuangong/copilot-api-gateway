@@ -1,98 +1,17 @@
 /**
  * Control-plane api-keys router tests — Week 5a-impl.
  *
- * Covers the 11 endpoints ported from old src/routes/api-keys.ts. Uses an
- * in-memory Repo + a small pre-middleware to inject `c.set('auth', {...})`
+ * Covers the 11 endpoints ported from old src/routes/api-keys.ts. Uses the real
+ * in-memory SQLite repo (setupTestPlatform) + a small pre-middleware to inject `c.set('auth', {...})`
  * since no auth middleware has been ported yet.
  */
-import { test, expect, beforeEach } from 'bun:test'
+import { test, expect, beforeEach, afterEach, mock, spyOn } from 'bun:test'
 import { Hono } from 'hono'
-import { initCatalogTestRepo as initRepo } from './helpers/catalog-test-repo.ts'
-import type {
-  ApiKey,
-  KeyAssignment,
-  Repo,
-  User,
-  WebSearchUsageRecord,
-  WebSearchEngineUsageRecord,
-} from '../src/repo/types.ts'
+import { setupTestPlatform } from './_setup-platform.ts'
+import type { UserId } from '../src/repo/branded-ids.ts'
+import type { UpstreamRecord } from '../src/repo/types.ts'
 import { apiKeysRouter, type AuthCtx } from '../src/control-plane/api-keys/routes.ts'
 import { createApiKey } from '../src/control-plane/lib/api-keys.ts'
-import { initRuntimeLocation, __resetPlatformForTests } from '@vibe-core/platform'
-
-function inMemoryRepo() {
-  const keys = new Map<string, ApiKey>()
-  const users = new Map<string, User>()
-  const assignments: KeyAssignment[] = []
-  const wsUsage: WebSearchUsageRecord[] = []
-  const wsEngineUsage: WebSearchEngineUsageRecord[] = []
-
-  const repo = {
-    apiKeys: {
-      list: async () => [...keys.values()],
-      listByOwner: async (owner: string) => [...keys.values()].filter((k) => k.ownerId === owner),
-      findByRawKey: async (raw: string) => [...keys.values()].find((k) => k.key === raw) ?? null,
-      getById: async (id: string) => keys.get(id) ?? null,
-      save: async (k: ApiKey) => { keys.set(k.id, k) },
-      patch: async (id: string, patch: import('../src/repo/types.ts').ApiKeyPatch) => {
-        const current = keys.get(id)
-        if (!current) return false
-        keys.set(id, { ...current, ...patch })
-        return true
-      },
-      patchModelMappings: async (id: string, patch: { modelMappingsEnabled?: boolean; modelMappings?: ApiKey['modelMappings'] }) => {
-        const current = keys.get(id)
-        if (!current) return false
-        keys.set(id, {
-          ...current,
-          ...(patch.modelMappingsEnabled !== undefined && { modelMappingsEnabled: patch.modelMappingsEnabled }),
-          ...(patch.modelMappings !== undefined && { modelMappings: patch.modelMappings }),
-          modelMappingsInvalid: false,
-        })
-        return true
-      },
-      delete: async (id: string) => keys.delete(id),
-      deleteAll: async () => { keys.clear() },
-    },
-    users: {
-      create: async (u: User) => { users.set(u.id, u) },
-      getById: async (id: string) => users.get(id) ?? null,
-      findByKey: async () => null,
-      findByEmail: async (email: string) => [...users.values()].find((u) => u.email === email) ?? null,
-      list: async () => [...users.values()],
-      update: async () => { },
-      delete: async (id: string) => { users.delete(id) },
-    },
-    keyAssignments: {
-      assign: async (keyId: string, userId: string, assignedBy: string) => {
-        assignments.push({ keyId, userId, assignedBy, assignedAt: new Date().toISOString() })
-      },
-      unassign: async (keyId: string, userId: string) => {
-        for (let i = assignments.length - 1; i >= 0; i--) {
-          if (assignments[i]!.keyId === keyId && assignments[i]!.userId === userId) assignments.splice(i, 1)
-        }
-      },
-      listByUser: async (userId: string) => assignments.filter((a) => a.userId === userId),
-      listByKey: async (keyId: string) => assignments.filter((a) => a.keyId === keyId),
-      deleteByKey: async (keyId: string) => {
-        for (let i = assignments.length - 1; i >= 0; i--) if (assignments[i]!.keyId === keyId) assignments.splice(i, 1)
-      },
-      deleteByUser: async () => { },
-    },
-    webSearchUsage: {
-      record: async () => { },
-      query: async () => wsUsage,
-      deleteAll: async () => { },
-    },
-    webSearchEngineUsage: {
-      record: async () => { },
-      query: async () => wsEngineUsage,
-      deleteAll: async () => { },
-    },
-  } as unknown as Repo
-
-  return { repo, keys, users, assignments }
-}
 
 function buildApp(auth: AuthCtx) {
   const app = new Hono()
@@ -104,20 +23,29 @@ function buildApp(auth: AuthCtx) {
   return app
 }
 
-let store: ReturnType<typeof inMemoryRepo>
+let repo: ReturnType<typeof setupTestPlatform>['repo']
+let db: ReturnType<typeof setupTestPlatform>['db']
 
 beforeEach(() => {
-  __resetPlatformForTests()
-  initRuntimeLocation('bun')
-  store = inMemoryRepo()
-  initRepo(store.repo)
+  ;({ repo, db } = setupTestPlatform())
 })
 
+// Spies below wrap single repo methods; restore them so none outlives its test.
+afterEach(() => { mock.restore() })
+
+function ownerUpstream(over: Partial<UpstreamRecord> = {}): UpstreamRecord {
+  return {
+    id: 'copilot:owner', provider: 'copilot', name: 'owner', ownerId: 'owner' as UpstreamRecord['ownerId'],
+    enabled: true, sortOrder: 0, config: { githubToken: 'token' }, flagOverrides: {}, disabledPublicModelIds: [],
+    state: null, proxyFallbackList: [{ id: 'direct_fetch' }], createdAt: 'x', updatedAt: 'x', ...over,
+  }
+}
+
 test('GET / as admin returns all keys with assignees', async () => {
-  await store.repo.users.create({ id: 'u1', name: 'Alice', createdAt: 'x', disabled: false })
-  await store.repo.users.create({ id: 'u2', name: 'Bob', createdAt: 'x', disabled: false })
+  await repo.users.create({ id: 'u1', name: 'Alice', createdAt: 'x', disabled: false })
+  await repo.users.create({ id: 'u2', name: 'Bob', createdAt: 'x', disabled: false })
   const k = await createApiKey('a', 'u1')
-  await store.repo.keyAssignments.assign(k.id, 'u2', 'admin')
+  await repo.keyAssignments.assign(k.id, 'u2' as UserId, 'admin' as UserId)
   const app = buildApp({ isAdmin: true })
   const res = await app.request('/api/keys')
   expect(res.status).toBe(200)
@@ -128,11 +56,11 @@ test('GET / as admin returns all keys with assignees', async () => {
 })
 
 test('GET / as user returns own + assigned keys', async () => {
-  await store.repo.users.create({ id: 'u1', name: 'Alice', createdAt: 'x', disabled: false })
-  await store.repo.users.create({ id: 'u2', name: 'Bob', createdAt: 'x', disabled: false })
+  await repo.users.create({ id: 'u1', name: 'Alice', createdAt: 'x', disabled: false })
+  await repo.users.create({ id: 'u2', name: 'Bob', createdAt: 'x', disabled: false })
   const own = await createApiKey('mine', 'u1')
   const others = await createApiKey('shared', 'u2')
-  await store.repo.keyAssignments.assign(others.id, 'u1', 'u2')
+  await repo.keyAssignments.assign(others.id, 'u1', 'u2')
   const app = buildApp({ isUser: true, userId: 'u1' })
   const res = await app.request('/api/keys')
   const body = await res.json() as any[]
@@ -228,27 +156,27 @@ test('POST /:id/rotate changes raw key', async () => {
 })
 
 test('DELETE /:id removes key and assignments', async () => {
-  await store.repo.users.create({ id: 'u2', name: 'Bob', createdAt: 'x', disabled: false })
+  await repo.users.create({ id: 'u2', name: 'Bob', createdAt: 'x', disabled: false })
   const k = await createApiKey('k', 'u1')
-  await store.repo.keyAssignments.assign(k.id, 'u2', 'u1')
+  await repo.keyAssignments.assign(k.id, 'u2', 'u1')
   const res = await buildApp({ isAdmin: true }).request(`/api/keys/${k.id}`, { method: 'DELETE' })
   expect(res.status).toBe(200)
-  expect(store.keys.has(k.id)).toBe(false)
-  expect(await store.repo.keyAssignments.listByKey(k.id)).toEqual([])
+  expect(await repo.apiKeys.getById(k.id)).toBeNull()
+  expect(await repo.keyAssignments.listByKey(k.id)).toEqual([])
 })
 
 test('POST /:id/assign by email succeeds', async () => {
-  await store.repo.users.create({ id: 'u2', name: 'Bob', email: 'bob@x.com', createdAt: 'x', disabled: false })
+  await repo.users.create({ id: 'u2', name: 'Bob', email: 'bob@x.com', createdAt: 'x', disabled: false })
   const k = await createApiKey('k', 'u1')
   const res = await buildApp({ isUser: true, userId: 'u1' }).request(`/api/keys/${k.id}/assign`, {
     method: 'POST', body: JSON.stringify({ email: 'bob@x.com' }), headers: { 'content-type': 'application/json' },
   })
   expect(res.status).toBe(200)
-  expect((await store.repo.keyAssignments.listByKey(k.id))).toHaveLength(1)
+  expect((await repo.keyAssignments.listByKey(k.id))).toHaveLength(1)
 })
 
 test('POST /:id/assign self-share → 400', async () => {
-  await store.repo.users.create({ id: 'u1', name: 'A', createdAt: 'x', disabled: false })
+  await repo.users.create({ id: 'u1', name: 'A', createdAt: 'x', disabled: false })
   const k = await createApiKey('k', 'u1')
   const res = await buildApp({ isUser: true, userId: 'u1' }).request(`/api/keys/${k.id}/assign`, {
     method: 'POST', body: JSON.stringify({ user_id: 'u1' }), headers: { 'content-type': 'application/json' },
@@ -257,9 +185,9 @@ test('POST /:id/assign self-share → 400', async () => {
 })
 
 test('POST /:id/assign duplicate → 409', async () => {
-  await store.repo.users.create({ id: 'u2', name: 'B', createdAt: 'x', disabled: false })
+  await repo.users.create({ id: 'u2', name: 'B', createdAt: 'x', disabled: false })
   const k = await createApiKey('k', 'u1')
-  await store.repo.keyAssignments.assign(k.id, 'u2', 'u1')
+  await repo.keyAssignments.assign(k.id, 'u2', 'u1')
   const res = await buildApp({ isAdmin: true }).request(`/api/keys/${k.id}/assign`, {
     method: 'POST', body: JSON.stringify({ user_id: 'u2' }), headers: { 'content-type': 'application/json' },
   })
@@ -275,9 +203,9 @@ test('POST /:id/assign unknown user → 404', async () => {
 })
 
 test('GET /:id/assignments lists with user_name', async () => {
-  await store.repo.users.create({ id: 'u2', name: 'Bob', createdAt: 'x', disabled: false })
+  await repo.users.create({ id: 'u2', name: 'Bob', createdAt: 'x', disabled: false })
   const k = await createApiKey('k', 'u1')
-  await store.repo.keyAssignments.assign(k.id, 'u2', 'u1')
+  await repo.keyAssignments.assign(k.id, 'u2', 'u1')
   const res = await buildApp({ isAdmin: true }).request(`/api/keys/${k.id}/assignments`)
   const body = await res.json() as any[]
   expect(body).toEqual([{ key_id: k.id, user_id: 'u2', user_name: 'Bob', assigned_by: 'u1', assigned_at: expect.any(String) }])
@@ -288,23 +216,23 @@ test('POST /:id/copy-web-search-from copies as refs', async () => {
   src.webSearchLangsearchKey = 'literal-langsearch'
   src.webSearchTavilyKey = 'literal-tavily'
   src.webSearchPriority = ['langsearch', 'tavily']
-  await store.repo.apiKeys.save(src)
+  await repo.apiKeys.save(src)
   const target = await createApiKey('target', 'u1')
   const res = await buildApp({ isAdmin: true }).request(`/api/keys/${target.id}/copy-web-search-from/${src.id}`, { method: 'POST' })
   expect(res.status).toBe(200)
-  const after = await store.repo.apiKeys.getById(target.id)
+  const after = await repo.apiKeys.getById(target.id)
   expect(after?.webSearchLangsearchRef).toBe(src.id)
   expect(after?.webSearchTavilyRef).toBe(src.id)
   expect(after?.webSearchMsGroundingRef).toBeUndefined()
 })
 
 test('DELETE /:id/assign/:userId removes assignment', async () => {
-  await store.repo.users.create({ id: 'u2', name: 'B', createdAt: 'x', disabled: false })
+  await repo.users.create({ id: 'u2', name: 'B', createdAt: 'x', disabled: false })
   const k = await createApiKey('k', 'u1')
-  await store.repo.keyAssignments.assign(k.id, 'u2', 'u1')
+  await repo.keyAssignments.assign(k.id, 'u2', 'u1')
   const res = await buildApp({ isAdmin: true }).request(`/api/keys/${k.id}/assign/u2`, { method: 'DELETE' })
   expect(res.status).toBe(200)
-  expect(await store.repo.keyAssignments.listByKey(k.id)).toEqual([])
+  expect(await repo.keyAssignments.listByKey(k.id)).toEqual([])
 })
 
 test('GET /:id/web-search-usage returns aggregated zeros when no data', async () => {
@@ -341,7 +269,7 @@ for (const route of FOREIGN_ROUTES) {
     expect(foreign.status).toBe(403)
     expect(missing.status).toBe(foreign.status)
     // The victim's key must survive the refused DELETE / PATCH.
-    expect(await store.repo.apiKeys.getById(victim.id)).not.toBeNull()
+    expect(await repo.apiKeys.getById(victim.id)).not.toBeNull()
   })
 }
 
@@ -379,8 +307,8 @@ test('GET list and assigned detail expose dual mapping fields and mapping permis
   const key = await createApiKey('shared', 'owner')
   key.modelMappingsEnabled = true
   key.modelMappings = [{ source: 'source', destination: 'destination' }]
-  await store.repo.apiKeys.save(key)
-  await store.repo.keyAssignments.assign(key.id, 'assignee', 'owner')
+  await repo.apiKeys.save(key)
+  await repo.keyAssignments.assign(key.id, 'assignee', 'owner')
 
   const app = buildApp({ isUser: true, userId: 'assignee' })
   const list = await app.request('/api/keys')
@@ -448,15 +376,13 @@ test('mapping PATCH hides missing and foreign keys identically', async () => {
 
 test('PATCH both mapping fields saves once atomically', async () => {
   const key = await createApiKey('key', 'owner')
-  let patches = 0
-  const realPatch = store.repo.apiKeys.patchModelMappings
-  store.repo.apiKeys.patchModelMappings = async (id, patch) => { patches++; return realPatch(id, patch) }
+  const patchSpy = spyOn(repo.apiKeys, 'patchModelMappings')
   const result = await patchKey(buildApp({ isUser: true, userId: 'owner' }), key.id, {
     model_mappings_enabled: true, model_mappings: [],
   })
   expect(result.status).toBe(200)
-  expect(patches).toBe(1)
-  const stored = await store.repo.apiKeys.getById(key.id)
+  expect(patchSpy).toHaveBeenCalledTimes(1)
+  const stored = await repo.apiKeys.getById(key.id)
   expect(stored?.modelMappingsEnabled).toBe(true)
   expect(stored?.modelMappings).toEqual([])
 })
@@ -482,10 +408,8 @@ test('PATCH mappings accepts snake case only and preserves omitted mapping field
 
 test('GET fails closed for corrupt stored mappings', async () => {
   const key = await createApiKey('key', 'owner')
-  key.modelMappingsEnabled = true
-  key.modelMappings = [{ source: 'source', destination: 'destination' }]
-  key.modelMappingsInvalid = true
-  await store.repo.apiKeys.save(key)
+  // Corrupt the stored JSON directly, as a bad migration or manual edit would.
+  db.run("UPDATE api_keys SET model_mappings_enabled = 1, model_mappings = ? WHERE id = ?", ['{"not":"an array"}', key.id])
   const result = await buildApp({ isUser: true, userId: 'owner' }).request(`/api/keys/${key.id}`)
   const body = await result.json() as MappingKeyJson
   expect(body.model_mappings_enabled).toBe(false)
@@ -497,13 +421,7 @@ test('PATCH mapping boundaries and exact keys are enforced', async () => {
   const key = await createApiKey('key', 'owner')
   const app = buildApp({ isUser: true, userId: 'owner' })
   const exactMax = Array.from({ length: 100 }, (_, index) => ({ source: `source-${index}`, destination: `direct-${index}` }))
-  store.repo.upstreams = {
-    list: async (filter: { ownerId?: string } = {}) => filter.ownerId === 'owner' ? [{
-      id: 'copilot:owner', provider: 'copilot', name: 'owner', ownerId: 'owner', enabled: true, sortOrder: 0,
-      config: { githubToken: 'token' }, flagOverrides: {}, disabledPublicModelIds: [], state: null,
-      proxyFallbackList: [{ id: 'direct_fetch' }], createdAt: 'x', updatedAt: 'boundaries',
-    }] : [],
-  } as Repo['upstreams']
+  await repo.upstreams.save(ownerUpstream({ updatedAt: 'boundaries' }))
   const originalFetch = globalThis.fetch
   globalThis.fetch = ((input: RequestInfo | URL) => {
     const payload = String(input).includes('/copilot_internal/v2/token')
@@ -532,7 +450,7 @@ test('PATCH rejects malformed mapping configuration without saving', async () =>
   expect(malformed.status).toBe(400)
   const error = await malformed.json() as { error: string }
   expect(error.error).toMatch(/model_mappings_enabled/)
-  expect((await store.repo.apiKeys.getById(key.id))?.modelMappingsEnabled).toBe(false)
+  expect((await repo.apiKeys.getById(key.id))?.modelMappingsEnabled).toBe(false)
 
   const badItem = await patchKey(app, key.id, { model_mappings: [{ source: ' ', destination: 'b' }] })
   expect(badItem.status).toBe(400)
@@ -543,39 +461,29 @@ test('mapping-only and enabled-only PATCH preserve omitted mapping values', asyn
   const key = await createApiKey('key', 'owner')
   key.modelMappingsEnabled = true
   key.modelMappings = [{ source: 'one', destination: 'two' }]
-  await store.repo.apiKeys.save(key)
+  await repo.apiKeys.save(key)
   const app = buildApp({ isUser: true, userId: 'owner' })
   const mappingOnly = await patchKey(app, key.id, { model_mappings: [] })
   expect((await mappingOnly.json() as MappingKeyJson).model_mappings_enabled).toBe(true)
-  const current = await store.repo.apiKeys.getById(key.id)
+  const current = await repo.apiKeys.getById(key.id)
   if (!current) throw new Error('expected key')
   current.modelMappings = []
-  await store.repo.apiKeys.save(current)
+  await repo.apiKeys.save(current)
   const enableOnly = await patchKey(app, key.id, { model_mappings_enabled: false })
   expect((await enableOnly.json() as MappingKeyJson).model_mappings).toEqual([])
 })
 
 test('explicit empty mappings skip catalog validation', async () => {
   const key = await createApiKey('key', 'owner')
-  let catalogCalls = 0
-  store.repo.upstreams = {
-    list: async () => { catalogCalls++; throw new Error('must not fetch') },
-  } as Repo['upstreams']
+  const list = spyOn(repo.upstreams, 'list').mockRejectedValue(new Error('must not fetch'))
   const result = await patchKey(buildApp({ isUser: true, userId: 'owner' }), key.id, { model_mappings: [] })
   expect(result.status).toBe(200)
-  expect(catalogCalls).toBe(0)
+  expect(list).not.toHaveBeenCalled()
 })
 
 test('PATCH validates mapping destinations against the key owner catalog', async () => {
   const key = await createApiKey('key', 'owner')
-  const upstream = {
-    id: 'copilot:owner', provider: 'copilot', name: 'owner', ownerId: 'owner', enabled: true,
-    sortOrder: 0, config: { githubToken: 'token' }, flagOverrides: {}, disabledPublicModelIds: [],
-    state: null, proxyFallbackList: [{ id: 'direct_fetch' }], createdAt: 'x', updatedAt: 'x',
-  }
-  store.repo.upstreams = {
-    list: async (filter: { ownerId?: string } = {}) => filter.ownerId === 'owner' ? [upstream] : [],
-  } as Repo['upstreams']
+  await repo.upstreams.save(ownerUpstream())
   const originalFetch = globalThis.fetch
   globalThis.fetch = ((input: RequestInfo | URL) => {
     const url = String(input)
@@ -606,23 +514,19 @@ test('PATCH validates mapping destinations against the key owner catalog', async
 
 test('PATCH returns generic 503 without saving when catalog discovery fails', async () => {
   const key = await createApiKey('key', 'owner')
-  let saves = 0
-  const realSave = store.repo.apiKeys.save
-  store.repo.apiKeys.save = async (updated) => { saves++; await realSave(updated) }
-  store.repo.upstreams = {
-    list: async () => { throw new Error('catalog discovery failed') },
-  } as Repo['upstreams']
+  const saveSpy = spyOn(repo.apiKeys, 'save')
+  spyOn(repo.upstreams, 'list').mockRejectedValue(new Error('catalog discovery failed'))
   const result = await patchKey(buildApp({ isUser: true, userId: 'owner' }), key.id, {
     model_mappings: [{ source: 'missing-source-is-valid', destination: 'destination' }],
   })
   expect(result.status).toBe(503)
   expect(await result.json()).toEqual({ error: 'Unable to validate model mappings' })
-  expect(saves).toBe(0)
+  expect(saveSpy).not.toHaveBeenCalled()
 })
 
 test('ownerless key is only manageable by an admin', async () => {
   const key = await createApiKey('key')
-  await store.repo.keyAssignments.assign(key.id, 'assignee', 'admin')
+  await repo.keyAssignments.assign(key.id, 'assignee', 'admin')
   const assignee = buildApp({ isUser: true, userId: 'assignee' })
   expect((await assignee.request(`/api/keys/${key.id}`)).status).toBe(403)
   expect((await patchKey(assignee, key.id, { model_mappings: [] })).status).toBe(403)
@@ -637,38 +541,32 @@ test('owner PATCH persists and clears web search passthrough fields', async () =
     web_search_passthrough_upstream: 'upstream-a', web_search_passthrough_model: 'model-a',
   })
   expect(set.status).toBe(200)
-  expect((await store.repo.apiKeys.getById(key.id))?.webSearchPassthroughUpstream).toBe('upstream-a')
+  expect((await repo.apiKeys.getById(key.id))?.webSearchPassthroughUpstream).toBe('upstream-a')
   const clear = await patchKey(app, key.id, {
     web_search_passthrough_upstream: null, web_search_passthrough_model: null,
   })
   expect(clear.status).toBe(200)
-  expect((await store.repo.apiKeys.getById(key.id))?.webSearchPassthroughUpstream).toBeUndefined()
+  expect((await repo.apiKeys.getById(key.id))?.webSearchPassthroughUpstream).toBeUndefined()
 })
 
 test('assignee may change only model mappings and cannot combine another mutable field', async () => {
   const key = await createApiKey('key', 'owner')
-  await store.repo.keyAssignments.assign(key.id, 'assignee', 'owner')
+  await repo.keyAssignments.assign(key.id, 'assignee', 'owner')
   const app = buildApp({ isUser: true, userId: 'assignee' })
 
   const mappingOnly = await patchKey(app, key.id, { model_mappings_enabled: true, model_mappings: [] })
   expect(mappingOnly.status).toBe(200)
-  expect((await store.repo.apiKeys.getById(key.id))?.modelMappingsEnabled).toBe(true)
+  expect((await repo.apiKeys.getById(key.id))?.modelMappingsEnabled).toBe(true)
 
   const mixed = await patchKey(app, key.id, { model_mappings_enabled: false, name: 'stolen' })
   expect(mixed.status).toBe(403)
-  const stored = await store.repo.apiKeys.getById(key.id)
+  const stored = await repo.apiKeys.getById(key.id)
   expect(stored?.name).toBe('key')
   expect(stored?.modelMappingsEnabled).toBe(true)
 })
 
-function installOwnerCatalog(models: Array<Record<string, unknown>>, enabled = true): () => void {
-  store.repo.upstreams = {
-    list: async (filter: { ownerId?: string } = {}) => filter.ownerId === 'owner' ? [{
-      id: 'copilot:owner', provider: 'copilot', name: 'owner', ownerId: 'owner', enabled, sortOrder: 0,
-      config: { githubToken: 'token' }, flagOverrides: {}, disabledPublicModelIds: [], state: null,
-      proxyFallbackList: [{ id: 'direct_fetch' }], createdAt: 'x', updatedAt: `catalog-${enabled}`,
-    }] : [],
-  } as Repo['upstreams']
+async function installOwnerCatalog(models: Array<Record<string, unknown>>, enabled = true): Promise<() => void> {
+  await repo.upstreams.save(ownerUpstream({ updatedAt: `catalog-${enabled}`, enabled }))
   const originalFetch = globalThis.fetch
   globalThis.fetch = ((input: RequestInfo | URL) => {
     const payload = String(input).includes('/copilot_internal/v2/token')
@@ -688,7 +586,7 @@ function catalogModel(id: string, supports: Record<string, unknown> = {}, maxCon
 
 test('PATCH accepts a composite built from split raw variants within one upstream', async () => {
   const key = await createApiKey('key', 'owner')
-  const restore = installOwnerCatalog([
+  const restore = await installOwnerCatalog([
     catalogModel('claude-opus-4.7-xhigh', { reasoning_effort: ['xhigh'] }),
     catalogModel('claude-opus-4.7-1m-internal', {}, 1_000_000),
   ])
@@ -704,14 +602,8 @@ test('PATCH accepts a composite built from split raw variants within one upstrea
 
 test('assignee mapping PATCH does not overwrite concurrent owner fields while catalog awaits', async () => {
   const key = await createApiKey('key', 'owner')
-  await store.repo.keyAssignments.assign(key.id, 'assignee', 'owner')
-  store.repo.upstreams = {
-    list: async (filter: { ownerId?: string } = {}) => filter.ownerId === 'owner' ? [{
-      id: 'copilot:owner', provider: 'copilot', name: 'owner', ownerId: 'owner', enabled: true, sortOrder: 0,
-      config: { githubToken: 'token' }, flagOverrides: {}, disabledPublicModelIds: [], state: null,
-      proxyFallbackList: [{ id: 'direct_fetch' }], createdAt: 'x', updatedAt: 'concurrent-catalog',
-    }] : [],
-  } as Repo['upstreams']
+  await repo.keyAssignments.assign(key.id, 'assignee', 'owner')
+  await repo.upstreams.save(ownerUpstream({ updatedAt: 'concurrent-catalog' }))
   let notifyCatalogStarted: (() => void) | undefined
   const catalogStarted = new Promise<void>((resolve) => { notifyCatalogStarted = resolve })
   let resolveCatalog: ((response: Response) => void) | undefined
@@ -724,28 +616,24 @@ test('assignee mapping PATCH does not overwrite concurrent owner fields while ca
     notifyCatalogStarted?.()
     return catalogResponse
   }) as typeof fetch
-  let saves = 0
-  let patches = 0
-  const realSave = store.repo.apiKeys.save
-  const realPatch = store.repo.apiKeys.patchModelMappings
-  store.repo.apiKeys.save = async (updated) => { saves++; await realSave(updated) }
-  store.repo.apiKeys.patchModelMappings = async (id, patch) => { patches++; return realPatch(id, patch) }
+  const saveSpy = spyOn(repo.apiKeys, 'save')
+  const patchSpy = spyOn(repo.apiKeys, 'patchModelMappings')
   try {
     const request = patchKey(buildApp({ isUser: true, userId: 'assignee' }), key.id, {
       model_mappings: [{ source: 'alias', destination: 'direct-target' }],
     })
     await catalogStarted
-    const concurrent = await store.repo.apiKeys.getById(key.id)
+    const concurrent = await repo.apiKeys.getById(key.id)
     if (!concurrent) throw new Error('expected key')
-    await store.repo.apiKeys.save({ ...concurrent, name: 'owner-update', quotaRequestsPerMonth: 99 })
-    saves = 0
+    await repo.apiKeys.save({ ...concurrent, name: 'owner-update', quotaRequestsPerMonth: 99 })
+    saveSpy.mockClear()
     if (!resolveCatalog) throw new Error('expected catalog resolver')
     resolveCatalog(new Response(JSON.stringify({ object: 'list', data: [catalogModel('direct-target')] }), { status: 200 }))
     const response = await request
     expect(response.status).toBe(200)
-    expect(saves).toBe(0)
-    expect(patches).toBe(1)
-    expect(await store.repo.apiKeys.getById(key.id)).toMatchObject({
+    expect(saveSpy).not.toHaveBeenCalled()
+    expect(patchSpy).toHaveBeenCalledTimes(1)
+    expect(await repo.apiKeys.getById(key.id)).toMatchObject({
       name: 'owner-update', quotaRequestsPerMonth: 99,
       modelMappings: [{ source: 'alias', destination: 'direct-target' }],
     })
@@ -756,13 +644,13 @@ test('assignee mapping PATCH does not overwrite concurrent owner fields while ca
 
 test('PATCH rejects a destination from a disabled upstream without saving mappings', async () => {
   const key = await createApiKey('key', 'owner')
-  const restore = installOwnerCatalog([catalogModel('direct-target')], false)
+  const restore = await installOwnerCatalog([catalogModel('direct-target')], false)
   try {
     const response = await patchKey(buildApp({ isUser: true, userId: 'owner' }), key.id, {
       model_mappings: [{ source: 'alias', destination: 'direct-target' }],
     })
     expect(response.status).toBe(400)
-    expect((await store.repo.apiKeys.getById(key.id))?.modelMappings).not.toEqual([{ source: 'alias', destination: 'direct-target' }])
+    expect((await repo.apiKeys.getById(key.id))?.modelMappings).not.toEqual([{ source: 'alias', destination: 'direct-target' }])
   } finally {
     restore()
   }
@@ -770,13 +658,13 @@ test('PATCH rejects a destination from a disabled upstream without saving mappin
 
 test('PATCH accepts a source absent from a successful catalog when destination is direct', async () => {
   const key = await createApiKey('key', 'owner')
-  const restore = installOwnerCatalog([catalogModel('direct-target')])
+  const restore = await installOwnerCatalog([catalogModel('direct-target')])
   try {
     const response = await patchKey(buildApp({ isUser: true, userId: 'owner' }), key.id, {
       model_mappings: [{ source: 'unlisted-alias', destination: 'direct-target' }],
     })
     expect(response.status).toBe(200)
-    expect((await store.repo.apiKeys.getById(key.id))?.modelMappings).toEqual([{ source: 'unlisted-alias', destination: 'direct-target' }])
+    expect((await repo.apiKeys.getById(key.id))?.modelMappings).toEqual([{ source: 'unlisted-alias', destination: 'direct-target' }])
   } finally {
     restore()
   }
@@ -785,15 +673,9 @@ test('PATCH accepts a source absent from a successful catalog when destination i
 for (const brokenSortOrder of [-1, 1]) {
   test(`PATCH accepts available destinations even when an unrelated upstream fails (order ${brokenSortOrder})`, async () => {
     const key = await createApiKey('key', 'owner')
-    const restore = installOwnerCatalog([catalogModel('gpt-6-astra'), catalogModel('gpt-5.6-terra'), catalogModel('gpt-5.6-luna')])
-    const list = store.repo.upstreams.list
-    store.repo.upstreams.list = async (filter = {}) => {
-      const upstreams = await list(filter)
-      const healthy = upstreams.at(0)
-      return healthy ? [...upstreams, {
-        ...healthy, id: 'sdf:broken', provider: 'sdf', config: {}, sortOrder: brokenSortOrder,
-      }] : upstreams
-    }
+    const restore = await installOwnerCatalog([catalogModel('gpt-6-astra'), catalogModel('gpt-5.6-terra'), catalogModel('gpt-5.6-luna')])
+    // A second real upstream, an sdf row with no credentials, that cannot list models.
+    await repo.upstreams.save(ownerUpstream({ id: 'sdf:broken', provider: 'sdf', config: {}, sortOrder: brokenSortOrder }))
     const mappings = [
       { source: 'claude-opus-5', destination: 'gpt-6-astra' },
       { source: 'claude-sonnet-5', destination: 'gpt-5.6-terra' },
@@ -803,10 +685,10 @@ for (const brokenSortOrder of [-1, 1]) {
       const app = buildApp({ isUser: true, userId: 'owner' })
       const response = await patchKey(app, key.id, { model_mappings_enabled: true, model_mappings: mappings })
       expect(response.status).toBe(200)
-      expect((await store.repo.apiKeys.getById(key.id))?.modelMappings).toEqual(mappings)
+      expect((await repo.apiKeys.getById(key.id))?.modelMappings).toEqual(mappings)
       const missing = await patchKey(app, key.id, { model_mappings: [{ source: 'anything', destination: 'unverified-target' }] })
       expect(missing.status).toBe(503)
-      expect((await store.repo.apiKeys.getById(key.id))?.modelMappings).toEqual(mappings)
+      expect((await repo.apiKeys.getById(key.id))?.modelMappings).toEqual(mappings)
     } finally {
       restore()
     }
@@ -816,14 +698,14 @@ for (const brokenSortOrder of [-1, 1]) {
 test('enabled-only PATCH retains a nonempty mapping list in response and repository', async () => {
   const key = await createApiKey('key', 'owner')
   key.modelMappings = [{ source: 'source', destination: 'destination' }]
-  await store.repo.apiKeys.save(key)
-  const restore = installOwnerCatalog([catalogModel('destination')])
+  await repo.apiKeys.save(key)
+  const restore = await installOwnerCatalog([catalogModel('destination')])
   try {
     const response = await patchKey(buildApp({ isUser: true, userId: 'owner' }), key.id, { model_mappings_enabled: true })
     const body = await response.json() as MappingKeyJson
     expect(response.status).toBe(200)
     expect(body.model_mappings).toEqual([{ source: 'source', destination: 'destination' }])
-    expect((await store.repo.apiKeys.getById(key.id))?.modelMappings).toEqual([{ source: 'source', destination: 'destination' }])
+    expect((await repo.apiKeys.getById(key.id))?.modelMappings).toEqual([{ source: 'source', destination: 'destination' }])
   } finally {
     restore()
   }
@@ -831,18 +713,16 @@ test('enabled-only PATCH retains a nonempty mapping list in response and reposit
 
 test('camel-only PATCH does not save or change stored mapping settings', async () => {
   const key = await createApiKey('key', 'owner')
-  let saves = 0
-  const realSave = store.repo.apiKeys.save
-  store.repo.apiKeys.save = async (updated) => { saves++; await realSave(updated) }
+  const saveSpy = spyOn(repo.apiKeys, 'save')
   const response = await patchKey(buildApp({ isUser: true, userId: 'owner' }), key.id, { modelMappingsEnabled: true })
   expect(response.status).toBe(200)
-  expect(saves).toBe(0)
-  expect((await store.repo.apiKeys.getById(key.id))?.modelMappingsEnabled).toBe(false)
+  expect(saveSpy).not.toHaveBeenCalled()
+  expect((await repo.apiKeys.getById(key.id))?.modelMappingsEnabled).toBe(false)
 })
 
 test('valid catalog PATCH preserves duplicate source order self mappings and trimmed response', async () => {
   const key = await createApiKey('key', 'owner')
-  const restore = installOwnerCatalog([catalogModel('self'), catalogModel('destination')])
+  const restore = await installOwnerCatalog([catalogModel('self'), catalogModel('destination')])
   const expected = [
     { source: 'self', destination: 'self' },
     { source: 'source', destination: 'destination' },
@@ -858,7 +738,7 @@ test('valid catalog PATCH preserves duplicate source order self mappings and tri
     })
     expect(response.status).toBe(200)
     expect((await response.json() as MappingKeyJson).model_mappings).toEqual(expected)
-    expect((await store.repo.apiKeys.getById(key.id))?.modelMappings).toEqual(expected)
+    expect((await repo.apiKeys.getById(key.id))?.modelMappings).toEqual(expected)
   } finally {
     restore()
   }

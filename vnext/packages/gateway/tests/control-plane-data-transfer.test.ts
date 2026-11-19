@@ -1,18 +1,17 @@
 /**
  * data-transfer control-plane tests — Week 5b.
  *
- * In-memory repo + setRepoForTest. Covers admin-gate, export redact, import
+ * Real in-memory SQLite repo (setupTestPlatform). Covers admin-gate, export redact, import
  * mode validation, parse errors, merge vs replace, and REDACTED restore via
  * unredactWithLive.
  */
-import { test, expect, beforeEach, afterEach } from 'bun:test'
+import { test, expect, beforeEach } from 'bun:test'
 import { Hono } from 'hono'
-import { initRepo } from '../src/repo/index.ts'
-import { __resetPlatformForTests } from '@vibe-core/platform'
+import { setupTestPlatform } from './_setup-platform.ts'
+import type { ApiKeyId, GitHubAccountId } from '../src/repo/branded-ids.ts'
 import type {
   ApiKey,
   GitHubAccount,
-  Repo,
   UpstreamRecord,
 } from '../src/repo/types.ts'
 import {
@@ -20,33 +19,6 @@ import {
   type DataTransferAuthCtx,
 } from '../src/control-plane/data-transfer/routes.ts'
 import { REDACTED } from '../src/control-plane/lib/import-export.ts'
-
-function inMemoryRepo() {
-  const apiKeys = new Map<string, ApiKey>()
-  const accounts = new Map<number, GitHubAccount>()
-  const upstreams = new Map<string, UpstreamRecord>()
-
-  const repo = {
-    apiKeys: {
-      list: async () => [...apiKeys.values()],
-      save: async (k: ApiKey) => { apiKeys.set(k.id, k) },
-      deleteAll: async () => { apiKeys.clear() },
-    },
-    github: {
-      listAccounts: async () => [...accounts.values()],
-      saveAccount: async (userId: number, a: GitHubAccount) => { accounts.set(userId, a) },
-      deleteAllAccounts: async () => { accounts.clear() },
-    },
-    upstreams: {
-      list: async (_opts?: { includeDisabled?: boolean }) => [...upstreams.values()],
-      save: async (u: UpstreamRecord) => { upstreams.set(u.id, u) },
-      deleteAll: async () => { upstreams.clear() },
-    },
-    syncSources: { get: async () => null },
-  } as unknown as Repo
-
-  return { repo, apiKeys, accounts, upstreams }
-}
 
 function buildApp(auth: DataTransferAuthCtx) {
   const app = new Hono()
@@ -79,16 +51,16 @@ function mkUpstream(id: string, secretToken: string): UpstreamRecord {
   }
 }
 
-let store: ReturnType<typeof inMemoryRepo>
+let repo: ReturnType<typeof setupTestPlatform>['repo']
 
 beforeEach(() => {
-  store = inMemoryRepo()
-  initRepo(store.repo)
+  ;({ repo } = setupTestPlatform())
 })
 
-afterEach(() => {
-  __resetPlatformForTests()
-})
+const account = async (id: number) =>
+  (await repo.github.listAccounts()).find((a) => a.user.id === id)
+const upstream = async (id: string) =>
+  (await repo.upstreams.list({ includeDisabled: true })).find((u) => u.id === id)
 
 test('GET /api/export non-admin → 403', async () => {
   const res = await buildApp({}).request('/api/export')
@@ -105,9 +77,9 @@ test('POST /api/import non-admin → 403', async () => {
 })
 
 test('GET /api/export raw returns live secrets', async () => {
-  store.apiKeys.set('k1', mkKey('k1', 'secret-key'))
-  store.accounts.set(1, mkAccount(1, 'gh-token'))
-  store.upstreams.set('u1', mkUpstream('u1', 'up-secret'))
+  await repo.apiKeys.save(mkKey('k1', 'secret-key'))
+  await repo.github.saveAccount(1 as GitHubAccountId, mkAccount(1, 'gh-token'))
+  await repo.upstreams.save(mkUpstream('u1', 'up-secret'))
 
   const res = await buildApp({ isAdmin: true }).request('/api/export')
   expect(res.status).toBe(200)
@@ -121,15 +93,15 @@ test('GET /api/export raw returns live secrets', async () => {
 test('GET /api/export?redact=1 hides secrets', async () => {
   // Every per-engine web-search credential is a secret too, not just the API
   // key itself — an export that leaks one is as bad as leaking the key.
-  store.apiKeys.set('k1', {
+  await repo.apiKeys.save({
     ...mkKey('k1', 'secret-key'),
     webSearchLangsearchKey: 'ls-secret',
     webSearchTavilyKey: 'tv-secret',
     webSearchMsGroundingKey: 'ms-secret',
     webSearchJinaKey: 'jn-secret',
   })
-  store.accounts.set(1, mkAccount(1, 'gh-token'))
-  store.upstreams.set('u1', mkUpstream('u1', 'up-secret'))
+  await repo.github.saveAccount(1 as GitHubAccountId, mkAccount(1, 'gh-token'))
+  await repo.upstreams.save(mkUpstream('u1', 'up-secret'))
 
   const res = await buildApp({ isAdmin: true }).request('/api/export?redact=1')
   const body = await res.json() as { apiKeys: ApiKey[]; githubAccounts: GitHubAccount[]; upstreams: UpstreamRecord[] }
@@ -161,7 +133,7 @@ test('POST /api/import malformed bundle → 400', async () => {
 })
 
 test('POST /api/import merge keeps existing + adds new', async () => {
-  store.apiKeys.set('existing', mkKey('existing', 'live-secret'))
+  await repo.apiKeys.save(mkKey('existing', 'live-secret'))
 
   const res = await buildApp({ isAdmin: true }).request('/api/import', {
     method: 'POST',
@@ -181,14 +153,14 @@ test('POST /api/import merge keeps existing + adds new', async () => {
   const body = await res.json() as { ok: boolean; imported: { apiKeys: number } }
   expect(body.ok).toBe(true)
   expect(body.imported.apiKeys).toBe(1)
-  expect(store.apiKeys.size).toBe(2)
-  expect(store.apiKeys.get('existing')!.key).toBe('live-secret')
-  expect(store.apiKeys.get('new')!.key).toBe('new-secret')
+  expect(await repo.apiKeys.list()).toHaveLength(2)
+  expect((await repo.apiKeys.getById('existing' as ApiKeyId))!.key).toBe('live-secret')
+  expect((await repo.apiKeys.getById('new' as ApiKeyId))!.key).toBe('new-secret')
 })
 
 test('POST /api/import replace deletes existing first', async () => {
-  store.apiKeys.set('old', mkKey('old', 'old-secret'))
-  store.accounts.set(99, mkAccount(99, 'old-token'))
+  await repo.apiKeys.save(mkKey('old', 'old-secret'))
+  await repo.github.saveAccount(99 as GitHubAccountId, mkAccount(99, 'old-token'))
 
   const res = await buildApp({ isAdmin: true }).request('/api/import', {
     method: 'POST',
@@ -205,16 +177,16 @@ test('POST /api/import replace deletes existing first', async () => {
     }),
   })
   expect(res.status).toBe(200)
-  expect(store.apiKeys.size).toBe(1)
-  expect(store.apiKeys.has('old')).toBe(false)
-  expect(store.apiKeys.get('fresh')!.key).toBe('fresh-secret')
-  expect(store.accounts.size).toBe(0)
+  expect(await repo.apiKeys.list()).toHaveLength(1)
+  expect(await repo.apiKeys.getById('old' as ApiKeyId)).toBeNull()
+  expect((await repo.apiKeys.getById('fresh' as ApiKeyId))!.key).toBe('fresh-secret')
+  expect(await repo.github.listAccounts()).toHaveLength(0)
 })
 
 test('POST /api/import restores REDACTED secrets from live state', async () => {
-  store.apiKeys.set('k1', mkKey('k1', 'live-secret'))
-  store.accounts.set(1, mkAccount(1, 'live-token'))
-  store.upstreams.set('u1', mkUpstream('u1', 'live-up-secret'))
+  await repo.apiKeys.save(mkKey('k1', 'live-secret'))
+  await repo.github.saveAccount(1 as GitHubAccountId, mkAccount(1, 'live-token'))
+  await repo.upstreams.save(mkUpstream('u1', 'live-up-secret'))
 
   const redactedBundle = {
     version: 2,
@@ -233,10 +205,10 @@ test('POST /api/import restores REDACTED secrets from live state', async () => {
   expect(res.status).toBe(200)
   expect(body.redactedCount).toBe(3) // apiKey + token + upstream.config.apiKey
   // Live secrets restored
-  expect(store.apiKeys.get('k1')!.key).toBe('live-secret')
-  expect(store.apiKeys.get('k1')!.name).toBe('updated-name')
-  expect(store.accounts.get(1)!.token).toBe('live-token')
-  expect(store.accounts.get(1)!.accountType).toBe('business')
-  expect(store.upstreams.get('u1')!.config.apiKey).toBe('live-up-secret')
-  expect(store.upstreams.get('u1')!.name).toBe('updated-upstream')
+  expect((await repo.apiKeys.getById('k1' as ApiKeyId))!.key).toBe('live-secret')
+  expect((await repo.apiKeys.getById('k1' as ApiKeyId))!.name).toBe('updated-name')
+  expect((await account(1))!.token).toBe('live-token')
+  expect((await account(1))!.accountType).toBe('business')
+  expect((await upstream('u1'))!.config.apiKey).toBe('live-up-secret')
+  expect((await upstream('u1'))!.name).toBe('updated-upstream')
 })

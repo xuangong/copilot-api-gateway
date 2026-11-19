@@ -4,13 +4,11 @@
  * Covers the 8 endpoints ported from old src/routes/control-plane.ts.
  * Uses real SQLite upstream storage with a lightweight GitHub fixture and a pre-middleware to inject `c.set('auth', ...)`.
  */
-import { test, expect, beforeEach, afterEach } from 'bun:test'
+import { test, expect, beforeEach, spyOn } from 'bun:test'
 import { Hono } from 'hono'
-import { Database } from 'bun:sqlite'
-import { BunSqliteRepo } from '@vibe-llm/platform-bun/src/bun-sqlite-repo.ts'
-import { initRepo } from '../src/repo/index.ts'
-import { __resetPlatformForTests, initRuntimeLocation } from '@vibe-core/platform'
-import type { Repo, UpstreamRecord, GitHubAccount } from '../src/repo/types.ts'
+import { setupTestPlatform } from './_setup-platform.ts'
+import type { GitHubAccountId, UserId } from '../src/repo/branded-ids.ts'
+import type { UpstreamRecord, GitHubAccount } from '../src/repo/types.ts'
 import {
   upstreamsRouter,
   upstreamMiscRouter,
@@ -20,40 +18,6 @@ import { listUpstreamModels } from '../src/data-plane/providers/registry.ts'
 import { initCache } from '../src/data-plane/cache/index.ts'
 import { MemoryCache } from '@vibe-core/cache'
 import type { SdfProviderConfig } from '@vibe-llm/provider-sdf'
-
-function inMemoryRepo() {
-  const db = new Database(':memory:')
-  const sqlRepo = new BunSqliteRepo(db)
-  const upstreams = sqlRepo.upstreams
-  const deletedGithub: Array<{ userId: number; ownerId?: string }> = []
-  const ghAccounts = new Map<string, GitHubAccount>()
-
-  const repo = {
-    ...sqlRepo,
-    upstreams,
-    github: {
-      listAccounts: async () => [...ghAccounts.values()],
-      listAccountsByOwner: async () => [],
-      getAccount: async () => null,
-      saveAccount: async (userId: number, a: GitHubAccount) => { ghAccounts.set(String(userId), a) },
-      deleteAccount: async (userId: number, ownerId?: string) => {
-        deletedGithub.push({ userId, ownerId })
-        ghAccounts.delete(String(userId))
-      },
-      deleteAllAccounts: async () => { ghAccounts.clear() },
-      getActiveId: async () => null,
-      setActiveId: async () => { },
-      clearActiveId: async () => { },
-      getActiveIdForUser: async () => null,
-      setActiveIdForUser: async () => { },
-      clearActiveIdForUser: async () => { },
-    },
-  } as unknown as Repo
-
-  return { repo, db, deletedGithub }
-}
-
-afterEach(() => { store.db.close() })
 
 function buildApp(auth: AuthCtx) {
   const app = new Hono()
@@ -83,20 +47,27 @@ function copilotUpstream(over: Partial<UpstreamRecord> = {}): UpstreamRecord {
   }
 }
 
-let store: ReturnType<typeof inMemoryRepo>
+let repo: ReturnType<typeof setupTestPlatform>['repo']
+let db: ReturnType<typeof setupTestPlatform>['db']
 
 beforeEach(() => {
-  // Both initRepo and initRuntimeLocation write process-global state that Bun
-  // carries across test files in one process; reset first so this file neither
-  // inherits nor leaks a platform singleton.
-  __resetPlatformForTests()
-  store = inMemoryRepo()
-  initRepo(store.repo)
-  // The test / models routes resolve an egress fetcher, which reads the runtime
-  // location. Production always has one from bootstrap; tests have no bootstrap,
-  // so set it here rather than leaving every route one throw away from a 400.
-  initRuntimeLocation('bun')
+  // setupTestPlatform resets the platform singletons, then installs a fresh
+  // in-memory SQLite repo and the runtime location the test / models routes need.
+  ;({ repo, db } = setupTestPlatform())
 })
+
+/** The GitHub account row behind a copilot upstream (user 42), stored for real. */
+function ghAccount(ownerId: string): GitHubAccount {
+  return {
+    token: 'gh_secret',
+    accountType: 'individual',
+    user: { id: 42, login: 'acme', name: null, avatar_url: '' },
+    ownerId,
+    enabled: true,
+    sortOrder: 0,
+  } as GitHubAccount
+}
+const storedGhAccount = (ownerId: string) => repo.github.getAccount(42 as GitHubAccountId, ownerId as UserId)
 
 test('GET /api/upstream-flags as admin returns catalog', async () => {
   const res = await buildApp({ isAdmin: true }).request('/api/upstream-flags')
@@ -218,7 +189,7 @@ test('GET /api/upstreams non-admin → 403', async () => {
 })
 
 test('GET /api/upstreams returns redacted secrets', async () => {
-  await store.repo.upstreams.save(copilotUpstream())
+  await repo.upstreams.save(copilotUpstream())
   const res = await buildApp({ isAdmin: true }).request('/api/upstreams')
   expect(res.status).toBe(200)
   const body = await res.json() as any
@@ -227,8 +198,8 @@ test('GET /api/upstreams returns redacted secrets', async () => {
 })
 
 test('GET /api/upstreams?includeDisabled=1 includes disabled', async () => {
-  await store.repo.upstreams.save(copilotUpstream({ id: 'a', enabled: true }))
-  await store.repo.upstreams.save(copilotUpstream({ id: 'b', enabled: false }))
+  await repo.upstreams.save(copilotUpstream({ id: 'a', enabled: true }))
+  await repo.upstreams.save(copilotUpstream({ id: 'b', enabled: false }))
   const r1 = await buildApp({ isAdmin: true }).request('/api/upstreams')
   expect(((await r1.json()) as any).upstreams).toHaveLength(1)
   const r2 = await buildApp({ isAdmin: true }).request('/api/upstreams?includeDisabled=1')
@@ -272,7 +243,7 @@ test('POST /api/upstreams custom create → 201', async () => {
 
 test('PATCH /api/upstreams/:id provider cannot change → 400', async () => {
   const u = copilotUpstream()
-  await store.repo.upstreams.save(u)
+  await repo.upstreams.save(u)
   const res = await buildApp({ isAdmin: true }).request(`/api/upstreams/${u.id}`, {
     method: 'PATCH',
     body: JSON.stringify({ provider: 'azure' }),
@@ -283,7 +254,7 @@ test('PATCH /api/upstreams/:id provider cannot change → 400', async () => {
 
 test('PATCH /api/upstreams/:id copilot config locked → 400', async () => {
   const u = copilotUpstream()
-  await store.repo.upstreams.save(u)
+  await repo.upstreams.save(u)
   const res = await buildApp({ isAdmin: true }).request(`/api/upstreams/${u.id}`, {
     method: 'PATCH',
     body: JSON.stringify({ config: { githubToken: 'new' } }),
@@ -294,7 +265,7 @@ test('PATCH /api/upstreams/:id copilot config locked → 400', async () => {
 
 test('PATCH /api/upstreams/:id rename + flagOverrides', async () => {
   const u = copilotUpstream()
-  await store.repo.upstreams.save(u)
+  await repo.upstreams.save(u)
   const res = await buildApp({ isAdmin: true }).request(`/api/upstreams/${u.id}`, {
     method: 'PATCH',
     body: JSON.stringify({ name: 'renamed', enabled: false }),
@@ -320,14 +291,14 @@ test('PATCH custom with *** sentinel preserves existing secret', async () => {
     createdAt: now,
     updatedAt: now,
   }
-  await store.repo.upstreams.save(u)
+  await repo.upstreams.save(u)
   const res = await buildApp({ isAdmin: true }).request(`/api/upstreams/${u.id}`, {
     method: 'PATCH',
     body: JSON.stringify({ config: { apiKey: '***', baseUrl: 'https://e2.com' } }),
     headers: { 'content-type': 'application/json' },
   })
   expect(res.status).toBe(200)
-  const after = await store.repo.upstreams.getById(u.id)
+  const after = await repo.upstreams.getById(u.id)
   expect((after?.config as any).apiKey).toBe('real-secret')
   expect((after?.config as any).baseUrl).toBe('https://e2.com')
 })
@@ -339,11 +310,13 @@ test('DELETE /api/upstreams/:id missing → 404', async () => {
 
 test('DELETE copilot upstream cascades to github_accounts', async () => {
   const u = copilotUpstream()
-  await store.repo.upstreams.save(u)
+  await repo.upstreams.save(u)
+  await repo.github.saveAccount(42 as GitHubAccountId, ghAccount(''))
+  expect(await storedGhAccount('')).not.toBeNull()
   const res = await buildApp({ isAdmin: true }).request(`/api/upstreams/${u.id}`, { method: 'DELETE' })
   expect(res.status).toBe(200)
-  expect(store.deletedGithub).toEqual([{ userId: 42, ownerId: '' }])
-  expect(await store.repo.upstreams.getById(u.id)).toBeNull()
+  expect(await storedGhAccount('')).toBeNull()
+  expect(await repo.upstreams.getById(u.id)).toBeNull()
 })
 
 test('POST /api/upstreams/:id/test missing → 404', async () => {
@@ -371,7 +344,7 @@ test('POST /api/upstreams/:id/test custom → 200 via probe', async () => {
       proxyFallbackList: [{ id: "direct_fetch" }],
       createdAt: now, updatedAt: now,
     }
-    await store.repo.upstreams.save(u)
+    await repo.upstreams.save(u)
     const res = await buildApp({ isAdmin: true }).request(`/api/upstreams/${u.id}/test`, { method: 'POST' })
     expect(res.status).toBe(200)
     const body = await res.json() as { ok?: boolean }
@@ -420,7 +393,7 @@ test('POST /api/upstreams/:id/test refreshes the models cache that GET /api/mode
       proxyFallbackList: [{ id: 'direct_fetch' }],
       createdAt: now, updatedAt: now,
     }
-    await store.repo.upstreams.save(u)
+    await repo.upstreams.save(u)
 
     // allOwners mirrors the dashboard's own call (GET /api/models?dedupe=0&allOwners=1);
     // the default owner-scoped walk filters on `ownerId === ''`, which this
@@ -465,7 +438,7 @@ test('POST /api/upstreams/:id/test azure → 200 via probe', async () => {
       disabledPublicModelIds: [],
       createdAt: now, updatedAt: now,
     }
-    await store.repo.upstreams.save(u)
+    await repo.upstreams.save(u)
     const res = await buildApp({ isAdmin: true }).request(`/api/upstreams/${u.id}/test`, { method: 'POST' })
     expect(res.status).toBe(200)
     const body = await res.json() as { ok?: boolean }
@@ -488,7 +461,7 @@ test('editor model GET reads the shared cache; explicit refresh failure retains 
     flagOverrides: {}, disabledPublicModelIds: ['hidden'], state: null,
     proxyFallbackList: [{ id: 'direct_fetch' }], createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z',
   }
-  await store.repo.upstreams.save(upstream)
+  await repo.upstreams.save(upstream)
   const original = globalThis.fetch
   let calls = 0
   globalThis.fetch = (async () => { calls++; return Response.json({ data: [{ id: 'known', name: 'Known' }] }) }) as typeof fetch
@@ -501,10 +474,10 @@ test('editor model GET reads the shared cache; explicit refresh failure retains 
     expect((await refreshed.json() as { models: Array<{ id: string }> }).models.map((m) => m.id)).toEqual(['known'])
     expect(calls).toBe(1)
     const changed = { ...upstream, config: { ...upstream.config as Record<string, unknown>, baseUrl: 'https://edited.example/v1' } }
-    await store.repo.upstreams.save(changed)
+    await repo.upstreams.save(changed)
     const edited = await app.request(`/api/upstreams/${upstream.id}/models`)
     expect((await edited.json() as { models: Array<{ id: string }> }).models).toEqual([])
-    await store.repo.upstreams.save(upstream)
+    await repo.upstreams.save(upstream)
     // Reverting the configuration still advances discovery generation. An old
     // generation must not become eligible again just because its bytes match.
     const reverted = await app.request(`/api/upstreams/${upstream.id}/models`)
@@ -523,7 +496,7 @@ test('editor model GET reads the shared cache; explicit refresh failure retains 
 
 test('explicit editor refresh still denies foreign and missing upstreams equally', async () => {
   const victim = copilotUpstream({ ownerId: 'u1' })
-  await store.repo.upstreams.save(victim)
+  await repo.upstreams.save(victim)
   const app = buildApp({ isUser: true, userId: 'u2' })
   expect((await app.request(`/api/upstreams/${victim.id}/models?refresh=1`)).status).toBe(404)
   expect((await app.request('/api/upstreams/missing/models?refresh=1')).status).toBe(404)
@@ -547,7 +520,8 @@ const FOREIGN_ROUTES: Array<{ name: string; path: (id: string) => string; init?:
 for (const route of FOREIGN_ROUTES) {
   test(`${route.name} refuses another user's upstream, indistinguishably from a missing one`, async () => {
     const victim = copilotUpstream({ ownerId: 'u1' })
-    await store.repo.upstreams.save(victim)
+    await repo.upstreams.save(victim)
+    await repo.github.saveAccount(42 as GitHubAccountId, ghAccount('u1'))
     const attacker = buildApp({ isUser: true, userId: 'u2' })
 
     const foreign = await attacker.request(route.path(victim.id), route.init)
@@ -556,15 +530,15 @@ for (const route of FOREIGN_ROUTES) {
     expect(foreign.status).toBe(404)
     expect(missing.status).toBe(foreign.status)
     // Neither the record nor its cascade target may have been touched.
-    expect(await store.repo.upstreams.getById(victim.id)).not.toBeNull()
-    expect(store.deletedGithub).toHaveLength(0)
-    expect((await store.repo.upstreams.getById(victim.id))?.name).toBe(victim.name)
+    expect(await repo.upstreams.getById(victim.id)).not.toBeNull()
+    expect(await storedGhAccount('u1')).not.toBeNull()
+    expect((await repo.upstreams.getById(victim.id))?.name).toBe(victim.name)
   })
 }
 
 test('an anonymous caller (no admin, no user) is refused an existing upstream', async () => {
   const victim = copilotUpstream({ ownerId: 'u1' })
-  await store.repo.upstreams.save(victim)
+  await repo.upstreams.save(victim)
   const res = await buildApp({}).request(`/api/upstreams/${victim.id}/models`)
   expect(res.status).toBe(404)
 })
@@ -592,7 +566,7 @@ test('POST /api/upstreams accepts a full sdf tuning block', async () => {
   } satisfies SdfProviderConfig
   const res = await createSdf(config)
   expect(res.status).toBe(201)
-  const saved = (await store.repo.upstreams.list({ includeDisabled: true }))[0]
+  const saved = (await repo.upstreams.list({ includeDisabled: true }))[0]
   const cfg = saved?.config
   expect(cfg?.taxonomy).toEqual(config.taxonomy)
   expect(cfg?.cos).toEqual(config.cos)
@@ -602,7 +576,7 @@ test('POST /api/upstreams accepts a full sdf tuning block', async () => {
 test('POST /api/upstreams omits empty sdf sub-objects rather than persisting {}', async () => {
   const res = await createSdf({ ...BASE_SDF, taxonomy: {}, cos: {}, passport: {} })
   expect(res.status).toBe(201)
-  const cfg = (await store.repo.upstreams.list({ includeDisabled: true }))[0]?.config
+  const cfg = (await repo.upstreams.list({ includeDisabled: true }))[0]?.config
   expect(cfg).toBeDefined()
   expect(cfg?.taxonomy).toBeUndefined()
   expect(cfg?.cos).toBeUndefined()
@@ -618,7 +592,7 @@ for (const bad of [
   test(`POST /api/upstreams rejects an invalid sdf ${bad.label}`, async () => {
     const res = await createSdf({ ...BASE_SDF, ...bad.config })
     expect(res.status).toBe(400)
-    expect(await store.repo.upstreams.list({ includeDisabled: true })).toHaveLength(0)
+    expect(await repo.upstreams.list({ includeDisabled: true })).toHaveLength(0)
   })
 }
 
@@ -723,7 +697,7 @@ test('POST /api/upstreams persists proxyFallbackList, deduping ids and uppercasi
     { id: 'p1', colos: ['HKG'] },
     { id: 'direct_connect' },
   ])
-  const stored = await store.repo.upstreams.getById(body.upstream.id)
+  const stored = await repo.upstreams.getById(body.upstream.id)
   expect(stored?.proxyFallbackList).toEqual([{ id: 'p1', colos: ['HKG'] }, { id: 'direct_connect' }])
 })
 
@@ -813,15 +787,11 @@ test('PATCH with an empty proxyFallbackList clears the chain', async () => {
  * succeeds stands in for that direct egress: if the swallow came back, the
  * assertions flip to `ok: true` / 200.
  */
-function repoWithBrokenProxyStore(): Repo {
-  return {
-    ...store.repo,
-    proxies: {
-      ...store.repo.proxies,
-      list: async () => { throw new Error('proxy store unavailable') },
-      getById: async () => { throw new Error('proxy store unavailable') },
-    },
-  }
+// Only the proxy reads fail; the rest of the real repo (upstreams included) is untouched.
+// beforeEach installs a fresh repo each test, so the spies need no restore.
+function breakProxyStore(): void {
+  spyOn(repo.proxies, 'list').mockRejectedValue(new Error('proxy store unavailable'))
+  spyOn(repo.proxies, 'getById').mockRejectedValue(new Error('proxy store unavailable'))
 }
 
 async function withStubbedDirectFetch<T>(body: unknown, fn: () => Promise<T>): Promise<T> {
@@ -858,8 +828,8 @@ function chainedCustomUpstream(): UpstreamRecord {
 
 test('POST /:id/test reports a chain it cannot resolve instead of degrading to direct', async () => {
   const upstream = chainedCustomUpstream()
-  await store.repo.upstreams.save(upstream)
-  initRepo(repoWithBrokenProxyStore())
+  await repo.upstreams.save(upstream)
+  breakProxyStore()
 
   const res = await withStubbedDirectFetch(
     { object: 'list', data: [{ id: 'm1' }] },
@@ -875,8 +845,8 @@ test('POST /:id/test reports a chain it cannot resolve instead of degrading to d
 
 test('GET /:id/models reports a chain it cannot resolve instead of degrading to direct', async () => {
   const upstream = chainedCustomUpstream()
-  await store.repo.upstreams.save(upstream)
-  store.db.exec("DROP TABLE proxies")
+  await repo.upstreams.save(upstream)
+  db.exec("DROP TABLE proxies")
 
   const res = await withStubbedDirectFetch(
     { object: 'list', data: [{ id: 'm1' }] },
@@ -900,10 +870,7 @@ test('GET /:id/models reports a chain it cannot resolve instead of degrading to 
  * entry would carry its password.
  */
 test('the admin routes dial through the upstream chain and name a dangling proxy by id', async () => {
-  const { Database } = await import('bun:sqlite')
-  const { BunSqliteRepo } = await import('@vibe-llm/platform-bun/src/bun-sqlite-repo.ts')
-  const sqlRepo = new BunSqliteRepo(new Database(':memory:'))
-  initRepo(sqlRepo)
+  const sqlRepo = repo
 
   const now = '2026-01-01T00:00:00.000Z'
   const accountUuid = '00000000-0000-4000-8000-000000000001'
@@ -960,14 +927,14 @@ test('owned disabled upstream editor can refresh while data-plane discovery excl
   globalThis.fetch = (async () => { calls++; return Response.json({ data: [{ id: 'known' }] }) }) as typeof fetch
   try {
     const row = { ...chainedCustomUpstream(), ownerId: 'editor-owner', enabled: false, proxyFallbackList: [{ id: 'direct_fetch' }] }
-    await store.repo.upstreams.save(row)
+    await repo.upstreams.save(row)
     const editor = buildApp({ userId: 'editor-owner', isUser: true })
     expect((await editor.request(`/api/upstreams/${row.id}/models?refresh=1`)).status).toBe(200)
     expect(calls).toBe(1)
     expect((await listUpstreamModels({ ownerId: 'editor-owner' })).data).toEqual([])
-    const stored = await store.repo.upstreams.getById(row.id)
+    const stored = await repo.upstreams.getById(row.id)
     if (!stored) throw new Error('missing row')
-    await store.repo.upstreams.patchMetadata(stored, r => ({ ...r, disabledPublicModelIds: ['known'] }))
+    await repo.upstreams.patchMetadata(stored, r => ({ ...r, disabledPublicModelIds: ['known'] }))
     const read = await editor.request(`/api/upstreams/${row.id}/models`)
     expect(await read.json()).toMatchObject({ cached: true, disabledPublicModelIds: ['known'], models: [{ id: 'known' }] })
     expect(calls).toBe(1)
@@ -982,15 +949,15 @@ test('editor refresh loses authorization when ownership changes during discovery
   globalThis.fetch = (async () => { started(); await held; return Response.json({ data: [{ id: 'private' }] }) }) as typeof fetch
   try {
     const row = { ...chainedCustomUpstream(), ownerId: 'old-owner', proxyFallbackList: [{ id: 'direct_fetch' }] }
-    await store.repo.upstreams.save(row)
+    await repo.upstreams.save(row)
     const pending = buildApp({ userId: 'old-owner', isUser: true }).request(`/api/upstreams/${row.id}/models?refresh=1`)
     await ready
-    const stored = await store.repo.upstreams.getById(row.id)
+    const stored = await repo.upstreams.getById(row.id)
     if (!stored) throw new Error('missing row')
-    await store.repo.upstreams.patchMetadata(stored, r => ({ ...r, ownerId: 'new-owner' }))
+    await repo.upstreams.patchMetadata(stored, r => ({ ...r, ownerId: 'new-owner' }))
     release()
     expect((await pending).status).toBe(404)
-    expect((await store.repo.catalogs.read(row.id, 5))?.snapshot).toBeNull()
+    expect((await repo.catalogs.read(row.id, 5))?.snapshot).toBeNull()
   } finally { release(); globalThis.fetch = original }
 })
 

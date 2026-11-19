@@ -1,9 +1,9 @@
 // Control-plane dump routes — list/detail/SSE with in-memory DumpStore + DumpBroker fakes.
 import { test, expect, beforeEach } from 'bun:test'
 import { Hono } from 'hono'
-import { initRepo } from '../src/repo/index.ts'
+import { setupTestPlatform } from './_setup-platform.ts'
 import { initDumpStore, initDumpBroker, resetDumpRegistryForTests } from '../src/shared/dump/registry.ts'
-import type { ApiKey, Repo } from '../src/repo/types.ts'
+import type { ApiKey } from '../src/repo/types.ts'
 import type {
   DumpStore,
   DumpListOptions,
@@ -17,23 +17,6 @@ import type {
 } from '../src/shared/dump/types.ts'
 import type { DumpBroker } from '../src/shared/dump/broker.ts'
 import { dumpRoutes } from '../src/control-plane/dump/routes.ts'
-
-// --- minimal in-memory Repo covering apiKeys.getById ---
-function inMemoryRepo() {
-  const keys = new Map<string, ApiKey>()
-  const repo = {
-    apiKeys: {
-      list: async () => [...keys.values()],
-      listByOwner: async (owner: string) => [...keys.values()].filter((k) => k.ownerId === owner),
-      findByRawKey: async () => null,
-      getById: async (id: string) => keys.get(id) ?? null,
-      save: async (k: ApiKey) => { keys.set(k.id, k) },
-      delete: async (id: string) => keys.delete(id),
-      deleteAll: async () => { keys.clear() },
-    },
-  } as unknown as Repo
-  return { repo, keys }
-}
 
 // --- minimal in-memory DumpStore ---
 class MemoryDumpStore implements DumpStore {
@@ -110,13 +93,12 @@ function buildApp(auth: { userId?: string; isAdmin?: boolean }) {
   return app
 }
 
-let repoCtx: ReturnType<typeof inMemoryRepo>
+let repo: ReturnType<typeof setupTestPlatform>['repo']
 let store: MemoryDumpStore
 let broker: MemoryDumpBroker
 
 beforeEach(() => {
-  repoCtx = inMemoryRepo()
-  initRepo(repoCtx.repo)
+  ;({ repo } = setupTestPlatform())
   store = new MemoryDumpStore()
   broker = new MemoryDumpBroker()
   resetDumpRegistryForTests()
@@ -125,7 +107,7 @@ beforeEach(() => {
 })
 
 const saveKey = async (id: string, ownerId: string, retention: number | null) => {
-  await repoCtx.repo.apiKeys.save({
+  await repo.apiKeys.save({
     id, name: `k-${id}`, key: `raw-${id}`, createdAt: new Date().toISOString(),
     ownerId, modelMappingsEnabled: false, modelMappings: [], dumpRetentionSeconds: retention,
   } as unknown as ApiKey)

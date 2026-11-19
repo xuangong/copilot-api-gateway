@@ -1,7 +1,7 @@
 import { test, expect, beforeEach } from 'bun:test'
-import { getRepo, initRepo } from '../src/repo/index.ts'
-import { __resetPlatformForTests } from '@vibe-core/platform'
-import type { ApiKey, Repo } from '../src/repo/types.ts'
+import { getRepo } from '../src/repo/index.ts'
+import { setupTestPlatform } from './_setup-platform.ts'
+import type { ApiKey } from '../src/repo/types.ts'
 import { DEFAULT_API_KEY_MODEL_MAPPINGS } from '../src/shared/api-key-model-mappings.ts'
 import {
   createApiKey,
@@ -15,38 +15,11 @@ import {
   touchApiKeyLastUsed,
 } from '../src/control-plane/lib/api-keys.ts'
 
-function inMemoryApiKeyRepo() {
-  const store = new Map<string, ApiKey>()
-  return {
-    store,
-    repo: {
-      list: async () => [...store.values()],
-      listByOwner: async (owner: string) => [...store.values()].filter((k) => k.ownerId === owner),
-      findByRawKey: async (raw: string) => [...store.values()].find((k) => k.key === raw) ?? null,
-      getById: async (id: string) => store.get(id) ?? null,
-      save: async (k: ApiKey) => { store.set(k.id, k) },
-      patch: async (id: string, patch: import('../src/repo/types.ts').ApiKeyPatch) => {
-        const current = store.get(id)
-        if (!current) return false
-        store.set(id, { ...current, ...patch })
-        return true
-      },
-      touchLastUsed: async (id: string) => {
-        const current = store.get(id)
-        if (current) store.set(id, { ...current, lastUsedAt: new Date().toISOString() })
-      },
-      delete: async (id: string) => store.delete(id),
-      deleteAll: async () => { store.clear() },
-    },
-  }
-}
-
-let store: Map<string, ApiKey>
+let repo: ReturnType<typeof setupTestPlatform>['repo']
+let db: ReturnType<typeof setupTestPlatform>['db']
 
 beforeEach(() => {
-  const { store: s, repo: apiKeys } = inMemoryApiKeyRepo()
-  store = s
-  initRepo({ apiKeys } as unknown as Repo)
+  ;({ repo, db } = setupTestPlatform())
 })
 
 test('createApiKey sets defaults and persists', async () => {
@@ -57,7 +30,8 @@ test('createApiKey sets defaults and persists', async () => {
   expect(k.modelMappingsEnabled).toBe(false)
   expect(k.modelMappings).toEqual(DEFAULT_API_KEY_MODEL_MAPPINGS)
   expect(k.key).toMatch(/^[0-9a-f]{64}$/)
-  expect(store.get(k.id)).toEqual(k)
+  // The real repo adds column defaults (sharedSession*, *Invalid flags); every written field must round-trip.
+  expect(await repo.apiKeys.getById(k.id)).toMatchObject(k)
 })
 
 test('createApiKey gives each key independent default mapping objects', async () => {
@@ -156,19 +130,20 @@ test('validateApiKey excludes all non-routing API key fields', async () => {
 
 test('validateApiKey fail-closes invalid stored mappings and clones its routing policy', async () => {
   const a = await createApiKey('a')
-  const stored = store.get(a.id)
-  if (!stored) throw new Error('test key missing')
-  stored.modelMappingsEnabled = true
-  stored.modelMappings = [{ source: 'source', destination: 'destination' }]
-  stored.modelMappingsInvalid = true
+  // Corrupt the stored JSON directly, as a bad migration or manual edit would.
+  db.run("UPDATE api_keys SET model_mappings_enabled = 1, model_mappings = ? WHERE id = ?", ['{"not":"an array"}', a.id])
 
   const v = await validateApiKey(a.key)
   expect(v?.routingPolicy).toEqual({ modelMappingsEnabled: false, modelMappings: [], upstreamIds: null })
 
-  stored.modelMappingsInvalid = false
+  const mappings = [{ source: 'source', destination: 'destination' }]
+  await repo.apiKeys.patch(a.id, { modelMappingsEnabled: true, modelMappings: mappings })
   const valid = await validateApiKey(a.key)
-  expect(valid?.routingPolicy.modelMappings).not.toBe(stored.modelMappings)
-  expect(valid?.routingPolicy.modelMappings[0]).not.toBe(stored.modelMappings[0])
+  expect(valid?.routingPolicy).toEqual({ modelMappingsEnabled: true, modelMappings: mappings, upstreamIds: null })
+  expect(valid?.routingPolicy.modelMappings).not.toBe(mappings)
+  const again = await validateApiKey(a.key)
+  expect(valid?.routingPolicy.modelMappings).not.toBe(again?.routingPolicy.modelMappings)
+  expect(valid?.routingPolicy.modelMappings[0]).not.toBe(again?.routingPolicy.modelMappings[0])
 })
 
 test('touchApiKeyLastUsed stamps lastUsedAt, no-op when missing', async () => {
