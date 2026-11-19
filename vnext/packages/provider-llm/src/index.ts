@@ -8,6 +8,7 @@ export * from './fake'
 export * from './images'
 export * from './image-helpers'
 export * from './upstream-config'
+export * from './public-config'
 
 export * from "./empty-namespace-descriptions"
 

@@ -5,11 +5,14 @@
  * credential in ClaudeCodeUpstreamState; the provider mints access tokens
  * on demand.
  */
-import type { LlmProviderPlugin } from '@vibe-llm/provider-llm'
+import { pickScalars, type LlmProviderPlugin } from '@vibe-llm/provider-llm'
 import { ClaudeCodeProvider } from './provider'
 
 export const claudeCodeProviderPlugin: LlmProviderPlugin = {
   kind: 'claude-code',
+  publicConfig: source => Array.isArray(source.accounts)
+    ? { accounts: source.accounts.map(account => pickScalars(account, ['email', 'accountUuid', 'organizationUuid', 'subscriptionType', 'rateLimitTier'])) }
+    : {},
   async createFromUpstream(upstream, ctx) {
     const executionFactory = ctx.executionFetcherForUpstream
     return new ClaudeCodeProvider(

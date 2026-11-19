@@ -8,7 +8,7 @@
  * rename.
  */
 import type { AccountType, UpstreamKind, UpstreamRecord } from '@vibe-llm/protocols/common'
-import type { Fetcher, UpstreamPlugin } from '@vibe-core/upstream'
+import type { Fetcher, ProbeResult, UpstreamPlugin } from '@vibe-core/upstream'
 import type { AffinityExecutionTarget } from './opaque-affinity'
 import type { LlmModelProvider, ProviderRequest } from './types'
 
@@ -82,4 +82,20 @@ export interface LlmProviderPlugin
   readonly syncable?: true
   /** What may leave the central gateway. Absent means config and state unchanged. */
   syncView?(record: UpstreamRecord<unknown>): SyncView
+  /**
+   * The dashboard-safe projection of this provider's stored config: an
+   * allowlist of fields with credentials masked (see public-config.ts).
+   * Owned by the provider because only it knows which of its fields are
+   * secret. Absent means nothing is exposed.
+   */
+  publicConfig?(config: Record<string, unknown>): Record<string, unknown>
+  /**
+   * Validate and normalize a config submitted through the generic upstream
+   * create/edit routes; throws a message naming the offending field. A
+   * provider without it is created by its own flow (device login, OAuth
+   * import, Loki enrolment) and is refused by the generic route.
+   */
+  normalizeConfig?(config: Record<string, unknown>): Record<string, unknown>
+  /** Validate a draft config and check it reaches the upstream, without storing it. */
+  probeConfig?(config: Record<string, unknown>): Promise<ProbeResult>
 }

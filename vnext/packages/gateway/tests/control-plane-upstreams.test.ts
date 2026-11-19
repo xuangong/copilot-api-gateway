@@ -993,3 +993,31 @@ test('editor refresh loses authorization when ownership changes during discovery
     expect((await store.repo.catalogs.read(row.id, 5))?.snapshot).toBeNull()
   } finally { release(); globalThis.fetch = original }
 })
+
+// Characterization for moving config validation and probing into the
+// provider plugins: the gateway answers these through provider-owned hooks.
+test('POST /api/upstreams sdf with an unknown experience → 400 naming the legal set', async () => {
+  const res = await buildApp({ isAdmin: true }).request('/api/upstreams', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ provider: 'sdf', name: 's', config: { name: 's', substrateToken: 'tok', taxonomy: { experience: 'Nope' } } }),
+  })
+  expect(res.status).toBe(400)
+  expect(JSON.stringify(await res.json())).toContain('BizChat')
+})
+
+test('POST /api/upstream-probe sdf invalid config → 200 { ok:false }', async () => {
+  const res = await buildApp({ isAdmin: true }).request('/api/upstream-probe', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ kind: 'sdf', config: { name: 's' } }),
+  })
+  expect(res.status).toBe(200)
+  expect(await res.json()).toMatchObject({ ok: false, error: 'sdf config.substrateToken required' })
+})
+
+test('POST /api/upstream-probe unknown kind → 400', async () => {
+  const res = await buildApp({ isAdmin: true }).request('/api/upstream-probe', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ kind: 'nope', config: {} }),
+  })
+  expect(res.status).toBe(400)
+})

@@ -18,12 +18,24 @@
  *
  * Returns null when neither path can produce a provider.
  */
-import type { LlmProviderPlugin } from '@vibe-llm/provider-llm'
+import { maskSecret, pickScalars, type LlmProviderPlugin } from '@vibe-llm/provider-llm'
 import type { AccountType } from '@vibe-llm/protocols/common'
 import { CopilotProvider } from './provider'
 
 export const copilotProviderPlugin: LlmProviderPlugin = {
   kind: 'copilot',
+  // Admin-entered rows; the dashboard normally creates Copilot upstreams by device login.
+  normalizeConfig: config => {
+    if (typeof config.githubToken !== 'string' || !config.githubToken) throw new Error('copilot config.githubToken required')
+    if (typeof config.accountType !== 'string' || !config.accountType) throw new Error('copilot config.accountType required')
+    return config
+  },
+  publicConfig: source => {
+    const out = pickScalars(source, ['accountType', 'githubHost', 'source'])
+    maskSecret(out, source, 'githubToken')
+    if (source.user) out.user = pickScalars(source.user, ['id', 'login', 'name', 'avatar_url'])
+    return out
+  },
   // The GitHub token in `config` is exactly what a synced device needs. The provider never rewrites it: it
   // exchanges it for a session token cached in memory (see ctx.getCachedCopilotToken).
   syncable: true,

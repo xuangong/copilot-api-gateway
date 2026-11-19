@@ -7,3 +7,4 @@ export {
 } from './provider'
 export type { SdfProviderConfig } from './provider'
 export { sdfProviderPlugin } from './plugin'
+export { normalizeSdfConfig } from './config'

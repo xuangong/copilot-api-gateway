@@ -39,17 +39,12 @@ import {
   getFlagCatalog,
   defaultsForUpstream,
 } from '../../data-plane/flags/index.ts'
-import { createProviderFromUpstream, readCachedModels, refreshModelsCache } from '../../data-plane/providers/registry.ts'
+import { createProviderFromUpstream, providerPlugin, readCachedModels, refreshModelsCache } from '../../data-plane/providers/registry.ts'
 import { resolveControlPlaneFetcher } from './proxy-resolution.ts'
 import { getRuntimeLocation } from '@vibe-core/platform'
 import { normalizeProxyFallbackList } from '@vibe-core/proxy-repo'
 import type { Fetcher } from '@vibe-core/upstream'
 import { clearRawModelsCache } from '@vibe-llm/provider-copilot'
-import { CustomProvider, normalizeCustomConfig } from '@vibe-llm/provider-custom'
-import { AzureProvider, normalizeAzureConfig } from '@vibe-llm/provider-azure'
-import type { AzureProviderConfig as PkgAzureConfig } from '@vibe-llm/provider-azure'
-import { SdfProvider } from '@vibe-llm/provider-sdf'
-import type { SdfProviderConfig as PkgSdfConfig } from '@vibe-llm/provider-sdf'
 
 import { serializeUpstream } from './public-dto.ts'
 import { SYNCED_LOCKED_FIELDS, isSynced, syncOriginFor, syncedReadOnlyResponse } from '../sync/read-only.ts'
@@ -95,13 +90,6 @@ const upstreamBody = z.object({
 })
 
 
-interface SdfProviderConfig {
-  name: string
-  substrateToken: string
-  taxonomy?: PkgSdfConfig['taxonomy']
-  cos?: PkgSdfConfig['cos']
-  passport?: PkgSdfConfig['passport']
-}
 
 function isAdmin(c: { get: (k: 'auth') => AuthCtx | undefined }): boolean {
   return !!c.get('auth')?.isAdmin
@@ -168,104 +156,20 @@ function normalizeFlagOverrides(value: unknown): Record<string, boolean> {
   return out
 }
 
+/** Kinds whose plugin validates a submitted config can be created through this route. */
 function normalizeProvider(provider: unknown): UpstreamKind {
-  if (provider === 'copilot' || provider === 'custom' || provider === 'azure' || provider === 'sdf') return provider
+  if (typeof provider === 'string' && providerPlugin(provider)?.normalizeConfig) return provider as UpstreamKind
   throw new Error('Unknown provider')
 }
 
-
-function normalizeCopilotConfig(config: Record<string, unknown>): Record<string, unknown> {
-  if (typeof config.githubToken !== 'string' || !config.githubToken) {
-    throw new Error('copilot config.githubToken required')
-  }
-  if (typeof config.accountType !== 'string' || !config.accountType) {
-    throw new Error('copilot config.accountType required')
-  }
-  return config
-}
-
-/**
- * Upstream rejects an unknown value with a 400 that names the legal set, so
- * mirror those sets here — a typo in the dashboard should fail at save time
- * rather than on the first image request.
- */
-const SDF_EXPERIENCES = ['BizChat', 'WXPOAgents', 'AppCopilots', 'Cowork', 'Scout', 'WorkIQ']
-const SDF_SERVICE_TIERS = ['async', 'async-express', 'flex', 'default', 'priority']
-const SDF_TRAFFIC_TYPES = ['Production', 'Test']
-
-function optionalEnum(
-  value: unknown,
-  allowed: readonly string[],
-  field: string,
-): string | undefined {
-  if (value === undefined || value === null || value === '') return undefined
-  if (typeof value !== 'string' || !allowed.includes(value)) {
-    throw new Error(`sdf config.${field} must be one of: ${allowed.join(', ')}`)
-  }
-  return value
-}
-
-function optionalString(value: unknown): string | undefined {
-  if (typeof value !== 'string') return undefined
-  const trimmed = value.trim()
-  return trimmed || undefined
-}
-
-function normalizeSdfConfig(config: Record<string, unknown>): SdfProviderConfig {
-  if (typeof config.name !== 'string' || !config.name.trim()) throw new Error('sdf config.name required')
-  if (typeof config.substrateToken !== 'string' || !config.substrateToken) {
-    throw new Error('sdf config.substrateToken required')
-  }
-  const taxonomy = (config.taxonomy ?? {}) as Record<string, unknown>
-  const cos = (config.cos ?? {}) as Record<string, unknown>
-  const passport = (config.passport ?? {}) as Record<string, unknown>
-
-  const apiBase = optionalString(passport.apiBase)
-  if (apiBase && !apiBase.startsWith('https://')) {
-    throw new Error('sdf config.passport.apiBase must be https')
-  }
-
-  const out: SdfProviderConfig = {
-    name: config.name.trim(),
-    substrateToken: config.substrateToken,
-  }
-  const normalizedTaxonomy = stripUndefined({
-    experience: optionalEnum(taxonomy.experience, SDF_EXPERIENCES, 'taxonomy.experience'),
-    agent: optionalString(taxonomy.agent),
-    inferenceStep: optionalString(taxonomy.inferenceStep),
-    trafficType: optionalEnum(taxonomy.trafficType, SDF_TRAFFIC_TYPES, 'taxonomy.trafficType') as
-      | 'Production'
-      | 'Test'
-      | undefined,
-  })
-  if (normalizedTaxonomy) out.taxonomy = normalizedTaxonomy
-  const normalizedCos = stripUndefined({
-    serviceTier: optionalEnum(cos.serviceTier, SDF_SERVICE_TIERS, 'cos.serviceTier'),
-  })
-  if (normalizedCos) out.cos = normalizedCos
-  const normalizedPassport = stripUndefined({
-    enabled: typeof passport.enabled === 'boolean' ? passport.enabled : undefined,
-    apiBase,
-  })
-  if (normalizedPassport) out.passport = normalizedPassport
-  return out
-}
-
-/** Drop unset keys so an all-empty form doesn't persist `{}` sub-objects. */
-function stripUndefined<T extends Record<string, unknown>>(obj: T): T | undefined {
-  const entries = Object.entries(obj).filter(([, v]) => v !== undefined)
-  return entries.length ? (Object.fromEntries(entries) as T) : undefined
-}
 
 function normalizeConfig(provider: UpstreamKind, config: unknown): Record<string, unknown> {
   if (!config || typeof config !== 'object' || Array.isArray(config)) {
     throw new Error('config must be an object')
   }
-  const raw = config as Record<string, unknown>
-  if (provider === 'custom') return normalizeCustomConfig(raw) as unknown as Record<string, unknown>
-  if (provider === 'azure') return normalizeAzureConfig(raw) as unknown as Record<string, unknown>
-  if (provider === 'sdf') return normalizeSdfConfig(raw) as unknown as Record<string, unknown>
-  return normalizeCopilotConfig(raw)
+  const normalize = providerPlugin(provider)?.normalizeConfig
+  if (!normalize) throw new Error('Unknown provider')
+  return normalize(config as Record<string, unknown>)
 }
 
 class UpstreamInputError extends Error {}
@@ -381,26 +285,14 @@ upstreamMiscRouter.post('/upstream-probe', zValidator('json', probeBody), async 
   if (kind === 'copilot') {
     return jsonError('Copilot probe uses /api/copilot-quota — not handled here')
   }
-  if (kind === 'custom' || kind === 'azure') {
+  const probeConfig = providerPlugin(kind)?.probeConfig
+  if (probeConfig) {
     try {
-      const provider = kind === 'custom'
-        ? new CustomProvider(normalizeCustomConfig(config as Record<string, unknown>))
-        : new AzureProvider(normalizeAzureConfig(config as Record<string, unknown>) as PkgAzureConfig)
-      const result = await provider.probe()
-      return c.json(result)
+      return c.json(await probeConfig(config as Record<string, unknown>))
     } catch (err) {
       // Root behaviour: any provider validation/construction error surfaces
       // as a ProbeResult with status 200 so the dashboard's probe UI renders
       // the error inline instead of bailing on the request.
-      return c.json({ ok: false, error: err instanceof Error ? err.message : String(err) })
-    }
-  }
-  if (kind === 'sdf') {
-    try {
-      const provider = new SdfProvider(normalizeSdfConfig(config as Record<string, unknown>) as PkgSdfConfig)
-      const result = await provider.probe()
-      return c.json(result)
-    } catch (err) {
       return c.json({ ok: false, error: err instanceof Error ? err.message : String(err) })
     }
   }

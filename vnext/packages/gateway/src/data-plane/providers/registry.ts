@@ -91,6 +91,11 @@ const BUNDLED_PROVIDER_PLUGINS = {
 
 const PROVIDER_PLUGINS: ReadonlyMap<string, LlmProviderPlugin> = new Map(Object.entries(BUNDLED_PROVIDER_PLUGINS))
 
+/** Every provider plugin bundled into this gateway, keyed by upstream kind. */
+export function bundledProviderPlugins(): ReadonlyMap<string, LlmProviderPlugin> {
+  return PROVIDER_PLUGINS
+}
+
 export function providerPlugin(kind: string): LlmProviderPlugin | undefined {
   return PROVIDER_PLUGINS.get(kind)
 }

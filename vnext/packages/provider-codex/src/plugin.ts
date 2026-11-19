@@ -5,11 +5,14 @@
  * carries the operator-imported refresh_token in CodexUpstreamState; the
  * provider mints access tokens on demand.
  */
-import type { LlmProviderPlugin } from '@vibe-llm/provider-llm'
+import { pickScalars, type LlmProviderPlugin } from '@vibe-llm/provider-llm'
 import { CodexProvider } from './provider'
 
 export const codexProviderPlugin: LlmProviderPlugin = {
   kind: 'codex',
+  publicConfig: source => Array.isArray(source.accounts)
+    ? { accounts: source.accounts.map(account => pickScalars(account, ['email', 'chatgptAccountId', 'chatgptUserId', 'planType'])) }
+    : {},
   async createFromUpstream(upstream, ctx) {
     const executionFactory = ctx.executionFetcherForUpstream
     return new CodexProvider(

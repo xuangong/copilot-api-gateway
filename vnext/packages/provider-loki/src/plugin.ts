@@ -1,10 +1,11 @@
-import type { LlmProviderPlugin } from "@vibe-llm/provider-llm"
+import { pickScalars, type LlmProviderPlugin } from "@vibe-llm/provider-llm"
 import { getAuthoritativeUpstreamRepo, type StoredUpstreamRecord } from "@vibe-core/upstream-repo"
 import { LokiProvider } from "./provider"
 import { lokiSyncState, readLokiState } from "./state"
 
 export const lokiProviderPlugin: LlmProviderPlugin = {
   kind: "loki",
+  publicConfig: source => pickScalars(source, ["profileId", "baseUrl"]),
   syncable: true,
   /** The Windows assistant's pairing authority stays on the central gateway. Invalid state throws, and the
    *  snapshot omits the upstream. */
