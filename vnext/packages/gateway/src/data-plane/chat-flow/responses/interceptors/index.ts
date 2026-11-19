@@ -2,6 +2,7 @@ import type { ResponsesInterceptor } from './types'
 import { withResponsesCollaborationShim } from './with-responses-collaboration-shim'
 import { withToolArgumentWhitespaceAborted } from './with-tool-argument-whitespace-aborted'
 import { withPromptCacheKeyStripped } from './with-prompt-cache-key-stripped'
+import { withStoreForcedFalse } from './with-store-forced-false'
 import { withReasoningDisabledOnForcedToolChoice } from './with-reasoning-disabled-on-forced-tool-choice'
 import { withResponsesServerToolShim } from './server-tool-shim'
 import { webSearchServerTool } from './server-tools/web-search'
@@ -72,6 +73,7 @@ export const responsesInterceptors: readonly ResponsesInterceptor[] = [
   withResponsesCollaborationShim,
   withToolArgumentWhitespaceAborted,
   withPromptCacheKeyStripped,
+  withStoreForcedFalse,
   withImageGenerationToolInjected,
   withResponsesServerToolShim([webSearchServerTool, imageGenerationServerTool], defaultPrivatePayloadStore),
   withEmptyToolsToolChoiceNone,

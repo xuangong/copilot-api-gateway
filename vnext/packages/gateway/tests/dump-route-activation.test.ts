@@ -89,7 +89,9 @@ async function saveKey(id: ApiKeyId, owner: UserId, retention: number | null = 3
   return key
 }
 async function saveUpstream(endpoints: EndpointKey[], id = "up_capture", owner: UserId = ownerId, config: Record<string, unknown> = {}) {
-  const upstream: UpstreamRecord = { id, ownerId: owner, name: id, provider: "custom", enabled: true, sortOrder: 0, createdAt: now, updatedAt: now, flagOverrides: {}, disabledPublicModelIds: [], state: null, proxyFallbackList: [{ id: "direct_fetch" }],
+  // The compact shim is on by default (#572); this fixture keeps the native
+  // `/responses/compact` wire so its terminal operation stays observable.
+  const upstream: UpstreamRecord = { id, ownerId: owner, name: id, provider: "custom", enabled: true, sortOrder: 0, createdAt: now, updatedAt: now, flagOverrides: { "responses-compact-shim": false }, disabledPublicModelIds: [], state: null, proxyFallbackList: [{ id: "direct_fetch" }],
     config: { baseUrl: `https://${id}.test/v1`, apiKey: "upstream-secret-credential", endpoints, ...config } }
   await repo.upstreams.save(upstream)
   return upstream

@@ -218,7 +218,10 @@ export function modelToBindingModel(
 
 
 // Version 7 rebuilds strictly validated provider-owned opaque compatibility metadata; raw fields grant no authority.
-export const MODEL_CATALOG_REVISION = 7
+// Version 8 rebuilds catalogs for the 2026-11-19 reference adoption: Codex keeps
+// context_window and max_context_window apart and admits audio/unknown input
+// modalities (#559, #740), and Claude Code prices Sonnet/Haiku 5.5 and Fable 5.1 (#715).
+export const MODEL_CATALOG_REVISION = 8
 let coordinators = new WeakMap<Repo, CatalogCoordinator>()
 let projections = new WeakMap<Repo, RoutingProjectionCache>()
 function projectionCache(): RoutingProjectionCache {

@@ -104,7 +104,7 @@ export const OPTIONAL_FLAGS = [
     id: "responses-compact-shim",
     label: "Responses compact shim",
     description: "Simulate a `response.compaction` envelope against upstreams that have no native compaction wire. Runs the summarization turn through the upstream's standard /responses generate wire under the vendored openai/codex SUMMARIZATION_PROMPT, then packs the summary into a synthetic `response.compaction` output item. Structurally required (always engages, ignoring this flag) on non-Responses target endpoints because those translators cannot carry the `compaction_trigger` / `compaction` item variants.",
-    defaultFor: ["claude-code"],
+    defaultFor: ["copilot", "azure", "codex", "claude-code", "custom", "sdf", "loki"],
   },
   {
     id: "disable-reasoning-on-forced-tool-choice",
@@ -147,7 +147,7 @@ export const OPTIONAL_FLAGS = [
     id: "demote-disallowed-system-to-user",
     label: "Demote disallowed inline system messages to user",
     description: "Anthropic Messages only: models that support inline `system` messages accept them only at a turn boundary (after a `user` turn or a server-tool result, before an `assistant` turn or the end of the request). Rewrites only content-bearing `system` messages in other positions to `role:'user'`; valid boundaries and directive-only messages are kept. Narrower than `demote-interleaved-system-to-user`, which rewrites every inline system message.",
-    defaultFor: [],
+    defaultFor: ["copilot", "claude-code"],
   },
   // ── Transform toggles ────────────────────────────────────────────────
   // Every entry below defaults ON for copilot (the upstream that needs
@@ -162,7 +162,7 @@ export const OPTIONAL_FLAGS = [
   {
     id: "transform-force-store-false",
     label: "Transform: force store:false on /responses",
-    description: "Strip `store:true` from /responses payloads. Copilot rejects it with 400 unsupported_value.",
+    description: "Send `store:false` on /responses, asking the upstream to run stateless. On by default for Copilot, which rejects `store:true` with 400 unsupported_value; turn it on for an upstream that ignores `previous_response_id`.",
     defaultFor: ["copilot"],
   },
   {
