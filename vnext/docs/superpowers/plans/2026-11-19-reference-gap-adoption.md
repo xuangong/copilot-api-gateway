@@ -255,6 +255,7 @@ LLM gateways handle them, not deferred. Sources are cited in the tests.
 - [x] Remaining registry kind branches → `catalog` / `opaqueAffinity` hooks, plus a kind-branch ratchet (`fc1c87a4`).
 - [x] Backup rules → `backup` hook (`1d01d297`).
 - [x] Translation pair coverage guard; the five missing Gemini pair test files added.
-- [-] Recorded upstream cassettes (LiteLLM VCR) — needs live credentials to record and a scrubber; L effort.
-- [-] Single test-folder convention (`tests/` vs `__tests__/` vs `src/__tests__/`) — mass rename; do when a package is next restructured.
-- [-] Vendor-constant source-link lint — many existing constants lack links; backfill first.
+- [x] Cassette infrastructure (LiteLLM VCR style) in `@vibe-core/test-utils`: scrubbed 2xx recording, strict ordered replay, age check. Recording real cassettes needs live credentials and quota — pending the user's go-ahead.
+- [x] One test location per package (`79f878b1`); surfaced 20 never-typechecked test type errors; guarded in scripts/test-tiers.
+- [x] Vendor-constant source links backfilled (11 constants) and linted (`35f5335f`).
+- [x] More kind branches → hooks (`publicStatus`, `configManagedBy`, `fixedOwner`); ratchet 28 → 20 (`15bc0b01`).

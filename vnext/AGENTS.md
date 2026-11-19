@@ -112,6 +112,9 @@ export const ADMIN_EMAILS: readonly string[] = ["zhangxian1124@gmail.com", "test
 - **平台**:每个测试文件自己调用 `setupTestPlatform()`(`packages/gateway/tests/_setup-platform.ts`),不要依赖别的文件留下的 repo / background / cache。`test:isolation` 会抓出来。
 - **Repo**:用 `setupTestPlatform()` 返回的真实内存 SQLite repo,把行存进去,而不是手写 `… as unknown as Repo` 的假 repo。`tests/architecture/repo-fakes-ratchet.test.ts` 只允许这个数量下降;迁移一个文件就把 `MAX` 调低。
 - **共享工具** `@vibe-core/test-utils`:`jsonResponse`、`sseResponse`、`collect`、`readBodyText`、`recordingFetcher`(可注入的 fetcher)、`withMockedFetch`、`createFetchStub`(文件顶层调用一次,每个测试后自动恢复全局 fetch)。不要再手写 `globalThis.fetch = …` 加手动恢复。
+- **录制回放**:`recordingCassetteFetcher(realFetcher)` 录下真实上游的 2xx 交互(不存请求头;URL 里的 key、JSON/SSE 里的 token 字段脱敏),`replayFetcher(cassette)` 严格按顺序回放、对不上就抛错,`cassetteAgeDays` 判断是否过期。录制会用到真实凭据并消耗额度,只在明确同意后手动做。
+- **测试位置**:每个包只用一种位置(`tests/` 或 `src/**/__tests__/`;dashboard 与组件同目录)。守卫在 `scripts/test-tiers/tiers.test.ts`。
+- **厂商常量**:provider 包里导出的版本号 / UA / client id / beta / 上游地址常量,上方注释必须带 https 来源链接(`scripts/architecture/vendor-constants.test.ts`)。
 - **会起子进程的测试**必须命名为 `.proc.test.ts`(守卫:`scripts/test-tiers/tiers.test.ts`)。
 - **时间边界**:构造 JWT / 过期时间这类用例时留足余量,不要用 `now + 1` 这种跨一秒就变合法的值。
 - **测试要能因为有意义的原因失败**:不复述常量、不写被别的用例完全覆盖的用例;同形重复的用例改成一张表。

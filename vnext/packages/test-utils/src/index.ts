@@ -9,3 +9,4 @@
 export { jsonResponse, sseResponse } from "./responses"
 export { collect, readBodyText } from "./streams"
 export { createFetchStub, recordingFetcher, withMockedFetch, type RecordedRequest } from "./fetch"
+export { cassetteAgeDays, recordingCassetteFetcher, replayFetcher, scrubBody, scrubUrl, SCRUBBED, type Cassette, type CassetteInteraction } from "./cassette"
