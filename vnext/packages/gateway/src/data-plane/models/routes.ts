@@ -202,11 +202,28 @@ async function handleModelsRequest(c: {
 }) {
   const auth = c.get('auth') ?? {}
   const ua = c.req.header('user-agent')
+  // Gemini SDKs parse `{ models: [{ name }] }` only. The shape follows the client's
+  // own telemetry headers, not the path, because Gemini serves v1 and v1beta alike.
+  if (isGeminiClient(c.req.header('user-agent'), c.req.header('x-goog-api-client'))) return c.json(await geminiList(auth))
   const models = await handleList(auth)
   if (isClaudeCodeUserAgent(ua)) return c.json(toClaudeCodeCatalog(models.data))
   if (isTypeSafeUserAgent(ua)) return c.json(toTypeSafeCatalog(models.data))
   if (isCodexUserAgent(ua)) return c.json(await loadCodexCatalog(ua, models.data, currentResponsesWebSocketIngress() !== null))
   return c.json(models)
+}
+
+// Google's SDKs label every request `google-genai-sdk/<version>` (both telemetry headers);
+// the deprecated SDKs name themselves only in `x-goog-api-client` (`genai-js`) or the
+// `genai-py/<version>` user agent. Reference: copilot-gateway 014eeb9b1 (#713).
+// https://github.com/googleapis/js-genai/blob/8892aeace095b90805890e0fd5cfa027d87bbc70/src/_api_client.ts#L884-L894
+// https://github.com/google-gemini/deprecated-generative-ai-js/blob/22acc9cd0d75d677c70776e1542034f6a6106677/src/requests/request.ts#L34-L73
+const GEMINI_CLIENT_PATTERN = /(?:^|\s)(?:google-genai-sdk|genai-js|genai-py)\//
+const isGeminiClient = (userAgent: string | undefined, apiClient: string | undefined): boolean =>
+  GEMINI_CLIENT_PATTERN.test(`${userAgent ?? ''} ${apiClient ?? ''}`)
+
+async function geminiList(auth: DataPlaneAuthCtx) {
+  const list = await listAvailableModels({ ownerId: auth.userId, upstreamIds: auth.routingPolicy?.upstreamIds, copilot: auth.copilot }, 'gemini')
+  return { models: (list.data as OpenAIShapedModel[]).filter(isChatModel).map(toGeminiShape) }
 }
 
 modelsRouter.get('/models', (c) => handleModelsRequest(c as never))
@@ -274,14 +291,11 @@ function geminiError(status: 404 | 502, message: string): Response {
   )
 }
 
-modelsRouter.get('/v1beta/models', async (c) => {
-  const auth = c.get('auth') ?? {}
-  const list = await listAvailableModels({ ownerId: auth.userId, upstreamIds: auth.routingPolicy?.upstreamIds, copilot: auth.copilot }, 'gemini')
-  const models = (list.data as OpenAIShapedModel[]).filter(isChatModel).map(toGeminiShape)
-  return c.json({ models })
-})
+modelsRouter.get('/v1beta/models', async (c) => c.json(await geminiList(c.get('auth') ?? {})))
 
-modelsRouter.get('/v1beta/models/:modelId{.+}', async (c) => {
+// Model detail answers under both prefixes (reference 014eeb9b1, #713). The `/v1/models`
+// listing stays the shared OpenAI-shaped route above.
+modelsRouter.get('/:version{v1|v1beta}/models/:modelId{.+}', async (c) => {
   const raw = c.req.param('modelId') ?? ''
   const modelId = raw.replace(/^models\//, '')
   if (!modelId) return geminiError(404, 'Model not found: ')

@@ -304,6 +304,36 @@ test('chat-only catalogs leave decision models out', async () => {
   expect(((await ollama.json()) as { models: Array<{ name: string }> }).models.map(m => m.name)).toEqual(['gpt-4o'])
 })
 
+// Adapted from reference copilot-gateway 014eeb9b1 (#713): Gemini SDKs may use /v1, so the
+// listing and model detail answer under both prefixes, and a Gemini SDK identity
+// (google-genai-sdk/, genai-js/, genai-py/) gets the Gemini list shape on the shared
+// /v1/models and /models routes while every other caller keeps the OpenAI shape.
+test('Gemini model detail and list are reachable under /v1 and selected by client identity', async () => {
+  initRepo(stubRepo([stubUpstream()]))
+  installDecisionCatalog()
+  const app = buildApp(modelsRouter, COPILOT_REQUEST_AUTH)
+  const detail = await Promise.all(['/v1beta/models/gpt-4o', '/v1/models/gpt-4o'].map(async path => {
+    const res = await app.request(path)
+    return [res.status, await res.json()]
+  }))
+  expect(detail[0]![0]).toBe(200)
+  expect(detail[1]).toEqual(detail[0]!)
+  expect((detail[1]![1] as { name: string }).name).toBe('models/gpt-4o')
+  const identities: Array<Record<string, string>> = [
+    { 'x-goog-api-client': 'google-genai-sdk/1.0.0 gl-python/3.13.0' },
+    { 'user-agent': 'google-genai-sdk/1.0.0 gl-node/cross' },
+    { 'user-agent': 'genai-py/0.8.5 gl-python/3.12.0' },
+    { 'x-goog-api-client': 'genai-js/0.24.1' },
+  ]
+  for (const headers of identities) for (const path of ['/v1/models', '/models']) {
+    const body = await (await app.request(path, { headers })).json() as { models?: Array<{ name: string }>; data?: unknown }
+    expect(body.models?.map(m => m.name)).toEqual(['models/gpt-4o'])
+    expect(body.data).toBeUndefined()
+  }
+  const generic = await (await app.request('/v1/models')).json() as { data: Array<{ id: string }> }
+  expect(generic.data.map(m => m.id)).toContain('gpt-4o')
+})
+
 // Both official TypeSafe SDKs parse `/v1/models` as
 // `{ models: [{ name, description, release_date }] }` and identify themselves
 // as `typesafe-sdk/<version>`; every other caller keeps the OpenAI shape.

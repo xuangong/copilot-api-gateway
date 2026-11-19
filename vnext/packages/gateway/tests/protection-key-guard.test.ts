@@ -63,7 +63,7 @@ test("resuming restores the key at once", async () => {
 
 const INFERENCE_PATHS = [
   "/v1/chat/completions", "/chat/completions", "/v1/messages", "/v1/messages/count_tokens", "/anthropic/v1/messages", "/v1/responses", "/v1/responses/compact",
-  "/v1/embeddings", "/v1/images/generations", "/v1/alpha/search", "/v1/models", "/v1beta/models/shared:generateContent",
+  "/v1/embeddings", "/v1/images/generations", "/v1/alpha/search", "/v1/models", "/v1beta/models/shared:generateContent", "/v1/models/shared:generateContent",
   "/v1/decisions", "/decisions", "/v1/systemone", "/systemone", "/api/chat", "/api/generate", "/api/embed", "/engines/v1/chat/completions",
 ]
 const OTHER_PATHS = ["/api/token-usage", "/api/keys", "/api/protection/status", "/api/upstreams", "/health"]
@@ -75,7 +75,7 @@ test("a paused key is refused on every inference path", async () => {
   for (const path of INFERENCE_PATHS) {
     const response = await call(app, path)
     const code = ((await response.json()) as { error: { code: string | number } }).error.code
-    expect([path, response.status, code]).toEqual([path, 503, path.startsWith("/v1beta/") ? 503 : "key_paused"]) // Gemini's RPC error has a numeric code
+    expect([path, response.status, code]).toEqual([path, 503, /^\/v1(?:beta)?\/models\/./.test(path) ? 503 : "key_paused"]) // Gemini's RPC error has a numeric code
   }
   expect(reached()).toBe(0)
 })

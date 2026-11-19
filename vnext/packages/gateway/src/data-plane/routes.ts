@@ -52,6 +52,7 @@ dataPlane.get('/v1/responses', responsesUpgradeHandler)
 dataPlane.get('/responses', responsesUpgradeHandler)
 dataPlane.post('/v1/responses/compact', responsesCompactHandler)
 dataPlane.post('/responses/compact', responsesCompactHandler)
-dataPlane.post('/v1beta/models/:model{.+}', geminiHandler)
+// Gemini serves the same REST surface under v1 and v1beta (reference 014eeb9b1, #713).
+for (const version of ['v1', 'v1beta']) dataPlane.post(`/${version}/models/:model{.+}`, geminiHandler)
 dataPlane.post('/v1/alpha/search', alphaSearchHandler)
 dataPlane.post('/alpha/search', alphaSearchHandler)

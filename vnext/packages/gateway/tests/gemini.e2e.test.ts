@@ -162,6 +162,27 @@ test('POST /v1beta/models/:model:generateContent returns Gemini-shaped body', as
   expect(body.usageMetadata.totalTokenCount).toBeGreaterThan(0)
 })
 
+// Adapted from reference copilot-gateway 014eeb9b1 (#713): Gemini serves the same REST
+// surface under v1 and v1beta and current SDKs let callers pick either, so every
+// action route must answer under both prefixes identically.
+test.each(['generateContent', 'streamGenerateContent'])('POST /v1/models/:model:%s answers like /v1beta', async (action) => {
+  const results: Array<{ status: number; type: string | null; body: string }> = []
+  for (const prefix of ['v1beta', 'v1']) {
+    initRepo(stubRepo([stubUpstream()]))
+    installCopilotFetch({ stream: action === 'streamGenerateContent' })
+    const app = buildApp({ copilot: { copilotToken: COPILOT_TOKEN, accountType: ACCOUNT_TYPE } })
+    const res = await app.fetch(new Request(`http://local/${prefix}/models/${MODEL_ID}:${action}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: 'hi' }] }] }),
+    }), env)
+    results.push({ status: res.status, type: res.headers.get('content-type')?.split(';')[0] ?? null, body: await res.text() })
+  }
+  expect(results[1]!.status).toBe(results[0]!.status)
+  expect(results[1]!.type).toBe(results[0]!.type)
+  expect(results[0]!.status).toBe(200)
+})
+
 test('POST /v1beta Gemini routes the normalized URL model through enabled key mappings', async () => {
   initRepo(stubRepo([stubUpstream()]))
   installCopilotFetch({ stream: false })

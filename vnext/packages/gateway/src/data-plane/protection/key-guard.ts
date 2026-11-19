@@ -7,7 +7,8 @@ import { keyPausedMessage } from '../../protection/messages.ts'
 /** The error protocol of the path, ignoring compatibility prefixes. */
 function errorFormat(requestPath: string): 'gemini' | 'anthropic' | undefined {
   const path = requestPath.replace(/^\/(?:azure-api\.codex|engines\/(?:[^/]+\/)?v1|anthropic)(?=\/)/, '')
-  if (/^\/v1beta\/models(?:\/|$)/.test(path)) return 'gemini'
+  // `/v1/models` alone is the OpenAI listing; anything below it is Gemini's model route.
+  if (/^\/v1beta\/models(?:\/|$)/.test(path) || /^\/v1\/models\/.+/.test(path)) return 'gemini'
   if (/^(?:\/v1)?\/messages(?:\/count_tokens)?$/.test(path)) return 'anthropic'
   return undefined
 }
