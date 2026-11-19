@@ -26,6 +26,9 @@ export const collectResponsesProtocolEventsToResult = async (
   const output = new ResponsesFinalOutput()
   let final: ResponsesResult | null = null
   let sawTerminal = false
+  // An `error` event is usually followed by `response.failed`; keep draining so
+  // the stream (and its telemetry) settles, then throw with the event as cause.
+  let streamError: ResponsesStreamEvent | undefined
 
   for await (const frame of frames) {
     if (frame.type !== 'event') continue
@@ -40,11 +43,14 @@ export const collectResponsesProtocolEventsToResult = async (
       // `finalMetadata` promise. The for-await naturally exits when the
       // generator returns.
     }
-    if (ev.type === 'error') {
-      const e = ev as { error?: { message?: unknown } }
-      const message = typeof e.error?.message === 'string' ? e.error.message : 'responses stream errored'
-      throw new Error(`responses stream errored: ${message}`)
-    }
+    if (ev.type === 'error') streamError ??= ev
+  }
+
+  if (streamError) {
+    // The wire event is flat (`{message, code}`); tolerate a nested `error` envelope.
+    const e = streamError as { message?: unknown; error?: { message?: unknown } }
+    const message = typeof e.message === 'string' ? e.message : typeof e.error?.message === 'string' ? e.error.message : 'responses stream errored'
+    throw new Error(`responses stream errored: ${message}`, { cause: streamError })
   }
 
   if (!sawTerminal || !final) {

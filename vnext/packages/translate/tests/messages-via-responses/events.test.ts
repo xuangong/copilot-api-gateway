@@ -385,6 +385,20 @@ it('checks both top-level and nested context codes without envelope masking', as
   }
 })
 
+// Adapted from reference copilot-gateway 8c9e722f0 (#712): an upstream error
+// must keep its code and classification instead of collapsing to a bare
+// `api_error` with only a message.
+it('keeps the upstream error code and nested type through Messages translation', async () => {
+  for (const [event, expected] of [
+    [{ type: 'error', code: 'rate_limit_exceeded', message: 'slow down' }, { type: 'api_error', message: 'slow down', code: 'rate_limit_exceeded' }],
+    [{ type: 'error', error: { type: 'overloaded_error', code: 'server_overloaded', message: 'busy' } }, { type: 'overloaded_error', message: 'busy', code: 'server_overloaded' }],
+    [{ type: 'response.failed', response: { error: { code: 'server_error', message: 'boom' } } }, { type: 'api_error', message: 'boom', code: 'server_error' }],
+  ] as const) {
+    const events = await collect(translateResponsesEventsToMessagesEvents(fromArray([event])))
+    expect(events.find((e) => e.type === 'error')).toEqual({ type: 'error', error: expected })
+  }
+})
+
 it('preserves ordinary top-level error messages and falls back to nested messages', async () => {
   for (const [event, message] of [
     [{ type: 'error', message: 'top-level failure', error: { message: 'nested detail' } }, 'top-level failure'],

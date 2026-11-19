@@ -314,6 +314,7 @@ export interface MessagesErrorEvent {
   error: {
     type: string
     message: string
+    code?: string
     name?: string
     stack?: string
     cause?: unknown
