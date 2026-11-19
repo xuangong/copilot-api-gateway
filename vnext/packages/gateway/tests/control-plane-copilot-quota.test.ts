@@ -246,3 +246,27 @@ test('GET /api/admin/copilot-quota/:id resolves the chain of the account owner',
   const body = (await res.json()) as { error: string }
   expect(body.error).toContain('px_gone')
 })
+
+// A GHE.com tenant account must be queried on its own REST host
+// (api.SUBDOMAIN.ghe.com); sending its tenant token to api.github.com can
+// only fail, and leaks the token to the wrong GitHub instance.
+test('quota for a ghe.com account is fetched from the tenant API, for the user and admin routes', async () => {
+  const urls: string[] = []
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
+    urls.push(url)
+    if (url === 'https://api.acme.ghe.com/copilot_internal/user') {
+      return new Response(JSON.stringify({ remaining: 7 }), { status: 200, headers: { 'content-type': 'application/json' } })
+    }
+    return new Response('not found', { status: 404 })
+  }) as unknown as typeof fetch
+  await store.repo.github.saveAccount(9, { ...ghAccount(9, 'u1'), githubHost: 'acme.ghe.com' })
+  store.activeByUser.set('u1', 9)
+
+  const own = await buildApp({ userId: 'u1' }).request('/api/copilot-quota')
+  expect(own.status).toBe(200)
+  expect(((await own.json()) as { remaining: number }).remaining).toBe(7)
+  const admin = await buildApp({ isAdmin: true, userId: 'admin' }).request('/api/admin/copilot-quota/9')
+  expect(admin.status).toBe(200)
+  expect(urls).toEqual(['https://api.acme.ghe.com/copilot_internal/user', 'https://api.acme.ghe.com/copilot_internal/user'])
+})

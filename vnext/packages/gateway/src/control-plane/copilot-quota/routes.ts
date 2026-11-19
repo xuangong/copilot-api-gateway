@@ -2,7 +2,8 @@
  * copilot-quota control-plane router — Week 5b port of
  * src/routes/dashboard.ts (GET /copilot-quota + GET /admin/copilot-quota/:id).
  *
- * Calls api.github.com with the GitHub account's token, through the proxy
+ * Calls the account's GitHub API host (api.github.com, or api.SUBDOMAIN.ghe.com
+ * for a GHE.com tenant) with its token, through the proxy
  * chain saved on that account's mirrored Copilot upstream row (global `fetch`
  * when the row has none); tests inject a fetch shim via globalThis.fetch (per
  * bun_mock_module_unrestorable).
@@ -10,7 +11,7 @@
 import { Hono } from 'hono'
 import type { Env } from '../../app.ts'
 import { getRepo } from '../../repo/index.ts'
-import { createGithubHeaders } from '../../shared/config/constants.ts'
+import { fetchCopilotUser } from '../../shared/github-api.ts'
 import { getRuntimeLocation } from '@vibe-core/platform'
 import { resolveControlPlaneFetcher } from '../upstreams/proxy-resolution.ts'
 import { copilotUpstreamRowId } from '../lib/github.ts'
@@ -24,12 +25,6 @@ export interface CopilotQuotaAuthCtx {
 }
 
 type Vars = { auth: CopilotQuotaAuthCtx }
-
-async function fetchQuota(token: string, doFetch: Fetcher): Promise<Response> {
-  return doFetch('https://api.github.com/copilot_internal/user', {
-    headers: createGithubHeaders(token),
-  })
-}
 
 /**
  * Egress fetcher for the GitHub account whose quota is being relayed.
@@ -89,9 +84,9 @@ function proxyChainError(err: unknown): string {
   return `failed to resolve the saved proxy chain: ${err instanceof Error ? err.message : String(err)}`
 }
 
-async function relayQuota(token: string, doFetch: Fetcher): Promise<Response> {
+async function relayQuota(account: { token: string; githubHost?: string }, doFetch: Fetcher): Promise<Response> {
   try {
-    const resp = await fetchQuota(token, doFetch)
+    const resp = await fetchCopilotUser(account.token, account.githubHost, doFetch)
     if (!resp.ok) {
       const text = await resp.text()
       return new Response(
@@ -142,7 +137,7 @@ copilotQuotaRouter.get('/copilot-quota', async (c) => {
   } catch (e) {
     return c.json({ error: proxyChainError(e) }, 502)
   }
-  return relayQuota(account.token, doFetch)
+  return relayQuota(account, doFetch)
 })
 
 // GET /api/admin/copilot-quota/:githubUserId — admin-only lookup by github user id
@@ -164,5 +159,5 @@ copilotQuotaRouter.get('/admin/copilot-quota/:githubUserId', async (c) => {
   } catch (e) {
     return c.json({ error: proxyChainError(e) }, 502)
   }
-  return relayQuota(account.token, doFetch)
+  return relayQuota(account, doFetch)
 })

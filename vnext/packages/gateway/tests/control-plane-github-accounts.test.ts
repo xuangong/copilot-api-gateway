@@ -369,3 +369,24 @@ test('a row without a chain keeps the global fetch (no dial)', async () => {
   expect(body[0]!.quota).toEqual({ remaining: 1234 })
   expect(dials).toHaveLength(0)
 })
+
+// A GHE.com tenant account is validated and enriched on its own REST host;
+// asking api.github.com would report a perfectly good tenant token as invalid.
+test('a ghe.com account is validated and enriched against the tenant API', async () => {
+  const urls: string[] = []
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
+    urls.push(url)
+    if (url === 'https://api.acme.ghe.com/copilot_internal/user') {
+      return new Response(JSON.stringify({ remaining: 5 }), { status: 200, headers: { 'content-type': 'application/json' } })
+    }
+    if (url === 'https://api.acme.ghe.com/user') return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
+    return new Response('not found', { status: 404 })
+  }) as unknown as typeof fetch
+  await store.repo.github.saveAccount(9, ghAccount({ userId: 9, ownerId: 'u1' as UserId, githubHost: 'acme.ghe.com' }))
+  const res = await buildApp({ userId: 'u1' as UserId }).request('/api/upstream-accounts')
+  expect(res.status).toBe(200)
+  const [row] = (await res.json()) as Array<{ token_valid: boolean; quota: { remaining: number } }>
+  expect(row).toMatchObject({ token_valid: true, quota: { remaining: 5 } })
+  expect(urls.sort()).toEqual(['https://api.acme.ghe.com/copilot_internal/user', 'https://api.acme.ghe.com/user'])
+})

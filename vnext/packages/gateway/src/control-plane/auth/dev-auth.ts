@@ -12,10 +12,10 @@
  */
 import type { Context, MiddlewareHandler } from 'hono'
 import {
-  GITHUB_API_BASE_URL,
   createGithubHeaders,
   type AccountType,
 } from '../../shared/config/constants.ts'
+import { githubApiOrigin, GITHUB_DOTCOM_HOST } from '../../shared/config/github-host.ts'
 import type { UserId } from '../../repo/branded-ids.ts'
 
 interface CopilotTokenResponse {
@@ -32,7 +32,7 @@ interface CachedCopilot {
 let cached: CachedCopilot | null = null
 
 async function exchangeGithubToken(githubToken: string): Promise<CopilotTokenResponse> {
-  const resp = await fetch(`${GITHUB_API_BASE_URL}/copilot_internal/v2/token`, {
+  const resp = await fetch(`${githubApiOrigin(GITHUB_DOTCOM_HOST)}/copilot_internal/v2/token`, {
     headers: createGithubHeaders(githubToken),
   })
   if (!resp.ok) {
@@ -66,7 +66,7 @@ function devAccountType(): AccountType {
 export function isDevAuthEnabled(): boolean {
   // Belt-and-suspenders: never activate the dev bypass in production, even if
   // an operator (or a malicious env leak) sets VNEXT_DEV_GITHUB_TOKEN. The
-  // dev path hardcodes GITHUB_API_BASE_URL (github.com) and stores tokens
+  // dev path only supports github.com and stores tokens
   // in a global slot without user attribution — unsafe outside local dev.
   if (process.env.NODE_ENV === 'production') return false
   return Boolean(process.env.VNEXT_DEV_GITHUB_TOKEN || process.env.VNEXT_DEV_COPILOT_TOKEN)

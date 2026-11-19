@@ -11,7 +11,8 @@
  *     unredacted enriched accounts and gate by `effectiveUserId ?? userId`.
  *     TODO: wire redaction once view-context middleware lands.
  *
- * Live network calls (api.github.com /user, /copilot_internal/user) go through
+ * Live network calls (/user, /copilot_internal/user on the account's GitHub API
+ * host — api.github.com or api.SUBDOMAIN.ghe.com) go through
  * the proxy chain saved on each account's mirrored Copilot upstream row (global
  * `fetch` when the row is missing or has none); tests inject a `fetch` shim via
  * `globalThis.fetch`.
@@ -19,7 +20,7 @@
 import { Hono } from 'hono'
 import type { Env } from '../../app.ts'
 import { getRepo } from '../../repo/index.ts'
-import { createGithubHeaders } from '../../shared/config/constants.ts'
+import { fetchCopilotUser, fetchGithubUser } from '../../shared/github-api.ts'
 import { getRuntimeLocation } from '@vibe-core/platform'
 import { resolveControlPlaneFetcher } from '../upstreams/proxy-resolution.ts'
 import { copilotUpstreamRowId } from '../lib/github.ts'
@@ -37,11 +38,9 @@ export interface ViewCtx {
 
 type Vars = { auth: ViewCtx }
 
-async function fetchCopilotQuota(token: string, doFetch: Fetcher): Promise<unknown | null> {
+async function fetchCopilotQuota(token: string, host: string | undefined, doFetch: Fetcher): Promise<unknown | null> {
   try {
-    const resp = await doFetch('https://api.github.com/copilot_internal/user', {
-      headers: createGithubHeaders(token),
-    })
+    const resp = await fetchCopilotUser(token, host, doFetch)
     if (!resp.ok) return null
     return await resp.json()
   } catch {
@@ -49,15 +48,9 @@ async function fetchCopilotQuota(token: string, doFetch: Fetcher): Promise<unkno
   }
 }
 
-async function checkTokenValid(token: string, doFetch: Fetcher): Promise<boolean> {
+async function checkTokenValid(token: string, host: string | undefined, doFetch: Fetcher): Promise<boolean> {
   try {
-    const resp = await doFetch('https://api.github.com/user', {
-      headers: {
-        authorization: `token ${token}`,
-        accept: 'application/json',
-        'user-agent': 'copilot-api-gateway',
-      },
-    })
+    const resp = await fetchGithubUser(token, host, doFetch)
     return resp.ok
   } catch {
     return false
@@ -152,8 +145,8 @@ githubAccountsRouter.get('/', async (c) => {
       accounts.map(async (a) => {
         const doFetch = await accountFetcher(a.ownerId ?? '', a.user.id)
         const [quota, tokenValid] = await Promise.all([
-          fetchCopilotQuota(a.token, doFetch),
-          checkTokenValid(a.token, doFetch),
+          fetchCopilotQuota(a.token, a.githubHost, doFetch),
+          checkTokenValid(a.token, a.githubHost, doFetch),
         ])
         return {
           id: String(a.user.id),

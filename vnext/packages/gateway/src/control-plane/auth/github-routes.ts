@@ -39,12 +39,12 @@ import { syncedReadOnlyResponseFor } from '../sync/read-only.ts'
 
 import { GITHUB_CLIENT_ID } from '../../shared/config/constants.ts'
 import {
-  githubApiOrigin,
   githubWebOrigin,
   normalizeGitHubHost,
   GITHUB_DOTCOM_HOST,
 } from '../../shared/config/github-host.ts'
 import { exchangeGithubToken } from '../../shared/copilot-token-cache.ts'
+import { fetchGithubUser } from '../../shared/github-api.ts'
 import { detectAccountType, GITHUB_SCOPES } from './utils.ts'
 import type { AuthCtx } from './routes.ts'
 import type { GitHubAccountId, UserId } from '../../repo/branded-ids.ts'
@@ -222,13 +222,7 @@ githubAuthRouter.post('/github/poll', zValidator('json', pollBody), async (c) =>
 
   if (data.access_token) {
     const accessToken = data.access_token
-    const userResp = await doFetch(`${githubApiOrigin(host)}/user`, {
-      headers: {
-        authorization: `token ${accessToken}`,
-        accept: 'application/json',
-        'user-agent': 'copilot-api-gateway',
-      },
-    })
+    const userResp = await fetchGithubUser(accessToken, host, doFetch)
     if (!userResp.ok) {
       return c.json(
         { status: 'error', error: 'Failed to fetch GitHub user info' },

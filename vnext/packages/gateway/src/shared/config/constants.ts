@@ -6,7 +6,6 @@ export const ADMIN_EMAILS: readonly string[] = ["zhangxian1124@gmail.com", "test
 
 // GitHub OAuth
 export const GITHUB_BASE_URL = "https://github.com"
-export const GITHUB_API_BASE_URL = "https://api.github.com"
 export const GITHUB_CLIENT_ID = "Iv1.b507a08c87ecfe98"
 export const GITHUB_APP_SCOPES = ["read:user"].join(" ")
 

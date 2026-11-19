@@ -4,8 +4,8 @@
  * Cookie / TTL constants, generator helpers, and the error HTML page used by
  * email magic links + OAuth callbacks. Pure functions; no I/O.
  */
-import { createGithubHeaders } from '../../shared/config/constants.ts'
-import { githubApiOrigin, GITHUB_DOTCOM_HOST } from '../../shared/config/github-host.ts'
+import { GITHUB_DOTCOM_HOST } from '../../shared/config/github-host.ts'
+import { fetchCopilotUser } from '../../shared/github-api.ts'
 import type { Fetcher } from '@vibe-core/upstream'
 
 export const GITHUB_SCOPES = 'read:user'
@@ -99,9 +99,7 @@ export async function detectAccountType(
   fetcher: Fetcher = fetch,
 ): Promise<string> {
   try {
-    const resp = await fetcher(`${githubApiOrigin(githubHost)}/copilot_internal/user`, {
-      headers: createGithubHeaders(githubToken),
-    })
+    const resp = await fetchCopilotUser(githubToken, githubHost, fetcher)
     if (!resp.ok) return 'individual'
     const data = (await resp.json()) as { copilot_plan?: string }
     if (
