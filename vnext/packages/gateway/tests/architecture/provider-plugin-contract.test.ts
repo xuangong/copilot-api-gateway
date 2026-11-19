@@ -56,6 +56,15 @@ for (const [kind, plugin] of bundledProviderPlugins()) {
     })
   }
 
+  if (plugin.publicStatus) {
+    test(`${kind}: publicStatus never carries a credential`, () => {
+      const accounts = [{ ...SECRETS, refresh_token: "LEAK-refresh", accessToken: { token: "LEAK-access", expiresAt: 1 } }]
+      const row = { id: `up_${kind}`, provider: kind, name: kind, enabled: true, sortOrder: 0, config: { ...SECRETS },
+        state: { accounts, credential: "LEAK-credential" }, flagOverrides: {}, disabledPublicModelIds: [], proxyFallbackList: [], createdAt: "", updatedAt: "" }
+      expect(JSON.stringify(plugin.publicStatus!(row as never))).not.toContain("LEAK-")
+    })
+  }
+
   if (plugin.catalog?.modelEndpoints) {
     test(`${kind}: catalog.modelEndpoints tolerates a minimal model entry`, () => {
       expect(typeof plugin.catalog!.modelEndpoints!({ id: "m" }, ["chat_completions"])).toBe("object")

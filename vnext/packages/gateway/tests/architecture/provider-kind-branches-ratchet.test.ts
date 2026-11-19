@@ -14,7 +14,7 @@ import { expect, test } from "bun:test"
 import { Glob } from "bun"
 import { join } from "node:path"
 
-const MAX = 28
+const MAX = 20
 const SRC = join(import.meta.dir, "../../src")
 const KIND_COMPARISON = /(?:provider|kind)\s*[!=]==\s*['"](?:copilot|codex|claude-code|custom|azure|loki|sdf)['"]/g
 

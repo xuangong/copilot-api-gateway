@@ -27,6 +27,8 @@ import { CopilotProvider } from './provider'
 
 export const copilotProviderPlugin: LlmProviderPlugin = {
   kind: 'copilot',
+  // Token-managed via device flow; the editor may only rename / toggle / reorder.
+  configManagedBy: 'config of copilot upstreams is managed by device-flow auth',
   opaqueAffinity: true,
   catalog: {
     modelEndpoints: model => copilotModelEndpoints(model as Model),

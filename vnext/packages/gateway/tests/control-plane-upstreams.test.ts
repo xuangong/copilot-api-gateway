@@ -263,6 +263,21 @@ test('PATCH /api/upstreams/:id copilot config locked → 400', async () => {
   expect(res.status).toBe(400)
 })
 
+// Credential providers' config is owned by their sign-in flow, not the editor.
+test.each([
+  ['codex', 'credential-provider config is managed by authorization'],
+  ['claude-code', 'credential-provider config is managed by authorization'],
+  ['loki', 'credential-provider config is managed by authorization'],
+  ['copilot', 'config of copilot upstreams is managed by device-flow auth'],
+] as const)('PATCH %s config is refused with its own reason', async (provider, reason) => {
+  const u = { ...copilotUpstream(), id: `up_${provider}_lock`, provider } as UpstreamRecord
+  await repo.upstreams.save(u)
+  const res = await buildApp({ isAdmin: true }).request(`/api/upstreams/${u.id}`, {
+    method: 'PATCH', body: JSON.stringify({ config: { x: 1 } }), headers: { 'content-type': 'application/json' },
+  })
+  expect([res.status, ((await res.json()) as { error: string }).error]).toEqual([400, reason])
+})
+
 test('PATCH /api/upstreams/:id rename + flagOverrides', async () => {
   const u = copilotUpstream()
   await repo.upstreams.save(u)

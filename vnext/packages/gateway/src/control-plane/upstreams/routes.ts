@@ -387,16 +387,12 @@ upstreamsRouter.patch('/:id', zValidator('json', upstreamBody), async (c) => {
     if (body.provider !== undefined && body.provider !== existing.provider) {
       return jsonError('provider cannot be changed')
     }
-    // Copilot upstreams are token-managed via device flow; admin can only
-    // tweak name / enabled / sortOrder / flagOverrides here.
-    if (existing.provider === 'copilot' && body.config !== undefined) {
-      return jsonError('config of copilot upstreams is managed by device-flow auth')
-    }
-    if ((existing.provider === 'codex' || existing.provider === 'claude-code' || existing.provider === 'loki') && body.config !== undefined) {
-      return jsonError('credential-provider config is managed by authorization')
-    }
-    if (existing.provider === 'loki' && body.ownerId !== undefined && body.ownerId !== existing.ownerId) {
-      return jsonError('Loki ownership cannot be transferred; create a new paired upstream', 400)
+    // Providers whose config a sign-in flow owns refuse config edits here;
+    // the editor may still rename / toggle / reorder / set flags.
+    const plugin = providerPlugin(existing.provider)
+    if (plugin?.configManagedBy && body.config !== undefined) return jsonError(plugin.configManagedBy)
+    if (plugin?.fixedOwner && body.ownerId !== undefined && body.ownerId !== existing.ownerId) {
+      return jsonError(plugin.fixedOwner, 400)
     }
     // Validated before anything is written, so a bad `protection` leaves the upstream untouched. Missing keys keep their stored value.
     let protection: ProtectionSettings | undefined

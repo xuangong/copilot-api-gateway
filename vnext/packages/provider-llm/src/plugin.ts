@@ -112,6 +112,19 @@ export interface LlmProviderPlugin
   readonly opaqueAffinity?: true
   /** How this provider's model catalog becomes routable models. */
   catalog?: ProviderCatalogRules
+  /**
+   * Dashboard-safe status fields derived from the stored row (credential
+   * health, token expiry, pairing status), merged into the upstream DTO.
+   * Must never return a credential.
+   */
+  publicStatus?(record: UpstreamRecord<unknown>): Record<string, unknown>
+  /**
+   * The config is owned by a sign-in flow (device login, OAuth import,
+   * pairing), so the generic editor must not change it; the text says which.
+   */
+  readonly configManagedBy?: string
+  /** The row is bound to its owner (e.g. a pairing), so ownership cannot be transferred; the text says why. */
+  readonly fixedOwner?: string
 }
 
 /** A model catalog as listed by a provider: `data` entries carry at least an `id`. */

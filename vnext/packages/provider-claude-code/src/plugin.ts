@@ -10,6 +10,7 @@ import { ClaudeCodeProvider } from './provider'
 
 export const claudeCodeProviderPlugin: LlmProviderPlugin = {
   kind: 'claude-code',
+  configManagedBy: 'credential-provider config is managed by authorization',
   publicConfig: source => Array.isArray(source.accounts)
     ? { accounts: source.accounts.map(account => pickScalars(account, ['email', 'accountUuid', 'organizationUuid', 'subscriptionType', 'rateLimitTier'])) }
     : {},

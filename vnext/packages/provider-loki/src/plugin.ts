@@ -5,10 +5,16 @@ import { lokiModelEndpoints } from "./models"
 import { normalizeLokiConfig } from "./config"
 import { LOKI_PROFILE_ID } from "./profile"
 import type { LokiState } from "./state"
-import { lokiSyncState, readLokiState } from "./state"
+import { lokiSyncState, publicLokiStatus, readLokiState } from "./state"
 
 export const lokiProviderPlugin: LlmProviderPlugin = {
   kind: "loki",
+  configManagedBy: "credential-provider config is managed by authorization",
+  fixedOwner: "Loki ownership cannot be transferred; create a new paired upstream",
+  publicStatus: record => {
+    try { return { lokiStatus: publicLokiStatus(readLokiState(record.state)) } }
+    catch { return {} } // Invalid private state grants no public data.
+  },
   catalog: { modelEndpoints: model => lokiModelEndpoints(model) },
   backup: {
     validateImport: config => { if (config.profileId !== LOKI_PROFILE_ID) throw new Error("Unsupported Loki profile") },
