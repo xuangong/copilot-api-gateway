@@ -1,9 +1,10 @@
-import { pickScalars, withHttpCredentialFields, type LlmProviderPlugin } from '@vibe-llm/provider-llm'
+import { opaqueCompatibilityBackupRules, pickScalars, withHttpCredentialFields, type LlmProviderPlugin } from '@vibe-llm/provider-llm'
 import { normalizeAzureConfig, parseAzureOpaqueCompatibility } from './config'
 import { AzureProvider, type AzureProviderConfig } from './provider'
 
 export const azureProviderPlugin: LlmProviderPlugin = {
   kind: 'azure',
+  backup: opaqueCompatibilityBackupRules(parseAzureOpaqueCompatibility),
   normalizeConfig: config => normalizeAzureConfig(config) as unknown as Record<string, unknown>,
   probeConfig: async config => await new AzureProvider(normalizeAzureConfig(config) as AzureProviderConfig).probe(),
   publicConfig: source => {

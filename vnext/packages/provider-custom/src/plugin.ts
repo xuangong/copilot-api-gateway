@@ -1,4 +1,4 @@
-import { configRecord, parseOpaqueCompatibilityMap, pickScalars, withHttpCredentialFields, type LlmProviderPlugin } from '@vibe-llm/provider-llm'
+import { configRecord, opaqueCompatibilityBackupRules, parseOpaqueCompatibilityMap, pickScalars, withHttpCredentialFields, type LlmProviderPlugin } from '@vibe-llm/provider-llm'
 import { BILLING_DIMENSIONS } from '@vibe-llm/protocols/common'
 import { parseCustomChatMetadata } from './config'
 
@@ -20,6 +20,7 @@ import { normalizeCustomConfig } from './config'
 
 export const customProviderPlugin: LlmProviderPlugin = {
   kind: 'custom',
+  backup: opaqueCompatibilityBackupRules(parseOpaqueCompatibilityMap),
   normalizeConfig: config => normalizeCustomConfig(config) as unknown as Record<string, unknown>,
   probeConfig: async config => await new CustomProvider(normalizeCustomConfig(config)).probe(),
   publicConfig: source => {

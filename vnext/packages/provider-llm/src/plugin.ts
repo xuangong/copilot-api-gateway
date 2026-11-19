@@ -98,4 +98,26 @@ export interface LlmProviderPlugin
   normalizeConfig?(config: Record<string, unknown>): Record<string, unknown>
   /** Validate a draft config and check it reaches the upstream, without storing it. */
   probeConfig?(config: Record<string, unknown>): Promise<ProbeResult>
+  /**
+   * Configuration backup (export / import). Present means rows of this kind
+   * may be imported; absent means they are refused (OAuth-held credentials,
+   * for example, do not move between installations).
+   */
+  backup?: ProviderBackupRules
+}
+
+export interface ProviderBackupRules {
+  /**
+   * Non-secret config fields that secret redaction would mangle (their keys
+   * may contain words like "token"), returned normalized so the export can
+   * carry them verbatim. Invalid stored values return nothing.
+   */
+  verbatimConfig?(config: Record<string, unknown>): Record<string, unknown>
+  /** Throw when an imported config cannot be accepted. */
+  validateImport?(config: Record<string, unknown>): void
+  /**
+   * The row as it may leave or enter an installation, applied on export and
+   * on import (e.g. drop authority held by the source install).
+   */
+  portableRecord?(record: UpstreamRecord<unknown>): UpstreamRecord<unknown>
 }

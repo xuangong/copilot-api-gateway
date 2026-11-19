@@ -24,6 +24,7 @@ import { CopilotProvider } from './provider'
 
 export const copilotProviderPlugin: LlmProviderPlugin = {
   kind: 'copilot',
+  backup: {},
   // Admin-entered rows; the dashboard normally creates Copilot upstreams by device login.
   normalizeConfig: config => {
     if (typeof config.githubToken !== 'string' || !config.githubToken) throw new Error('copilot config.githubToken required')

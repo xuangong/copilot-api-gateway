@@ -51,3 +51,20 @@ export function withHttpCredentialFields(out: PublicConfig, source: Record<strin
   if (source.defaultHeaders) out.defaultHeaders = Object.fromEntries(Object.keys(configRecord(source.defaultHeaders)).map(key => [key, "***"]))
   return out
 }
+
+/**
+ * Backup rules for an upstream whose config may carry an opaque-compatibility
+ * declaration (custom, azure): the declaration is exported verbatim, and an
+ * import with a malformed one is refused.
+ */
+export function opaqueCompatibilityBackupRules(parse: (value: unknown) => unknown) {
+  return {
+    verbatimConfig(config: Record<string, unknown>): Record<string, unknown> {
+      try {
+        const declaration = parse(config.opaqueCompatibility)
+        return declaration === undefined ? {} : { opaqueCompatibility: declaration }
+      } catch { return {} }
+    },
+    validateImport(config: Record<string, unknown>): void { parse(config.opaqueCompatibility) },
+  }
+}

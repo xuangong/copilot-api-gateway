@@ -6,12 +6,20 @@
  * always write v2. Secrets may be redacted on export and restored from
  * live state on import via unredactWithLive().
  */
-import { parseOpaqueCompatibilityMap } from '@vibe-llm/provider-llm'
-import { parseAzureOpaqueCompatibility } from '@vibe-llm/provider-azure'
-import { LOKI_PROFILE_ID, normalizeLokiConfig, type LokiState } from '@vibe-llm/provider-loki'
+import type { ProviderBackupRules } from '@vibe-llm/provider-llm'
+import { providerPlugin } from '../../data-plane/providers/registry.ts'
 import type { UpstreamKind } from '@vibe-llm/protocols/common'
 import type { ApiKey, GitHubAccount, UpstreamRecord } from '../../repo/types.ts'
 import { isSynced } from '../sync/read-only.ts'
+
+/** The provider's backup rules; undefined means its rows cannot be imported. */
+function backupRules(kind: string): ProviderBackupRules | undefined {
+  return providerPlugin(kind)?.backup
+}
+
+function record(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
+}
 
 export const CONFIG_BUNDLE_VERSION = 2 as const
 export const REDACTED = '__REDACTED__'
@@ -74,20 +82,15 @@ function redactConfigBlob(value: unknown): unknown {
 
 function redactUpstream(u: UpstreamRecord<unknown>): UpstreamRecord<unknown> {
   const config = redactConfigBlob(u.config) as Record<string, unknown>
-  // Exact model keys may contain words such as "token"; declarations contain no secrets.
-  if (u.provider === 'custom' || u.provider === 'azure') {
-    const declaration = u.provider === 'azure' ? parseAzureOpaqueCompatibility(u.config.opaqueCompatibility) : parseOpaqueCompatibilityMap(u.config.opaqueCompatibility)
-    if (declaration !== undefined) config.opaqueCompatibility = declaration
-  }
+  // Provider-declared non-secret fields (e.g. model-keyed declarations whose
+  // keys contain "token") survive redaction verbatim.
+  Object.assign(config, backupRules(u.provider)?.verbatimConfig?.(record(u.config)) ?? {})
   return { ...u, config }
 }
 
-function withoutLokiAuthority(u: UpstreamRecord<unknown>): UpstreamRecord<unknown> {
-  if (u.provider !== 'loki') return u
-  // Backups transfer configuration, not an installation's ongoing token-sync authority.
-  const state: LokiState = { version: 1, profileId: LOKI_PROFILE_ID, generation: crypto.randomUUID(),
-    syncSecretHash: '', revision: 0, assistantStatus: 'waiting' }
-  return { ...u, config: normalizeLokiConfig(u.config), state }
+/** The row as it may leave or enter an installation, as its provider decides. */
+function portable(u: UpstreamRecord<unknown>): UpstreamRecord<unknown> {
+  return backupRules(u.provider)?.portableRecord?.(u) ?? u
 }
 
 function unredactConfigBlob(incoming: unknown, live: unknown): unknown {
@@ -116,7 +119,7 @@ export function exportConfig(input: BundleInput, options: ExportOptions = {}): C
     ? input.githubAccounts.map(redactGithubAccount)
     : [...input.githubAccounts]
   // Synced upstreams are rebuilt by sync and must not enter a backup (nor any credential they carry).
-  const upstreamsIn = (input.upstreams ?? []).filter(u => !isSynced(u)).map(withoutLokiAuthority)
+  const upstreamsIn = (input.upstreams ?? []).filter(u => !isSynced(u)).map(portable)
   const upstreams = options.redactSecrets ? upstreamsIn.map(redactUpstream) : [...upstreamsIn]
   const bundle: ConfigBundle = {
     version: CONFIG_BUNDLE_VERSION,
@@ -196,19 +199,16 @@ export function parseConfigBundle(payload: unknown): ImportResult {
         if (typeof u !== 'object' || u === null) throw new ImportError('upstreams entry must be object')
         const rec = u as UpstreamRecord<unknown>
         if (typeof rec.id !== 'string' || !rec.id) throw new ImportError('upstreams entry missing id')
-        if (rec.provider !== 'copilot' && rec.provider !== 'custom' && rec.provider !== 'azure' && rec.provider !== 'loki') {
-          throw new ImportError(`upstreams entry has unsupported provider: ${String(rec.provider)}`)
-        }
+        const rules = backupRules(rec.provider)
+        if (!rules) throw new ImportError(`upstreams entry has unsupported provider: ${String(rec.provider)}`)
         if (typeof rec.name !== 'string') throw new ImportError('upstreams entry missing name')
         if (!rec.config || typeof rec.config !== 'object' || Array.isArray(rec.config)) {
           throw new ImportError('upstreams entry config must be object')
         }
-        if (rec.provider === 'custom') parseOpaqueCompatibilityMap(rec.config.opaqueCompatibility)
-        if (rec.provider === 'azure') parseAzureOpaqueCompatibility(rec.config.opaqueCompatibility)
-        if (rec.provider === 'loki' && rec.config.profileId !== LOKI_PROFILE_ID) throw new ImportError('Unsupported Loki profile')
+        rules.validateImport?.(rec.config as Record<string, unknown>)
         redactedCount += countRedactedInBlob(rec.config)
       }
-      upstreams = (raw as UpstreamRecord<unknown>[]).map(withoutLokiAuthority)
+      upstreams = (raw as UpstreamRecord<unknown>[]).map(portable)
     }
   }
 
@@ -261,10 +261,7 @@ export function unredactWithLive(
     const here = liveUpstreamsById.get(u.id)
     if (!here) return u
     const config = unredactConfigBlob(u.config, here.config) as Record<string, unknown>
-    if ((u.provider === 'custom' || u.provider === 'azure') && u.config.opaqueCompatibility !== undefined) {
-      config.opaqueCompatibility = u.provider === 'azure'
-        ? parseAzureOpaqueCompatibility(u.config.opaqueCompatibility) : parseOpaqueCompatibilityMap(u.config.opaqueCompatibility)
-    }
+    if (u.config.opaqueCompatibility !== undefined) Object.assign(config, backupRules(u.provider)?.verbatimConfig?.(record(u.config)) ?? {})
     return { ...u, config }
   })
   return { ...incoming, apiKeys, githubAccounts, upstreams }
