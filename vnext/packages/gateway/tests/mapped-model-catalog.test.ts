@@ -156,7 +156,10 @@ test("an unavailable redirection omits both the raw source and its dependent ali
     { source: TARGET, destination: "missing" },
   ])
   expect(await catalog(`/api/models?keyId=${KEY_ID}`, "owner-session-key")).toEqual([])
-  expect((await app.request("/v1/models", { headers: { "x-api-key": KEY } })).status).toBe(404)
+  // Reference 516441b20 (#659): nothing reachable is an empty list, not a 404.
+  const unavailable = await app.request("/v1/models", { headers: { "x-api-key": KEY } })
+  expect(unavailable.status).toBe(200)
+  expect(((await unavailable.json()) as { data: unknown[] }).data).toEqual([])
 })
 
 test("disabled and foreign upstreams cannot make an alias available", async () => {

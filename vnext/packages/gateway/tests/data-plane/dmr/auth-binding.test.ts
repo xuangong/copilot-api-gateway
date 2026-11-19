@@ -121,15 +121,19 @@ test('a request with no credential at all still binds on the DMR surface', async
 
 test('the bound key never leaks onto /v1/* — that would be an open relay', async () => {
   // Same header, ordinary API path. "null" is a real (bogus) key here, it
-  // resolves to nobody, and nothing fills in for it.
-  const res = await app.request('/v1/models', bearerNull, env)
-  expect(res.status).toBe(404)
-  const anonymous = await app.request('/v1/models', {}, env)
-  expect(anonymous.status).toBe(404)
+  // resolves to nobody, and nothing fills in for it. An unresolved caller sees
+  // an empty catalog (reference 516441b20, #659), never the bound key's models.
+  for (const init of [bearerNull, {}]) {
+    const res = await app.request('/v1/models', init, env)
+    expect(res.status).toBe(200)
+    expect(((await res.json()) as { data: unknown[] }).data).toEqual([])
+  }
 })
 
 test('with DMR_COMPAT off the bound key is not applied anywhere', async () => {
   delete process.env.DMR_COMPAT
-  expect((await app.request('/engines/v1/models', bearerNull, env)).status).toBe(404)
-  expect((await app.request('/models', bearerNull, env)).status).toBe(404)
+  for (const path of ['/engines/v1/models', '/models']) {
+    const res = await app.request(path, bearerNull, env)
+    expect(JSON.stringify(await res.json().catch(() => null))).not.toContain('gpt-5.6-sol')
+  }
 })

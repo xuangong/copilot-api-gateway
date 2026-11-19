@@ -3,12 +3,8 @@
  *
  * Three routes preserved 1:1:
  *   - GET /api/models         — dashboard endpoint; gracefully empty when no upstream
- *   - GET /models             — SDK probe; 404 JSON when empty AND no per-request copilot token
+ *   - GET /models             — SDK probe; 200 with an empty list when no upstream is reachable
  *   - GET /v1/models          — same as /models
- *
- * vnext shape delta: old project threw `new Error("GitHub token not found...")` and let the
- * outer Elysia error mapper turn it into 5xx. vnext returns an explicit 404 JSON so the
- * client sees a stable shape; SDK consumers treat 404 the same as the old 5xx text.
  *
  * Auth context: caller-supplied via `c.get('auth')` carrying optional `userId` +
  * `copilot` ({copilotToken, accountType}); registry handles the request-scoped fallback.
@@ -183,13 +179,12 @@ modelsRouter.get('/api/models', async (c) => {
   return c.json(allOwners ? (dedupe ? collapseModelCatalog(models) : models) : withKeyModelAliases(models, catalogAuth.routingPolicy, dedupe))
 })
 
+// No reachable upstream (fresh gateway, all disabled, empty key scope) is a normal
+// state, not an error: every client format renders its natural empty list.
+// Reference: copilot-gateway 516441b20 (#659).
 async function handleList(auth: DataPlaneAuthCtx) {
   const raw = await listAvailableModels({ ownerId: auth.userId, upstreamIds: auth.routingPolicy?.upstreamIds, copilot: auth.copilot, dedupe: false })
-  const models = withKeyModelAliases(raw, auth.routingPolicy)
-  if (!models.data.length && !auth.copilot?.copilotToken && auth.routingPolicy?.upstreamIds == null) {
-    return { ok: false, models } as const
-  }
-  return { ok: true, models } as const
+  return withKeyModelAliases(raw, auth.routingPolicy)
 }
 
 // Codex CLI (all originators: `codex-tui`, `codex_cli_rs`, `codex_exec`,
@@ -207,17 +202,11 @@ async function handleModelsRequest(c: {
 }) {
   const auth = c.get('auth') ?? {}
   const ua = c.req.header('user-agent')
-  const result = await handleList(auth)
-  if (!result.ok) {
-    return c.json(
-      { error: { type: 'invalid_request_error', message: 'GitHub token not found. Use /auth/github to connect your account.' } },
-      404,
-    )
-  }
-  if (isClaudeCodeUserAgent(ua)) return c.json(toClaudeCodeCatalog(result.models.data))
-  if (isTypeSafeUserAgent(ua)) return c.json(toTypeSafeCatalog(result.models.data))
-  if (isCodexUserAgent(ua)) return c.json(await loadCodexCatalog(ua, result.models.data, currentResponsesWebSocketIngress() !== null))
-  return c.json(result.models)
+  const models = await handleList(auth)
+  if (isClaudeCodeUserAgent(ua)) return c.json(toClaudeCodeCatalog(models.data))
+  if (isTypeSafeUserAgent(ua)) return c.json(toTypeSafeCatalog(models.data))
+  if (isCodexUserAgent(ua)) return c.json(await loadCodexCatalog(ua, models.data, currentResponsesWebSocketIngress() !== null))
+  return c.json(models)
 }
 
 modelsRouter.get('/models', (c) => handleModelsRequest(c as never))

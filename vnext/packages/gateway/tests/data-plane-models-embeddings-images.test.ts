@@ -92,10 +92,25 @@ test('GET /api/models returns empty list with no upstream', async () => {
   expect(body.data).toEqual([])
 })
 
-test('GET /v1/models 404 when no upstream and no copilot token', async () => {
+// Adapted from reference copilot-gateway 516441b20 (#659): a gateway with no reachable
+// upstream (fresh, all disabled, empty key scope) is a normal state, so discovery
+// answers 200 with the client format's natural empty list, never a 404/502.
+test('model discovery returns empty catalogs when no upstream is reachable', async () => {
   initRepo(stubRepo([]))
-  const res = await buildApp(modelsRouter).request('/v1/models')
-  expect(res.status).toBe(404)
+  installFetch(async () => new Response(null, { status: 404 }))
+  const cases: Array<{ path: string; userAgent?: string; body: unknown }> = [
+    { path: '/v1/models', body: { object: 'list', data: [] } },
+    { path: '/models', body: { object: 'list', data: [] } },
+    { path: '/v1beta/models', body: { models: [] } },
+    { path: '/models', userAgent: 'codex_cli_rs/987.654.321', body: { models: [] } },
+    { path: '/models', userAgent: 'claude-code/2.1.206', body: { data: [], first_id: null, has_more: false, last_id: null } },
+    { path: '/models', userAgent: 'typesafe-sdk/1.0.0', body: { models: [] } },
+  ]
+  for (const { path, userAgent, body } of cases) {
+    const res = await buildApp(modelsRouter).request(path, userAgent ? { headers: { 'user-agent': userAgent } } : undefined)
+    expect([path, userAgent, res.status]).toEqual([path, userAgent, 200])
+    expect([path, userAgent, await res.json()]).toEqual([path, userAgent, body])
+  }
 })
 
 test('GET /v1/models success when stored upstream serves models', async () => {
