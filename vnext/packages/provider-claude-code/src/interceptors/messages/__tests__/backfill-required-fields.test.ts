@@ -14,12 +14,14 @@ describe('backfillRequiredFields', () => {
     expect(ctx.payload.max_tokens).toBe(16384)
   })
 
-  test('fills max_tokens to 8192 fallback when no model limit and no caller value', async () => {
+  // Reference copilot-gateway bafd800f3 (#571): 8192 stopped modern Claude
+  // generations prematurely when the client sent no cap; policy is 32768.
+  test('fills max_tokens to the 32768 gateway policy when no model limit and no caller value', async () => {
     const ctx = makeCtx({ messages: [{ role: 'user', content: 'hi' }] })
     // @ts-expect-error strip max_tokens
     delete ctx.payload.max_tokens
     await runOnce(backfillRequiredFields, ctx)
-    expect(ctx.payload.max_tokens).toBe(8192)
+    expect(ctx.payload.max_tokens).toBe(32768)
   })
 
   test('fills temperature to 1 when caller omits', async () => {

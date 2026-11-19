@@ -145,11 +145,12 @@ export { HUB_VERSION } from './version.ts'
 export * from './events.ts'
 export { parseMessagesStream, type ParseMessagesStreamOptions } from './stream.ts'
 
-// Fallback `max_tokens` value when the caller omits it and the model catalog
-// doesn't advertise `limits.max_output_tokens`. 8192 matches the sub2api
-// hard-cap for Claude Code CLI and the Anthropic Messages default cap for
-// mid-tier models. Reference:
-// copilot-gateway/packages/protocols/src/messages/index.ts.
-export const MESSAGES_FALLBACK_MAX_TOKENS = 8192
+// Gateway-policy fallback `max_tokens` when the caller omits it and the model
+// catalog doesn't advertise `limits.max_output_tokens`. 8192 (new-api's
+// default; one-api/LiteLLM use 4096) stops modern Claude generations
+// prematurely, so the policy is 32768 -- not an upstream default. Explicit
+// client values and advertised model limits always win. Reference:
+// copilot-gateway bafd800f3 (#571).
+export const MESSAGES_FALLBACK_MAX_TOKENS = 32768
 
 export { PROMPT_TOO_LONG_MESSAGE, messageIsContextExceeded, isContextExceededError } from "./context-window-error"

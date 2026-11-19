@@ -9,7 +9,7 @@ import { MESSAGES_FALLBACK_MAX_TOKENS } from '@vibe-llm/protocols/messages'
 // Sub2api backfills `max_tokens=128000` and `temperature=1` unconditionally.
 // We mirror the temperature default but cap `max_tokens` to the model's
 // advertised output limit (`limits.max_output_tokens`), falling back to
-// MESSAGES_FALLBACK_MAX_TOKENS (8192). Caller-supplied values are never
+// MESSAGES_FALLBACK_MAX_TOKENS (32768). Caller-supplied values are never
 // overwritten.
 export const backfillRequiredFields = async <TResult>(
   _env: object,

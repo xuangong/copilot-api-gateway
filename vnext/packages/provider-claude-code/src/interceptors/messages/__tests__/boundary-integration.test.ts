@@ -28,7 +28,7 @@ describe('CLAUDE_CODE_MESSAGES_BOUNDARY (integration)', () => {
     expect(await result.text()).toBe('terminal-ran')
 
     // backfill
-    expect(ctx.payload.max_tokens).toBe(8192)
+    expect(ctx.payload.max_tokens).toBe(32768)
     expect(ctx.payload.temperature).toBe(1)
 
     // metadata.user_id JSON envelope
