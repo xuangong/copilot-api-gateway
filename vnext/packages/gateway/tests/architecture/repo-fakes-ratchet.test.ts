@@ -12,7 +12,7 @@ import { expect, test } from "bun:test"
 import { Glob } from "bun"
 import { join } from "node:path"
 
-const MAX = 60
+const MAX = 21
 const ROOT = join(import.meta.dir, "../..")
 
 test("hand-written Repo fakes do not grow", async () => {
