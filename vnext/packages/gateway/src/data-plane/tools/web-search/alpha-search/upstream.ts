@@ -57,9 +57,9 @@ export const resolveAlphaSearchDispatcher = async (args: {
       + `${config.model} on alpha_search, or is outside this API key's scope`,
     )
   }
-  if (candidate.binding.kind !== 'codex' && candidate.binding.kind !== 'custom') {
-    throw new Error('Selected upstream does not support OpenAI search passthrough')
-  }
+  // Capability comes from the catalog, not the provider kind: candidates were
+  // enumerated for the alpha_search endpoint, so any provider that declares it
+  // (today Codex and custom) can serve the passthrough.
 
   return async (body, signal, headers) => {
     // The configured model picked the candidate above and has to reach the
