@@ -106,3 +106,13 @@ export function syntheticCopilotTokenResponse(request: Request): Response | null
   return new URL(request.url).pathname.endsWith("/copilot_internal/v2/token")
     ? Response.json({ token: "stored-fixture-token", expires_at: Math.floor(Date.now() / 1000) + 3600 }) : null
 }
+
+/**
+ * The route-fixture source most data-plane tests need: a fixed upstream list.
+ * Pass it to `initCatalogTestRepo`, which mirrors the rows into the real SQL
+ * repository for catalog discovery. Shared here so the cast to `Repo` exists
+ * once instead of in every test file.
+ */
+export function upstreamListRepo(upstreams: UpstreamRecord[]): Repo {
+  return { upstreams: { list: async () => upstreams } } as unknown as Repo
+}

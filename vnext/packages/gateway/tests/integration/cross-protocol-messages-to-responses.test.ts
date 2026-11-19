@@ -25,9 +25,9 @@
 import { test, expect, afterEach } from 'bun:test'
 import { Hono } from 'hono'
 import { app as innerApp } from '../../src/app.ts'
-import { initCatalogTestRepo as initRepo } from '../helpers/catalog-test-repo.ts'
+import { initCatalogTestRepo as initRepo, upstreamListRepo } from '../helpers/catalog-test-repo.ts'
 import { initBackground, initRuntimeLocation, __resetPlatformForTests } from '@vibe-core/platform'
-import type { Repo, UpstreamRecord } from '../../src/repo/types.ts'
+import type { UpstreamRecord } from '../../src/repo/types.ts'
 import type { DataPlaneAuthCtx } from '../../src/data-plane/models/routes.ts'
 import { readBodyText as readSSEText } from '@vibe-core/test-utils'
 
@@ -57,9 +57,7 @@ const customResponsesUpstream = (): UpstreamRecord => ({
   updatedAt: '2026-01-01T00:00:00Z',
 })
 
-const stubRepo = (upstreams: UpstreamRecord[]): Repo => ({
-  upstreams: { list: async () => upstreams },
-} as unknown as Repo)
+const stubRepo = upstreamListRepo
 
 const originalFetch = globalThis.fetch
 

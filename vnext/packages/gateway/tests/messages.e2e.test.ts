@@ -10,13 +10,13 @@
 import { test, expect, afterEach, beforeEach } from 'bun:test'
 import { Hono } from 'hono'
 import { app as innerApp } from '../src/app.ts'
-import { initCatalogTestRepo as initRepo, syntheticCopilotTokenResponse } from './helpers/catalog-test-repo.ts'
+import { initCatalogTestRepo as initRepo, syntheticCopilotTokenResponse, upstreamListRepo } from './helpers/catalog-test-repo.ts'
 import {
   __resetPlatformForTests,
   initBackground,
   initRuntimeLocation,
 } from '@vibe-core/platform'
-import type { Repo, UpstreamRecord } from '../src/repo/types.ts'
+import type { UpstreamRecord } from '../src/repo/types.ts'
 import type { Model, ModelsResponse } from '@vibe-llm/provider-copilot'
 import type { DataPlaneAuthCtx } from '../src/data-plane/models/routes.ts'
 
@@ -55,9 +55,7 @@ const stubUpstream = (): UpstreamRecord => ({
   updatedAt: '2026-01-01T00:00:00Z',
 })
 
-const stubRepo = (upstreams: UpstreamRecord[]): Repo => ({
-  upstreams: { list: async () => upstreams },
-} as unknown as Repo)
+const stubRepo = upstreamListRepo
 
 const originalFetch = globalThis.fetch
 type FetchHandler = (req: Request) => Promise<Response> | Response

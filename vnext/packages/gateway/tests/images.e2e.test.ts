@@ -15,14 +15,12 @@ import { Hono } from 'hono'
 import { app as innerApp } from '../src/app.ts'
 import { initRepo } from '../src/repo/index.ts'
 import { __resetPlatformForTests, initRuntimeLocation } from '@vibe-core/platform'
-import type { Repo, UpstreamRecord } from '../src/repo/types.ts'
 import type { DataPlaneAuthCtx } from '../src/data-plane/models/routes.ts'
+import { upstreamListRepo } from './helpers/catalog-test-repo.ts'
 
 const env = {} as never
 
-const stubRepo = (upstreams: UpstreamRecord[]): Repo => ({
-  upstreams: { list: async () => upstreams },
-} as unknown as Repo)
+const stubRepo = upstreamListRepo
 
 beforeEach(() => {
   // Building each upstream's egress chain needs the runtime location for
