@@ -90,6 +90,13 @@ test("an Ultra level added from client capabilities maps to Max", () => {
   expect(entry.multi_agent_reasoning_effort).toBe("max")
 })
 
+// Adapted from reference copilot-gateway 040af9205 (#740): text/image/audio chat
+// modalities flow into the Codex entry.
+test("Codex entry advertises audio input from chat modalities", () => {
+  const entry = synthesizeCatalogEntry({ id: "m", chat: { modalities: { input: ["text", "image", "audio"] } } }, { slug: "m", input_modalities: ["text"] })
+  expect(entry.input_modalities).toEqual(["text", "image", "audio"])
+})
+
 test("Codex does not advertise original image detail for a text-only upstream", () => {
   const entry = synthesizeCatalogEntry({ id: "text-only", chat: {
     image_detail_original: true, modalities: { input: ["text"] },

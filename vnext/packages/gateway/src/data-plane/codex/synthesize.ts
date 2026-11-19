@@ -93,7 +93,7 @@ export interface CodexSynthesizeModel {
   name?: string
   chat?: {
     image_detail_original?: boolean
-    modalities?: { input: readonly ('text' | 'image')[] }
+    modalities?: { input: readonly ('text' | 'image' | 'audio')[] }
   }
   limits?: { max_context_window_tokens?: number }
   providerData?: unknown
@@ -146,7 +146,7 @@ export const synthesizeCatalogEntry = (
 
   const displayName = model.name ?? (source.display_name as string | undefined) ?? model.id
   const inputModalities = model.chat?.modalities?.input
-    ?? (source.input_modalities as readonly ('text' | 'image')[] | undefined)
+    ?? (source.input_modalities as readonly ('text' | 'image' | 'audio')[] | undefined)
     ?? BASELINE.input_modalities
 
   const endpoints = model.supported_endpoints

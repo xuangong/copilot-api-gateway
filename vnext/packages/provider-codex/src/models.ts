@@ -25,6 +25,9 @@ import type { Fetcher } from './fetcher'
 import { pricingForCodexModelKey } from './pricing'
 import type { ModelPricing } from '@vibe-llm/protocols/common'
 
+// Adapted from reference copilot-gateway 040af9205 (#740).
+const CODEX_CHAT_INPUTS: ReadonlySet<string> = new Set(['text', 'image', 'audio'])
+
 export interface CodexRawModel {
   id: string
   display_name: string
@@ -35,7 +38,9 @@ export interface CodexRawModel {
   // client can opt into the long window without changing its compaction default.
   context_window: number
   max_context_window?: number
-  input_modalities?: readonly ('text' | 'image')[]
+  // Upstream additions (e.g. video) are kept verbatim; only CODEX_CHAT_INPUTS
+  // are advertised as chat modalities.
+  input_modalities?: readonly string[]
   reasoning_efforts?: readonly string[]
   default_reasoning_effort?: string
   use_responses_lite?: boolean
@@ -52,7 +57,7 @@ export interface CodexProviderModel {
   endpoints: { responses: Record<string, never> }
   pricing?: ModelPricing
   chat?: {
-    modalities?: { input: readonly ('text' | 'image')[]; output: readonly ['text'] }
+    modalities?: { input: readonly ('text' | 'image' | 'audio')[]; output: readonly ['text'] }
     reasoning?: { effort: { supported: readonly string[]; default: string } }
     image_detail_original: boolean
   }
@@ -143,10 +148,10 @@ const assertRawModel = (value: unknown): CodexRawModel => {
     if (!Array.isArray(value.input_modalities)) {
       throw new TypeError(`Codex model entry ${slug} input_modalities not an array`)
     }
-    const out: ('text' | 'image')[] = []
+    const out: string[] = []
     for (const m of value.input_modalities) {
-      if (m !== 'text' && m !== 'image') {
-        throw new TypeError(`Codex model entry ${slug} unknown modality ${JSON.stringify(m)}`)
+      if (typeof m !== 'string' || m.length === 0) {
+        throw new TypeError(`Codex model entry ${slug} input_modalities entry malformed`)
       }
       if (!out.includes(m)) out.push(m)
     }
@@ -224,7 +229,10 @@ export const codexRawToProviderModel = (raw: CodexRawModel): CodexProviderModel 
     image_detail_original: raw.image_detail_original ?? false,
   }
   if (raw.input_modalities && raw.input_modalities.length > 0) {
-    chat.modalities = { input: raw.input_modalities, output: ['text'] }
+    chat.modalities = {
+      input: raw.input_modalities.filter((m): m is 'text' | 'image' | 'audio' => CODEX_CHAT_INPUTS.has(m)),
+      output: ['text'],
+    }
   }
   if (raw.reasoning_efforts && raw.reasoning_efforts.length > 0) {
     let effortDefault: string

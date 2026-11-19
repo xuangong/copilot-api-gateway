@@ -51,6 +51,36 @@ test("catalog request pins the current stable Codex client identity", async () =
   expect(headers.get("user-agent")).toBe("codex_cli_rs/0.159.3 (Mac OS 26.5.0; arm64) iTerm.app/3.6.10")
 })
 
+// Adapted from reference copilot-gateway 040af9205 (#740): a new upstream input
+// modality (audio, video, ...) must not make the whole catalog throw. Unknown
+// ones are retained on the raw entry; chat modalities advertise only the ones
+// the gateway understands (text, image, audio).
+test("catalog keeps new input modalities without throwing or advertising unsupported input", async () => {
+  const catalog = await fetchCodexCatalog({
+    accessToken: "synthetic", accountId: "synthetic",
+    fetcher: async () => Response.json({ models: [
+      { slug: "x", display_name: "X", context_window: 1, input_modalities: ["text", "video", "image", "video", "audio"] },
+      { slug: "old", display_name: "Old", context_window: 1, input_modalities: ["text"] },
+      { slug: "audio", display_name: "Audio", context_window: 1, input_modalities: ["audio"] },
+      { slug: "future", display_name: "Future", context_window: 1, input_modalities: ["video"] },
+    ] }),
+  })
+  expect(catalog).toHaveLength(4)
+  expect(catalog[0]?.input_modalities).toEqual(["text", "video", "image", "audio"])
+  const models = catalog.map(raw => codexRawToProviderModel(raw))
+  expect(models[0]?.chat?.modalities).toEqual({ input: ["text", "image", "audio"], output: ["text"] })
+  expect(models[1]?.chat?.modalities).toEqual({ input: ["text"], output: ["text"] })
+  expect(models[2]?.chat?.modalities).toEqual({ input: ["audio"], output: ["text"] })
+  expect(models[3]?.chat?.modalities).toEqual({ input: [], output: ["text"] })
+})
+
+test.each([null, "text", [null], [1], [true], [{}], [""]].map(value => [value]))("catalog rejects malformed input_modalities %j", async value => {
+  await expect(fetchCodexCatalog({
+    accessToken: "synthetic", accountId: "synthetic",
+    fetcher: async () => Response.json({ models: [{ slug: "x", display_name: "X", context_window: 1, input_modalities: value }] }),
+  })).rejects.toThrow("input_modalities")
+})
+
 // Adapted from reference copilot-gateway 5a6c62963 (#559): the backend's default
 // window and its override ceiling are different facts. Collapsing them makes
 // clients compact at the ceiling (or lose long-context opt-in).
