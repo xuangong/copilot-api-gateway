@@ -45,6 +45,51 @@ test.each([
   expect(entry.max_context_window).toBe(expected)
 })
 
+// Adapted from reference copilot-gateway 2045cd7ec (#577): Codex resolves Ultra
+// through `multi_agent_reasoning_effort`, so it must name the last supported
+// non-Ultra effort (including vendor-specific values), not a stale catalog one.
+test.each(["v1", "v2"])("maps an existing Ultra preset to the last non-Ultra effort, keeping multi-agent %s", version => {
+  const levels = ["xhigh", "max", "ultra"].map(effort => ({ effort, description: effort }))
+  const entry = synthesizeCatalogEntry({ id: "m" }, {
+    slug: "m", supported_reasoning_levels: levels, multi_agent_version: version, multi_agent_reasoning_effort: "xhigh",
+  })
+  expect(entry.multi_agent_reasoning_effort).toBe("max")
+  expect(entry.multi_agent_version).toBe(version)
+  expect(entry.supported_reasoning_levels).toEqual(levels)
+})
+
+test.each([
+  { efforts: ["max", "high", "ultra"], expected: "high" },
+  { efforts: ["high", "ultra", "vendor-specific"], expected: "vendor-specific" },
+  { efforts: ["vendor-specific", "ultra"], expected: "vendor-specific" },
+  { efforts: ["ultra", "none"], expected: "none" },
+])("maps Ultra to the last non-Ultra effort in $efforts", ({ efforts, expected }) => {
+  const levels = efforts.map(effort => ({ effort, description: effort }))
+  const entry = synthesizeCatalogEntry({ id: "m" }, { slug: "m", supported_reasoning_levels: levels, multi_agent_version: "v2" })
+  expect(entry.multi_agent_reasoning_effort).toBe(expected)
+  expect(entry.supported_reasoning_levels).toEqual(levels)
+  expect(entry.multi_agent_version).toBe("v2")
+})
+
+test.each([
+  { efforts: ["xhigh", "max"], mapping: "xhigh" },
+  { efforts: [], mapping: "xhigh" },
+  { efforts: ["ultra"], mapping: undefined },
+  { efforts: ["ultra"], mapping: "xhigh" },
+])("preserves the catalog mapping without Ultra or a non-Ultra effort: $efforts", ({ efforts, mapping }) => {
+  const levels = efforts.map(effort => ({ effort, description: "" }))
+  const entry = synthesizeCatalogEntry({ id: "m" }, { slug: "m", supported_reasoning_levels: levels, multi_agent_reasoning_effort: mapping })
+  expect(entry.multi_agent_reasoning_effort).toBe(mapping)
+})
+
+test("an Ultra level added from client capabilities maps to Max", () => {
+  const entry = synthesizeCatalogEntry({ id: "m" }, {
+    slug: "m", supported_reasoning_levels: [{ effort: "high", description: "" }, { effort: "max", description: "" }],
+  }, { ultraReasoningLevel: { effort: "ultra", description: "Ultra" } })
+  expect(entry.multi_agent_version).toBe("v2")
+  expect(entry.multi_agent_reasoning_effort).toBe("max")
+})
+
 test("Codex does not advertise original image detail for a text-only upstream", () => {
   const entry = synthesizeCatalogEntry({ id: "text-only", chat: {
     image_detail_original: true, modalities: { input: ["text"] },

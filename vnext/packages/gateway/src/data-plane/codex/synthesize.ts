@@ -172,6 +172,15 @@ export const synthesizeCatalogEntry = (
 
   if (shouldEnableUltra) entry.multi_agent_version = 'v2'
 
+  // Codex resolves Ultra through this field before sending the wire effort:
+  // the last non-Ultra preset is the highest supported effort. Keep the
+  // catalog mapping when Ultra or a non-Ultra preset is absent.
+  // Adapted from reference copilot-gateway 2045cd7ec (#577).
+  if (advertisedReasoning.some((level) => level.effort === 'ultra')) {
+    const highestEffort = advertisedReasoning.findLast((level) => level.effort !== 'ultra')?.effort
+    if (highestEffort !== undefined) entry.multi_agent_reasoning_effort = highestEffort
+  }
+
   if (base === undefined) {
     entry.base_instructions = synthesizedBaseInstructions(model.id, displayName)
   }
