@@ -32,8 +32,10 @@ for (const [target, translate] of TARGETS) {
     { type: "web_search" },
     "web_search",
     { type: "allowed_tools", mode: "required", tools: [{ type: "web_search" }] },
-  ])(`${target}: forcing it with tool_choice %o is rejected`, choice => {
-    expect(() => run({ tools: [{ type: "web_search" }, fn], tool_choice: choice })).toThrow()
+  ])(`${target}: forcing it with tool_choice %o is rejected with an actionable message`, choice => {
+    // Surveyed practice: a forced tool is a contract no gateway silently drops;
+    // the error names the tool and how to fix the request.
+    expect(() => run({ tools: [{ type: "web_search" }, fn], tool_choice: choice })).toThrow(/web_search.*(disable|OpenAI Responses)/)
   })
 }
 

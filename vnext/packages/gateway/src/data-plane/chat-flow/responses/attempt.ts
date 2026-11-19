@@ -390,6 +390,7 @@ export const responsesAttempt = {
         // image-gen + telemetry correlation. The image-generation shortcut already
         // ran before this point, so these are safe to pass through.
         const hubProtocol = sel.targetEndpoint as HubAttemptProtocol
+        warnDroppedHostedTools(invocation.payload, { requestId, model: sel.bareModel, target: hubProtocol })
         const hubAttempt = (hubAttemptOverride ?? pickHubAttempt)(hubProtocol)
         return await traverseTranslation({
           dump,
@@ -548,4 +549,22 @@ export const responsesAttempt = {
       return llmInternalErrorResult(502, err instanceof Error ? err : new Error(String(err)), performance)
     }
   },
+}
+
+/**
+ * Hosted Responses tools (web_search, file_search, …) still present here have
+ * no server-tool shim to run them, and the translator drops them for a Chat or
+ * Messages target. Dropping keeps default Codex sessions working (they attach
+ * web_search); the warning keeps the drop visible, as LiteLLM's Responses
+ * bridge does (litellm/responses/litellm_completion_transformation/transformation.py).
+ */
+export function warnDroppedHostedTools(payload: unknown, context: { requestId?: string; model: string; target: string }): void {
+  const tools = (payload as { tools?: unknown } | null)?.tools
+  if (!Array.isArray(tools)) return
+  const dropped = [...new Set(tools.flatMap(tool => {
+    const type = (tool as { type?: unknown } | null)?.type
+    return typeof type === 'string' && type !== 'function' && type !== 'custom' && type !== 'namespace' ? [type] : []
+  }))]
+  if (dropped.length === 0) return
+  console.warn(JSON.stringify({ evt: 'hosted_tools_dropped', request_id: context.requestId ?? null, model: context.model, target: context.target, tools: dropped }))
 }

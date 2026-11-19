@@ -22,8 +22,25 @@ function validateCallableKinds(tools: Tool[]): void {
   }
 }
 
+/**
+ * A forced hosted tool (web_search, file_search, …) cannot be honoured by a
+ * Chat or Messages target. Offered hosted tools are dropped instead (Codex
+ * attaches web_search by default); forcing one is a contract we must refuse,
+ * so say which tool and how to fix the request.
+ */
+function forcedHostedToolError(type: string): TranslatorValidationError {
+  return new TranslatorValidationError(
+    `tool_choice forces the hosted tool '${type}', which this model's upstream cannot run. ` +
+    `Remove the tool_choice, disable the tool in the client (Codex: web_search = "disabled"), ` +
+    `or route the model to an OpenAI Responses upstream.`,
+    "tool_choice",
+  )
+}
+
 function validateSelector(value: unknown): { type: "function" | "custom"; name: string } {
   const selector = record(value)
+  if (selector && typeof selector.type === "string" && selector.type !== "function" && selector.type !== "custom"
+    && selector.type !== "allowed_tools" && selector.type !== "namespace") throw forcedHostedToolError(selector.type)
   if (!selector || (selector.type !== "function" && selector.type !== "custom")
     || typeof selector.name !== "string" || selector.name.length === 0
     || selector.namespace !== undefined
@@ -60,7 +77,7 @@ export function projectResponsesTools(payload: ResponsesPayload): { tools: Respo
   } else if (choice != null && typeof choice !== "string") {
     matchingTools(tools ?? [], choice)
   } else if (typeof choice === "string" && choice !== "none" && choice !== "auto" && choice !== "required") {
-    throw new TranslatorValidationError("Cannot translate unsupported tool_choice", "tool_choice")
+    throw forcedHostedToolError(choice)
   }
   validateCallableKinds(tools ?? [])
   for (const tool of tools ?? []) {
