@@ -26,6 +26,7 @@ export const CODEX_OAUTH_SCOPE = 'openid profile email offline_access'
 // and auth.openai.com continues to accept it across CLI revisions. Note the
 // hyphen-lowercase product name — distinct from the underscore form used on
 // the data plane below.
+// Source: https://github.com/Menci/copilot-gateway/blob/ab7d27239d6b4726e6758d4d4af9ff7aede90890/packages/provider-chatgpt/src/constants.ts#L24-L31
 export const CODEX_OAUTH_USER_AGENT = 'codex-cli/0.91.0'
 
 export const CODEX_BACKEND_BASE = 'https://chatgpt.com/backend-api'

@@ -21,6 +21,7 @@ import type { ThinkingCapabilities } from "./transforms/thinking-cleanup"
 const CLAUDE_VARIANT_SUFFIX = /-(?:high|xhigh|1m(?:-internal)?)$/
 const CLAUDE_DATE_SUFFIX = /-\d{8}$/
 
+// https://github.com/anthropics/anthropic-sdk-typescript/blob/3b45cd3b69c956ac63384fdb09ce1d8109f3fa80/src/resources/beta/beta.ts#L622-L635
 export const CONTEXT_1M_BETA = "context-1m-2025-08-07"
 const INTERLEAVED_THINKING_BETA = "interleaved-thinking-2025-05-14"
 

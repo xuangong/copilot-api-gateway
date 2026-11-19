@@ -1,5 +1,8 @@
 // All Claude Code OAuth + data-plane upstream constants. Pinned to the same
-// public OAuth client the official `claude` CLI ships with.
+// public OAuth client the official `claude` CLI ships with, as independent
+// reimplementations of the Claude Code OAuth flow use:
+//   https://github.com/plandex-ai/plandex/blob/e2d772072efadbe41d2946d97d79be55532dbab5/app/cli/lib/claude_max.go
+//   https://github.com/decolua/9router/blob/0c47c891e7a6c1a47c35b286235a132c0a5aa0a8/open-sse/providers/registry/claude.js
 export const CLAUDE_CODE_CLIENT_ID = '9d1c250a-e61b-44d9-88ed-5944d1962f5e'
 
 export const CLAUDE_CODE_AUTHORIZE_URL = 'https://claude.ai/oauth/authorize'
@@ -19,6 +22,7 @@ export const CLAUDE_CODE_OAUTH_SETUP_TOKEN_SCOPE = 'user:inference'
 export const CLAUDE_CODE_SETUP_TOKEN_EXPIRES_IN_SECONDS = 365 * 24 * 60 * 60
 
 // User-Agent on /v1/oauth/token — matches axios (the CLI's HTTP layer).
+// Source: https://github.com/Menci/copilot-gateway/blob/ab7d27239d6b4726e6758d4d4af9ff7aede90890/packages/provider-claude-code/src/constants.ts#L58-L61
 export const CLAUDE_CODE_OAUTH_USER_AGENT = 'axios/1.13.6'
 
 // Identity endpoint that derives email + account/organization UUIDs from a

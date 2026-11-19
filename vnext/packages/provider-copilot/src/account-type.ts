@@ -19,7 +19,11 @@ export type { AccountType }
 // 0.52.0 while speaking a 2025 API version is a sharper signal than a client
 // that is uniformly a few releases behind.
 //
-// Source: copilot-gateway/packages/provider-copilot/src/auth.ts
+// Source: copilot-gateway/packages/provider-copilot/src/auth.ts, which tracks
+// caozhiyuan/copilot-api@b16e019 (COPILOT_VERSION, USER_AGENT, api version):
+//   https://github.com/caozhiyuan/copilot-api/blob/b16e01909e747b5ad49ce38137a6c1453e0052a6/src/lib/api-config.ts#L148-L156
+// and its VSCode host version fallback:
+//   https://github.com/caozhiyuan/copilot-api/blob/b16e01909e747b5ad49ce38137a6c1453e0052a6/src/services/get-vscode-version.ts#L1
 export const COPILOT_VERSION = "0.52.0"
 export const VSCODE_VERSION = "1.124.2"
 export const EDITOR_VERSION = `vscode/${VSCODE_VERSION}`
@@ -31,6 +35,7 @@ export const COPILOT_API_VERSION = "2026-06-01"
 /**
  * GitHub REST management plane (api.github.com). Not the same calendar as
  * COPILOT_API_VERSION — do not collapse the two back into one constant.
+ * https://github.com/caozhiyuan/copilot-api/blob/b16e01909e747b5ad49ce38137a6c1453e0052a6/src/lib/api-config.ts#L148-L156
  */
 export const GITHUB_API_VERSION = "2025-04-01"
 

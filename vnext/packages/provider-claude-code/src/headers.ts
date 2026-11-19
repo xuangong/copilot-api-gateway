@@ -36,6 +36,7 @@
 // still `node` (Bun satisfies the SDK's node branch), and every token in the
 // two anthropic-beta lists below still exists in the 2.1.233 binary.
 
+// https://www.npmjs.com/package/@anthropic-ai/claude-code/v/2.1.181
 export const CLAUDE_CLI_VERSION = '2.1.181'
 
 const STAINLESS_PACKAGE_VERSION = '0.94.0'
