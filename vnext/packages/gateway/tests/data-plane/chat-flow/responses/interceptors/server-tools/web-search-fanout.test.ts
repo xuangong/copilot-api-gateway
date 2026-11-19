@@ -159,6 +159,56 @@ describe('web_search shim fan-out on the Responses wire', () => {
   })
 })
 
+// Adapted from reference copilot-gateway 1fae93f30 (#633). Replayed history
+// must keep the bytes the model produced: re-serializing the repaired object
+// told the model it had written something else than it did.
+test('replays the upstream raw argument string for an unfanned call', async () => {
+  const hosted = await hostedDispatch()
+  const raw = '{"search_query": [{"q": "bun latest",}]}'
+  const slots = hosted.dispatcher({
+    intercepted: { callId: 'call_x', name: 'web_search', arguments: { search_query: [{ q: 'bun latest' }] }, rawArguments: raw },
+    loopState: { iterationCount: 1, remainingToolCalls: undefined },
+  })
+  expect(slots).toHaveLength(1)
+  expect(payloadOf(await runSlot(slots[0]!.run)).functionCallItem.arguments).toBe(raw)
+})
+
+// Same commit: one parallel assistant turn must replay as every call, then
+// every result. Interleaving call/result pairs tells the model it saw each
+// result before issuing the next call.
+describe('hosted-call history replay grouping', () => {
+  const wsc = (id: string, q: string) => ({ type: 'web_search_call', id, status: 'completed', action: { type: 'search', query: q, queries: [q] } })
+  const shape = (items: Array<Record<string, any>>) => items.map((i) =>
+    i.type === 'function_call' || i.type === 'function_call_output' ? `${i.type}:${i.call_id.startsWith('cc_replay') ? 'replay' : i.call_id}` : i.type)
+  const transform = async (input: unknown[]) => {
+    const prepared = await webSearchServerTool(invocation(), requestCtx())
+    if (prepared.type !== 'active') throw new Error('expected active')
+    return prepared.transformItems!(input as never, 'web_search') as Array<Record<string, any>>
+  }
+
+  test('groups a parallel batch as calls first, then outputs', async () => {
+    const out = await transform([wsc('a', 'qa'), wsc('b', 'qb')])
+    expect(shape(out)).toEqual(['function_call:replay', 'function_call:replay', 'function_call_output:replay', 'function_call_output:replay'])
+    expect([out[0]!.call_id, out[1]!.call_id]).toEqual([out[2]!.call_id, out[3]!.call_id])
+  })
+
+  test('keeps client calls in the batch and flushes hosted results before any other item', async () => {
+    const out = await transform([
+      wsc('a', 'qa'),
+      { type: 'function_call', call_id: 'client', name: 'client', arguments: '{}' },
+      wsc('b', 'qb'),
+      { type: 'function_call_output', call_id: 'client', output: 'ok' },
+      { type: 'message', role: 'user', content: 'next' },
+      wsc('c', 'qc'),
+    ])
+    expect(shape(out)).toEqual([
+      'function_call:replay', 'function_call:client', 'function_call:replay',
+      'function_call_output:replay', 'function_call_output:replay', 'function_call_output:client',
+      'message', 'function_call:replay', 'function_call_output:replay',
+    ])
+  })
+})
+
 test("actual hosted preparation constructs replay metadata before any eager provider start", async () => {
   let requests = 0
   globalThis.fetch = (async () => { requests++; return Response.json({ results: [] }) }) as unknown as typeof fetch

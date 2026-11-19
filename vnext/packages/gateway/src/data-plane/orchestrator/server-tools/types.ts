@@ -29,6 +29,8 @@ export interface InterceptedFunctionCall {
   name: string
   /** jsonrepair-cleaned parsed arguments; null when not a JSON object. */
   arguments: Record<string, unknown> | null
+  /** The exact argument string the upstream produced, before any repair. */
+  rawArguments?: string
 }
 
 export interface ServerToolTerminal {

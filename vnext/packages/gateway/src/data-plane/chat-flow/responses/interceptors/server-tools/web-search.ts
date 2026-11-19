@@ -388,9 +388,24 @@ const transformTypedInputItemsForWebSearch = (
   getPrivatePayload: (id: string) => WebSearchCallPrivatePayload | undefined,
 ): ResponsesInputItem[] => {
   const out: ResponsesInputItem[] = []
+  // One parallel assistant turn replays as every call, then every result.
+  // Results wait in `pending` until an item that is not part of the call
+  // batch (anything but another call) arrives, so a result never precedes a
+  // sibling call from the same turn.
+  // Adapted from reference copilot-gateway 1fae93f30 (#633).
+  const pending: ResponsesInputItem[] = []
+  const flush = (): void => {
+    out.push(...pending)
+    pending.length = 0
+  }
+  const emit = (call: ResponsesInputItem, output: ResponsesInputItem): void => {
+    out.push(call)
+    pending.push(output)
+  }
 
   for (const item of input) {
     if (item.type !== 'web_search_call') {
+      if (item.type !== 'function_call' && item.type !== 'custom_tool_call') flush()
       out.push(item)
       continue
     }
@@ -398,7 +413,7 @@ const transformTypedInputItemsForWebSearch = (
     const wireItem = item as ResponsesInputItem & { id?: string; action?: ResponsesWebSearchAction }
     const candidatePayload = wireItem.id !== undefined ? getPrivatePayload?.(wireItem.id) : undefined
     if (candidatePayload !== undefined) {
-      out.push(
+      emit(
         candidatePayload.functionCallItem as unknown as ResponsesInputItem,
         {
           type: 'function_call_output',
@@ -416,7 +431,7 @@ const transformTypedInputItemsForWebSearch = (
       // function_call_output. The model still sees enough to recognize
       // the malformed shape.
       const wireDump = truncatePreservingCodePoints(JSON.stringify(item), MAX_MALFORMED_WIRE_DUMP_CHARS)
-      out.push(
+      emit(
         {
           type: 'function_call',
           call_id: callId,
@@ -434,7 +449,7 @@ const transformTypedInputItemsForWebSearch = (
     }
 
     const callId = synthesizeReplayCallId()
-    out.push(
+    emit(
       {
         type: 'function_call',
         call_id: callId,
@@ -451,6 +466,7 @@ const transformTypedInputItemsForWebSearch = (
       },
     )
   }
+  flush()
   return out
 }
 
@@ -603,11 +619,13 @@ export const webSearchServerTool: ServerToolRegistration<Invocation, ServerToolR
                   // list we resend.
                   call_id: slots.length === 1 ? intercepted.callId : `${intercepted.callId}_${index}`,
                   name: intercepted.name,
-                  // Serialize this slot's own slice of the parsed arguments
-                  // rather than the upstream's raw string (which might be
-                  // malformed, and which names every operation rather than
-                  // just this one).
-                  arguments: JSON.stringify(slot.arguments),
+                  // An unfanned call replays the exact string the model wrote.
+                  // A fanned-out slot serializes its own slice of the parsed
+                  // arguments: the raw string names every operation, not just
+                  // this one.
+                  arguments: slots.length === 1 && intercepted.rawArguments !== undefined
+                    ? intercepted.rawArguments
+                    : JSON.stringify(slot.arguments),
                   status: 'completed',
                 }
                 return {

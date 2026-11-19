@@ -791,6 +791,7 @@ export const consumeTurnStreaming = async function* (
         intercepted.intercepted.name = event.item.name
         intercepted.argumentsJson = event.item.arguments
         intercepted.intercepted.arguments = parseServerToolArguments(intercepted.argumentsJson)
+        intercepted.intercepted.rawArguments = intercepted.argumentsJson
         serverToolTrace('dispatch', {
           tool: intercepted.intercepted.name,
           iteration: loopState.iterationCount,
