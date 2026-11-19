@@ -39,6 +39,32 @@ export const codexQuotaActiveLimitKey = (snapshot: CodexQuotaSnapshot): string =
   return key && !isUnsafeActiveLimitKey(key) ? key : CODEX_QUOTA_UNKNOWN_ACTIVE_LIMIT
 }
 
+// Each window has independent usage and optional reset metadata. This is the
+// latest KNOWN timed restriction: only windows at >=100% with a valid reset
+// count; an exhausted window without a reset cannot date the block.
+// Adapted from reference copilot-gateway c27a76122 (#570).
+const codexQuotaRestrictionUntil = (snapshot: CodexQuotaSnapshot): string | undefined => {
+  const windows = [
+    [snapshot.primary_used_percent, snapshot.primary_reset_after_at],
+    [snapshot.secondary_used_percent, snapshot.secondary_reset_after_at],
+  ] as const
+  const resets = windows.flatMap(([used, reset]) => {
+    if (used === undefined || !Number.isFinite(used) || used < 100 || reset === undefined) return []
+    const instant = Date.parse(reset)
+    return Number.isFinite(instant) && instant > 0 ? [instant] : []
+  })
+  return resets.length > 0 ? new Date(Math.max(...resets)).toISOString() : undefined
+}
+
+// Re-derive a stored (possibly legacy) restriction the same way as new
+// observations; other fields are preserved.
+export const projectCodexQuota = (snapshot: CodexQuotaSnapshot): CodexQuotaSnapshot => {
+  if (snapshot.ratelimited_until === undefined) return snapshot
+  const { ratelimited_until: _legacy, ...reading } = snapshot
+  const until = codexQuotaRestrictionUntil(reading)
+  return until === undefined ? reading : { ...reading, ratelimited_until: until }
+}
+
 const TTL_FLOOR_MS = 24 * 60 * 60 * 1000
 
 interface ParseCodexQuotaOptions {
@@ -92,15 +118,8 @@ export const parseCodexQuotaHeaders = (
   setNumber('credits_balance', 'x-codex-credits-balance')
 
   if (options.isRateLimited) {
-    const primary = Number(headers.get('x-codex-primary-reset-after-seconds'))
-    const secondary = Number(headers.get('x-codex-secondary-reset-after-seconds'))
-    const seconds = Math.max(
-      Number.isFinite(primary) ? primary : 0,
-      Number.isFinite(secondary) ? secondary : 0,
-    )
-    if (seconds > 0) {
-      snapshot.ratelimited_until = new Date(options.now.getTime() + seconds * 1000).toISOString()
-    }
+    const until = codexQuotaRestrictionUntil(snapshot)
+    if (until !== undefined) snapshot.ratelimited_until = until
   }
 
   return snapshot
@@ -186,7 +205,7 @@ export function readCodexQuotaObservations(
     // Anchor to receipt time, never the time at which the dashboard is opened.
     const freshUntil = fetchedAt + computeCodexQuotaTtlMs(data, new Date(fetchedAt))
     if (timestamp(freshUntil) === null) continue
-    observations[key] = { data, observedAt: data.observed_at, fetchedAt, freshUntil,
+    observations[key] = { data: projectCodexQuota(data), observedAt: data.observed_at, fetchedAt, freshUntil,
       freshness: now < freshUntil ? "fresh" : "stale" }
   }
   return Object.keys(observations).length ? observations : null

@@ -40,3 +40,26 @@ test("malformed buckets stay unknown and valid neighbors survive without credent
   expect(result?.good?.data).toEqual({ observed_at: "2025-12-31T23:59:00.000Z", primary_used_percent: 0, credits_has_credits: false })
   expect(JSON.stringify(result)).not.toContain("SECRET")
 })
+
+// Adapted from reference copilot-gateway c27a76122 (#570): legacy snapshots
+// stamped ratelimited_until from the furthest window; reads re-derive it from
+// exhausted windows only, without touching other fields.
+test("stored legacy ratelimited_until is re-projected from exhausted windows", () => {
+  const legacy = {
+    primary_used_percent: 100, primary_reset_after_at: "2026-01-01T05:00:00.000Z",
+    secondary_used_percent: 40, secondary_reset_after_at: "2026-01-08T00:00:00.000Z",
+    ratelimited_until: "2026-01-08T00:00:00.000Z",
+  }
+  const raw = state({
+    primary: { fetchedAt: receipt, data: snapshot(legacy) },
+    secondary: { fetchedAt: receipt, data: snapshot({ ...legacy, primary_used_percent: 40, secondary_used_percent: 100 }) },
+    none: { fetchedAt: receipt, data: snapshot({ ...legacy, primary_used_percent: 40 }) },
+    noreset: { fetchedAt: receipt, data: snapshot({ primary_used_percent: 100, ratelimited_until: "2026-01-08T00:00:00.000Z" }) },
+  })
+  const out = readCodexQuotaObservations(raw, "account", receipt)
+  expect(out?.primary?.data.ratelimited_until).toBe("2026-01-01T05:00:00.000Z")
+  expect(out?.primary?.data.secondary_used_percent).toBe(40)
+  expect(out?.secondary?.data.ratelimited_until).toBe("2026-01-08T00:00:00.000Z")
+  expect(out?.none?.data.ratelimited_until).toBeUndefined()
+  expect(out?.noreset?.data.ratelimited_until).toBeUndefined()
+})

@@ -43,7 +43,7 @@ import { sha256UuidFromParts, uuidV7 } from './ids'
 import { codexModelUsesResponsesLite, type CodexProviderModel } from './models'
 import { encodeCodexResponsesLiteRequest, createCodexResponsesLiteAdapter, restoreCodexResponsesCompactionResult, type CodexResponsesBody as LiteBody, type CodexResponsesLiteRequest } from './responses-lite'
 import { markGatewayResponse, type ProviderRequest, type ProviderResponse } from '@vibe-llm/provider-llm'
-import { parseCodexQuotaHeaders, putCodexQuota } from './quota'
+import { parseCodexQuotaHeaders, projectCodexQuota, putCodexQuota } from './quota'
 import type { CodexAccountCredential, CodexQuotaSnapshotEntryMap } from './state'
 import type {
   CanonicalResponsesPayload,
@@ -268,7 +268,7 @@ const rateLimitedUntil = (
   if (!snapshot) return null
   let furthest: string | null = null
   for (const entry of Object.values(snapshot)) {
-    const until = entry.data.ratelimited_until
+    const until = projectCodexQuota(entry.data).ratelimited_until
     if (!until) continue
     const ms = new Date(until).getTime()
     if (!Number.isFinite(ms) || ms <= now.getTime()) continue

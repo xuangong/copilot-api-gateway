@@ -48,12 +48,45 @@ test('parseCodexQuotaHeaders: isRateLimited stamps ratelimited_until from max wi
   const now = new Date('2026-01-01T00:00:00.000Z')
   const snap = parseCodexQuotaHeaders(
     mkHeaders({
+      'x-codex-primary-used-percent': '100',
+      'x-codex-secondary-used-percent': '100',
       'x-codex-primary-reset-after-seconds': '60',
       'x-codex-secondary-reset-after-seconds': '600',
     }),
     { now, isRateLimited: true },
   )
   expect(snap.ratelimited_until).toBe('2026-01-01T00:10:00.000Z')
+})
+
+// Adapted from reference copilot-gateway c27a76122 (#570): a 429 must be dated
+// by the windows actually exhausted (>=100% with a valid reset), not by the
+// furthest reset of any window; otherwise a 5h limit blocks for 7 days.
+test.each([
+  ['primary only exhausted', '100', '40', '2026-01-01T00:05:00.000Z'],
+  ['secondary only exhausted', '40', '100', '2026-01-08T00:00:00.000Z'],
+  ['both exhausted -> latest', '100', '100', '2026-01-08T00:00:00.000Z'],
+  ['none exhausted -> unset', '99.9', '40', undefined],
+  ['no usage headers -> unset', undefined, undefined, undefined],
+  ['invalid usage -> unset', 'NaN', 'Infinity', undefined],
+])('parseCodexQuotaHeaders: 429 expiry from exhausted windows only: %s', (_n, primary, secondary, expected) => {
+  const now = new Date('2026-01-01T00:00:00.000Z')
+  const init: Record<string, string> = {
+    'x-codex-primary-reset-after-seconds': '300',
+    'x-codex-secondary-reset-after-seconds': String(7 * 24 * 3600),
+  }
+  if (primary !== undefined) init['x-codex-primary-used-percent'] = primary
+  if (secondary !== undefined) init['x-codex-secondary-used-percent'] = secondary
+  const snap = parseCodexQuotaHeaders(mkHeaders(init), { now, isRateLimited: true })
+  expect(snap.ratelimited_until).toBe(expected)
+})
+
+test('parseCodexQuotaHeaders: exhausted window without a reset does not invent an expiry', () => {
+  const now = new Date('2026-01-01T00:00:00.000Z')
+  const snap = parseCodexQuotaHeaders(
+    mkHeaders({ 'x-codex-primary-used-percent': '100', 'x-codex-secondary-reset-after-seconds': '600' }),
+    { now, isRateLimited: true },
+  )
+  expect(snap.ratelimited_until).toBeUndefined()
 })
 
 test('parseCodexQuotaHeaders: ignores non-numeric numeric headers', () => {

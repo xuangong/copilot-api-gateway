@@ -768,7 +768,7 @@ const limitedBucket = (
       observed_at: new Date().toISOString(),
       active_limit: 'weekly',
       primary_used_percent: 100,
-      ...(ratelimitedUntil === null ? {} : { ratelimited_until: ratelimitedUntil }),
+      ...(ratelimitedUntil === null ? {} : { primary_reset_after_at: ratelimitedUntil, ratelimited_until: ratelimitedUntil }),
     },
   },
 })
@@ -800,6 +800,27 @@ test('bucket whose rate limit already elapsed does not gate', async () => {
 
   expect(resp.status).toBe(200)
   expect(harness.calls.filter((c) => c.url.endsWith(CODEX_RESPONSES_PATH))).toHaveLength(1)
+})
+
+// Adapted from reference copilot-gateway c27a76122 (#570): a stored legacy
+// ratelimited_until (7d) must be re-derived from the exhausted window (5h,
+// already elapsed) so the account is not blocked for the longer window.
+test('legacy ratelimited_until beyond the exhausted window no longer gates', async () => {
+  const record = baseRecord({
+    weekly: {
+      fetchedAt: Date.now(),
+      data: {
+        observed_at: new Date().toISOString(), active_limit: 'weekly',
+        primary_used_percent: 100, primary_reset_after_at: isoIn(-60 * 1000),
+        secondary_used_percent: 40, secondary_reset_after_at: isoIn(7 * 24 * 3600 * 1000),
+        ratelimited_until: isoIn(7 * 24 * 3600 * 1000),
+      },
+    },
+  })
+  repo.put(record)
+  const harness = makeHarness(() => okSSE())
+  const resp = await new CodexProvider(record, harness.fetcher).fetch(makeRequest())
+  expect(resp.status).toBe(200)
 })
 
 test('bucket at 100% used but never 429d does not gate', async () => {
