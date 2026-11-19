@@ -42,8 +42,10 @@ for (const [target, translate] of TARGETS) {
  * copilot-gateway #724 (which sends only `max_completion_tokens`): many
  * OpenAI-compatible servers know only `max_tokens` — DeepSeek, the production
  * custom upstream, documents nothing else and would silently fall back to its
- * 8K default. Copilot's gpt-5 rename lives in provider-copilot/endpoints.ts; a
- * provider that needs the modern spelling renames it at its own boundary.
+ * 8K default. Surveyed gateways agree (LiteLLM openai_like, Vercel
+ * openai-compatible, Portkey): one canonical cap, spelled per provider at its
+ * boundary. Copilot routes gpt-5/o-series to Responses (provider-copilot
+ * endpoints.ts); Azure renames for reasoning models (provider-azure provider.ts).
  */
 test("a translated Chat request states its output cap as max_tokens only", () => {
   const target = translateResponsesToChat({ model: "m", input: "hi", max_output_tokens: 32768 } as ResponsesPayload).target as Record<string, unknown>

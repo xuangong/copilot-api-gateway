@@ -206,7 +206,8 @@ export class AzureProvider implements LlmModelProvider {
     // worry about case-sensitivity collisions on the way down.
     const body: NonNullable<RequestInit['body']> = req.payload instanceof FormData
       ? req.payload
-      : JSON.stringify(req.endpoint === 'responses' ? fillEmptyNamespaceDescriptions(req.payload ?? {}) : req.payload ?? {})
+      : JSON.stringify(req.endpoint === 'responses' ? fillEmptyNamespaceDescriptions(req.payload ?? {})
+        : req.endpoint === 'chat_completions' ? withReasoningOutputCap(req.payload ?? {}) : req.payload ?? {})
     const res = await this.send(
       req.endpoint,
       { method: 'POST', body, headers: req.headers, signal: req.signal },
@@ -378,4 +379,25 @@ function assertAzureEndpoint(raw: string): void {
       `Azure provider endpoint path must be empty or a Foundry project root (/api/projects/<name>): ${raw}`,
     )
   }
+}
+
+/**
+ * Azure reasoning models reject `max_tokens` on Chat Completions and accept
+ * the cap only as `max_completion_tokens`:
+ * https://learn.microsoft.com/en-us/azure/foundry/openai/how-to/reasoning
+ * Translators emit `max_tokens` (what generic OpenAI-compatible servers need),
+ * so rename it here for reasoning families only, recognized by model name as
+ * LiteLLM does (litellm/llms/azure/chat/gpt_transformation.py,
+ * requires_max_completion_tokens). A payload that already names
+ * `max_completion_tokens` is left alone.
+ */
+const AZURE_REASONING_MODEL = /^(?:o[134](?:-|$)|gpt-5|codex-mini)/i
+
+function withReasoningOutputCap(payload: unknown): unknown {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return payload
+  const body = payload as Record<string, unknown>
+  if (typeof body.model !== 'string' || !AZURE_REASONING_MODEL.test(body.model)) return payload
+  if (body.max_tokens === undefined || body.max_completion_tokens !== undefined) return payload
+  const { max_tokens: cap, ...rest } = body
+  return { ...rest, max_completion_tokens: cap }
 }
