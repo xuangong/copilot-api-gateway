@@ -72,6 +72,23 @@ test("Messages initial empty signature without a delta round-trips as an empty s
   expect(analysis.materialize(target).messages).toEqual([{ role: "assistant", content: [{ type: "thinking", thinking: "visible", signature: "" }] }])
 })
 
+// Adapted from reference copilot-gateway f7881b126 (#661): egress wraps encrypted
+// reasoning_details data (stream and body) and leaves other details untouched.
+test("Chat egress wraps encrypted reasoning_details data in streams and bodies", async () => {
+  const details = [{ type: "reasoning.summary", summary: "visible" }, { type: "reasoning.encrypted", data: "opaque", vendor: "kept" }]
+  const egress = new AffinityEgress(await state())
+  const out = await collect(egress.chat(frames([{ choices: [{ index: 0, delta: { content: "a", reasoning_details: details }, finish_reason: "stop" }] }])))
+  const delta = (out[0] as { event: { choices: Array<{ delta: { reasoning_details: Array<Record<string, unknown>> } }> } }).event.choices[0]!.delta
+  expect(delta.reasoning_details[0]).toEqual(details[0])
+  expect(delta.reasoning_details[1]).toMatchObject({ type: "reasoning.encrypted", vendor: "kept" })
+  expect(String(delta.reasoning_details[1]!.data)).toStartWith("vnext-affinity:1:")
+  const body = await new AffinityEgress(await state()).body("chat_completions", { choices: [{ index: 0, message: { role: "assistant", content: "a", reasoning_details: details } }] })
+  expect(body.choices[0].message.reasoning_details[0]).toEqual(details[0])
+  expect(String(body.choices[0].message.reasoning_details[1].data)).toStartWith("vnext-affinity:1:")
+  const analysis = await analyzeAffinityRequest("chat_completions", { messages: [body.choices[0].message] }, codec)
+  expect(analysis.materialize(target).messages[0].reasoning_details).toEqual(details)
+})
+
 test("Messages rejects oversized accumulation and never leaks incomplete raw signature", async () => {
   const egress = new AffinityEgress(await state())
   const start = { type: "content_block_start", index: 0, content_block: { type: "thinking", thinking: "", signature: "raw" } }

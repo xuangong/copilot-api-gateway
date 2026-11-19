@@ -21,6 +21,26 @@ test("Responses projection removes optional whole items, retains text/order and 
   expect(plan.rankAuthorizedCandidates([other, target], candidate => candidate)).toEqual([target, other])
 })
 
+// Adapted from reference copilot-gateway f7881b126 (#661): Chat `reasoning.encrypted`
+// details carry upstream-private data; replayed to another upstream they must be
+// removed (request degraded), and to the same upstream restored unchanged.
+test("Chat encrypted reasoning_details follow affinity: same upstream restores, other removes only that entry", async () => {
+  const summary = { type: "reasoning.summary", summary: "visible" }
+  const encrypted = { type: "reasoning.encrypted", data: "upstream-encrypted", format: "native" }
+  const message = { role: "assistant", content: "answer", reasoning_details: [summary, encrypted] }
+  const stamped = await stampAffinityItem("chat_completions", message, target, codec)
+  expect(stamped.reasoning_details).toEqual([summary, { ...encrypted, data: expect.stringMatching(/^vnext-affinity:/) }])
+  const plan = await analyzeAffinityRequest("chat_completions", { messages: [{ role: "user", content: "q" }, stamped] }, codec)
+  expect(plan.hasOwned).toBe(true)
+  expect(plan.classify(target)).toBe("exact")
+  expect(plan.classify(other)).toBe("degraded")
+  expect(plan.materialize(target).messages).toEqual([{ role: "user", content: "q" }, message])
+  expect(plan.materialize(other).messages).toEqual([{ role: "user", content: "q" }, { ...message, reasoning_details: [summary] }])
+  const only = await stampAffinityItem("chat_completions", { role: "assistant", content: "a", reasoning_details: [encrypted] }, target, codec)
+  const onlyPlan = await analyzeAffinityRequest("chat_completions", { messages: [only] }, codec)
+  expect(onlyPlan.materialize(other).messages).toEqual([{ role: "assistant", content: "a" }])
+})
+
 test("compaction aliases and program state are required; conflicting required targets reject every candidate", async () => {
   for (const type of ["compaction", "compaction_summary", "context_compaction", "program", "program_output"]) {
     const item = await stampAffinityItem("responses", { type, encrypted_content: "opaque", fingerprint: "fp" }, target, codec)

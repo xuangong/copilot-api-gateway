@@ -44,6 +44,21 @@ function emptyReasoningContent(value: unknown): boolean {
   return value == null || (Array.isArray(value) && value.length === 0)
 }
 
+/** Chat `reasoning_details` entries of type `reasoning.encrypted` carry upstream-private `data`
+ * that must follow affinity exactly like `reasoning_opaque` (reference copilot-gateway #661). */
+export function isEncryptedReasoningDetail(value: unknown): value is JsonObject & { type: "reasoning.encrypted"; data: string } {
+  return object(value) && value.type === "reasoning.encrypted" && typeof value.data === "string"
+}
+const CHAT_DETAIL_SLOT: Slot = { key: "data", field: { domain: "chat_completions/reasoning_details/reasoning.encrypted/data" } }
+export function hasEncryptedReasoningDetails(message: JsonObject): boolean {
+  return Array.isArray(message.reasoning_details) && message.reasoning_details.some(isEncryptedReasoningDetail)
+}
+/** Wrap each encrypted detail's data; other details and unknown fields are untouched. */
+export async function stampChatReasoningDetails(details: readonly unknown[], target: AffinityExecutionTarget, codec: AffinityCodec): Promise<unknown[]> {
+  return Promise.all(details.map(async detail => isEncryptedReasoningDetail(detail)
+    ? { ...detail, data: await codec.encode(detail.data, target, CHAT_DETAIL_SLOT.field) } : detail))
+}
+
 function slots(protocol: AffinityProtocol, item: JsonObject, carried = true): Slot[] {
   const origin = (key: string) => carried && typeof item[key] === "string" && (item[key].startsWith(`${AFFINITY_MARKER}2:`) || item[key].startsWith(`${AFFINITY_MARKER}4:`))
   if (protocol === "chat_completions") return typeof item.reasoning_opaque === "string"
@@ -137,6 +152,7 @@ export async function stampAffinityItem(protocol: AffinityProtocol, item: Readon
     const value = copy[slot.key]
     if (typeof value === "string") copy[slot.key] = await codec.encode(value, target, slot.field)
   }
+  if (protocol === "chat_completions" && Array.isArray(copy.reasoning_details)) copy.reasoning_details = await stampChatReasoningDetails(copy.reasoning_details, target, codec)
   if (protocol === "responses" && item.type === "agent_message" && Array.isArray(copy.content)) {
     const field = await agentField(item, false)
     for (const block of copy.content) if (object(block) && block.type === "encrypted_content" && typeof block.encrypted_content === "string") {
@@ -183,6 +199,10 @@ async function blocks(protocol: AffinityProtocol, body: JsonObject): Promise<Blo
       const next = body.messages instanceof Array ? body.messages[index + 1] : undefined
       found.push({ path: ["messages", index], slots: slots(protocol, message), required: false,
         unsafeToRemove: message.role !== "assistant" || (Array.isArray(message.tool_calls) && message.tool_calls.length > 0) || (object(next) && next.role === "tool") })
+      // Removing one encrypted detail only drops opaque state, never visible content.
+      if (message.role === "assistant" && Array.isArray(message.reasoning_details)) message.reasoning_details.forEach((detail, detailIndex) => {
+        if (isEncryptedReasoningDetail(detail)) found.push({ path: ["messages", index, "reasoning_details", detailIndex], slots: [CHAT_DETAIL_SLOT], required: false, unsafeToRemove: false })
+      })
     })
   } else {
     if (!Array.isArray(body.messages)) return found
@@ -204,7 +224,8 @@ async function blocks(protocol: AffinityProtocol, body: JsonObject): Promise<Blo
 
 export function containsAffinityMarker(protocol: AffinityProtocol, body: Readonly<JsonObject>): boolean {
   const marked = (value: unknown) => typeof value === "string" && value.startsWith(AFFINITY_MARKER)
-  if (protocol === "chat_completions") return Array.isArray(body.messages) && body.messages.some(message => object(message) && marked(message.reasoning_opaque))
+  if (protocol === "chat_completions") return Array.isArray(body.messages) && body.messages.some(message => object(message) && (marked(message.reasoning_opaque)
+    || (Array.isArray(message.reasoning_details) && message.reasoning_details.some(detail => isEncryptedReasoningDetail(detail) && marked(detail.data)))))
   if (protocol === "gemini") return Array.isArray(body.contents) && body.contents.some(content => object(content) && Array.isArray(content.parts) && content.parts.some(part => object(part) && marked(part.thoughtSignature)))
   if (protocol === "responses") return Array.isArray(body.input) && body.input.some(item => {
     if (!object(item)) return false
@@ -307,7 +328,7 @@ export async function analyzeAffinityRequest(protocol: AffinityProtocol, body: R
       }
       if (!("origin" in block) && preserveNative) continue
       if ("origin" in block || shouldRemove(block, target)) {
-        if (protocol === "chat_completions" && !("origin" in block)) {
+        if (protocol === "chat_completions" && !("origin" in block) && block.path.length === 2) {
           const message = at(copy, block.path)
           if (!object(message)) throw new InvalidAffinityStateError()
           for (const key of ["reasoning_text", "reasoning_content", "reasoning", "reasoning_opaque", "reasoning_items"]) delete message[key]
@@ -320,6 +341,10 @@ export async function analyzeAffinityRequest(protocol: AffinityProtocol, body: R
         const itemIndex = block.path.at(-1)
         if (!Array.isArray(parent) || typeof itemIndex !== "number") throw new InvalidAffinityStateError()
         parent.splice(itemIndex, 1)
+        if (protocol === "chat_completions" && block.path.at(-2) === "reasoning_details" && parent.length === 0) {
+          const message = at(copy, block.path.slice(0, 2))
+          if (object(message)) delete message.reasoning_details
+        }
         const messageIndex = block.path[1]
         if (protocol === "messages" && typeof messageIndex === "number") removedMessages.add(messageIndex)
       } else {

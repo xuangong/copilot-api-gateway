@@ -5,7 +5,7 @@ import { InvalidAffinityStateError, MAX_AFFINITY_PAYLOAD_BYTES } from "./carrier
 import { JsonStringBudget } from "./json-string-budget.ts"
 import { utf8ByteLength } from "../utf8.ts"
 import type { ProtocolFrame } from "@vibe-core/result"
-import { stampAffinityItem } from "./analysis.ts"
+import { hasEncryptedReasoningDetails, stampAffinityItem, stampChatReasoningDetails } from "./analysis.ts"
 import type { AffinityExecutionState } from "./context.ts"
 import type { AffinityProtocol } from "./analysis.ts"
 import { OriginEgress } from "./origin-egress.ts"
@@ -143,10 +143,11 @@ export class AffinityEgress {
     if (!state?.actual) return Promise.resolve(value)
     if (protocol === "responses" && value.type === "compaction"
       && state.plaintextCompactions?.has(JSON.stringify([value.id, value.encrypted_content]))) return Promise.resolve(value)
-    const signable = protocol === "chat_completions" ? typeof value.reasoning_opaque === "string"
+    const encryptedDetails = protocol === "chat_completions" && hasEncryptedReasoningDetails(value)
+    const signable = encryptedDetails || (protocol === "chat_completions" ? typeof value.reasoning_opaque === "string"
       : protocol === "gemini" ? typeof value.thoughtSignature === "string"
       : protocol === "responses" ? hasOpaque(value)
-      : value.type === "thinking" ? typeof value.signature === "string" : value.type === "redacted_thinking" && typeof value.data === "string"
+      : value.type === "thinking" ? typeof value.signature === "string" : value.type === "redacted_thinking" && typeof value.data === "string")
     if (!signable) return protocol === "chat_completions" && value.role === "assistant" && value.reasoning_opaque === undefined
       ? this.origin.item(protocol, value) : value
     const codec = state.codec ?? await state.loadCodec?.()
@@ -154,7 +155,9 @@ export class AffinityEgress {
     const key = JSON.stringify([protocol, value])
     const cached = this.items.get(key)
     if (cached) return cached
-    const stamped = stampAffinityItem(protocol, value, state.actual, codec)
+    let stamped = stampAffinityItem(protocol, value, state.actual, codec)
+    // Details-only assistant turns still need the origin carrier a reasoning_opaque-less turn gets.
+    if (encryptedDetails && value.role === "assistant" && value.reasoning_opaque === undefined) stamped = stamped.then(item => this.origin.item(protocol, item))
     this.items.set(key, stamped)
     return stamped
   }
@@ -203,6 +206,10 @@ export class AffinityEgress {
         if (typeof delta.reasoning_opaque === "string") { state.signature += delta.reasoning_opaque; state.hasSignature = true }
         boundedBlock(state)
         const { reasoning_opaque: _opaque, reasoning_text: _text, reasoning_content: _content, reasoning: _reasoning, ...visible } = delta
+        if (Array.isArray(visible.reasoning_details) && visible.reasoning_details.length > 0) {
+          const codec = this.affinity.codec ?? await this.affinity.loadCodec?.()
+          if (codec) visible.reasoning_details = await stampChatReasoningDetails(visible.reasoning_details, this.affinity.actual, codec)
+        }
         if (choice.finish_reason != null) {
           if (state.hasThinking || state.hasSignature) visible.reasoning_text = state.thinking
           if (state.hasSignature) {
