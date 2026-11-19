@@ -48,14 +48,21 @@ export function prepareResponsesTools(source: ResponsesPayload): { payload: Resp
     // https://platform.openai.com/docs/api-reference/chat/create#chat_create-tools
     const prefix = `${namespace.slice(0, 64)}_`.slice(0, 64)
     const base = `${prefix}${name.slice(0, 64 - prefix.length)}`.replace(/[^a-zA-Z0-9_-]/g, "_")
-    let suffix = nextSuffix.get(base) ?? 1
-    let candidate: string
-    do {
+    let candidate = ""
+    for (let suffix = 1; ; suffix++) {
       const ending = suffix === 1 ? "" : `_${suffix}`
-      candidate = `${base.slice(0, 64 - ending.length)}${ending}`
-      suffix++
-    } while (reserved.has(candidate))
-    nextSuffix.set(base, suffix)
+      const prefix = base.slice(0, 64 - ending.length)
+      if (suffix > 1) {
+        // Children truncated to the same prefix and suffix width share one cursor, so
+        // total probing stays linear instead of rescanning every occupied suffix.
+        const cursorKey = `${ending.length}:${prefix}`
+        const next = nextSuffix.get(cursorKey)
+        if (next !== undefined && next > suffix) { suffix = next - 1; continue }
+        nextSuffix.set(cursorKey, suffix + 1)
+      }
+      candidate = `${prefix}${ending}`
+      if (!reserved.has(candidate)) break
+    }
     reserved.add(candidate)
     sourceToTarget.set(key, candidate)
     targetToSource.set(candidate, { namespace, name, kind })

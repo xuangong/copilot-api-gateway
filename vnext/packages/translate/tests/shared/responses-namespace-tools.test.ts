@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test"
+import { expect, spyOn, test } from "bun:test"
 import type { ResponsesPayload } from "@vibe-llm/protocols/responses"
 import { translateResponsesToMessages } from "../../src/responses-via-messages/request"
 import { prepareResponsesTools, restoreResponsesToolEvents } from "../../src/shared/responses-namespace-tools"
@@ -118,3 +118,28 @@ test("flat tool events retain their existing wire shape", async () => {
   for await (const event of restoreResponsesToolEvents(events(), mapping)) result.push(event)
   expect(result).toEqual([added, done])
 })
+
+// Adapted from reference copilot-gateway 7727737e5 (#548): suffix allocation for many
+// children of a long namespace did superlinear work because collision cursors were keyed by
+// the full base name, which differs per child even when the truncated candidate prefix is shared.
+for (const [namespace, reservePreferred] of [["n".repeat(64), false], ["n".repeat(59), true]] as const) {
+  test(`namespace allocation bounds collision lookups for ${namespace.length}-character namespaces`, () => {
+    const count = 1000
+    const fn = (name: string) => ({ type: "function", name, parameters: { type: "object" } })
+    const children = Array.from({ length: count }, (_, index) => fn(String(index).padStart(4, "0")))
+    const reserved = reservePreferred ? children.map(child => fn(`${namespace}_${child.name}`)) : []
+    const has = spyOn(Set.prototype, "has")
+    let checks = 0
+    let result: ReturnType<typeof prepareResponsesTools>
+    try {
+      result = prepareResponsesTools({ model: "m", input: [], tools: [...reserved, { type: "namespace", name: namespace, tools: children }] } as ResponsesPayload)
+      checks = has.mock.calls.length
+    } finally { has.mockRestore() }
+    const names = (result.payload.tools as Array<{ name: string }>).slice(reserved.length).map(tool => tool.name)
+    expect(names).toHaveLength(count)
+    expect(new Set(names).size).toBe(count)
+    expect(names.every(name => name.length <= 64)).toBe(true)
+    expect(checks).toBeGreaterThanOrEqual(count)
+    expect(checks).toBeLessThanOrEqual(2 * count + reserved.length + 50)
+  })
+}
