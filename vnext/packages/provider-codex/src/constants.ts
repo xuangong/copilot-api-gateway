@@ -44,13 +44,12 @@ export const CODEX_RESPONSES_COMPACT_PATH = '/codex/responses/compact'
 export const CODEX_MODELS_PATH = '/codex/models'
 
 // codex_cli_rs version we impersonate on the data plane. Bumped against the
-// latest stable release at https://github.com/openai/codex/releases — newer
-// entries in /codex/models gate themselves behind a `minimal_client_version`
-// (e.g. gpt-5.6 Sol / Terra / Luna family needs 0.144.0+), so a stale value
-// here silently truncates the model list. The same value flows into both
-// the `?client_version=` query param and the User-Agent so the upstream sees
-// a self-consistent client.
-export const CODEX_CLI_VERSION = '0.147.0'
+// stable release at https://github.com/openai/codex/releases/tag/rust-v0.159.3.
+// A stale client identity can omit models from the catalog and reject them on
+// /codex/responses, even when their `minimal_client_version` is older than the
+// pinned version. The same value flows into both the `?client_version=` query
+// param and the User-Agent so the upstream sees a self-consistent client.
+export const CODEX_CLI_VERSION = '0.159.3'
 
 // Shared official Codex data-plane identity for /codex/models and
 // /codex/responses. The User-Agent intentionally includes Codex's normal

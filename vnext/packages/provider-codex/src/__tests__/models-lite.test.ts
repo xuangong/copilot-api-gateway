@@ -32,3 +32,21 @@ test.each([null, [], "true", { useResponsesLite: null }, { useResponsesLite: 1 }
     expect(() => codexModelUsesResponsesLite({ id: "model", providerData })).toThrow("providerData")
   },
 )
+
+// Adapted from reference copilot-gateway ed65eb148 (#567): a stale client
+// identity omits newer models from the catalog and gets them rejected on
+// /codex/responses, so the catalog request pins the current stable CLI.
+test("catalog request pins the current stable Codex client identity", async () => {
+  let url = ""
+  let headers = new Headers()
+  await fetchCodexCatalog({
+    accessToken: "synthetic", accountId: "synthetic",
+    fetcher: async (input, init) => {
+      url = String(input)
+      headers = new Headers(init?.headers)
+      return Response.json({ models: [] })
+    },
+  })
+  expect(url).toEndWith("/codex/models?client_version=0.159.3")
+  expect(headers.get("user-agent")).toBe("codex_cli_rs/0.159.3 (Mac OS 26.5.0; arm64) iTerm.app/3.6.10")
+})
