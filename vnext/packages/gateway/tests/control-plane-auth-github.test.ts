@@ -3,22 +3,17 @@
  *
  * Covers /github, /github/poll (github.com and *.ghe.com tenants), /me, DELETE /github/:id,
  * /github/switch ported from old src/routes/auth/github.ts, plus the auth
- * guard on the two device-flow routes. Most cases use an in-memory repo; the
- * seven that submit a proxy chain use a real BunSqliteRepo, so the proxies
- * table exists and chains round-trip the real column plumbing (see
- * `realRepo`). Every case stubs `globalThis.fetch`
- * for every outbound call (no mock.module — see
+ * guard on the two device-flow routes. Every case runs against the real
+ * in-memory SQLite repo (setupTestPlatform), so the proxies table exists and
+ * chains round-trip the real column plumbing. Every case stubs
+ * `globalThis.fetch` for every outbound call (no mock.module — see
  * bun_mock_module_unrestorable memory).
  */
-import { test, expect, beforeEach, afterEach } from 'bun:test'
+import { test, expect, beforeEach } from 'bun:test'
 import { Hono } from 'hono'
-import { Database } from 'bun:sqlite'
-import { BunSqliteRepo } from '@vibe-llm/platform-bun/src/bun-sqlite-repo.ts'
-import { initRepo } from '../src/repo/index.ts'
-import { __resetPlatformForTests, initRuntimeLocation } from '@vibe-core/platform'
-import type {
-  GitHubAccount, Repo,
-} from '../src/repo/types.ts'
+import { setupTestPlatform } from './_setup-platform.ts'
+import type { GitHubAccountId, UserId } from '../src/repo/branded-ids.ts'
+import type { UpstreamRecord } from '../src/repo/types.ts'
 import { authRouter, type AuthCtx } from '../src/control-plane/auth/routes.ts'
 import { copilotUpstreamRowId } from '../src/control-plane/lib/github.ts'
 import { createFetchStub } from '@vibe-core/test-utils'
@@ -26,92 +21,6 @@ import { jsonResponse as jsonResp } from '@vibe-core/test-utils'
 
 // Restores the global fetch after every test in this file.
 const stubGlobalFetch = createFetchStub()
-
-interface GhStore {
-  accountsByOwner: Map<string, Map<number, GitHubAccount>>
-  activeByOwner: Map<string, number>
-  globalActive: { id: number | null }
-}
-
-function inMemoryRepo() {
-  const gh: GhStore = {
-    accountsByOwner: new Map(),
-    activeByOwner: new Map(),
-    globalActive: { id: null },
-  }
-  const db = new Database(':memory:')
-  const upstreams = new BunSqliteRepo(db).upstreams
-
-  function ownerKey(ownerId?: string) {
-    return ownerId ?? ''
-  }
-  function bucket(ownerId?: string) {
-    const k = ownerKey(ownerId)
-    let b = gh.accountsByOwner.get(k)
-    if (!b) { b = new Map(); gh.accountsByOwner.set(k, b) }
-    return b
-  }
-
-  const repo = {
-    users: {
-      create: async () => { }, getById: async () => null, findByKey: async () => null,
-      findByEmail: async () => null, list: async () => [], update: async () => { }, delete: async () => { },
-    },
-    sessions: {
-      create: async () => { }, findByToken: async () => null,
-      deleteByUserId: async () => { }, deleteExpired: async () => { },
-    },
-    inviteCodes: {
-      create: async () => { }, findByCode: async () => null, list: async () => [],
-      markUsed: async () => { }, clearUsedBy: async () => { }, delete: async () => { },
-    },
-    apiKeys: {
-      list: async () => [], listByOwner: async () => [], findByRawKey: async () => null,
-      getById: async () => null, save: async () => { }, delete: async () => { }, deleteAll: async () => { },
-    },
-    github: {
-      listAccounts: async () => {
-        const all: GitHubAccount[] = []
-        for (const b of gh.accountsByOwner.values()) all.push(...b.values())
-        return all
-      },
-      listAccountsByOwner: async (ownerId: string) =>
-        [...bucket(ownerId).values()],
-      getAccount: async (userId: number, ownerId?: string) =>
-        bucket(ownerId).get(userId) ?? null,
-      saveAccount: async (userId: number, account: GitHubAccount) => {
-        bucket(account.ownerId).set(userId, account)
-      },
-      deleteAccount: async (userId: number, ownerId?: string) => {
-        bucket(ownerId).delete(userId)
-      },
-      deleteAllAccounts: async () => { gh.accountsByOwner.clear() },
-      getActiveId: async () => gh.globalActive.id,
-      setActiveId: async (id: number) => { gh.globalActive.id = id },
-      clearActiveId: async () => { gh.globalActive.id = null },
-      getActiveIdForUser: async (ownerId: string) =>
-        gh.activeByOwner.get(ownerId) ?? null,
-      setActiveIdForUser: async (ownerId: string, id: number) => {
-        gh.activeByOwner.set(ownerId, id)
-      },
-      clearActiveIdForUser: async (ownerId: string) => {
-        gh.activeByOwner.delete(ownerId)
-      },
-    },
-    upstreams,
-    keyAssignments: {
-      assign: async () => { }, unassign: async () => { }, listByUser: async () => [],
-      listByKey: async () => [], deleteByKey: async () => { }, deleteByUser: async () => { },
-    },
-    observabilityShares: {
-      share: async () => { }, unshare: async () => { }, listByOwner: async () => [],
-      listByViewer: async () => [], isGranted: async () => false,
-      deleteByOwner: async () => { }, deleteByViewer: async () => { },
-    },
-  } as unknown as Repo
-
-  return { repo, gh, db }
-}
 
 function buildApp(auth?: AuthCtx) {
   const app = new Hono()
@@ -130,27 +39,21 @@ function copilotTokenBody(api: string | null = 'https://api.individual.githubcop
   }
 }
 
-let store: ReturnType<typeof inMemoryRepo>
+let repo: ReturnType<typeof setupTestPlatform>['repo']
 
 beforeEach(() => {
-  // initRuntimeLocation writes process-global state that Bun carries across
-  // test files in one process; reset first so this file neither inherits nor
-  // leaks a platform singleton. The reset has to run before the init below,
-  // or it would clear what we just set.
-  __resetPlatformForTests()
-  store = inMemoryRepo()
-  initRepo(store.repo)
-  // resolveControlPlaneFetcher reads the runtime location, which throws until
-  // a platform bootstrap has run. Tests have no bootstrap, so set it here.
-  initRuntimeLocation('bun')
+  // setupTestPlatform resets the platform singletons and installs a fresh
+  // in-memory SQLite repo plus the runtime location the control-plane fetcher
+  // resolution needs (tests have no bootstrap).
+  ;({ repo } = setupTestPlatform())
   // Default stub so no test reaches the real network; individual tests
   // replace it with a stub shaped for the calls they exercise.
   stubGlobalFetch(async () => jsonResp({ copilot_plan: 'individual' }))
 })
 
-afterEach(() => {
-  store.db.close()
-})
+const account = (userId: number, ownerId: string) =>
+  repo.github.getAccount(userId as GitHubAccountId, ownerId as UserId)
+const activeFor = (ownerId: string) => repo.github.getActiveIdForUser(ownerId as UserId)
 
 // --- POST /github ---
 
@@ -241,14 +144,14 @@ test('POST /github/poll complete saves account + mirrors upstream', async () => 
   expect(call).toBeGreaterThanOrEqual(2)
 
   // saved into per-owner bucket
-  const acct = store.gh.accountsByOwner.get('u1')?.get(42)
+  const acct = await account(42, 'u1')
   expect(acct?.token).toBe('gho_abc')
   expect(acct?.user.login).toBe('octo')
-  expect(store.gh.activeByOwner.get('u1')).toBe(42)
+  expect(await activeFor('u1')).toBe(42)
 
   // mirrored into upstreams
   const upId = copilotUpstreamRowId('u1', 42)
-  const up = await store.repo.upstreams.getById(upId)
+  const up = await repo.upstreams.getById(upId)
   expect(up).toBeDefined()
   expect(up?.provider).toBe('copilot')
   expect(up?.name).toBe('octo')
@@ -257,23 +160,13 @@ test('POST /github/poll complete saves account + mirrors upstream', async () => 
 // --- auth guard on the device-flow routes ---
 
 /*
- * Both guard cases run against the real SqliteRepo (see `realRepo` below), not
- * the in-memory fixture. The fixture has no `proxies` accessor, so resolving
- * any id throws a TypeError before the resolver can report on it: the body
- * comes back "failed to resolve the submitted proxy chain: undefined is not an
- * object (evaluating 'proxies.list')", which never contains the submitted id.
- * The status assertion still discriminates under the fixture — remove the
- * guard and the request 400s instead of 401ing — but the body assertions
- * and the `direct` assertion carry no signal there, because an id that never
- * reaches the resolver can neither be echoed nor dialled. With the real repo
- * the proxies table exists and is empty, so were the guard removed the request
- * would reach the resolver and come back 400 with
+ * The real repo has an (empty) proxies table, so were the auth guard removed the
+ * request would reach the proxy resolver and come back 400 with
  * "unknown proxy id in fallback list: px_missing" — the very oracle the guard
  * closes. That is what the body assertions below discriminate against.
  */
 
 test('POST /github unauthenticated → 401 that does not confirm or deny the proxy id', async () => {
-  await realRepo()
   let direct = 0
   stubGlobalFetch(async () => { direct += 1; return jsonResp({}) })
   const res = await buildApp().request('/auth/github', {
@@ -294,7 +187,6 @@ test('POST /github unauthenticated → 401 that does not confirm or deny the pro
 })
 
 test('POST /github/poll unauthenticated → 401 that does not confirm or deny the proxy id', async () => {
-  await realRepo()
   let direct = 0
   stubGlobalFetch(async () => { direct += 1; return jsonResp({}) })
   const res = await buildApp().request('/auth/github/poll', {
@@ -313,7 +205,7 @@ test('POST /github/poll unauthenticated → 401 that does not confirm or deny th
 // --- GET /me ---
 
 test('GET /me admin sees github_connected=true when any account exists', async () => {
-  await store.repo.github.saveAccount(99, {
+  await repo.github.saveAccount(99 as GitHubAccountId, {
     token: 't', accountType: 'individual',
     user: { id: 99, login: 'g', name: null, avatar_url: '' },
     ownerId: 'other',
@@ -327,7 +219,7 @@ test('GET /me admin sees github_connected=true when any account exists', async (
 })
 
 test('GET /me user sees github_connected=false when no own accounts', async () => {
-  await store.repo.github.saveAccount(99, {
+  await repo.github.saveAccount(99 as GitHubAccountId, {
     token: 't', accountType: 'individual',
     user: { id: 99, login: 'g', name: null, avatar_url: '' },
     ownerId: 'other',
@@ -338,7 +230,7 @@ test('GET /me user sees github_connected=false when no own accounts', async () =
 })
 
 test('GET /me user sees github_connected=true when own account exists', async () => {
-  await store.repo.github.saveAccount(7, {
+  await repo.github.saveAccount(7 as GitHubAccountId, {
     token: 't', accountType: 'individual',
     user: { id: 7, login: 'me', name: null, avatar_url: '' },
     ownerId: 'u1',
@@ -358,7 +250,7 @@ test('DELETE /github/:id invalid id → 400', async () => {
 })
 
 test('DELETE /github/:id removes account', async () => {
-  await store.repo.github.saveAccount(42, {
+  await repo.github.saveAccount(42 as GitHubAccountId, {
     token: 't', accountType: 'individual',
     user: { id: 42, login: 'me', name: null, avatar_url: '' },
     ownerId: 'u1',
@@ -367,7 +259,7 @@ test('DELETE /github/:id removes account', async () => {
     method: 'DELETE',
   })
   expect(res.status).toBe(200)
-  expect(store.gh.accountsByOwner.get('u1')?.has(42)).toBe(false)
+  expect(await account(42, 'u1')).toBeNull()
 })
 
 // --- POST /github/switch ---
@@ -377,7 +269,7 @@ test('DELETE /github/:id removes account', async () => {
 // rather than setting a userId-less context (session-auth.ts:108).
 
 test('DELETE /github/:id without auth → 401 and the account survives', async () => {
-  await store.repo.github.saveAccount(42, {
+  await repo.github.saveAccount(42 as GitHubAccountId, {
     token: 't', accountType: 'individual',
     user: { id: 42, login: 'me', name: null, avatar_url: '' },
     ownerId: 'u1',
@@ -386,7 +278,7 @@ test('DELETE /github/:id without auth → 401 and the account survives', async (
   expect(res.status).toBe(401)
   // Without the guard the undefined ownerId reaches the unscoped DELETE, so
   // asserting the row is still there is what actually pins the fix.
-  expect(store.gh.accountsByOwner.get('u1')?.has(42)).toBe(true)
+  expect(await account(42, 'u1')).not.toBeNull()
 })
 
 test('DELETE /github/:id checks auth before the id shape', async () => {
@@ -396,7 +288,7 @@ test('DELETE /github/:id checks auth before the id shape', async () => {
 })
 
 test('POST /github/switch without auth → 401 and no global active id is set', async () => {
-  await store.repo.github.saveAccount(7, {
+  await repo.github.saveAccount(7 as GitHubAccountId, {
     token: 't', accountType: 'individual',
     user: { id: 7, login: 'me', name: null, avatar_url: '' },
   })
@@ -404,7 +296,7 @@ test('POST /github/switch without auth → 401 and no global active id is set', 
     method: 'POST', body: JSON.stringify({ user_id: 7 }), headers: J,
   })
   expect(res.status).toBe(401)
-  expect(store.gh.globalActive.id).toBe(null)
+  expect(await repo.github.getActiveId()).toBe(null)
 })
 
 test('POST /github/switch missing user_id → 400', async () => {
@@ -422,7 +314,7 @@ test('POST /github/switch not found → 404', async () => {
 })
 
 test('POST /github/switch sets active id', async () => {
-  await store.repo.github.saveAccount(7, {
+  await repo.github.saveAccount(7 as GitHubAccountId, {
     token: 't', accountType: 'individual',
     user: { id: 7, login: 'me', name: null, avatar_url: '' },
     ownerId: 'u1',
@@ -431,23 +323,12 @@ test('POST /github/switch sets active id', async () => {
     method: 'POST', body: JSON.stringify({ user_id: 7 }), headers: J,
   })
   expect(res.status).toBe(200)
-  expect(store.gh.activeByOwner.get('u1')).toBe(7)
+  expect(await activeFor('u1')).toBe(7)
 })
 
 // --- draft proxy chain ---
 
-/** Real SqliteRepo — these cases read the proxies table and the saved row.
- *  The runtime location these cases need is set in `beforeEach`. */
-async function realRepo() {
-  const { Database } = await import('bun:sqlite')
-  const { BunSqliteRepo } = await import('@vibe-llm/platform-bun/src/bun-sqlite-repo.ts')
-  const r = new BunSqliteRepo(new Database(':memory:'))
-  initRepo(r)
-  return r
-}
-
 test('POST /github with an unknown proxy id → 400 naming the id but not the url', async () => {
-  await realRepo()
   const res = await buildApp({ userId: 'u1' }).request('/auth/github', {
     method: 'POST',
     headers: J,
@@ -460,7 +341,7 @@ test('POST /github with an unknown proxy id → 400 naming the id but not the ur
 })
 
 test('POST /github with a malformed proxy → 400 without leaking the url', async () => {
-  const r = await realRepo()
+  const r = repo
   await r.proxies.save({
     id: 'px_bad', name: 'bad', url: 'not-a-proxy-uri', dialTimeoutSeconds: null,
   })
@@ -476,7 +357,7 @@ test('POST /github with a malformed proxy → 400 without leaking the url', asyn
 })
 
 test('POST /github/poll routes all three outbound calls through the resolved fetcher', async () => {
-  const r = await realRepo()
+  const r = repo
   await r.proxies.save({
     id: 'px_ok', name: 'ok', url: 'trojan://pw@node.example.com:443', dialTimeoutSeconds: null,
   })
@@ -505,7 +386,7 @@ test('POST /github/poll routes all three outbound calls through the resolved fet
 })
 
 test('a successful device-flow login persists the submitted chain', async () => {
-  const r = await realRepo()
+  const r = repo
   stubGlobalFetch(async (input) => {
     const url = input.url
     if (url.includes('/oauth/access_token')) return jsonResp({ access_token: 'gho_abc' })
@@ -536,7 +417,7 @@ test('a successful device-flow login persists the submitted chain', async () => 
  * `copilotUpstreamRowId('u1', 42)` builds for the GitHub user both re-entry
  * case below logs back in as.
  */
-async function seedChainedCopilotRow(r: Awaited<ReturnType<typeof realRepo>>) {
+async function seedChainedCopilotRow(r: typeof repo) {
   const now = new Date().toISOString()
   await r.proxies.save({
     id: 'px_keep', name: 'keep', url: 'trojan://pw@node.example.com:443', dialTimeoutSeconds: null,
@@ -573,7 +454,7 @@ async function seedChainedCopilotRow(r: Awaited<ReturnType<typeof realRepo>>) {
  * and `px_keep` never has to be dialled.
  */
 test('a re-login without a chain keeps the chain already on the row', async () => {
-  const r = await realRepo()
+  const r = repo
   await seedChainedCopilotRow(r)
   stubGlobalFetch(async (input) => {
     const url = input.url
@@ -653,10 +534,10 @@ test('POST /github/poll with a ghe.com host talks to the tenant and stores host 
   expect(urls).toContain('https://api.acme.ghe.com/copilot_internal/v2/token')
   expect(urls.some(u => u.includes('github.com/') && !u.includes('ghe.com'))).toBe(false)
 
-  const acct = store.gh.accountsByOwner.get('u1')?.get(7)
+  const acct = await account(7, 'u1')
   expect(acct?.githubHost).toBe('acme.ghe.com')
   expect(acct?.accountType).toBe('enterprise')
-  const up = await store.repo.upstreams.getById(copilotUpstreamRowId('u1', 7))
+  const up = await repo.upstreams.getById(copilotUpstreamRowId('u1', 7))
   expect(up?.config).toMatchObject({ githubHost: 'acme.ghe.com', githubToken: 'ghu_tenant', source: 'device-flow' })
   expect(up?.state).toMatchObject({ copilotApiEndpoint: 'https://copilot-api.acme.ghe.com' })
 })
@@ -674,8 +555,8 @@ test('POST /github/poll refuses a ghe.com login whose token exchange advertises 
   })
   expect(res.status).toBe(502)
   expect(((await res.json()) as any).status).toBe('error')
-  expect(store.gh.accountsByOwner.get('u1')?.get(7)).toBeUndefined()
-  expect(await store.repo.upstreams.getById(copilotUpstreamRowId('u1', 7))).toBeNull()
+  expect(await account(7, 'u1')).toBeNull()
+  expect(await repo.upstreams.getById(copilotUpstreamRowId('u1', 7))).toBeNull()
 })
 
 test('POST /github/poll refuses a login whose GitHub token has no Copilot access', async () => {
@@ -690,5 +571,5 @@ test('POST /github/poll refuses a login whose GitHub token has no Copilot access
     method: 'POST', headers: J, body: JSON.stringify({ device_code: 'd1' }),
   })
   expect(res.status).toBe(502)
-  expect(store.gh.accountsByOwner.get('u1')?.get(9)).toBeUndefined()
+  expect(await account(9, 'u1')).toBeNull()
 })

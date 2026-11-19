@@ -6,118 +6,19 @@
  */
 import { test, expect, beforeEach } from 'bun:test'
 import { Hono } from 'hono'
-import { initRepo } from '../src/repo/index.ts'
-import { __resetPlatformForTests } from '@vibe-core/platform'
-import type {
-  ApiKey, GitHubAccount, InviteCode, KeyAssignment,
-  Repo, User, UserSession,
-} from '../src/repo/types.ts'
+import { setupTestPlatform } from './_setup-platform.ts'
+import type { ApiKeyId, GitHubAccountId, SessionToken, UserId } from '../src/repo/branded-ids.ts'
+import type { GitHubAccount, User } from '../src/repo/types.ts'
 import {
   authRouter,
   type AuthCtx,
 } from '../src/control-plane/auth/routes.ts'
 
-function inMemoryRepo() {
-  const users = new Map<string, User>()
-  const sessions = new Map<string, UserSession>()
-  const invites = new Map<string, InviteCode>()
-  const apiKeys = new Map<string, ApiKey>()
-  const githubAccounts = new Map<string, GitHubAccount[]>() // ownerId → []
-  const keyAssignments: KeyAssignment[] = []
-  const observabilityShareDeletes: string[] = []
-  const syncDeviceDeletes: string[] = []
-  const telemetryDeletes: string[] = []
-
-  const repo = {
-    users: {
-      create: async (u: User) => { users.set(u.id, u) },
-      getById: async (id: string) => users.get(id) ?? null,
-      findByKey: async () => null,
-      findByEmail: async () => null,
-      list: async () => [...users.values()],
-      update: async (id: string, fields: Partial<User>) => {
-        const u = users.get(id); if (u) users.set(id, { ...u, ...fields })
-      },
-      delete: async (id: string) => { users.delete(id) },
-    },
-    sessions: {
-      create: async (s: UserSession) => { sessions.set(s.token, s) },
-      findByToken: async (t: string) => sessions.get(t) ?? null,
-      deleteByUserId: async (uid: string) => {
-        for (const [t, s] of sessions) if (s.userId === uid) sessions.delete(t)
-      },
-      deleteExpired: async () => { },
-    },
-    inviteCodes: {
-      create: async (i: InviteCode) => { invites.set(i.id, i) },
-      findByCode: async (code: string) =>
-        [...invites.values()].find((i) => i.code === code) ?? null,
-      list: async () => [...invites.values()],
-      markUsed: async () => { },
-      clearUsedBy: async (uid: string) => {
-        for (const [id, i] of invites) if (i.usedBy === uid) invites.set(id, { ...i, usedAt: undefined, usedBy: undefined })
-      },
-      delete: async (id: string) => { invites.delete(id) },
-    },
-    apiKeys: {
-      list: async () => [...apiKeys.values()],
-      listByOwner: async (oid: string) => [...apiKeys.values()].filter((k) => k.ownerId === oid),
-      findByRawKey: async (raw: string) => [...apiKeys.values()].find((k) => k.key === raw) ?? null,
-      getById: async (id: string) => apiKeys.get(id) ?? null,
-      save: async (k: ApiKey) => { apiKeys.set(k.id, k) },
-      delete: async (id: string) => apiKeys.delete(id),
-      deleteAll: async () => { apiKeys.clear() },
-    },
-    github: {
-      listAccounts: async () => [...githubAccounts.values()].flat(),
-      listAccountsByOwner: async (oid: string) => githubAccounts.get(oid) ?? [],
-      getAccount: async () => null,
-      saveAccount: async (_uid: number, a: GitHubAccount) => {
-        const oid = a.ownerId ?? ''
-        const list = githubAccounts.get(oid) ?? []
-        list.push(a); githubAccounts.set(oid, list)
-      },
-      deleteAccount: async (uid: number, oid?: string) => {
-        const list = githubAccounts.get(oid ?? '') ?? []
-        githubAccounts.set(oid ?? '', list.filter((a) => a.user.id !== uid))
-      },
-      deleteAllAccounts: async () => { githubAccounts.clear() },
-      getActiveId: async () => null,
-      setActiveId: async () => { },
-      clearActiveId: async () => { },
-      getActiveIdForUser: async () => null,
-      setActiveIdForUser: async () => { },
-      clearActiveIdForUser: async (oid: string) => { githubAccounts.delete(oid) },
-    },
-    keyAssignments: {
-      assign: async (kid: string, uid: string, by: string) => {
-        keyAssignments.push({ keyId: kid, userId: uid, assignedBy: by, assignedAt: 'x' })
-      },
-      unassign: async () => { },
-      listByUser: async (uid: string) => keyAssignments.filter((a) => a.userId === uid),
-      listByKey: async (kid: string) => keyAssignments.filter((a) => a.keyId === kid),
-      deleteByKey: async () => { },
-      deleteByUser: async (uid: string) => {
-        for (let i = keyAssignments.length - 1; i >= 0; i--) {
-          if (keyAssignments[i]!.userId === uid) keyAssignments.splice(i, 1)
-        }
-      },
-    },
-    observabilityShares: {
-      share: async () => { },
-      unshare: async () => { },
-      listByOwner: async () => [],
-      listByViewer: async () => [],
-      isGranted: async () => false,
-      deleteByOwner: async (oid: string) => { observabilityShareDeletes.push(`owner:${oid}`) },
-      deleteByViewer: async (vid: string) => { observabilityShareDeletes.push(`viewer:${vid}`) },
-    },
-    syncDevices: { deleteByOwner: async (oid: string) => { syncDeviceDeletes.push(oid) } },
-    syncSources: { get: async () => null },
-    telemetry: { deleteSourcesByOwner: async (oid: string) => { telemetryDeletes.push(oid) } },
-  } as unknown as Repo
-
-  return { repo, users, sessions, invites, apiKeys, githubAccounts, keyAssignments, observabilityShareDeletes, syncDeviceDeletes, telemetryDeletes }
+function mkKey(id: string, ownerId: string) {
+  return {
+    id, name: id, key: `raw-${id}`, createdAt: 'x', ownerId, webSearchEnabled: true,
+    modelMappingsEnabled: false, modelMappings: [],
+  } as unknown as Parameters<typeof repo.apiKeys.save>[0]
 }
 
 function buildApp(auth?: AuthCtx) {
@@ -144,11 +45,10 @@ function mkUser(over: Partial<User> = {}): User {
   }
 }
 
-let store: ReturnType<typeof inMemoryRepo>
+let repo: ReturnType<typeof setupTestPlatform>['repo']
 
 beforeEach(() => {
-  store = inMemoryRepo()
-  initRepo(store.repo)
+  ;({ repo } = setupTestPlatform())
 })
 
 // --- /login ---
@@ -162,8 +62,8 @@ test('POST /login no token → 401', async () => {
 })
 
 test('POST /login session in body validates user', async () => {
-  await store.repo.users.create(mkUser({ id: 'u1', email: 'zhangxian1124@gmail.com', avatarUrl: 'https://x/a.png' }))
-  await store.repo.sessions.create({
+  await repo.users.create(mkUser({ id: 'u1', email: 'zhangxian1124@gmail.com', avatarUrl: 'https://x/a.png' }))
+  await repo.sessions.create({
     token: 'ses_abc', userId: 'u1', createdAt: 'x',
     expiresAt: new Date(Date.now() + 86400000).toISOString(),
   })
@@ -183,8 +83,8 @@ test('POST /login session in body validates user', async () => {
 })
 
 test('POST /login session from cookie', async () => {
-  await store.repo.users.create(mkUser({ id: 'u1' }))
-  await store.repo.sessions.create({
+  await repo.users.create(mkUser({ id: 'u1' }))
+  await repo.sessions.create({
     token: 'ses_cookie', userId: 'u1', createdAt: 'x',
     expiresAt: new Date(Date.now() + 86400000).toISOString(),
   })
@@ -197,8 +97,8 @@ test('POST /login session from cookie', async () => {
 })
 
 test('POST /login disabled user → 403', async () => {
-  await store.repo.users.create(mkUser({ id: 'u1', disabled: true }))
-  await store.repo.sessions.create({
+  await repo.users.create(mkUser({ id: 'u1', disabled: true }))
+  await repo.sessions.create({
     token: 'ses_x', userId: 'u1', createdAt: 'x',
     expiresAt: new Date(Date.now() + 86400000).toISOString(),
   })
@@ -210,8 +110,8 @@ test('POST /login disabled user → 403', async () => {
 })
 
 test('POST /login expired session → 401', async () => {
-  await store.repo.users.create(mkUser({ id: 'u1' }))
-  await store.repo.sessions.create({
+  await repo.users.create(mkUser({ id: 'u1' }))
+  await repo.sessions.create({
     token: 'ses_exp', userId: 'u1', createdAt: 'x',
     expiresAt: new Date(Date.now() - 1000).toISOString(),
   })
@@ -223,7 +123,7 @@ test('POST /login expired session → 401', async () => {
 })
 
 test('POST /login falls back to API key when token lacks ses_ prefix', async () => {
-  await store.repo.apiKeys.save({
+  await repo.apiKeys.save({
     id: 'k1', name: 'devkey', key: 'rawkey123456',
     createdAt: 'x', ownerId: 'u-owner', webSearchEnabled: true,
     modelMappingsEnabled: false, modelMappings: [],
@@ -264,7 +164,7 @@ test('POST /validate-invite missing code → 400', async () => {
 })
 
 test('POST /validate-invite unused returns valid:true', async () => {
-  await store.repo.inviteCodes.create({
+  await repo.inviteCodes.create({
     id: 'i1', code: 'ABC123', name: 'Bob', createdAt: 'x',
   })
   const res = await buildApp().request('/auth/validate-invite', {
@@ -275,7 +175,7 @@ test('POST /validate-invite unused returns valid:true', async () => {
 })
 
 test('POST /validate-invite used returns valid:false', async () => {
-  await store.repo.inviteCodes.create({
+  await repo.inviteCodes.create({
     id: 'i1', code: 'USED', name: 'X', createdAt: 'x', usedAt: 'y', usedBy: 'u1',
   })
   const res = await buildApp().request('/auth/validate-invite', {
@@ -311,7 +211,7 @@ test('admin invite-codes lifecycle: list / create / delete', async () => {
 
   res = await app.request(`/auth/admin/invite-codes/${created.id}`, { method: 'DELETE' })
   expect(res.status).toBe(200)
-  expect(store.invites.size).toBe(0)
+  expect(await repo.inviteCodes.list()).toHaveLength(0)
 })
 
 test('POST /admin/invite-codes missing name → 400', async () => {
@@ -324,17 +224,18 @@ test('POST /admin/invite-codes missing name → 400', async () => {
 // --- /admin/users ---
 
 test('GET /admin/users enriches each user with counts', async () => {
-  await store.repo.users.create(mkUser({ id: 'u1' }))
-  await store.repo.apiKeys.save({
+  await repo.users.create(mkUser({ id: 'u1' }))
+  await repo.apiKeys.save({
     id: 'k1', name: 'k', key: 'kk', createdAt: 'x', ownerId: 'u1', webSearchEnabled: true,
     modelMappingsEnabled: false, modelMappings: [],
   })
-  await store.repo.github.saveAccount(42, {
+  await repo.github.saveAccount(42 as GitHubAccountId, {
     token: 'tok', accountType: 'individual',
     user: { id: 42, login: 'gh', name: 'gh', avatar_url: '' },
     ownerId: 'u1', enabled: true, sortOrder: 0,
   } as GitHubAccount)
-  await store.repo.keyAssignments.assign('k2', 'u1', 'admin')
+  await repo.apiKeys.save(mkKey('k2', 'u2'))
+  await repo.keyAssignments.assign('k2' as ApiKeyId, 'u1' as UserId, 'admin' as UserId)
 
   const res = await buildApp({ authKind: 'session', userId: 'admin', isAdmin: true }).request('/auth/admin/users')
   expect(res.status).toBe(200)
@@ -350,30 +251,30 @@ test('GET /admin/users enriches each user with counts', async () => {
 })
 
 test('POST /admin/users/:id/disable + /enable toggles flag', async () => {
-  await store.repo.users.create(mkUser({ id: 'u1' }))
+  await repo.users.create(mkUser({ id: 'u1' }))
   const app = buildApp({ authKind: 'session', userId: 'admin', isAdmin: true })
 
   let res = await app.request('/auth/admin/users/u1/disable', { method: 'POST' })
   expect(res.status).toBe(200)
-  expect((await store.repo.users.getById('u1'))?.disabled).toBe(true)
+  expect((await repo.users.getById('u1'))?.disabled).toBe(true)
 
   res = await app.request('/auth/admin/users/u1/enable', { method: 'POST' })
   expect(res.status).toBe(200)
-  expect((await store.repo.users.getById('u1'))?.disabled).toBe(false)
+  expect((await repo.users.getById('u1'))?.disabled).toBe(false)
 })
 
 test('POST /admin/users/:id/disable refuses the caller\'s own account', async () => {
-  await store.repo.users.create(mkUser({ id: 'admin' }))
+  await repo.users.create(mkUser({ id: 'admin' }))
   const res = await buildApp({ authKind: 'session', userId: 'admin', isAdmin: true })
     .request('/auth/admin/users/admin/disable', { method: 'POST' })
   expect(res.status).toBe(400)
   expect((await res.json() as any).error).toBe('You cannot disable your own account')
-  expect((await store.repo.users.getById('admin'))?.disabled).toBe(false)
+  expect((await repo.users.getById('admin'))?.disabled).toBe(false)
 })
 
 test('DELETE /admin/users/:id refuses the caller\'s own account', async () => {
-  await store.repo.users.create(mkUser({ id: 'admin' }))
-  await store.repo.sessions.create({
+  await repo.users.create(mkUser({ id: 'admin' }))
+  await repo.sessions.create({
     token: 'ses_admin', userId: 'admin', createdAt: 'x',
     expiresAt: new Date(Date.now() + 86400000).toISOString(),
   })
@@ -381,37 +282,61 @@ test('DELETE /admin/users/:id refuses the caller\'s own account', async () => {
     .request('/auth/admin/users/admin', { method: 'DELETE' })
   expect(res.status).toBe(400)
   expect((await res.json() as any).error).toBe('You cannot delete your own account')
-  expect(store.users.has('admin')).toBe(true)
-  expect(store.sessions.size).toBe(1)
+  expect(await repo.users.getById('admin' as UserId)).not.toBeNull()
+  expect(await repo.sessions.findByToken('ses_admin' as SessionToken)).not.toBeNull()
 })
 
 test('DELETE /admin/users/:id cascades across repos', async () => {
-  await store.repo.users.create(mkUser({ id: 'u1' }))
-  await store.repo.sessions.create({
+  await repo.users.create(mkUser({ id: 'u1' }))
+  await repo.sessions.create({
     token: 'ses_x', userId: 'u1', createdAt: 'x',
     expiresAt: new Date(Date.now() + 86400000).toISOString(),
   })
-  await store.repo.apiKeys.save({
+  await repo.apiKeys.save({
     id: 'k1', name: 'k', key: 'kk', createdAt: 'x', ownerId: 'u1', webSearchEnabled: true,
     modelMappingsEnabled: false, modelMappings: [],
   })
-  await store.repo.github.saveAccount(99, {
+  await repo.github.saveAccount(99 as GitHubAccountId, {
     token: 't', accountType: 'individual',
     user: { id: 99, login: 'g', name: 'g', avatar_url: '' },
     ownerId: 'u1', enabled: true, sortOrder: 0,
   } as GitHubAccount)
-  await store.repo.keyAssignments.assign('k2', 'u1', 'admin')
+  await repo.apiKeys.save(mkKey('k2', 'u2'))
+  await repo.keyAssignments.assign('k2' as ApiKeyId, 'u1' as UserId, 'admin' as UserId)
+  // Rows hanging off u1 in the other repos, plus bystander rows that must survive.
+  await repo.users.create(mkUser({ id: 'u2', email: 'u2@x.com' }))
+  await repo.users.create(mkUser({ id: 'u3', email: 'u3@x.com' }))
+  await repo.observabilityShares.share('u1' as UserId, 'u2' as UserId, 'u1' as UserId)
+  await repo.observabilityShares.share('u3' as UserId, 'u1' as UserId, 'u3' as UserId)
+  await repo.observabilityShares.share('u2' as UserId, 'u3' as UserId, 'u2' as UserId)
+  for (const owner of ['u1', 'u2']) {
+    expect(await repo.syncDevices.createWithinLimit({
+      id: `sdv_${owner.padEnd(32, "0")}`, ownerId: owner as UserId, label: 'd', secretHash: owner.padEnd(64, "a"),
+      upstreamIds: [], createdAt: 'x', lastSyncAt: null,
+    }, 5)).toBe(true)
+    expect(await repo.telemetry.createSourceWithinLimit({
+      id: `tls_${owner.padEnd(32, "0")}`, ownerId: owner as UserId, name: 's', keyHash: owner.padEnd(64, "b"),
+      settings: {}, createdAt: 'x', lastPushAt: null,
+    }, 5)).toBe(true)
+  }
 
   const res = await buildApp({ authKind: 'session', userId: 'admin', isAdmin: true }).request('/auth/admin/users/u1', { method: 'DELETE' })
   expect(res.status).toBe(200)
 
-  expect(store.users.has('u1')).toBe(false)
-  expect(store.sessions.size).toBe(0)
-  expect(store.apiKeys.size).toBe(0)
-  expect((await store.repo.github.listAccountsByOwner('u1'))).toHaveLength(0)
-  expect(await store.repo.keyAssignments.listByUser('u1')).toHaveLength(0)
-  expect(store.observabilityShareDeletes).toContain('owner:u1')
-  expect(store.observabilityShareDeletes).toContain('viewer:u1')
-  expect(store.syncDeviceDeletes).toEqual(['u1'])
-  expect(store.telemetryDeletes).toEqual(['u1'])
+  expect(await repo.users.getById('u1' as UserId)).toBeNull()
+  expect(await repo.sessions.findByToken('ses_x' as SessionToken)).toBeNull()
+  expect(await repo.apiKeys.listByOwner('u1' as UserId)).toHaveLength(0)
+  expect(await repo.apiKeys.getById('k1' as ApiKeyId)).toBeNull()
+  expect((await repo.github.listAccountsByOwner('u1' as UserId))).toHaveLength(0)
+  expect(await repo.keyAssignments.listByUser('u1' as UserId)).toHaveLength(0)
+  // Observability shares: both the owner and the viewer side are removed.
+  expect(await repo.observabilityShares.listByOwner('u1' as UserId)).toHaveLength(0)
+  expect(await repo.observabilityShares.listByViewer('u1' as UserId)).toHaveLength(0)
+  expect(await repo.observabilityShares.isGranted('u2' as UserId, 'u3' as UserId)).toBe(true)
+  expect(await repo.syncDevices.listByOwner('u1' as UserId)).toEqual([])
+  expect(await repo.telemetry.listSources('u1' as UserId)).toEqual([])
+  // Only u1's rows go; other users' devices and sources stay.
+  expect(await repo.syncDevices.listByOwner('u2' as UserId)).toHaveLength(1)
+  expect(await repo.telemetry.listSources('u2' as UserId)).toHaveLength(1)
+  expect(await repo.apiKeys.getById('k2' as ApiKeyId)).not.toBeNull()
 })

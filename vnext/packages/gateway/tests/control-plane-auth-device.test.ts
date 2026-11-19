@@ -5,52 +5,9 @@
  */
 import { test, expect, beforeEach } from 'bun:test'
 import { Hono } from 'hono'
-import { initRepo } from '../src/repo/index.ts'
-import { __resetPlatformForTests } from '@vibe-core/platform'
-import type {
-  DeviceCode, Repo, User, UserSession,
-} from '../src/repo/types.ts'
+import { setupTestPlatform } from './_setup-platform.ts'
+import type { DeviceCodeToken } from '../src/repo/branded-ids.ts'
 import { authRouter, type AuthCtx } from '../src/control-plane/auth/routes.ts'
-
-function inMemoryRepo() {
-  const users = new Map<string, User>()
-  const sessions = new Map<string, UserSession>()
-  const deviceCodes = new Map<string, DeviceCode>()
-
-  const repo = {
-    users: {
-      create: async (u: User) => { users.set(u.id, u) },
-      getById: async (id: string) => users.get(id) ?? null,
-      findByKey: async () => null, findByEmail: async () => null,
-      list: async () => [...users.values()],
-      update: async () => { }, delete: async () => { },
-    },
-    sessions: {
-      create: async (s: UserSession) => { sessions.set(s.token, s) },
-      findByToken: async (t: string) => sessions.get(t) ?? null,
-      deleteByUserId: async () => { }, deleteExpired: async () => { },
-    },
-    deviceCodes: {
-      create: async (d: DeviceCode) => { deviceCodes.set(d.deviceCode, d) },
-      findByDeviceCode: async (d: string) => deviceCodes.get(d) ?? null,
-      findByUserCode: async (u: string) =>
-        [...deviceCodes.values()].find((x) => x.userCode === u) ?? null,
-      verify: async (d: string, uid: string, st: string) => {
-        const e = deviceCodes.get(d)
-        if (e) deviceCodes.set(d, { ...e, userId: uid, sessionToken: st })
-      },
-      deleteExpired: async () => { },
-      delete: async (d: string) => { deviceCodes.delete(d) },
-    },
-    inviteCodes: { create: async () => { }, findByCode: async () => null, list: async () => [], markUsed: async () => { }, clearUsedBy: async () => { }, delete: async () => { } },
-    apiKeys: { list: async () => [], listByOwner: async () => [], findByRawKey: async () => null, getById: async () => null, save: async () => { }, delete: async () => { }, deleteAll: async () => { } },
-    github: { listAccounts: async () => [], listAccountsByOwner: async () => [], getAccount: async () => null, saveAccount: async () => { }, deleteAccount: async () => { }, deleteAllAccounts: async () => { }, getActiveId: async () => null, setActiveId: async () => { }, clearActiveId: async () => { }, getActiveIdForUser: async () => null, setActiveIdForUser: async () => { }, clearActiveIdForUser: async () => { } },
-    keyAssignments: { assign: async () => { }, unassign: async () => { }, listByUser: async () => [], listByKey: async () => [], deleteByKey: async () => { }, deleteByUser: async () => { } },
-    observabilityShares: { share: async () => { }, unshare: async () => { }, listByOwner: async () => [], listByViewer: async () => [], isGranted: async () => false, deleteByOwner: async () => { }, deleteByViewer: async () => { } },
-  } as unknown as Repo
-
-  return { repo, users, sessions, deviceCodes }
-}
 
 function buildApp(auth?: AuthCtx) {
   const app = new Hono()
@@ -61,11 +18,14 @@ function buildApp(auth?: AuthCtx) {
 
 const J = { 'content-type': 'application/json' }
 
-let store: ReturnType<typeof inMemoryRepo>
+let repo: ReturnType<typeof setupTestPlatform>['repo']
+let db: ReturnType<typeof setupTestPlatform>['db']
 beforeEach(() => {
-  store = inMemoryRepo()
-  initRepo(store.repo)
+  ;({ repo, db } = setupTestPlatform())
 })
+
+const rowCount = (table: 'device_codes' | 'user_sessions') =>
+  (db.query(`SELECT COUNT(*) AS n FROM ${table}`).get() as { n: number }).n
 
 test('POST /device/code creates pending entry', async () => {
   const res = await buildApp().request('/auth/device/code', { method: 'POST' })
@@ -75,7 +35,7 @@ test('POST /device/code creates pending entry', async () => {
   expect(body.user_code).toMatch(/^[A-Z0-9]{4}-[A-Z0-9]{4}$/)
   expect(body.expires_in).toBe(900)
   expect(body.interval).toBe(5)
-  expect(store.deviceCodes.size).toBe(1)
+  expect(rowCount('device_codes')).toBe(1)
 })
 
 test('POST /device/verify no session → 401', async () => {
@@ -100,7 +60,7 @@ test('POST /device/verify invalid code → 404', async () => {
 })
 
 test('POST /device/verify expired → 410', async () => {
-  await store.repo.deviceCodes.create({
+  await repo.deviceCodes.create({
     deviceCode: 'd1', userCode: 'EXPI-RED1',
     expiresAt: new Date(Date.now() - 1000).toISOString(),
     createdAt: 'x',
@@ -109,11 +69,11 @@ test('POST /device/verify expired → 410', async () => {
     method: 'POST', body: JSON.stringify({ user_code: 'EXPI-RED1' }), headers: J,
   })
   expect(res.status).toBe(410)
-  expect(store.deviceCodes.size).toBe(0)
+  expect(rowCount('device_codes')).toBe(0)
 })
 
 test('POST /device/verify already used → 409', async () => {
-  await store.repo.deviceCodes.create({
+  await repo.deviceCodes.create({
     deviceCode: 'd1', userCode: 'USED-CODE',
     expiresAt: new Date(Date.now() + 60000).toISOString(),
     createdAt: 'x', userId: 'someone', sessionToken: 'ses_x',
@@ -125,7 +85,7 @@ test('POST /device/verify already used → 409', async () => {
 })
 
 test('POST /device/verify success creates session', async () => {
-  await store.repo.deviceCodes.create({
+  await repo.deviceCodes.create({
     deviceCode: 'd1', userCode: 'GOOD-CODE',
     expiresAt: new Date(Date.now() + 60000).toISOString(),
     createdAt: 'x',
@@ -134,8 +94,8 @@ test('POST /device/verify success creates session', async () => {
     method: 'POST', body: JSON.stringify({ user_code: 'good-code' }), headers: J,
   })
   expect(res.status).toBe(200)
-  expect(store.sessions.size).toBe(1)
-  const dc = store.deviceCodes.get('d1')
+  expect(rowCount('user_sessions')).toBe(1)
+  const dc = await repo.deviceCodes.findByDeviceCode('d1' as DeviceCodeToken)
   expect(dc?.userId).toBe('u1')
   expect(dc?.sessionToken?.startsWith('ses_')).toBe(true)
 })
@@ -155,7 +115,7 @@ test('POST /device/poll invalid → 404 expired status', async () => {
 })
 
 test('POST /device/poll expired removes + status:expired', async () => {
-  await store.repo.deviceCodes.create({
+  await repo.deviceCodes.create({
     deviceCode: 'd1', userCode: 'X',
     expiresAt: new Date(Date.now() - 1000).toISOString(), createdAt: 'x',
   })
@@ -164,11 +124,11 @@ test('POST /device/poll expired removes + status:expired', async () => {
   })
   expect(res.status).toBe(200)
   expect(await res.json()).toEqual({ status: 'expired' })
-  expect(store.deviceCodes.size).toBe(0)
+  expect(rowCount('device_codes')).toBe(0)
 })
 
 test('POST /device/poll pending', async () => {
-  await store.repo.deviceCodes.create({
+  await repo.deviceCodes.create({
     deviceCode: 'd1', userCode: 'X',
     expiresAt: new Date(Date.now() + 60000).toISOString(), createdAt: 'x',
   })
@@ -179,10 +139,10 @@ test('POST /device/poll pending', async () => {
 })
 
 test('POST /device/poll complete returns session_token + user_name + deletes code', async () => {
-  await store.repo.users.create({
+  await repo.users.create({
     id: 'u1', name: 'Alice', email: 'a@x.com', createdAt: 'x', disabled: false,
   })
-  await store.repo.deviceCodes.create({
+  await repo.deviceCodes.create({
     deviceCode: 'd1', userCode: 'X',
     expiresAt: new Date(Date.now() + 60000).toISOString(), createdAt: 'x',
     userId: 'u1', sessionToken: 'ses_done',
@@ -193,5 +153,5 @@ test('POST /device/poll complete returns session_token + user_name + deletes cod
   expect(await res.json()).toEqual({
     status: 'complete', session_token: 'ses_done', user_id: 'u1', user_name: 'Alice',
   })
-  expect(store.deviceCodes.size).toBe(0)
+  expect(rowCount('device_codes')).toBe(0)
 })

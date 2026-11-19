@@ -2,17 +2,12 @@
  * Email auth router tests — Week 5b.
  *
  * Covers /email/{register,verify,login,change-password,magic} ported from
- * old src/routes/auth/email.ts. Uses in-memory repo + email-sender override
+ * old src/routes/auth/email.ts. Uses the real in-memory SQLite repo + email-sender override
  * + auth-store reset (no mock.module — see bun_mock_module_unrestorable memory).
  */
 import { test, expect, beforeEach } from 'bun:test'
 import { Hono } from 'hono'
-import { initRepo } from '../src/repo/index.ts'
-import { __resetPlatformForTests } from '@vibe-core/platform'
-import type {
-  ApiKey, GitHubAccount, InviteCode, KeyAssignment,
-  Repo, User, UserSession,
-} from '../src/repo/types.ts'
+import { setupTestPlatform } from './_setup-platform.ts'
 import { authRouter } from '../src/control-plane/auth/routes.ts'
 import { setEmailSenderForTest, type EmailSender } from '../src/control-plane/lib/email.ts'
 import {
@@ -20,92 +15,6 @@ import {
   saveMagicToken,
 } from '../src/control-plane/auth/stores.ts'
 import { hashPassword } from '../src/control-plane/lib/password.ts'
-
-function inMemoryRepo() {
-  const users = new Map<string, User>()
-  const sessions = new Map<string, UserSession>()
-  const invites = new Map<string, InviteCode>()
-  const apiKeys = new Map<string, ApiKey>()
-  const githubAccounts = new Map<string, GitHubAccount[]>()
-  const keyAssignments: KeyAssignment[] = []
-
-  const repo = {
-    users: {
-      create: async (u: User) => { users.set(u.id, u) },
-      getById: async (id: string) => users.get(id) ?? null,
-      findByKey: async () => null,
-      findByEmail: async (email: string) =>
-        [...users.values()].find((u) => u.email?.toLowerCase() === email.toLowerCase()) ?? null,
-      list: async () => [...users.values()],
-      update: async (id: string, fields: Partial<User>) => {
-        const u = users.get(id); if (u) users.set(id, { ...u, ...fields })
-      },
-      delete: async (id: string) => { users.delete(id) },
-    },
-    sessions: {
-      create: async (s: UserSession) => { sessions.set(s.token, s) },
-      findByToken: async (t: string) => sessions.get(t) ?? null,
-      deleteByUserId: async (uid: string) => {
-        for (const [t, s] of sessions) if (s.userId === uid) sessions.delete(t)
-      },
-      deleteExpired: async () => { },
-    },
-    inviteCodes: {
-      create: async (i: InviteCode) => { invites.set(i.id, i) },
-      findByCode: async (code: string) =>
-        [...invites.values()].find((i) => i.code === code) ?? null,
-      list: async () => [...invites.values()],
-      markUsed: async (id: string, userId: string) => {
-        const i = invites.get(id)
-        if (i) invites.set(id, { ...i, usedAt: new Date().toISOString(), usedBy: userId })
-      },
-      clearUsedBy: async () => { },
-      delete: async (id: string) => { invites.delete(id) },
-    },
-    apiKeys: {
-      list: async () => [...apiKeys.values()],
-      listByOwner: async (oid: string) => [...apiKeys.values()].filter((k) => k.ownerId === oid),
-      findByRawKey: async () => null,
-      getById: async (id: string) => apiKeys.get(id) ?? null,
-      save: async (k: ApiKey) => { apiKeys.set(k.id, k) },
-      delete: async (id: string) => apiKeys.delete(id),
-      deleteAll: async () => { apiKeys.clear() },
-    },
-    github: {
-      listAccounts: async () => [],
-      listAccountsByOwner: async () => [],
-      getAccount: async () => null,
-      saveAccount: async () => { },
-      deleteAccount: async () => { },
-      deleteAllAccounts: async () => { },
-      getActiveId: async () => null,
-      setActiveId: async () => { },
-      clearActiveId: async () => { },
-      getActiveIdForUser: async () => null,
-      setActiveIdForUser: async () => { },
-      clearActiveIdForUser: async () => { },
-    },
-    keyAssignments: {
-      assign: async () => { },
-      unassign: async () => { },
-      listByUser: async () => [],
-      listByKey: async () => [],
-      deleteByKey: async () => { },
-      deleteByUser: async () => { },
-    },
-    observabilityShares: {
-      share: async () => { },
-      unshare: async () => { },
-      listByOwner: async () => [],
-      listByViewer: async () => [],
-      isGranted: async () => false,
-      deleteByOwner: async () => { },
-      deleteByViewer: async () => { },
-    },
-  } as unknown as Repo
-
-  return { repo, users, sessions, invites }
-}
 
 function buildApp() {
   const app = new Hono()
@@ -129,12 +38,14 @@ function captureSender(captured: Captured): EmailSender {
   }
 }
 
-let store: ReturnType<typeof inMemoryRepo>
+let repo: ReturnType<typeof setupTestPlatform>['repo']
+let db: ReturnType<typeof setupTestPlatform>['db']
 let mail: Captured
 
+const sessionCount = () => (db.query('SELECT COUNT(*) AS n FROM user_sessions').get() as { n: number }).n
+
 beforeEach(() => {
-  store = inMemoryRepo()
-  initRepo(store.repo)
+  ;({ repo, db } = setupTestPlatform())
   resetAuthStoresForTest()
   mail = { codes: [], magic: [] }
   setEmailSenderForTest(captureSender(mail))
@@ -170,8 +81,8 @@ test('register invalid invite → 400', async () => {
 })
 
 test('register duplicate email → 409', async () => {
-  await store.repo.inviteCodes.create({ id: 'i1', code: 'OK', name: 'A', createdAt: 'x' })
-  await store.repo.users.create({
+  await repo.inviteCodes.create({ id: 'i1', code: 'OK', name: 'A', createdAt: 'x' })
+  await repo.users.create({
     id: 'u1', name: 'A', email: 'dup@x.com', createdAt: 'x', disabled: false,
   })
   const res = await buildApp().request('/auth/email/register', {
@@ -183,7 +94,7 @@ test('register duplicate email → 409', async () => {
 })
 
 test('register success sends code', async () => {
-  await store.repo.inviteCodes.create({ id: 'i1', code: 'OK', name: 'A', createdAt: 'x' })
+  await repo.inviteCodes.create({ id: 'i1', code: 'OK', name: 'A', createdAt: 'x' })
   const res = await buildApp().request('/auth/email/register', {
     method: 'POST',
     body: JSON.stringify({ email: 'New@X.com', invite_code: 'OK', name: 'New', password: '123456' }),
@@ -198,7 +109,7 @@ test('register success sends code', async () => {
 // --- /email/verify ---
 
 test('verify wrong code → 400', async () => {
-  await store.repo.inviteCodes.create({ id: 'i1', code: 'OK', name: 'A', createdAt: 'x' })
+  await repo.inviteCodes.create({ id: 'i1', code: 'OK', name: 'A', createdAt: 'x' })
   await buildApp().request('/auth/email/register', {
     method: 'POST',
     body: JSON.stringify({ email: 'v@x.com', invite_code: 'OK', name: 'V', password: '123456' }),
@@ -211,7 +122,7 @@ test('verify wrong code → 400', async () => {
 })
 
 test('verify success creates user + session + marks invite', async () => {
-  await store.repo.inviteCodes.create({ id: 'i1', code: 'OK', name: 'A', createdAt: 'x' })
+  await repo.inviteCodes.create({ id: 'i1', code: 'OK', name: 'A', createdAt: 'x' })
   await buildApp().request('/auth/email/register', {
     method: 'POST',
     body: JSON.stringify({ email: 'v@x.com', invite_code: 'OK', name: 'V', password: 'pw1234' }),
@@ -228,11 +139,11 @@ test('verify success creates user + session + marks invite', async () => {
 
   expect((res.headers.get('set-cookie') ?? '')).toContain('session_token=ses_')
 
-  const u = [...store.users.values()].find((x) => x.email === 'v@x.com')
+  const u = await repo.users.findByEmail('v@x.com')
   expect(u).toBeDefined()
   expect(u?.passwordHash?.startsWith('pbkdf2:')).toBe(true)
-  expect(store.sessions.size).toBe(1)
-  expect([...store.invites.values()][0]?.usedBy).toBe(u?.id)
+  expect(sessionCount()).toBe(1)
+  expect((await repo.inviteCodes.list())[0]?.usedBy).toBe(u?.id)
 })
 
 // --- /email/login ---
@@ -246,7 +157,7 @@ test('login unknown email → 404', async () => {
 
 test('login disabled → 403', async () => {
   const hash = await hashPassword('pw1234')
-  await store.repo.users.create({
+  await repo.users.create({
     id: 'u1', name: 'A', email: 'd@x.com', createdAt: 'x', disabled: true, passwordHash: hash,
   })
   const res = await buildApp().request('/auth/email/login', {
@@ -256,7 +167,7 @@ test('login disabled → 403', async () => {
 })
 
 test('login oauth-only account → 400', async () => {
-  await store.repo.users.create({
+  await repo.users.create({
     id: 'u1', name: 'A', email: 'g@x.com', createdAt: 'x', disabled: false,
   })
   const res = await buildApp().request('/auth/email/login', {
@@ -267,7 +178,7 @@ test('login oauth-only account → 400', async () => {
 
 test('login wrong password → 401', async () => {
   const hash = await hashPassword('pw1234')
-  await store.repo.users.create({
+  await repo.users.create({
     id: 'u1', name: 'A', email: 'l@x.com', createdAt: 'x', disabled: false, passwordHash: hash,
   })
   const res = await buildApp().request('/auth/email/login', {
@@ -278,7 +189,7 @@ test('login wrong password → 401', async () => {
 
 test('login success creates session + cookies', async () => {
   const hash = await hashPassword('pw1234')
-  await store.repo.users.create({
+  await repo.users.create({
     id: 'u1', name: 'Logi', email: 'l@x.com', createdAt: 'x', disabled: false,
     passwordHash: hash, avatarUrl: 'https://x/a.png',
   })
@@ -290,7 +201,7 @@ test('login success creates session + cookies', async () => {
   expect(cookie).toContain('session_token=ses_')
   expect(cookie).toContain('user_name=Logi')
   expect(cookie).toContain('user_avatar=')
-  expect(store.sessions.size).toBe(1)
+  expect(sessionCount()).toBe(1)
 })
 
 // --- /email/change-password ---
@@ -304,10 +215,10 @@ test('change-password no session → 401', async () => {
 
 test('change-password updates hash', async () => {
   const hash = await hashPassword('old123')
-  await store.repo.users.create({
+  await repo.users.create({
     id: 'u1', name: 'A', email: 'c@x.com', createdAt: 'x', disabled: false, passwordHash: hash,
   })
-  await store.repo.sessions.create({
+  await repo.sessions.create({
     token: 'ses_cp', userId: 'u1', createdAt: 'x',
     expiresAt: new Date(Date.now() + 86400000).toISOString(),
   })
@@ -317,16 +228,16 @@ test('change-password updates hash', async () => {
     headers: { ...J, cookie: 'session_token=ses_cp' },
   })
   expect(res.status).toBe(200)
-  const u = await store.repo.users.getById('u1')
+  const u = await repo.users.getById('u1')
   expect(u?.passwordHash).not.toBe(hash)
 })
 
 test('change-password wrong old → 401', async () => {
   const hash = await hashPassword('old123')
-  await store.repo.users.create({
+  await repo.users.create({
     id: 'u1', name: 'A', email: 'c@x.com', createdAt: 'x', disabled: false, passwordHash: hash,
   })
-  await store.repo.sessions.create({
+  await repo.sessions.create({
     token: 'ses_cp2', userId: 'u1', createdAt: 'x',
     expiresAt: new Date(Date.now() + 86400000).toISOString(),
   })
@@ -340,10 +251,10 @@ test('change-password wrong old → 401', async () => {
 
 test('change-password same → 400', async () => {
   const hash = await hashPassword('same12')
-  await store.repo.users.create({
+  await repo.users.create({
     id: 'u1', name: 'A', email: 'c@x.com', createdAt: 'x', disabled: false, passwordHash: hash,
   })
-  await store.repo.sessions.create({
+  await repo.sessions.create({
     token: 'ses_cp3', userId: 'u1', createdAt: 'x',
     expiresAt: new Date(Date.now() + 86400000).toISOString(),
   })
@@ -369,7 +280,7 @@ test('magic invalid token → 400 html', async () => {
 })
 
 test('magic success redirects to /dashboard + sets cookie', async () => {
-  await store.repo.users.create({
+  await repo.users.create({
     id: 'u1', name: 'M', email: 'm@x.com', createdAt: 'x', disabled: false,
   })
   await saveMagicToken('tok123', 'm@x.com')
@@ -379,11 +290,11 @@ test('magic success redirects to /dashboard + sets cookie', async () => {
   expect(res.status).toBe(302)
   expect(res.headers.get('location')).toBe('/dashboard')
   expect((res.headers.get('set-cookie') ?? '')).toContain('session_token=ses_')
-  expect(store.sessions.size).toBe(1)
+  expect(sessionCount()).toBe(1)
 })
 
 test('magic disabled user → 403 html', async () => {
-  await store.repo.users.create({
+  await repo.users.create({
     id: 'u1', name: 'M', email: 'm@x.com', createdAt: 'x', disabled: true,
   })
   await saveMagicToken('tok456', 'm@x.com')

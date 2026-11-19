@@ -2,78 +2,16 @@
  * Google OAuth router tests — Week 5b.
  *
  * Covers /google (auth start) + /google/callback ported from old
- * src/routes/auth/google.ts. Uses in-memory repo + fetcher override seam
+ * src/routes/auth/google.ts. Uses the real in-memory SQLite repo + fetcher override seam
  * (no mock.module — see bun_mock_module_unrestorable memory).
  */
 import { test, expect, beforeEach, afterEach } from 'bun:test'
 import { Hono } from 'hono'
-import { initRepo } from '../src/repo/index.ts'
-import { __resetPlatformForTests } from '@vibe-core/platform'
-import type {
-  InviteCode, Repo, User, UserSession,
-} from '../src/repo/types.ts'
+import { setupTestPlatform } from './_setup-platform.ts'
 import { authRouter } from '../src/control-plane/auth/routes.ts'
 import { setGoogleFetcherForTest } from '../src/control-plane/auth/google-routes.ts'
 import { resetAuthStoresForTest, saveOAuthState } from '../src/control-plane/auth/stores.ts'
 import { jsonResponse as jsonResp } from '@vibe-core/test-utils'
-
-function inMemoryRepo() {
-  const users = new Map<string, User>()
-  const sessions = new Map<string, UserSession>()
-  const invites = new Map<string, InviteCode>()
-
-  const repo = {
-    users: {
-      create: async (u: User) => { users.set(u.id, u) },
-      getById: async (id: string) => users.get(id) ?? null,
-      findByKey: async () => null,
-      findByEmail: async (email: string) =>
-        [...users.values()].find((u) => u.email?.toLowerCase() === email.toLowerCase()) ?? null,
-      list: async () => [...users.values()],
-      update: async (id: string, fields: Partial<User>) => {
-        const u = users.get(id); if (u) users.set(id, { ...u, ...fields })
-      },
-      delete: async (id: string) => { users.delete(id) },
-    },
-    sessions: {
-      create: async (s: UserSession) => { sessions.set(s.token, s) },
-      findByToken: async (t: string) => sessions.get(t) ?? null,
-      deleteByUserId: async () => { }, deleteExpired: async () => { },
-    },
-    inviteCodes: {
-      create: async (i: InviteCode) => { invites.set(i.id, i) },
-      findByCode: async (code: string) =>
-        [...invites.values()].find((i) => i.code === code) ?? null,
-      list: async () => [...invites.values()],
-      markUsed: async (id: string, userId: string) => {
-        const i = invites.get(id)
-        if (i) invites.set(id, { ...i, usedAt: new Date().toISOString(), usedBy: userId })
-      },
-      clearUsedBy: async () => { }, delete: async () => { },
-    },
-    apiKeys: {
-      list: async () => [], listByOwner: async () => [], findByRawKey: async () => null,
-      getById: async () => null, save: async () => { }, delete: async () => { }, deleteAll: async () => { },
-    },
-    github: {
-      listAccounts: async () => [], listAccountsByOwner: async () => [], getAccount: async () => null,
-      saveAccount: async () => { }, deleteAccount: async () => { }, deleteAllAccounts: async () => { },
-      getActiveId: async () => null, setActiveId: async () => { }, clearActiveId: async () => { },
-      getActiveIdForUser: async () => null, setActiveIdForUser: async () => { }, clearActiveIdForUser: async () => { },
-    },
-    keyAssignments: {
-      assign: async () => { }, unassign: async () => { }, listByUser: async () => [],
-      listByKey: async () => [], deleteByKey: async () => { }, deleteByUser: async () => { },
-    },
-    observabilityShares: {
-      share: async () => { }, unshare: async () => { }, listByOwner: async () => [],
-      listByViewer: async () => [], isGranted: async () => false,
-      deleteByOwner: async () => { }, deleteByViewer: async () => { },
-    },
-  } as unknown as Repo
-
-  return { repo, users, sessions, invites }
-}
 
 function buildApp(env: { GOOGLE_CLIENT_ID?: string; GOOGLE_CLIENT_SECRET?: string } = {
   GOOGLE_CLIENT_ID: 'cid', GOOGLE_CLIENT_SECRET: 'csec',
@@ -87,11 +25,13 @@ function buildApp(env: { GOOGLE_CLIENT_ID?: string; GOOGLE_CLIENT_SECRET?: strin
   return app
 }
 
-let store: ReturnType<typeof inMemoryRepo>
+let repo: ReturnType<typeof setupTestPlatform>['repo']
+let db: ReturnType<typeof setupTestPlatform>['db']
+
+const sessionCount = () => (db.query('SELECT COUNT(*) AS n FROM user_sessions').get() as { n: number }).n
 
 beforeEach(() => {
-  store = inMemoryRepo()
-  initRepo(store.repo)
+  ;({ repo, db } = setupTestPlatform())
   resetAuthStoresForTest()
 })
 
@@ -178,7 +118,7 @@ test('callback userinfo fail → 502', async () => {
 // --- happy path: existing user ---
 
 test('callback existing user → 302 to /dashboard + cookies', async () => {
-  await store.repo.users.create({
+  await repo.users.create({
     id: 'u1', name: 'Old', email: 'existing@x.com',
     createdAt: 'x', disabled: false,
   })
@@ -203,16 +143,16 @@ test('callback existing user → 302 to /dashboard + cookies', async () => {
   expect(cookie).toContain('session_token=ses_')
   expect(cookie).toContain('user_avatar=')
   expect(cookie).toContain('user_name=')
-  expect(store.sessions.size).toBe(1)
+  expect(sessionCount()).toBe(1)
 
   // user updated with avatar + lastLoginAt
-  const u = await store.repo.users.findByEmail('existing@x.com')
+  const u = await repo.users.findByEmail('existing@x.com')
   expect(u?.avatarUrl).toBe('https://pic/old.png')
   expect(u?.lastLoginAt).toBeTruthy()
 })
 
 test('callback disabled user → 403 html', async () => {
-  await store.repo.users.create({
+  await repo.users.create({
     id: 'u1', name: 'D', email: 'disabled@x.com',
     createdAt: 'x', disabled: true,
   })
@@ -243,16 +183,16 @@ test('callback admin email auto-creates user', async () => {
     '/auth/google/callback?code=c&state=st5', { redirect: 'manual' },
   )
   expect(res.status).toBe(302)
-  const u = await store.repo.users.findByEmail('test@local.dev')
+  const u = await repo.users.findByEmail('test@local.dev')
   expect(u).toBeDefined()
   expect(u?.name).toBe('Admin')
-  expect(store.sessions.size).toBe(1)
+  expect(sessionCount()).toBe(1)
 })
 
 // --- invite code branch ---
 
 test('callback with invite code creates user + marks invite', async () => {
-  await store.repo.inviteCodes.create({
+  await repo.inviteCodes.create({
     id: 'inv1', code: 'WELCOME', name: 'Inv', createdAt: 'x',
   })
   await saveOAuthState('st6', { inviteCode: 'WELCOME', createdAt: Date.now() })
@@ -266,14 +206,14 @@ test('callback with invite code creates user + marks invite', async () => {
     '/auth/google/callback?code=c&state=st6', { redirect: 'manual' },
   )
   expect(res.status).toBe(302)
-  const u = await store.repo.users.findByEmail('newbie@x.com')
+  const u = await repo.users.findByEmail('newbie@x.com')
   expect(u).toBeDefined()
-  const inv = [...store.invites.values()][0]
+  const inv = (await repo.inviteCodes.list())[0]
   expect(inv?.usedBy).toBe(u?.id)
 })
 
 test('callback with used invite → 400 html', async () => {
-  await store.repo.inviteCodes.create({
+  await repo.inviteCodes.create({
     id: 'inv1', code: 'USED', name: 'Inv', createdAt: 'x',
     usedAt: 'y', usedBy: 'other',
   })
