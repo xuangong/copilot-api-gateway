@@ -1,4 +1,4 @@
-import { test, expect, beforeEach } from 'bun:test'
+import { test, expect, afterEach, mock } from 'bun:test'
 import { setupTestPlatform } from '../../../_setup-platform.ts'
 import {
   SourceStreamState,
@@ -15,7 +15,8 @@ import type {
   TelemetryModelIdentity,
   PerformanceTelemetryContext,
 } from '@vibe-llm/protocols/common'
-import type { Repo } from '../../../../src/repo/types.ts'
+import { seedApiKey } from '../../../helpers/seed-fixtures.ts'
+import { captureRepoWrites } from '../../../helpers/repo-write-spy.ts'
 
 const identity = (modelKey = 'gpt-4'): TelemetryModelIdentity => ({
   incomingModel: 'team-gpt',
@@ -44,7 +45,14 @@ const ctx: TelemetryRequestContext = {
   requestStartedAt: Date.now(),
 }
 
-beforeEach(() => setupTestPlatform())
+afterEach(() => mock.restore())
+
+/** A real in-memory repo holding the key the context writes against, with write spies. */
+async function realRepo() {
+  const { repo } = setupTestPlatform()
+  await seedApiKey(repo, { id: 'k1', key: 'synthetic-telemetry-key' })
+  return { repo, captured: captureRepoWrites(repo) }
+}
 
 test('eventResultMetadata retains request incoming model when finalMetadata corrects provider identity', async () => {
   const replaced: LlmEventResult<unknown> = {
@@ -155,17 +163,12 @@ test('SourceStreamState.failedAfter flips failed flag', () => {
 })
 
 test('recordUsage writes one row + touchLastUsed when usage non-zero', async () => {
-  const usageRows: unknown[] = []
-  const touched: string[] = []
-  const stub = {
-    usage: { record: async (row: unknown) => { usageRows.push(row) } },
-    apiKeys: { touchLastUsed: async (id: string) => { touched.push(id) } },
-  } as unknown as Repo
+  const { repo, captured } = await realRepo()
 
-  await recordUsage(ctx, identity('gpt-4'), { input: 5, output: 7 }, stub)
-  expect(usageRows.length).toBe(1)
-  expect(touched).toEqual(['k1'])
-  const row = usageRows[0] as Record<string, unknown>
+  await recordUsage(ctx, identity('gpt-4'), { input: 5, output: 7 }, repo)
+  expect(captured.usage.length).toBe(1)
+  expect(captured.touched).toEqual(['k1'])
+  const row = captured.usage[0] as unknown as Record<string, unknown>
   expect(row.keyId).toBe('k1')
   expect(row.incomingModel).toBe('team-gpt')
   expect(row.modelKey).toBe('gpt-4')
@@ -174,36 +177,27 @@ test('recordUsage writes one row + touchLastUsed when usage non-zero', async () 
 })
 
 test('recordUsage no-ops when token counts are all zero/undefined', async () => {
-  const usageRows: unknown[] = []
-  const touched: string[] = []
-  const stub = {
-    usage: { record: async (row: unknown) => { usageRows.push(row) } },
-    apiKeys: { touchLastUsed: async (id: string) => { touched.push(id) } },
-  } as unknown as Repo
+  const { repo, captured } = await realRepo()
 
-  await recordUsage(ctx, identity('gpt-4'), {}, stub)
-  await recordUsage(ctx, identity('gpt-4'), { input: 0, output: 0 }, stub)
-  expect(usageRows.length).toBe(0)
-  expect(touched.length).toBe(0)
+  await recordUsage(ctx, identity('gpt-4'), {}, repo)
+  await recordUsage(ctx, identity('gpt-4'), { input: 0, output: 0 }, repo)
+  expect(captured.usage.length).toBe(0)
+  expect(captured.touched.length).toBe(0)
 })
 
 test('recordPerformance no-ops when performance undefined', async () => {
-  const calls: unknown[] = []
-  const stub = {
-    performance: { record: async (row: unknown) => { calls.push(row) } },
-  } as unknown as Repo
-  await recordPerformance(ctx, undefined, false, stub)
+  const { repo, captured } = await realRepo()
+  const calls = captured.perf
+  await recordPerformance(ctx, undefined, false, repo)
   expect(calls.length).toBe(0)
 })
 
 test('recordPerformance writes one row carrying isError flag + durationMs', async () => {
-  const calls: Record<string, unknown>[] = []
-  const stub = {
-    performance: { record: async (row: Record<string, unknown>) => { calls.push(row) } },
-  } as unknown as Repo
+  const { repo, captured } = await realRepo()
+  const calls = captured.perf as unknown as Record<string, unknown>[]
   const startedAt = Date.now() - 10
   const myCtx: TelemetryRequestContext = { ...ctx, requestStartedAt: startedAt }
-  await recordPerformance(myCtx, perf(), true, stub)
+  await recordPerformance(myCtx, perf(), true, repo)
   expect(calls).toHaveLength(1)
   const row = calls[0]!
   // Spec §6.2 surfaces a `failed` flag; legacy PerformanceRecordInput uses
@@ -223,31 +217,25 @@ test('recordPerformance writes one row carrying isError flag + durationMs', asyn
 })
 
 test('recordPerformance defaults sourceApi to chat-completions when ctx omits it', async () => {
-  const calls: Record<string, unknown>[] = []
-  const stub = {
-    performance: { record: async (row: Record<string, unknown>) => { calls.push(row) } },
-  } as unknown as Repo
-  await recordPerformance(ctx, perf(), false, stub)
+  const { repo, captured } = await realRepo()
+  const calls = captured.perf as unknown as Record<string, unknown>[]
+  await recordPerformance(ctx, perf(), false, repo)
   expect(calls[0]?.sourceApi).toBe('chat-completions')
   expect(calls[0]?.targetApi).toBe('chat-completions')
 })
 
 test('recordPerformance threads sourceApi from ctx and mirrors targetApi for same-protocol', async () => {
-  const calls: Record<string, unknown>[] = []
-  const stub = {
-    performance: { record: async (row: Record<string, unknown>) => { calls.push(row) } },
-  } as unknown as Repo
-  await recordPerformance({ ...ctx, sourceApi: 'messages' }, perf(), false, stub)
+  const { repo, captured } = await realRepo()
+  const calls = captured.perf as unknown as Record<string, unknown>[]
+  await recordPerformance({ ...ctx, sourceApi: 'messages' }, perf(), false, repo)
   expect(calls[0]?.sourceApi).toBe('messages')
   expect(calls[0]?.targetApi).toBe('messages')
 })
 
 test('recordPerformance routes gemini source through chat-completions target', async () => {
-  const calls: Record<string, unknown>[] = []
-  const stub = {
-    performance: { record: async (row: Record<string, unknown>) => { calls.push(row) } },
-  } as unknown as Repo
-  await recordPerformance({ ...ctx, sourceApi: 'gemini' }, perf(), false, stub)
+  const { repo, captured } = await realRepo()
+  const calls = captured.perf as unknown as Record<string, unknown>[]
+  await recordPerformance({ ...ctx, sourceApi: 'gemini' }, perf(), false, repo)
   expect(calls[0]?.sourceApi).toBe('gemini')
   expect(calls[0]?.targetApi).toBe('chat-completions')
 })
@@ -259,11 +247,9 @@ test('performanceTargetFromTranslatorPair maps protocol spelling for persisted t
 })
 
 test('recordPerformance honors hubOverride when translator carries a hub', async () => {
-  const calls: Record<string, unknown>[] = []
-  const stub = {
-    performance: { record: async (row: Record<string, unknown>) => { calls.push(row) } },
-  } as unknown as Repo
-  await recordPerformance({ ...ctx, sourceApi: 'responses' }, perf(), false, stub, 'chat-completions')
+  const { repo, captured } = await realRepo()
+  const calls = captured.perf as unknown as Record<string, unknown>[]
+  await recordPerformance({ ...ctx, sourceApi: 'responses' }, perf(), false, repo, 'chat-completions')
   expect(calls[0]?.sourceApi).toBe('responses')
   expect(calls[0]?.targetApi).toBe('chat-completions')
 })

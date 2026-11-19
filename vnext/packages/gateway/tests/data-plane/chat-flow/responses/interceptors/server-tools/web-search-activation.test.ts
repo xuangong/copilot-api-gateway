@@ -20,29 +20,23 @@ import { test, expect, describe, beforeEach } from 'bun:test'
 import { webSearchServerTool } from '../../../../../../src/data-plane/chat-flow/responses/interceptors/server-tools/web-search'
 import { createInMemoryPrivatePayloadStore } from '../../../../../../src/data-plane/orchestrator/server-tools/private-payload-store'
 import type { ServerToolRequestCtx } from '../../../../../../src/data-plane/orchestrator/server-tools/types'
-import { initRepo } from '../../../../../../src/repo/index'
+import { setupTestPlatform } from '../../../../../_setup-platform'
+import { seedApiKey } from '../../../../../helpers/seed-fixtures'
 import type { ApiKeyId } from '../../../../../../src/repo/branded-ids'
-import type { Repo } from '../../../../../../src/repo/types'
 import type { Invocation } from '@vibe-llm/protocols/common'
 
-const stubRepo = (): Repo => ({
-  upstreams: { list: async () => [] },
-  apiKeys: {
-    getById: async () => ({
-      id: 'key_test',
-      name: 'k',
-      key: 'sk',
-      createdAt: '2026-01-01T00:00:00Z',
-      webSearchEnabled: true,
-      modelMappingsEnabled: false,
-      modelMappings: [],
-      webSearchPriority: ['tavily'],
-      webSearchTavilyKey: 'tvly-test',
-    }),
-  },
-  webSearchUsage: { record: async () => {} },
-  webSearchEngineUsage: { record: async () => {} },
-} as unknown as Repo)
+/** The real in-memory repo, holding the one API key the shim reads its search config from. */
+const initSearchRepo = async (): Promise<void> => {
+  const { repo } = setupTestPlatform()
+  await seedApiKey(repo, {
+    id: 'key_test',
+    name: 'k',
+    key: 'sk',
+    webSearchEnabled: true,
+    webSearchPriority: ['tavily'],
+    webSearchTavilyKey: 'tvly-test',
+  })
+}
 
 const requestCtx = (): ServerToolRequestCtx => ({
   store: createInMemoryPrivatePayloadStore(),
@@ -61,8 +55,8 @@ const invocation = (over: Partial<Invocation>): Invocation => ({
 const activationOf = async (over: Partial<Invocation> = {}): Promise<string> =>
   (await webSearchServerTool(invocation(over), requestCtx())).type
 
-beforeEach(() => {
-  initRepo(stubRepo())
+beforeEach(async () => {
+  await initSearchRepo()
 })
 
 describe('Responses web_search shim activation', () => {

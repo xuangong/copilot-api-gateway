@@ -7,11 +7,13 @@
  * one, so either ingress reaches either model. The router builds a real
  * CopilotProvider over a stubbed fetch, as the embeddings/images tests do.
  */
-import { test, expect, afterEach, beforeEach } from 'bun:test'
+import { test, expect, afterEach, beforeEach, spyOn } from 'bun:test'
 import { Hono } from 'hono'
-import { initCatalogTestRepo as initRepo, syntheticCopilotTokenResponse } from './helpers/catalog-test-repo.ts'
+import { syntheticCopilotTokenResponse } from './helpers/catalog-test-repo.ts'
+import { setupTestPlatform } from './_setup-platform.ts'
+import { seedApiKey } from './helpers/seed-fixtures.ts'
 import { __resetPlatformForTests, initRuntimeLocation } from '@vibe-core/platform'
-import type { Repo, UpstreamRecord, UsageRecord } from '../src/repo/types.ts'
+import type { UpstreamRecord, UsageRecord } from '../src/repo/types.ts'
 import type { Model, ModelsResponse } from '@vibe-llm/provider-copilot'
 import type { DataPlaneAuthCtx } from '../src/data-plane/models/routes.ts'
 import { decisionRouter } from '../src/data-plane/decision/routes.ts'
@@ -31,6 +33,13 @@ const upstream: UpstreamRecord = {
   id: 'copilot:u1', provider: 'copilot', name: 'u1', enabled: true, sortOrder: 0, config: { githubToken: 'ghp_test' },
   flagOverrides: {}, disabledPublicModelIds: [], state: null, proxyFallbackList: [{ id: 'direct_fetch' }],
   createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z',
+}
+
+/** Real in-memory repo holding the one Copilot upstream the router discovers. */
+async function setupRepo() {
+  const { repo } = setupTestPlatform()
+  await repo.upstreams.save(upstream)
+  return repo
 }
 
 interface UpstreamCall { path: string; body: unknown }
@@ -90,7 +99,7 @@ const OPENAI_ANSWER = '{"model":"gpt-6-luna-decisions","answers":[{"type":"choic
 const json = (text: string, status = 200) => new Response(text, { status, headers: { 'content-type': 'application/json' } })
 
 test('a System One request to a System One model is forwarded and answered byte for byte', async () => {
-  initRepo({ upstreams: { list: async () => [upstream] } } as unknown as Repo)
+  await setupRepo()
   const calls = installUpstream(() => json(SYSTEM_ONE_ANSWER))
   const res = await post('/v1/systemone', SYSTEM_ONE_REQUEST)
   expect(res.status).toBe(200)
@@ -99,7 +108,7 @@ test('a System One request to a System One model is forwarded and answered byte 
 })
 
 test('an OpenAI Decisions request to an OpenAI Decisions model is forwarded and answered byte for byte', async () => {
-  initRepo({ upstreams: { list: async () => [upstream] } } as unknown as Repo)
+  await setupRepo()
   const calls = installUpstream(() => json(OPENAI_ANSWER))
   const res = await post('/v1/decisions', OPENAI_REQUEST)
   expect(res.status).toBe(200)
@@ -108,7 +117,7 @@ test('an OpenAI Decisions request to an OpenAI Decisions model is forwarded and 
 })
 
 test('a System One request reaches an OpenAI Decisions model and gets a System One answer', async () => {
-  initRepo({ upstreams: { list: async () => [upstream] } } as unknown as Repo)
+  await setupRepo()
   const calls = installUpstream(() => json(OPENAI_ANSWER))
   const res = await post('/v1/systemone', { ...SYSTEM_ONE_REQUEST, model: 'gpt-6-luna-decisions' })
   expect(res.status).toBe(200)
@@ -120,7 +129,7 @@ test('a System One request reaches an OpenAI Decisions model and gets a System O
 })
 
 test('an OpenAI Decisions request reaches a System One model and gets an OpenAI answer', async () => {
-  initRepo({ upstreams: { list: async () => [upstream] } } as unknown as Repo)
+  await setupRepo()
   const calls = installUpstream(() => json(SYSTEM_ONE_ANSWER))
   const res = await post('/v1/decisions', { ...OPENAI_REQUEST, model: 'microsoft-decision-1' })
   expect(res.status).toBe(200)
@@ -131,7 +140,7 @@ test('an OpenAI Decisions request reaches a System One model and gets an OpenAI 
 })
 
 test('a refused question cannot be expressed in System One and fails explicitly', async () => {
-  initRepo({ upstreams: { list: async () => [upstream] } } as unknown as Repo)
+  await setupRepo()
   installUpstream(() => json('{"answers":[{"type":"refusal","name":"team"},{"type":"predicate","name":"is_bug","probability":0.5}]}'))
   const res = await post('/v1/systemone', { ...SYSTEM_ONE_REQUEST, model: 'gpt-6-luna-decisions' })
   expect(res.status).toBe(502)
@@ -139,7 +148,7 @@ test('a refused question cannot be expressed in System One and fails explicitly'
 })
 
 test('an upstream rejection is forwarded with its status', async () => {
-  initRepo({ upstreams: { list: async () => [upstream] } } as unknown as Repo)
+  await setupRepo()
   const rejection = '{"error":{"message":"no_available_model_endpoints","code":"no_available_model_endpoints"}}'
   installUpstream(() => json(rejection, 400))
   const res = await post('/v1/systemone', SYSTEM_ONE_REQUEST)
@@ -148,7 +157,7 @@ test('an upstream rejection is forwarded with its status', async () => {
 })
 
 test('malformed requests are rejected before any upstream call', async () => {
-  initRepo({ upstreams: { list: async () => [upstream] } } as unknown as Repo)
+  await setupRepo()
   const calls = installUpstream(() => json(SYSTEM_ONE_ANSWER))
   for (const [path, body, message] of [
     ['/v1/systemone', '{not json', 'valid JSON'],
@@ -163,7 +172,7 @@ test('malformed requests are rejected before any upstream call', async () => {
 })
 
 test('a request the target dialect cannot express is rejected before any upstream call', async () => {
-  initRepo({ upstreams: { list: async () => [upstream] } } as unknown as Repo)
+  await setupRepo()
   const calls = installUpstream(() => json(OPENAI_ANSWER))
   for (const [path, body, message] of [
     // OpenAI Decisions requires instructions; System One does not.
@@ -181,7 +190,7 @@ test('a request the target dialect cannot express is rejected before any upstrea
 })
 
 test('models without a decision endpoint are not routed', async () => {
-  initRepo({ upstreams: { list: async () => [upstream] } } as unknown as Repo)
+  await setupRepo()
   const calls = installUpstream(() => json(SYSTEM_ONE_ANSWER))
   for (const id of ['gpt-4o', 'no-such-model']) {
     const res = await post('/v1/systemone', { ...SYSTEM_ONE_REQUEST, model: id })
@@ -192,13 +201,11 @@ test('models without a decision endpoint are not routed', async () => {
 })
 
 test('usage records mapped identities and bills input tokens only', async () => {
+  const repo = await setupRepo()
+  await seedApiKey(repo, { id: 'key-1', key: 'synthetic-decision-key' })
   const recorded: UsageRecord[] = []
-  initRepo({
-    upstreams: { list: async () => [upstream] },
-    apiKeys: { getById: async () => null, touchLastUsed: async () => {} },
-    usage: { record: async (row: UsageRecord) => { recorded.push(row) } },
-    performance: { record: async () => {} },
-  } as unknown as Repo)
+  const realRecord = repo.usage.record.bind(repo.usage)
+  const spy = spyOn(repo.usage, 'record').mockImplementation(async row => { recorded.push(row); await realRecord(row) })
   const calls = installUpstream(() => json(SYSTEM_ONE_ANSWER))
   const res = await post('/v1/systemone', { ...SYSTEM_ONE_REQUEST, model: 'triage' }, {
     ...COPILOT_AUTH,
@@ -211,10 +218,11 @@ test('usage records mapped identities and bills input tokens only', async () => 
   expect(recorded[0]).toMatchObject({ incomingModel: 'triage', model: 'microsoft-decision-1', modelKey: 'microsoft-decision-1',
     upstream: 'copilot:u1', requests: 1, tokens: { input: 56 } })
   expect(recorded[0]!.tokens).toEqual({ input: 56 })
+  spy.mockRestore()
 })
 
 test('number tokens in the request reach the model unchanged', async () => {
-  initRepo({ upstreams: { list: async () => [upstream] } } as unknown as Repo)
+  await setupRepo()
   const sent: string[] = []
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const req = input instanceof Request ? input : new Request(input as string, init)

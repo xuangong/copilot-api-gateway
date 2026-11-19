@@ -24,29 +24,23 @@ import type {
   ServerToolRequestCtx,
   ServerToolTerminal,
 } from '../../../../../../src/data-plane/orchestrator/server-tools/types'
-import { initRepo } from '../../../../../../src/repo/index'
+import { setupTestPlatform } from '../../../../../_setup-platform'
+import { seedApiKey } from '../../../../../helpers/seed-fixtures'
 import type { ApiKeyId } from '../../../../../../src/repo/branded-ids'
-import type { Repo } from '../../../../../../src/repo/types'
 import type { Invocation } from '@vibe-llm/protocols/common'
 
-const stubRepo = (): Repo => ({
-  upstreams: { list: async () => [] },
-  apiKeys: {
-    getById: async () => ({
-      id: 'key_test',
-      name: 'k',
-      key: 'sk',
-      createdAt: '2026-01-01T00:00:00Z',
-      webSearchEnabled: true,
-      modelMappingsEnabled: false,
-      modelMappings: [],
-      webSearchPriority: ['tavily'],
-      webSearchTavilyKey: 'tvly-test',
-    }),
-  },
-  webSearchUsage: { record: async () => {} },
-  webSearchEngineUsage: { record: async () => {} },
-} as unknown as Repo)
+/** The real in-memory repo, holding the one API key the shim reads its search config from. */
+const initSearchRepo = async (): Promise<void> => {
+  const { repo } = setupTestPlatform()
+  await seedApiKey(repo, {
+    id: 'key_test',
+    name: 'k',
+    key: 'sk',
+    webSearchEnabled: true,
+    webSearchPriority: ['tavily'],
+    webSearchTavilyKey: 'tvly-test',
+  })
+}
 
 const invocation = (): Invocation => ({
   endpoint: 'responses',
@@ -85,9 +79,9 @@ const payloadOf = (terminal: ServerToolTerminal): WebSearchCallPrivatePayload =>
 
 let originalFetch: typeof globalThis.fetch
 
-beforeEach(() => {
+beforeEach(async () => {
   originalFetch = globalThis.fetch
-  initRepo(stubRepo())
+  await initSearchRepo()
   globalThis.fetch = (async (url: string) => {
     if (String(url).includes('/extract')) {
       return new Response(

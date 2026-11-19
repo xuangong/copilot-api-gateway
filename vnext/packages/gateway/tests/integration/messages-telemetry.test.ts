@@ -14,10 +14,12 @@
  * Telemetry persistence runs through `waitUntil`. A tracking background
  * executor lets each test `await pending.drain()` before asserting.
  */
-import { test, expect, afterEach } from 'bun:test'
+import { test, expect, afterEach, mock } from 'bun:test'
 import { Hono } from 'hono'
 import { app as innerApp } from '../../src/app.ts'
-import { initCatalogTestRepo as initRepo } from '../helpers/catalog-test-repo.ts'
+import { setupTestPlatform } from '../_setup-platform.ts'
+import { captureRepoWrites, type CapturedRepoWrites } from '../helpers/repo-write-spy.ts'
+import { seedApiKey } from '../helpers/seed-fixtures.ts'
 import { initBackground, initRuntimeLocation, __resetPlatformForTests } from '@vibe-core/platform'
 import type { Repo, UpstreamRecord } from '../../src/repo/types.ts'
 import type { DataPlaneAuthCtx } from '../../src/data-plane/models/routes.ts'
@@ -48,21 +50,15 @@ const customUpstream = (): UpstreamRecord => ({
   updatedAt: '2026-01-01T00:00:00Z',
 })
 
-interface Captured {
-  usage: unknown[]
-  perf: unknown[]
-  touched: string[]
-}
-
-const stubRepo = (upstreams: UpstreamRecord[]): { repo: Repo; captured: Captured } => {
-  const captured: Captured = { usage: [], perf: [], touched: [] }
-  const repo = {
-    upstreams: { list: async () => upstreams },
-    usage: { record: async (row: unknown) => { captured.usage.push(row) } },
-    apiKeys: { touchLastUsed: async (id: string) => { captured.touched.push(id) } },
-    performance: { record: async (row: unknown) => { captured.perf.push(row) } },
-  } as unknown as Repo
-  return { repo, captured }
+/**
+ * Real in-memory repo holding the upstream and the authenticated key. Telemetry
+ * writes are observed by call-through spies, so rows are also really stored.
+ */
+const stubRepo = async (upstreams: UpstreamRecord[]): Promise<{ repo: Repo; captured: CapturedRepoWrites }> => {
+  const { repo } = setupTestPlatform()
+  for (const upstream of upstreams) await repo.upstreams.save(upstream)
+  await seedApiKey(repo, { id: 'k_test', key: 'synthetic-telemetry-key', ownerId: 'u1' })
+  return { repo, captured: captureRepoWrites(repo) }
 }
 
 /**
@@ -135,6 +131,7 @@ function installFetch(opts: { status?: number; sse?: string | null; modelInChunk
 const originalFetch = globalThis.fetch
 
 afterEach(() => {
+  mock.restore()
   globalThis.fetch = originalFetch
   __resetPlatformForTests()
 })
@@ -177,8 +174,7 @@ async function drain(res: Response): Promise<void> {
 }
 
 test('successful streaming request → one usage row + one performance row (isError=false)', async () => {
-  const { repo, captured } = stubRepo([customUpstream()])
-  initRepo(repo, { apiKeys: [{ id: "k_test", ownerId: "u1" }] })
+  const { captured } = await stubRepo([customUpstream()])
   const bg = installTrackingBackground()
   initRuntimeLocation('bun')
   installFetch({})
@@ -201,8 +197,7 @@ test('successful streaming request → one usage row + one performance row (isEr
 })
 
 test('mapped request persists the source model as incoming identity and target as public model', async () => {
-  const { repo, captured } = stubRepo([customUpstream()])
-  initRepo(repo, { apiKeys: [{ id: "k_test", ownerId: "u1" }] })
+  const { captured } = await stubRepo([customUpstream()])
   const bg = installTrackingBackground()
   initRuntimeLocation('bun')
   installFetch({})
@@ -229,8 +224,7 @@ test('mapped request persists the source model as incoming identity and target a
 })
 
 test('upstream-error (401) → zero usage rows, one performance row with isError=true', async () => {
-  const { repo, captured } = stubRepo([customUpstream()])
-  initRepo(repo, { apiKeys: [{ id: "k_test", ownerId: "u1" }] })
+  const { captured } = await stubRepo([customUpstream()])
   const bg = installTrackingBackground()
   initRuntimeLocation('bun')
   installFetch({ status: 401 })
@@ -251,8 +245,7 @@ test('upstream-error (401) → zero usage rows, one performance row with isError
 })
 
 test('internal-error post-binding (parse failure) → zero usage rows, one performance row isError=true', async () => {
-  const { repo, captured } = stubRepo([customUpstream()])
-  initRepo(repo, { apiKeys: [{ id: "k_test", ownerId: "u1" }] })
+  const { captured } = await stubRepo([customUpstream()])
   const bg = installTrackingBackground()
   initRuntimeLocation('bun')
   // For non-streaming the messages attempt parses the upstream JSON body and
@@ -276,8 +269,7 @@ test('internal-error post-binding (parse failure) → zero usage rows, one perfo
 })
 
 test('internal-error pre-binding (model not found) → zero usage rows, zero performance rows', async () => {
-  const { repo, captured } = stubRepo([customUpstream()])
-  initRepo(repo, { apiKeys: [{ id: "k_test", ownerId: "u1" }] })
+  const { captured } = await stubRepo([customUpstream()])
   const bg = installTrackingBackground()
   initRuntimeLocation('bun')
   installFetch({})
@@ -297,8 +289,7 @@ test('internal-error pre-binding (model not found) → zero usage rows, zero per
 })
 
 test('modelKey correction: upstream returns "claude-sonnet-2025" → usage row carries corrected key', async () => {
-  const { repo, captured } = stubRepo([customUpstream()])
-  initRepo(repo, { apiKeys: [{ id: "k_test", ownerId: "u1" }] })
+  const { captured } = await stubRepo([customUpstream()])
   const bg = installTrackingBackground()
   initRuntimeLocation('bun')
   installFetch({ modelInChunk: 'claude-sonnet-2025' })

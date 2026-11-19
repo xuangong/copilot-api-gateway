@@ -12,8 +12,9 @@
  */
 import { test, expect, describe, beforeEach, afterEach } from 'bun:test'
 import { withMessagesWebSearchShim } from '../../../../../src/data-plane/chat-flow/messages/interceptors/with-messages-web-search-shim'
-import { initRepo } from '../../../../../src/repo/index'
-import type { Repo } from '../../../../../src/repo/types'
+import type { ApiKey } from '../../../../../src/repo/types'
+import { setupTestPlatform } from '../../../../_setup-platform'
+import { seedApiKey } from '../../../../helpers/seed-fixtures'
 import type { Invocation, RequestContext } from '@vibe-llm/protocols/common'
 import {
   llmEventResult,
@@ -35,7 +36,7 @@ const stubIdentity: TelemetryModelIdentity = {
 }
 
 /** A key with web search on and one usable engine — the shims read this now. */
-const searchKey = (over: Record<string, unknown> = {}) => ({
+const searchKey = (over: Partial<ApiKey> = {}) => ({
   id: 'key_test',
   name: 'k',
   key: 'sk',
@@ -48,12 +49,11 @@ const searchKey = (over: Record<string, unknown> = {}) => ({
   ...over,
 })
 
-const stubRepo = (key: Record<string, unknown> = searchKey()): Repo => ({
-  upstreams: { list: async () => [] },
-  apiKeys: { getById: async () => key },
-  webSearchUsage: { record: async () => {} },
-  webSearchEngineUsage: { record: async () => {} },
-} as unknown as Repo)
+/** The real in-memory repo, holding the one API key the shim reads its search config from. */
+const initSearchRepo = async (key: ReturnType<typeof searchKey> = searchKey()): Promise<void> => {
+  const { repo } = setupTestPlatform()
+  await seedApiKey(repo, key)
+}
 
 const invocation = (sourceApi: Invocation['sourceApi']): Invocation => ({
   endpoint: 'messages',
@@ -127,9 +127,9 @@ const events = (frames: Frames): Array<Record<string, unknown>> =>
 
 let originalFetch: typeof globalThis.fetch
 
-beforeEach(() => {
+beforeEach(async () => {
   originalFetch = globalThis.fetch
-  initRepo(stubRepo())
+  await initSearchRepo()
   globalThis.fetch = (async () =>
     new Response(
       JSON.stringify({ results: [{ url: 'https://a.example/', title: 'A', content: 'sunny' }] }),
@@ -170,7 +170,7 @@ describe('keys that cannot search', () => {
   })
 
   test('answers without searching when the key has web search off', async () => {
-    initRepo(stubRepo(searchKey({ webSearchEnabled: false })))
+    await initSearchRepo(searchKey({ webSearchEnabled: false }))
     const script = scriptedRun([answerTurn('answered without searching')])
     const inv = invocation('messages')
     const out = await withMessagesWebSearchShim(inv, ctx, script.run)

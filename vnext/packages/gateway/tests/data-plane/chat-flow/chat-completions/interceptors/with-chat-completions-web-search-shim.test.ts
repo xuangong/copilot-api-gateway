@@ -7,8 +7,9 @@
  */
 import { test, expect, describe, beforeEach, afterEach } from 'bun:test'
 import { withChatCompletionsWebSearchShim } from '../../../../../src/data-plane/chat-flow/chat-completions/interceptors/with-chat-completions-web-search-shim'
-import { initRepo } from '../../../../../src/repo/index'
-import type { Repo } from '../../../../../src/repo/types'
+import type { ApiKey } from '../../../../../src/repo/types'
+import { setupTestPlatform } from '../../../../_setup-platform'
+import { seedApiKey } from '../../../../helpers/seed-fixtures'
 import type { ApiKeyId } from '../../../../../src/repo/branded-ids'
 import type { Invocation, RequestContext } from '@vibe-llm/protocols/common'
 import {
@@ -31,7 +32,7 @@ const stubIdentity: TelemetryModelIdentity = {
 }
 
 /** A key with web search on and one usable engine — the shims read this now. */
-const searchKey = (over: Record<string, unknown> = {}) => ({
+const searchKey = (over: Partial<ApiKey> = {}) => ({
   id: 'key_test',
   name: 'k',
   key: 'sk',
@@ -44,12 +45,11 @@ const searchKey = (over: Record<string, unknown> = {}) => ({
   ...over,
 })
 
-const stubRepo = (key: Record<string, unknown> = searchKey()): Repo => ({
-  upstreams: { list: async () => [] },
-  apiKeys: { getById: async () => key },
-  webSearchUsage: { record: async () => {} },
-  webSearchEngineUsage: { record: async () => {} },
-} as unknown as Repo)
+/** The real in-memory repo, holding the one API key the shim reads its search config from. */
+const initSearchRepo = async (key: ReturnType<typeof searchKey> = searchKey()): Promise<void> => {
+  const { repo } = setupTestPlatform()
+  await seedApiKey(repo, key)
+}
 
 const invocation = (payload: Record<string, unknown>, flags: string[] = ['chat-completions-web-search-shim']): Invocation => ({
   endpoint: 'chat_completions',
@@ -119,9 +119,9 @@ const tavilyResponse = (results: Array<{ url: string; title: string }>): Respons
 
 let originalFetch: typeof globalThis.fetch
 
-beforeEach(() => {
+beforeEach(async () => {
   originalFetch = globalThis.fetch
-  initRepo(stubRepo())
+  await initSearchRepo()
 })
 
 afterEach(() => {
@@ -210,7 +210,7 @@ describe('request validation', () => {
   // drops `web_search_options` and lets the model answer. Failing the request
   // would turn a gap in the dashboard into a 500 mid-conversation.
   test('answers without searching when the key has web search off', async () => {
-    initRepo(stubRepo(searchKey({ webSearchEnabled: false })))
+    await initSearchRepo(searchKey({ webSearchEnabled: false }))
     const script = scriptedRun([[textChunk('hi')]])
     const inv = invocation({ model: 'm', messages: [], web_search_options: {} })
     const result = await withChatCompletionsWebSearchShim(inv, ctx, script.run)
@@ -220,7 +220,7 @@ describe('request validation', () => {
   })
 
   test('answers without searching when no engine has a credential', async () => {
-    initRepo(stubRepo(searchKey({ webSearchTavilyKey: undefined, webSearchPriority: ['tavily'] })))
+    await initSearchRepo(searchKey({ webSearchTavilyKey: undefined, webSearchPriority: ['tavily'] }))
     const script = scriptedRun([[textChunk('hi')]])
     const inv = invocation({ model: 'm', messages: [], web_search_options: {} })
     const result = await withChatCompletionsWebSearchShim(inv, ctx, script.run)
