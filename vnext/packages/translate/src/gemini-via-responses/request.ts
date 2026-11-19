@@ -97,12 +97,7 @@ interface ResponsesTargetRequest {
   top_p?: number
   text?:
     | { format: { type: 'json_object' } }
-    | {
-        format: {
-          type: 'json_schema'
-          json_schema: { name: string; schema: unknown }
-        }
-      }
+    | { format: { type: 'json_schema'; name: string; schema: unknown } }
   reasoning?: { effort: string; summary?: 'detailed' }
   tools?: ResponsesTool[]
   include?: string[]
@@ -244,10 +239,9 @@ const applyGenerationConfig = (
 
   if (generationConfig.responseSchema !== undefined) {
     request.text = {
-      format: {
-        type: 'json_schema',
-        json_schema: { name: 'gemini_response', schema: structuredClone(generationConfig.responseSchema) },
-      },
+      // Responses takes the schema flat on text.format, unlike Chat's nested `json_schema`.
+      // https://platform.openai.com/docs/api-reference/responses/create#responses-create-text
+      format: { type: 'json_schema', name: 'gemini_response', schema: structuredClone(generationConfig.responseSchema) },
     }
   } else if (generationConfig.responseMimeType === 'application/json') {
     request.text = { format: { type: 'json_object' } }

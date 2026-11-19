@@ -196,3 +196,16 @@ describe('gemini-via-responses :: request', () => {
     expect(payload).toEqual(snapshot)
   })
 })
+
+// The Responses API takes a JSON schema as a flat text.format
+// `{ type: 'json_schema', name, schema }` — not Chat Completions' nested
+// `json_schema: { name, schema }`, which a Responses upstream does not read,
+// so the caller's schema was not enforced.
+// https://platform.openai.com/docs/api-reference/responses/create#responses-create-text
+describe('gemini-via-responses :: structured output', () => {
+  it('sends responseSchema as a flat Responses json_schema format', () => {
+    const schema = { type: 'object', properties: { a: { type: 'string' } } }
+    const out = translateGeminiToResponses({ contents: [{ role: 'user', parts: [{ text: 'hi' }] }], generationConfig: { responseMimeType: 'application/json', responseSchema: schema } } as never, { model: 'gpt-x' }) as unknown as { text?: { format?: Record<string, unknown> } }
+    expect(out.text?.format).toEqual({ type: 'json_schema', name: 'gemini_response', schema })
+  })
+})
