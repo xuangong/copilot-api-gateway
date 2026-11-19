@@ -155,7 +155,8 @@ function translateAssistantMessage(content: string | ContentBlock[]): ChatMessag
         pending.textParts.push((block as AnthropicTextBlock).text)
         break
       case 'thinking':
-        pending.reasoningText ??= (block as AnthropicThinkingBlock).thinking ?? null
+        // Empty thinking carries no reasoning and must not shadow a later non-empty block.
+        pending.reasoningText ??= (block as AnthropicThinkingBlock).thinking || null
         break
       case 'tool_use':
         pending.toolCalls.push(toChatToolCall(block as AnthropicToolUseBlock))

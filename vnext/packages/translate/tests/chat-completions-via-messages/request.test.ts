@@ -4,6 +4,18 @@ import { EPHEMERAL_CACHE_CONTROL } from '@vibe-llm/translate/shared/cache-breakp
 import { TranslatorValidationError } from '@vibe-llm/translate/errors'
 
 describe('chat-completions-via-messages :: request', () => {
+  // Adapted from reference copilot-gateway 02f819f41 (#717): Anthropic rejects empty thinking
+  // blocks, so empty Chat reasoning only becomes a thinking block when a signature exists.
+  it('emits no thinking block for empty Chat reasoning unless a signature exists', () => {
+    const build = (extra: Record<string, unknown>) => translateChatToMessages({
+      model: 'm',
+      messages: [{ role: 'user', content: 'hi' }, { role: 'assistant', content: 'answer', ...extra }],
+    } as never).messages[1]!.content as Array<{ type: string; thinking?: string; signature?: string }>
+    expect(build({ reasoning_text: '' }).map((b) => b.type)).toEqual(['text'])
+    expect(build({ reasoning_text: '', reasoning_opaque: '' }).map((b) => b.type)).toEqual(['text'])
+    expect(build({ reasoning_text: '', reasoning_opaque: 'sig' })[0]).toEqual({ type: 'thinking', thinking: '', signature: 'sig' })
+    expect(build({ reasoning_text: 'why' })[0]).toMatchObject({ type: 'thinking', thinking: 'why' })
+  })
   it('maps none to native disabled thinking and preserves other effort levels', () => {
     const base = { model: 'm', messages: [{ role: 'user', content: 'hi' }] }
     const off = translateChatToMessages({ ...base, reasoning_effort: 'none' } as never)

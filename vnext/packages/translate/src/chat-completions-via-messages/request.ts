@@ -105,7 +105,8 @@ function userBlocksFromContent(content: ChatContent): UserBlock[] {
 function assistantBlocks(m: ChatMessage): AssistantBlock[] {
   const blocks: AssistantBlock[] = []
   const reasoning = chatReasoningText(m)
-  if (reasoning !== undefined || typeof m.reasoning_opaque === 'string') blocks.push({ type: 'thinking', thinking: reasoning ?? '', ...(typeof m.reasoning_opaque === 'string' ? { signature: m.reasoning_opaque } : {}) })
+  // Anthropic rejects empty thinking blocks: require text or a signature.
+  if (reasoning || m.reasoning_opaque) blocks.push({ type: 'thinking', thinking: reasoning ?? '', ...(typeof m.reasoning_opaque === 'string' ? { signature: m.reasoning_opaque } : {}) })
   if (typeof m.content === 'string' && m.content) blocks.push({ type: 'text', text: m.content })
   const assistant = m as ChatMessage & { refusal?: string | null }
   let hasRefusalPart = false

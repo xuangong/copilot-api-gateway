@@ -3,6 +3,19 @@ import { translateMessagesToChat } from '@vibe-llm/translate/messages-via-chat-c
 import type { MessagesPayload } from '@vibe-llm/protocols/messages'
 
 describe('messages-via-chat-completions :: request', () => {
+  // Adapted from reference copilot-gateway 02f819f41 (#717): an empty first thinking block must
+  // not shadow a later non-empty one, and all-empty thinking yields no reasoning field at all.
+  it('skips empty thinking blocks instead of letting them shadow later reasoning', () => {
+    const build = (thinking: string[]) => translateMessagesToChat({
+      model: 'm', max_tokens: 64,
+      messages: [{ role: 'user', content: 'hi' }, {
+        role: 'assistant',
+        content: [...thinking.map((t) => ({ type: 'thinking', thinking: t, signature: 's' })), { type: 'text', text: 'answer' }],
+      }],
+    } as never).messages[1] as { reasoning_text?: string }
+    expect(build(['', 'real reasoning']).reasoning_text).toBe('real reasoning')
+    expect('reasoning_text' in build([''])).toBe(false)
+  })
   it('maps disabled thinking to none even with a conflicting effort or no budget', () => {
     const base = { model: 'm', max_tokens: 64, messages: [{ role: 'user', content: 'hi' }] }
     expect(translateMessagesToChat({ ...base, thinking: { type: 'disabled' } } as never).reasoning_effort).toBe('none')
