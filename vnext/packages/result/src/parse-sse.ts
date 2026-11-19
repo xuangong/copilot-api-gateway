@@ -1,4 +1,4 @@
-import { type SseFrame, sseFrame } from './frame'
+import { type SseRawFrame, type SseReadableFrame, sseFrame } from './frame'
 
 export interface ParseSSEStreamOptions {
   signal?: AbortSignal
@@ -7,7 +7,7 @@ export interface ParseSSEStreamOptions {
 export const parseSSEStream = async function* (
   body: ReadableStream<Uint8Array>,
   options: ParseSSEStreamOptions = {},
-): AsyncGenerator<SseFrame> {
+): AsyncGenerator<SseReadableFrame> {
   const reader = body.getReader()
   const { signal } = options
   const decoder = new TextDecoder()
@@ -16,6 +16,8 @@ export const parseSSEStream = async function* (
   let dataLines: string[] = []
   let skipLf = false
   let firstLine = true
+  // Lines of an unframed payload (bare JSON), collected until a blank line / EOF.
+  let rawLines: string[] | null = null
   let cancelPromise: Promise<void> | undefined
 
   const cancelReader = (reason?: unknown): Promise<void> => {
@@ -25,9 +27,22 @@ export const parseSSEStream = async function* (
 
   const cancelReaderOnAbort = () => { void cancelReader(signal?.reason) }
 
-  const readLine = (rawLine: string): SseFrame | null => {
+  const readLine = (rawLine: string): SseReadableFrame | null => {
     const line = firstLine && rawLine.startsWith("\ufeff") ? rawLine.slice(1) : rawLine
     firstLine = false
+    if (rawLines) {
+      if (line !== "") { rawLines.push(line); return null }
+      const frame: SseRawFrame = { type: "sse-raw", data: rawLines.join("\n") }
+      rawLines = null
+      return frame
+    }
+    // A line opening a JSON object outside any event is not an SSE field: some
+    // upstreams end a stream with a bare (possibly multi-line) JSON error, which
+    // would otherwise be dropped as an unknown field and look like a clean end.
+    if (line.startsWith("{") && dataLines.length === 0 && currentEvent === "") {
+      rawLines = [line]
+      return null
+    }
     if (line === "") {
       const frame = dataLines.length > 0 ? sseFrame(dataLines.join("\n"), currentEvent || undefined) : null
       dataLines = []
@@ -44,7 +59,7 @@ export const parseSSEStream = async function* (
   }
 
   // Recognize CR, LF and split CRLF without buffering a complete event twice.
-  function* feed(chunk: string): Generator<SseFrame> {
+  function* feed(chunk: string): Generator<SseReadableFrame> {
     let start = 0
     for (let index = 0; index < chunk.length; index++) {
       const char = chunk[index]

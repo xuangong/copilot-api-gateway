@@ -1,4 +1,4 @@
-import type { SseFrame } from './frame'
+import type { SseFrame, SseReadableFrame } from './frame'
 
 export interface ParseTargetStreamFramesOptions {
   protocol: string
@@ -10,10 +10,15 @@ export type ParsedTargetStreamFrame<TEvent> =
   | { type: 'sse-json'; data: TEvent; frame: SseFrame }
 
 export const parseTargetStreamFrames = async function* <TEvent>(
-  frames: AsyncIterable<SseFrame>,
+  frames: AsyncIterable<SseReadableFrame>,
   options: ParseTargetStreamFramesOptions,
 ): AsyncGenerator<ParsedTargetStreamFrame<TEvent>> {
   for await (const frame of frames) {
+    // An unframed payload is not an event of this protocol; it is how some
+    // upstreams report a late failure. Fail the stream rather than end cleanly.
+    if (frame.type === 'sse-raw') {
+      throw new Error(`Upstream ${options.protocol} stream sent an unframed payload: ${frame.data.trim()}`)
+    }
     const data = frame.data.trim()
     if (!data) continue
     if (data === '[DONE]') {

@@ -15,6 +15,34 @@ const collect = async <T>(iter: AsyncIterable<T>): Promise<T[]> => {
   return out
 }
 
+// Adapted from reference copilot-gateway 47cc02d25 (#735): some upstreams end a
+// stream that already produced events with a bare JSON error body. It used to
+// be dropped as an unknown field, which looked like a clean end of stream.
+describe('parseSSEStream unframed payload', () => {
+  const chunk = '{"candidates":[{"index":0}]}'
+  const error = '{"error":{"code":503,"message":"overloaded","status":"UNAVAILABLE"}}'
+
+  test('compact bare JSON after a framed event becomes a raw frame', async () => {
+    const frames = await collect(parseSSEStream(streamFromString(`data: ${chunk}\n\n${error}\n\n`)))
+    expect(frames).toEqual([
+      { type: 'sse', event: undefined, data: chunk },
+      { type: 'sse-raw', data: error },
+    ])
+  })
+
+  test('pretty-printed multi-line body stays one raw frame (LF and CRLF, EOF-terminated)', async () => {
+    const pretty = '{\n  "error": {\n    "code": 503,\n    "status": "UNAVAILABLE"\n  }\n}'
+    for (const nl of ['\n', '\r\n']) {
+      const body = `data: ${chunk}${nl}${nl}${pretty.replaceAll('\n', nl)}${nl}`
+      const frames = await collect(parseSSEStream(streamFromString(body)))
+      expect(frames).toEqual([
+        { type: 'sse', event: undefined, data: chunk },
+        { type: 'sse-raw', data: pretty },
+      ])
+    }
+  })
+})
+
 describe('parseSSEStream', () => {
   test('emits one frame per data: line', async () => {
     const stream = streamFromString('data: {"a":1}\n\ndata: {"a":2}\n\n')

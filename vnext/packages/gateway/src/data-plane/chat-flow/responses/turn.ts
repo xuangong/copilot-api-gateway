@@ -443,6 +443,7 @@ export function createResponsesTurn(
         // Legacy dispatch input only. Normal execution and future WS never
         // construct or parse an HTTP response to obtain canonical events.
         for await (const frame of parseSSEStream(result.response.body, { signal: upstreamAbortController.signal })) {
+          if (frame.type === "sse-raw") throw new Error(`Upstream Responses stream sent an unframed payload: ${frame.data.trim()}`)
           if (frame.data === "[DONE]") continue
           const event = JSON.parse(frame.data) as Record<string, unknown>
           yield eventFrame((frame.event && !event.type ? { ...event, type: frame.event } : event) as unknown as ResponsesStreamEvent)

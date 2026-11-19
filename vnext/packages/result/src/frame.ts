@@ -19,6 +19,16 @@ export interface DoneFrame {
   type: 'done'
 }
 
+// A payload the upstream wrote without SSE framing (e.g. a bare JSON error
+// body ending a stream). Kept distinct so it is never mistaken for a clean EOF.
+export interface SseRawFrame {
+  type: 'sse-raw'
+  data: string
+}
+
+// What the SSE reader yields: framed events plus any unframed payload.
+export type SseReadableFrame = SseFrame | SseRawFrame
+
 export type SseWritableFrame = SseFrame | SseCommentFrame
 
 export type ProtocolFrame<TEvent> = EventFrame<TEvent> | DoneFrame

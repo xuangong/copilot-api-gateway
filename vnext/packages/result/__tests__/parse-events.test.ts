@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'bun:test'
 import { parseTargetStreamFrames } from '../src/parse-events'
-import type { SseFrame } from '../src/frame'
+import type { SseFrame, SseReadableFrame } from '../src/frame'
 
-const sseSource = (frames: SseFrame[]): AsyncIterable<SseFrame> => ({
+const sseSource = (frames: SseFrame[]): AsyncIterable<SseReadableFrame> => ({
   async *[Symbol.asyncIterator]() {
     for (const f of frames) yield f
   },
@@ -49,6 +49,20 @@ describe('parseTargetStreamFrames', () => {
     const src = sseSource([{ type: 'sse', data: 'not json', event: 'message' }])
     await expect(collect(parseTargetStreamFrames(src, { protocol: 'Test' }))).rejects.toThrow(
       /Malformed upstream Test SSE JSON for event "message": not json/,
+    )
+  })
+
+  // Adapted from reference copilot-gateway 47cc02d25 (#735): an unframed
+  // payload must fail the stream, not read as a clean end.
+  test('throws on an unframed raw payload instead of dropping it', async () => {
+    const src = {
+      async *[Symbol.asyncIterator]() {
+        yield { type: 'sse' as const, data: '{"k":1}' }
+        yield { type: 'sse-raw' as const, data: '{"error":{"code":503}}' }
+      },
+    }
+    await expect(collect(parseTargetStreamFrames(src, { protocol: 'Test' }))).rejects.toThrow(
+      /Test stream sent an unframed payload: \{"error":\{"code":503\}\}/,
     )
   })
 
