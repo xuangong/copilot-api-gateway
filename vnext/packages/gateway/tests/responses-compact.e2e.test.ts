@@ -172,13 +172,17 @@ test('POST /v1/responses/compact returns JSON envelope with object=response.comp
   expect(typeof body.output[0]?.encrypted_content).toBe('string')
   expect(body.output[0]?.encrypted_content?.length).toBeGreaterThan(0)
 
-  // The shim engaged: upstream saw the SUMMARIZATION_PROMPT-prefixed input.
+  // The shim engaged. The caller's history stays first, unchanged, so it can
+  // reuse the prompt cache, and the summarizer prompt follows as the final
+  // user message (reference copilot-gateway #616).
   const upstream = capturedUpstreamBody as { input?: Array<{ role?: string; content?: Array<{ text?: string }> }>; store?: boolean } | null
   expect(upstream).not.toBeNull()
   expect(upstream?.store).toBe(false)
-  const head = upstream?.input?.[0]
-  expect(head?.role).toBe('system')
-  expect(head?.content?.[0]?.text ?? '').toContain('CONTEXT CHECKPOINT COMPACTION')
+  const input = upstream?.input ?? []
+  expect(input[0]?.content?.[0]?.text).toBe('earlier work')
+  const last = input.at(-1)
+  expect(last?.role).toBe('user')
+  expect(JSON.stringify(last?.content ?? '')).toContain('CONTEXT CHECKPOINT COMPACTION')
 })
 
 test('POST /v1/responses/compact routes the source model through enabled key mappings', async () => {
