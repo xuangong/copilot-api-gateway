@@ -113,6 +113,13 @@ async function* applyTranslatorEventsForStreaming(
   }
 }
 
+/** Google's JS/Go SDKs only recognize a mid-stream error written as bare JSON
+ * (no `data:` framing), so a terminal `{error}` event is serialized raw. */
+const isGeminiErrorEvent = (event: unknown): boolean =>
+  typeof event === 'object' && event !== null &&
+  typeof (event as { error?: unknown }).error === 'object' &&
+  (event as { error?: unknown }).error !== null
+
 /** Data-only SSE encoding observes canonical frames before translation.
  * Both the serializer and dump byte accounting follow downstream demand;
  * telemetry and dump persistence complete independently of HTTP close. */
@@ -155,11 +162,13 @@ const renderEventsAsSSE = (
     background: options.telemetryCtx || options.dump ? waitUntil : undefined,
     keepalive: COMMENT_KEEPALIVE_FRAME,
     signal: options.downstreamAbortController?.signal,
-    serialize: event => `data: ${JSON.stringify(event)}\n\n`,
+    serialize: event => isGeminiErrorEvent(event)
+      ? JSON.stringify(event)
+      : `data: ${JSON.stringify(event)}\n\n`,
     errorFrame(error) {
       state.failedAfter()
       const message = error instanceof Error ? error.message : String(error)
-      return `data: ${JSON.stringify({ error: { message } })}\n\n`
+      return JSON.stringify(geminiErrorBody(500, message))
     },
     onCancel: cancel,
     onFinish(cancelled) {

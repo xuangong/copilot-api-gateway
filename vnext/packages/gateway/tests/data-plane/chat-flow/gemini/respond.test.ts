@@ -703,3 +703,28 @@ test('wantsStream=false + translateBody set with hub=messages: dispatches to mes
 
   expect(json2).toEqual(sentinelGeminiJson2)
 })
+
+// Adapted from reference copilot-gateway 599517b4f (#620): the Google JS/Go
+// SDKs only recognize a mid-stream error written as bare JSON, not `data:`-framed.
+test('stream failure after chunks ends with a bare {error:{code,message,status}} line', async () => {
+  const events = async function* (): AsyncGenerator<unknown> {
+    yield { candidates: [{ index: 0, content: { role: 'model', parts: [{ text: 'partial' }] } }] }
+    throw new Error('upstream broke')
+  }
+  const resp = await respondGemini(llmEventResult(events(), stubIdentity), { wantsStream: true })
+  const text = await resp.text()
+  const last = text.slice(text.lastIndexOf('\n\n') + 2)
+  expect(last.startsWith('data:')).toBe(false)
+  expect(JSON.parse(last)).toEqual({ error: { code: 500, message: 'upstream broke', status: 'INTERNAL' } })
+})
+
+test('a translator error event in a stream is written as bare JSON', async () => {
+  const error = { error: { code: 503, message: 'overloaded', status: 'UNAVAILABLE' } }
+  const events = async function* (): AsyncGenerator<unknown> {
+    yield { candidates: [{ index: 0, content: { role: 'model', parts: [{ text: 'x' }] } }] }
+    yield error
+  }
+  const resp = await respondGemini(llmEventResult(events(), stubIdentity), { wantsStream: true })
+  const text = await resp.text()
+  expect(text.endsWith(`\n\n${JSON.stringify(error)}`)).toBe(true)
+})
