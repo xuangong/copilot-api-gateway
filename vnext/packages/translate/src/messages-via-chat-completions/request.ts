@@ -12,6 +12,7 @@ import type { ChatPayload } from '@vibe-llm/protocols/chat'
 import type { MessagesPayload } from '@vibe-llm/protocols/messages'
 import { effortFromMessages } from '../shared/messages-reasoning-effort.ts'
 import { TranslatorValidationError } from '../errors.ts'
+import { assertForcedToolDeclared } from '../shared/messages-tool-choice.ts'
 
 type ChatMessage = ChatPayload['messages'][number]
 
@@ -225,7 +226,8 @@ function translateTools(tools: MessagesPayload['tools']): ChatTool[] | undefined
 interface AnthropicToolChoice { type?: 'auto' | 'any' | 'tool' | 'none'; name?: string }
 type ChatToolChoice = 'auto' | 'required' | 'none' | { type: 'function'; function: { name: string } }
 
-function translateToolChoice(choice: AnthropicToolChoice | undefined, tools: ChatTool[] | undefined): ChatToolChoice | undefined {
+function translateToolChoice(choice: AnthropicToolChoice | undefined, tools: ChatTool[] | undefined, declared: MessagesPayload['tools']): ChatToolChoice | undefined {
+  assertForcedToolDeclared(choice, declared)
   if (!choice || !tools || tools.length === 0) return undefined
   switch (choice.type) {
     case 'auto':
@@ -261,7 +263,7 @@ export function translateMessagesToChat(payload: MessagesPayload): ChatPayload {
   if (ext.top_p !== undefined) out.top_p = ext.top_p
   if (ext.stop_sequences && ext.stop_sequences.length > 0) out.stop = ext.stop_sequences
   if (tools) out.tools = tools
-  const toolChoice = translateToolChoice(ext.tool_choice, tools)
+  const toolChoice = translateToolChoice(ext.tool_choice, tools, payload.tools)
   if (toolChoice !== undefined) out.tool_choice = toolChoice
   return out as unknown as ChatPayload
 }

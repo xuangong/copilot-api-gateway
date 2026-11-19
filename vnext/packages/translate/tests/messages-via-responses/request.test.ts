@@ -177,7 +177,7 @@ describe('messages-via-responses :: request', () => {
     expect((out.target as { include?: unknown }).include).toBeUndefined()
   })
 
-  it('translates tool_choice variants (auto, any→required, named tool, none) and falls back to auto', () => {
+  it('translates tool_choice variants (auto, any→required, named tool, none) and rejects an undeclared forced tool', () => {
     const base: MessagesPayload = {
       model: 'm', max_tokens: 8,
       messages: [{ role: 'user', content: 'q' }],
@@ -196,9 +196,12 @@ describe('messages-via-responses :: request', () => {
     const none = translateMessagesToResponses({ ...base, tool_choice: { type: 'none' } } as MessagesPayload)
     expect(none.target.tool_choice).toBe('none')
 
-    // unknown name falls back to auto
-    const unknown = translateMessagesToResponses({ ...base, tool_choice: { type: 'tool', name: 'nope' } } as MessagesPayload)
-    expect(unknown.target.tool_choice).toBe('auto')
+    // Reference copilot-gateway 0d3f98033 (#619): forcing an undeclared tool used to be weakened to
+    // 'auto' (a confident wrong answer); it now fails loudly.
+    expect(() => translateMessagesToResponses({ ...base, tool_choice: { type: 'tool', name: 'nope' } } as MessagesPayload))
+      .toThrow('Anthropic Messages tool_choice names an undeclared tool: nope')
+    expect(() => translateMessagesToResponses({ model: 'm', max_tokens: 8, messages: base.messages, tool_choice: { type: 'tool', name: 'fn' } } as MessagesPayload))
+      .toThrow('names an undeclared tool: fn')
   })
 
   it.each(['web_search_20250305', 'web_search_20260209', 'web_search_20260318'])(

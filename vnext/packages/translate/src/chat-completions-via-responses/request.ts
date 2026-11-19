@@ -217,6 +217,8 @@ export function translateChatToResponses(
   if (instructions !== undefined) target.instructions = instructions
   if (payload.temperature !== undefined) target.temperature = payload.temperature
   if (payload.top_p !== undefined) target.top_p = payload.top_p
+  // Forwarded verbatim, including '' (reference #619): the caller's value is never judged by truthiness.
+  if (typeof payload.reasoning_effort === 'string') target.reasoning = { effort: payload.reasoning_effort }
   const ext = payload as ChatPayload & { metadata?: Record<string, string> }
   if (ext.metadata) target.metadata = { ...ext.metadata }
   const tools = translateTools(payload.tools)

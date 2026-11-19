@@ -111,23 +111,35 @@ export const geminiText = (content?: GeminiContent): string | null => {
   return texts?.length ? texts.join('\n\n') : null
 }
 
-export const geminiInlineData = (
-  part: GeminiPart,
-): { mimeType: GeminiSupportedImageMimeType; data: string } | null => {
+export type GeminiInlineMedia =
+  | { kind: 'image'; mimeType: GeminiSupportedImageMimeType; data: string; dataUrl: string }
+  | { kind: 'pdf'; data: string; dataUrl: string }
+  | { kind: 'audio'; data: string; format: 'wav' | 'mp3' }
+
+export type GeminiInlineTarget = 'OpenAI Chat Completions' | 'OpenAI Responses' | 'Anthropic Messages'
+
+const GEMINI_AUDIO_FORMATS: Record<string, 'wav' | 'mp3'> = { 'audio/wav': 'wav', 'audio/mp3': 'mp3', 'audio/mpeg': 'mp3' }
+
+/**
+ * Classify a part's inlineData for `target`; null when the part has none.
+ * Media the target cannot represent throws instead of being dropped: a silently
+ * missing attachment yields a confident wrong answer (reference #619).
+ */
+export const geminiInlineMedia = (part: GeminiPart, target: GeminiInlineTarget): GeminiInlineMedia | null => {
   const inlineData = part.inlineData
   if (!inlineData) return null
-  if (!GEMINI_SUPPORTED_IMAGE_MIME_TYPES.includes(inlineData.mimeType as GeminiSupportedImageMimeType))
-    return null
-
-  return {
-    mimeType: inlineData.mimeType as GeminiSupportedImageMimeType,
-    data: inlineData.data,
+  const { mimeType, data } = inlineData
+  const dataUrl = `data:${mimeType};base64,${data}`
+  if (GEMINI_SUPPORTED_IMAGE_MIME_TYPES.includes(mimeType as GeminiSupportedImageMimeType)) {
+    return { kind: 'image', mimeType: mimeType as GeminiSupportedImageMimeType, data, dataUrl }
   }
-}
-
-export const geminiInlineDataUrl = (part: GeminiPart): string | null => {
-  const inlineData = geminiInlineData(part)
-  return inlineData ? `data:${inlineData.mimeType};base64,${inlineData.data}` : null
+  if (mimeType === 'application/pdf') return { kind: 'pdf', data, dataUrl }
+  const format = GEMINI_AUDIO_FORMATS[mimeType]
+  if (format !== undefined && target === 'OpenAI Chat Completions') return { kind: 'audio', data, format }
+  throw new TranslatorValidationError(
+    `Cannot translate Gemini generateContent inlineData MIME type '${mimeType}' to ${target}.`,
+    'contents.parts',
+  )
 }
 
 export const geminiFunctionCallPart = (

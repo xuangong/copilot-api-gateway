@@ -1,5 +1,5 @@
 import { translateGeminiToChat as translateSignedGeminiToChat } from '../gemini-via-chat-completions/request.ts'
-import { geminiThinkingLevelEffort } from '../shared/gemini-via/gemini.ts'
+import { geminiInlineMedia, geminiThinkingLevelEffort } from '../shared/gemini-via/gemini.ts'
 import type { GeminiPayload as StructuredGeminiPayload } from '../shared/gemini-via/types.ts'
 /**
  * Request translator: client Gemini generateContent payload → hub Anthropic
@@ -76,7 +76,7 @@ interface ChatTool {
   type: 'function'
   function: { name: string; description?: string; parameters: Record<string, unknown> }
 }
-interface ChatContentPart { type: 'text' | 'image_url'; text?: string; image_url?: { url: string } }
+interface ChatContentPart { type: 'text' | 'image_url' | 'file'; text?: string; image_url?: { url: string }; file?: { file_data: string } }
 interface ChatToolCall { id: string; type: 'function'; function: { name: string; arguments: string } }
 interface ChatMessage {
   role: 'system' | 'user' | 'assistant' | 'tool'
@@ -106,8 +106,9 @@ function partsToChatContent(parts: GeminiPart[]): string | ChatContentPart[] {
   for (const p of parts) {
     if ('text' in (p as object)) out.push({ type: 'text', text: (p as GeminiTextPart).text })
     else if ('inlineData' in (p as object)) {
-      const inl = (p as GeminiInlinePart).inlineData
-      out.push({ type: 'image_url', image_url: { url: `data:${inl.mimeType};base64,${inl.data}` } })
+      const media = geminiInlineMedia(p as never, 'Anthropic Messages')
+      if (media?.kind === 'pdf') out.push({ type: 'file', file: { file_data: media.dataUrl } })
+      else if (media?.kind === 'image') out.push({ type: 'image_url', image_url: { url: media.dataUrl } })
     }
   }
   return out
@@ -226,7 +227,7 @@ function translateGeminiToChat(payload: GeminiPayload, model: string): ChatPaylo
   if (genCfg.stopSequences?.length) out.stop = genCfg.stopSequences
   if (tools) out.tools = tools
   if (toolChoice) out.tool_choice = toolChoice
-  if (effort) out.reasoning_effort = effort
+  if (effort !== undefined) out.reasoning_effort = effort
   if (genCfg.responseSchema) {
     out.response_format = {
       type: 'json_schema',
@@ -242,6 +243,10 @@ export function translateGeminiToMessages(
   payload: GeminiPayload,
   options: TranslateGeminiToMessagesOptions,
 ): MessagesPayload {
+  // Messages carries images and PDFs only; reject the rest before the Chat hop can mislabel it.
+  for (const content of (payload as unknown as StructuredGeminiPayload).contents ?? []) {
+    for (const part of content.parts) geminiInlineMedia(part, 'Anthropic Messages')
+  }
   const signed = (payload as unknown as StructuredGeminiPayload).contents?.some(content => content.parts.some(part => part.thought === true || part.thoughtSignature !== undefined || part.functionCall?.id !== undefined || part.functionResponse?.id !== undefined))
   const chat = signed ? translateSignedGeminiToChat(payload as unknown as StructuredGeminiPayload, options) : translateGeminiToChat(payload, options.model)
   const messages = translateChatToMessages(chat, {

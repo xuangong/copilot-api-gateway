@@ -16,7 +16,7 @@ import {
   geminiFunctionCallPart,
   geminiFunctionDeclarations,
   geminiFunctionResponsePart,
-  geminiInlineDataUrl,
+  geminiInlineMedia,
   geminiPartKind,
   geminiPartText,
   geminiReasoningEffort,
@@ -38,7 +38,9 @@ export interface TranslateGeminiToChatOptions {
 
 interface ChatTextPart { type: 'text'; text: string }
 interface ChatImagePart { type: 'image_url'; image_url: { url: string } }
-type ChatContentPart = ChatTextPart | ChatImagePart
+interface ChatFilePart { type: 'file'; file: { file_data: string } }
+interface ChatAudioPart { type: 'input_audio'; input_audio: { data: string; format: 'wav' | 'mp3' } }
+type ChatContentPart = ChatTextPart | ChatImagePart | ChatFilePart | ChatAudioPart
 
 interface ChatToolCall {
   id: string
@@ -98,9 +100,13 @@ const appendOpaque = (current: string | null, signature?: string): string | null
 }
 
 const inlineDataToContentPart = (part: GeminiPart): ChatContentPart | null => {
-  const url = geminiInlineDataUrl(part)
-  if (url === null) return null
-  return { type: 'image_url', image_url: { url } }
+  const media = geminiInlineMedia(part, 'OpenAI Chat Completions')
+  if (media === null) return null
+  switch (media.kind) {
+    case 'image': return { type: 'image_url', image_url: { url: media.dataUrl } }
+    case 'pdf': return { type: 'file', file: { file_data: media.dataUrl } }
+    case 'audio': return { type: 'input_audio', input_audio: { data: media.data, format: media.format } }
+  }
 }
 
 const textToContentPart = (text: string): ChatContentPart => ({ type: 'text', text })
@@ -274,7 +280,7 @@ const applyGenerationConfig = (
   }
 
   const reasoningEffort = geminiReasoningEffort(generationConfig.thinkingConfig)
-  if (reasoningEffort) request.reasoning_effort = reasoningEffort
+  if (reasoningEffort !== null) request.reasoning_effort = reasoningEffort
 }
 
 const buildTools = (payload: GeminiPayload): ChatTool[] | undefined => {

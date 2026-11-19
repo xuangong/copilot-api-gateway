@@ -14,6 +14,7 @@ import type { MessagesPayload } from '@vibe-llm/protocols/messages'
 import { effortFromMessages } from '../shared/messages-reasoning-effort.ts'
 import type { ResponsesPayload } from '@vibe-llm/protocols/responses'
 import { TranslatorValidationError } from '../errors.ts'
+import { assertForcedToolDeclared } from '../shared/messages-tool-choice.ts'
 
 interface AnthropicTextBlock { type: 'text'; text: string }
 interface AnthropicImageBlock {
@@ -306,6 +307,7 @@ export function translateMessagesToResponses(payload: MessagesPayload): Messages
   if (payload.temperature !== undefined) target.temperature = payload.temperature
   if (payload.top_p !== undefined) target.top_p = payload.top_p
   if (ext.metadata) target.metadata = { ...ext.metadata }
+  assertForcedToolDeclared(ext.tool_choice, payload.tools)
   if (tools !== undefined) {
     const translated = translateTools(tools)
     if (translated) {
@@ -321,7 +323,7 @@ export function translateMessagesToResponses(payload: MessagesPayload): Messages
     const tool_choice = translateToolChoice(ext.tool_choice, tools)
     if (tool_choice !== undefined) target.tool_choice = tool_choice
   }
-  if (effort) target.reasoning = { effort }
+  if (effort !== undefined) target.reasoning = { effort }
   if (text) target.text = text
 
   return { target: target as unknown as ResponsesPayload }

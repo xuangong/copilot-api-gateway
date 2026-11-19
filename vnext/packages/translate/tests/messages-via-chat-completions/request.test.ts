@@ -3,6 +3,20 @@ import { translateMessagesToChat } from '@vibe-llm/translate/messages-via-chat-c
 import type { MessagesPayload } from '@vibe-llm/protocols/messages'
 
 describe('messages-via-chat-completions :: request', () => {
+  // Adapted from reference copilot-gateway 0d3f98033 (#619): a forced tool that was never declared
+  // used to be silently dropped, letting the model answer without the tool the caller demanded.
+  it.each([[undefined], [[{ name: 'other', input_schema: { type: 'object' } }]]])('rejects a named tool_choice for an undeclared tool (tools=%j)', (tools) => {
+    expect(() => translateMessagesToChat({
+      model: 'm', max_tokens: 8, messages: [{ role: 'user', content: 'hi' }], tools, tool_choice: { type: 'tool', name: 'lookup' },
+    } as never)).toThrow('Anthropic Messages tool_choice names an undeclared tool: lookup')
+  })
+  it('still drops a tool_choice naming a declared hosted (non-client) tool', () => {
+    const out = translateMessagesToChat({
+      model: 'm', max_tokens: 8, messages: [{ role: 'user', content: 'hi' }],
+      tools: [{ type: 'web_search_20250305', name: 'web_search' }], tool_choice: { type: 'tool', name: 'web_search' },
+    } as never)
+    expect(out.tool_choice).toBeUndefined()
+  })
   // Adapted from reference copilot-gateway 02f819f41 (#717): an empty first thinking block must
   // not shadow a later non-empty one, and all-empty thinking yields no reasoning field at all.
   it('skips empty thinking blocks instead of letting them shadow later reasoning', () => {

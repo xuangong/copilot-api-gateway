@@ -10,7 +10,7 @@ export function messagesReasoningFromEffort(effort: string | null | undefined): 
   effort?: string
 } {
   if (effort === 'none') return { thinking: { type: 'disabled' } }
-  return effort ? { effort } : {}
+  return typeof effort === 'string' ? { effort } : {}
 }
 
 export function effortFromMessages(
@@ -20,7 +20,7 @@ export function effortFromMessages(
   const state = payload as MessagesPayload & MessagesReasoningState
   // The dedicated off switch wins over a contradictory effort level.
   if (state.thinking?.type === 'disabled') return 'none'
-  if (state.output_config?.effort) return state.output_config.effort
+  if (typeof state.output_config?.effort === 'string') return state.output_config.effort
   const budget = state.thinking?.budget_tokens
   return budget != null && budget > 0 ? budgetToEffort(budget) : undefined
 }

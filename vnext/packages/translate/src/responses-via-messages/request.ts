@@ -285,7 +285,7 @@ export function translateResponsesToMessages(source: ResponsesPayload): Response
   applyLastToolCacheBreakpoint(tools)
   applyLastMessageCacheBreakpoint(messages as unknown as SharedMessageLike[])
 
-  if (messagesReasoning.effort) outputConfig.effort = messagesReasoning.effort
+  if (messagesReasoning.effort !== undefined) outputConfig.effort = messagesReasoning.effort
   if (format) outputConfig.format = format
   const hasOutputConfig = Object.keys(outputConfig).length > 0
 

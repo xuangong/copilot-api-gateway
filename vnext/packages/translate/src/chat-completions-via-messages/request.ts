@@ -36,10 +36,11 @@ type ChatContent = ChatMessage['content']
 
 interface AnthropicTextBlock { type: 'text'; text: string }
 interface AnthropicImageBlock { type: 'image'; source: { type: 'base64' | 'url'; media_type?: string; data?: string; url?: string } }
+interface AnthropicDocumentBlock { type: 'document'; source: { type: 'base64'; media_type: 'application/pdf'; data: string } }
 interface AnthropicToolUseBlock { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> }
 interface AnthropicThinkingBlock { type: 'thinking'; thinking: string; signature?: string }
 interface AnthropicToolResultBlock { type: 'tool_result'; tool_use_id: string; content?: string }
-type UserBlock = AnthropicTextBlock | AnthropicImageBlock | AnthropicToolResultBlock
+type UserBlock = AnthropicTextBlock | AnthropicImageBlock | AnthropicDocumentBlock | AnthropicToolResultBlock
 type AssistantBlock = AnthropicTextBlock | AnthropicToolUseBlock | AnthropicThinkingBlock
 type ContentBlock = UserBlock | AssistantBlock
 interface AnthropicMessage { role: 'user' | 'assistant'; content: string | ContentBlock[] }
@@ -81,7 +82,17 @@ function userBlocksFromContent(content: ChatContent): UserBlock[] {
   if (!Array.isArray(content)) return [{ type: 'text', text: '' }]
   const out: UserBlock[] = []
   for (const part of content) {
-    const p = part as { type?: string; text?: string; image_url?: unknown }
+    const p = part as { type?: string; text?: string; image_url?: unknown; file?: { file_data?: string } }
+    if (p.type === 'input_audio') {
+      throw new TranslatorValidationError('Cannot translate Chat input_audio content to Anthropic Messages.', 'messages.content')
+    }
+    if (p.type === 'file') {
+      // Only inline PDFs have an Anthropic carrier; anything else would be silently lost.
+      const pdf = /^data:application\/pdf;base64,(.+)$/s.exec(p.file?.file_data ?? '')
+      if (!pdf) throw new TranslatorValidationError('Cannot translate Chat file content other than an inline PDF to Anthropic Messages.', 'messages.content')
+      out.push({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: pdf[1]! } })
+      continue
+    }
     if (p.type === 'text') {
       out.push({ type: 'text', text: p.text ?? '' })
       continue
@@ -247,9 +258,9 @@ export function translateChatToMessages(
     && !Array.isArray(rf.json_schema.schema)
       ? (rf.json_schema.schema as Record<string, unknown>)
       : undefined
-  const output_config = reasoning.effort || formatSchema
+  const output_config = reasoning.effort !== undefined || formatSchema
     ? {
-        ...(reasoning.effort ? { effort: reasoning.effort } : {}),
+        ...(reasoning.effort !== undefined ? { effort: reasoning.effort } : {}),
         ...(formatSchema ? { format: { type: 'json_schema' as const, schema: formatSchema } } : {}),
       }
     : undefined

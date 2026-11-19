@@ -15,7 +15,7 @@ import {
   geminiFunctionCallPart,
   geminiFunctionDeclarations,
   geminiFunctionResponsePart,
-  geminiInlineDataUrl,
+  geminiInlineMedia,
   geminiPartKind,
   geminiPartText,
   geminiReasoningEffort,
@@ -37,9 +37,10 @@ export interface TranslateGeminiToResponsesOptions {
 // ─── Local Responses target shapes (subset; cast to ResponsesPayload at end) ─
 
 interface ResponsesInputText { type: 'input_text'; text: string }
+interface ResponsesInputFile { type: 'input_file'; file_data: string }
 interface ResponsesInputImage { type: 'input_image'; image_url: string; detail: 'auto' | 'low' | 'high' }
 interface ResponsesOutputText { type: 'output_text'; text: string }
-type ResponsesInputContent = ResponsesInputText | ResponsesInputImage | ResponsesOutputText
+type ResponsesInputContent = ResponsesInputText | ResponsesInputFile | ResponsesInputImage | ResponsesOutputText
 
 interface ResponsesMessageItem {
   type: 'message'
@@ -123,9 +124,11 @@ const flushPendingContent = (
 }
 
 const inlineDataToInputImage = (part: GeminiPart): ResponsesInputContent | null => {
-  const imageUrl = geminiInlineDataUrl(part)
-  if (imageUrl === null) return null
-  return { type: 'input_image', image_url: imageUrl, detail: 'auto' }
+  const media = geminiInlineMedia(part, 'OpenAI Responses')
+  if (media === null) return null
+  if (media.kind === 'pdf') return { type: 'input_file', file_data: media.dataUrl }
+  if (media.kind === 'image') return { type: 'input_image', image_url: media.dataUrl, detail: 'auto' }
+  return null
 }
 
 const buildUserInputItems = (
@@ -251,7 +254,7 @@ const applyGenerationConfig = (
   }
 
   const effort = geminiReasoningEffort(generationConfig.thinkingConfig)
-  if (!effort) return
+  if (effort === null) return
 
   request.reasoning = {
     effort,

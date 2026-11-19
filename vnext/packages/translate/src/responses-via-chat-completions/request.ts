@@ -200,6 +200,9 @@ export function translateResponsesToChat(source: ResponsesPayload): ResponsesToC
   if (responseFormat) target.response_format = responseFormat
   if (payload.temperature !== undefined) target.temperature = payload.temperature
   if (payload.top_p !== undefined) target.top_p = payload.top_p
+  // Forwarded verbatim, including '' (reference #619): the caller's value is never judged by truthiness.
+  const effort = (payload.reasoning as { effort?: unknown } | null | undefined)?.effort
+  if (typeof effort === 'string') target.reasoning_effort = effort
   const ext = payload as ResponsesPayload & { metadata?: Record<string, string> }
   if (ext.metadata) target.metadata = { ...ext.metadata }
   if (payload.max_output_tokens !== undefined) target.max_tokens = payload.max_output_tokens
