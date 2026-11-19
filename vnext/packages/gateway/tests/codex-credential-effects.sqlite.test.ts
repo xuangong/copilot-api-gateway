@@ -595,9 +595,13 @@ for (const gate of ["future", "expired", "utilization"] as const) {
     const initial = state()
     const account = initial.accounts[0]
     if (!account) throw new Error("missing fixture account")
+    // The restriction is dated by the exhausted window's own reset: stored
+    // `ratelimited_until` values are re-derived from it on read (reference
+    // copilot-gateway #570), so the window must carry the reset it implies.
+    const until = new Date(Date.now() + (gate === "future" ? 300_000 : -300_000)).toISOString()
     account.quotaSnapshot = { standard: { fetchedAt: Date.now() - 30 * 86_400_000,
       data: { observed_at: "2020-01-01T00:00:00.000Z", primary_used_percent: 100,
-        ...(gate === "utilization" ? {} : { ratelimited_until: new Date(Date.now() + (gate === "future" ? 300_000 : -300_000)).toISOString() }) } } }
+        ...(gate === "utilization" ? {} : { primary_reset_after_at: until, ratelimited_until: until }) } } }
     account.quotaSnapshot.stale = { fetchedAt: 1, data: { observed_at: "2020-01-01T00:00:00.000Z", primary_used_percent: 42 } }
     expect(readCodexQuotaObservations(initial, "account")?.stale?.freshness).toBe("stale")
     const f = await fixture(initial)

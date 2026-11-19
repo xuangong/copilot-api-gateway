@@ -2,7 +2,9 @@
  * 上游同时以两个前缀提供两种协议 —— DeepSeek 形态。
  *
  * baseUrl 下 OpenAI 协议在裸路径（/chat/completions），Anthropic 协议在
- * /anthropic/v1/messages。authStyle: 'anthropic' 意味着两条路都用 x-api-key。
+ * /anthropic/v1/messages。凭据头按实际调用的协议选择（参考 copilot-gateway #729）：
+ * OpenAI 协议用 Bearer，Anthropic 协议用 x-api-key + anthropic-version；
+ * authStyle 只决定 /models 的认证方式。
  * 断言的是 URL 与认证头这两件事，不是响应体内容。
  */
 import { test, expect, afterEach } from 'bun:test'
@@ -140,7 +142,7 @@ test('messages lands on the overridden prefix', async () => {
   expect(c!.url).toBe('https://example.test/anthropic/v1/messages')
 })
 
-test('both prefixes authenticate with x-api-key, never a bearer token', async () => {
+test('each prefix authenticates the way its protocol does: Bearer for OpenAI, x-api-key for Messages', async () => {
   const cap = boot()
   const app = buildApp({})
 
@@ -150,9 +152,8 @@ test('both prefixes authenticate with x-api-key, never a bearer token', async ()
     body: JSON.stringify({ model: MODEL_ID, stream: false, messages: [{ role: 'user', content: 'hi' }] }),
   }), env)
   const openai = cap.last()!
-  expect(openai.apiKeyHeader).toBe('sk-fake')
-  expect(openai.authorization).toBeNull()
-  expect(openai.anthropicVersion).toBe('2023-06-01')
+  expect(openai.authorization).toBe('Bearer sk-fake')
+  expect(openai.apiKeyHeader).toBeNull()
 
   await app.fetch(new Request('http://local/v1/messages', {
     method: 'POST',
@@ -167,4 +168,5 @@ test('both prefixes authenticate with x-api-key, never a bearer token', async ()
   const anthropic = cap.last()!
   expect(anthropic.apiKeyHeader).toBe('sk-fake')
   expect(anthropic.authorization).toBeNull()
+  expect(anthropic.anthropicVersion).toBe('2023-06-01')
 })
