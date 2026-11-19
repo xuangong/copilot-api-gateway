@@ -4,10 +4,16 @@
  * Endpoints:
  *   POST   /github              — start device-flow, return GitHub device-code payload
  *   POST   /github/poll         — poll GitHub for device-flow completion
- *   POST   /github/paste-token  — register a pasted GitHub token (Path B)
  *   GET    /me                  — minimal identity + github_connected probe
  *   DELETE /github/:id          — disconnect a connected GitHub account
  *   POST   /github/switch       — switch active account
+ *
+ * Both device-flow routes take an optional `github_host`: `github.com` (the
+ * default) or a GHE.com data-residency tenant root (`SUBDOMAIN.ghe.com`). The
+ * tenant accepts the same public Copilot client id, so the OAuth endpoints are
+ * simply `https://<host>/login/...`, the REST API is `api.<host>`, and the
+ * Copilot data plane is whatever the token exchange advertises in
+ * `endpoints.api`. The poll must be sent with the same host as the start.
  *
  * Every outbound call is routed through a fetcher resolved per request from
  * the caller-submitted `proxy_fallback_list` — a Copilot upstream row id embeds
@@ -34,6 +40,7 @@ import { syncedReadOnlyResponseFor } from '../sync/read-only.ts'
 import { GITHUB_CLIENT_ID } from '../../shared/config/constants.ts'
 import {
   githubApiOrigin,
+  githubWebOrigin,
   normalizeGitHubHost,
   GITHUB_DOTCOM_HOST,
 } from '../../shared/config/github-host.ts'
@@ -108,17 +115,32 @@ const proxyFallbackListSchema = z.array(
 )
 const proxyChainField = { proxy_fallback_list: proxyFallbackListSchema.optional() }
 
-const startBody = z.object({ ...proxyChainField })
+/**
+ * Normalized through `normalizeGitHubHost`, so an arbitrary host is a 400 at
+ * the validator and never becomes an outbound URL — the device code and the
+ * resulting token are only ever sent to github.com or a *.ghe.com tenant.
+ */
+const githubHostField = {
+  github_host: z
+    .string()
+    .optional()
+    .transform((value, ctx) => {
+      try {
+        return normalizeGitHubHost(value ?? GITHUB_DOTCOM_HOST)
+      } catch (e) {
+        ctx.addIssue({ code: 'custom', message: e instanceof Error ? e.message : String(e) })
+        return z.NEVER
+      }
+    }),
+}
+
+const startBody = z.object({ ...githubHostField, ...proxyChainField })
 const pollBody = z.object({
   device_code: z.string().min(1, 'device_code is required'),
+  ...githubHostField,
   ...proxyChainField,
 })
 const switchBody = z.object({ user_id: z.number({ message: 'user_id is required' }) })
-const pasteTokenBody = z.object({
-  github_token: z.string().min(1, 'github_token is required'),
-  github_host: z.string().optional(),
-  ...proxyChainField,
-})
 
 githubAuthRouter.post('/github', zValidator('json', startBody), async (c) => {
   const auth = c.get('auth')
@@ -128,7 +150,7 @@ githubAuthRouter.post('/github', zValidator('json', startBody), async (c) => {
   if (!auth?.userId && !auth?.isAdmin) {
     return c.json({ error: 'Authentication required to start a GitHub login' }, 401)
   }
-  const { proxy_fallback_list } = c.req.valid('json')
+  const { github_host: host, proxy_fallback_list } = c.req.valid('json')
   let doFetch: Fetcher
   try {
     doFetch = (await egressFetcher(proxy_fallback_list)) ?? fetch
@@ -136,7 +158,7 @@ githubAuthRouter.post('/github', zValidator('json', startBody), async (c) => {
     return c.json({ error: proxyChainError(e) }, 400)
   }
 
-  const resp = await doFetch('https://github.com/login/device/code', {
+  const resp = await doFetch(`${githubWebOrigin(host)}/login/device/code`, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
@@ -160,7 +182,7 @@ githubAuthRouter.post('/github/poll', zValidator('json', pollBody), async (c) =>
   if (!userId && !auth?.isAdmin) {
     return c.json({ status: 'error', error: 'Authentication required to complete a GitHub login' }, 401)
   }
-  const { device_code, proxy_fallback_list } = c.req.valid('json')
+  const { device_code, github_host: host, proxy_fallback_list } = c.req.valid('json')
   let doFetch: Fetcher
   try {
     doFetch = (await egressFetcher(proxy_fallback_list)) ?? fetch
@@ -168,7 +190,7 @@ githubAuthRouter.post('/github/poll', zValidator('json', pollBody), async (c) =>
     return c.json({ status: 'error', error: proxyChainError(e) }, 400)
   }
 
-  const resp = await doFetch('https://github.com/login/oauth/access_token', {
+  const resp = await doFetch(`${githubWebOrigin(host)}/login/oauth/access_token`, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
@@ -199,9 +221,10 @@ githubAuthRouter.post('/github/poll', zValidator('json', pollBody), async (c) =>
   }
 
   if (data.access_token) {
-    const userResp = await doFetch('https://api.github.com/user', {
+    const accessToken = data.access_token
+    const userResp = await doFetch(`${githubApiOrigin(host)}/user`, {
       headers: {
-        authorization: `token ${data.access_token}`,
+        authorization: `token ${accessToken}`,
         accept: 'application/json',
         'user-agent': 'copilot-api-gateway',
       },
@@ -213,11 +236,31 @@ githubAuthRouter.post('/github/poll', zValidator('json', pollBody), async (c) =>
       )
     }
     const user = (await userResp.json()) as GitHubUser
-    const accountType = await detectAccountType(data.access_token, GITHUB_DOTCOM_HOST, doFetch)
-    const accessToken = data.access_token
+
+    // Exchange once before storing anything: it proves the token actually has
+    // Copilot access and yields the data-plane host GitHub routes this account
+    // to (endpoints.api). A tenant must advertise one — falling back to
+    // api.githubcopilot.com would send a GHE-scoped token to github.com's
+    // Copilot backend.
+    let copilotApiEndpoint: string | undefined
+    try {
+      copilotApiEndpoint = (await exchangeGithubToken(accessToken, host, doFetch)).endpoints?.api || undefined
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      return c.json({ status: 'error', error: `Copilot token exchange failed: ${msg}` }, 502)
+    }
+    if (host !== GITHUB_DOTCOM_HOST && !copilotApiEndpoint) {
+      return c.json(
+        { status: 'error', error: `GitHub tenant ${host} did not advertise a Copilot API endpoint (endpoints.api)` },
+        502,
+      )
+    }
+
+    const accountType = await detectAccountType(accessToken, host, doFetch)
     const blocked = await blockedIfSynced(() => addGithubAccount(accessToken, user, accountType, userId as UserId | undefined, {
-      githubHost: GITHUB_DOTCOM_HOST,
+      githubHost: host,
       source: 'device-flow',
+      copilotApiEndpoint,
       // Passed through as-is, not `?? []`: absent means "keep whatever chain
       // the row already has", so a re-login cannot wipe a later edit.
       proxyFallbackList: proxy_fallback_list,
@@ -227,94 +270,6 @@ githubAuthRouter.post('/github/poll', zValidator('json', pollBody), async (c) =>
   }
 
   return c.json({ status: 'error', error: 'Unknown response' }, 500)
-})
-
-/**
- * Path B — paste a GitHub token extracted from VS Code's safeStorage.
- *
- * Rationale: GHE-with-data-residency tenants (SUBDOMAIN.ghe.com) don't allow
- * OAuth device-flow against this gateway's client_id, so the user extracts
- * their token locally (see vnext/tools/extract-vscode-github-token.ts) and
- * pastes it here. The endpoint validates the token, discovers the tenant's
- * Copilot API endpoint via /copilot_internal/v2/token, and mirrors the
- * account into the upstreams registry with source="paste".
- *
- * Also works for github.com tokens — Path B is a general fallback whenever
- * device-flow can't be used.
- */
-githubAuthRouter.post('/github/paste-token', zValidator('json', pasteTokenBody), async (c) => {
-  const auth = c.get('auth')
-  const userId = auth?.userId
-  // Path B drops a full GitHub token into the gateway — require the caller to
-  // be authenticated (or an admin). Anonymous callers could otherwise pollute
-  // the global default-active account with an attacker-supplied token.
-  if (!userId && !auth?.isAdmin) {
-    return c.json({ status: 'error', error: 'Authentication required to paste a GitHub token' }, 401)
-  }
-  const { github_token, github_host, proxy_fallback_list } = c.req.valid('json')
-  const host = normalizeGitHubHost(github_host ?? GITHUB_DOTCOM_HOST)
-  // Resolved before the first outbound call so a bad chain costs zero GitHub
-  // round-trips.
-  let doFetch: Fetcher
-  try {
-    doFetch = (await egressFetcher(proxy_fallback_list)) ?? fetch
-  } catch (e) {
-    return c.json({ status: 'error', error: proxyChainError(e) }, 400)
-  }
-
-  // Validate the token against the correct API host + resolve the GitHub user.
-  const userResp = await doFetch(`${githubApiOrigin(host)}/user`, {
-    headers: {
-      authorization: `token ${github_token}`,
-      accept: 'application/json',
-      'user-agent': 'copilot-api-gateway',
-    },
-  })
-  if (!userResp.ok) {
-    return c.json(
-      { status: 'error', error: `Invalid GitHub token for ${host} (${userResp.status})` },
-      401,
-    )
-  }
-  const user = (await userResp.json()) as GitHubUser
-
-  // Discover Copilot plan (falls back to "individual" on failure).
-  const accountType = await detectAccountType(github_token, host, doFetch)
-
-  // Exchange the GitHub token for a Copilot session so we can capture the
-  // tenant-advertised endpoints.api (e.g. copilot-api.msft.ghe.com) and
-  // fail fast if the token lacks Copilot access.
-  let copilotApiEndpoint: string | undefined
-  try {
-    const session = await exchangeGithubToken(github_token, host, doFetch)
-    copilotApiEndpoint = session.endpoints?.api
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
-    return c.json({ status: 'error', error: `Copilot token exchange failed: ${msg}` }, 502)
-  }
-  // GHE-with-data-residency tenants MUST advertise a per-tenant endpoint.
-  // Silently falling back to api.githubcopilot.com would cross-tenant leak
-  // requests to github.com's Copilot backend with a GHE-scoped token.
-  if (host !== GITHUB_DOTCOM_HOST && !copilotApiEndpoint) {
-    return c.json(
-      {
-        status: 'error',
-        error: `Tenant ${host} did not advertise a Copilot API endpoint (endpoints.api). Refusing to fall back to api.githubcopilot.com — this token is not usable for Copilot on this tenant.`,
-      },
-      502,
-    )
-  }
-
-  const blocked = await blockedIfSynced(() => addGithubAccount(github_token, user, accountType, userId as UserId | undefined, {
-    githubHost: host,
-    source: 'paste',
-    copilotApiEndpoint,
-    // Passed through as-is, not `?? []`: absent means "keep whatever chain
-    // the row already has", so a re-paste cannot wipe a later edit.
-    proxyFallbackList: proxy_fallback_list,
-  }))
-  if (blocked) return blocked
-  return c.json({ status: 'complete', user, github_host: host, account_type: accountType })
 })
 
 githubAuthRouter.get('/me', async (c) => {

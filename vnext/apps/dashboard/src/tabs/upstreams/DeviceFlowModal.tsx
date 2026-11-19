@@ -5,7 +5,6 @@ import { useToast } from "../../state/toast"
 import * as api from "../../api/upstreams"
 import type { ProxyFallbackEntry } from "../../api/types"
 import { Button } from "../../ui/button"
-import { CodeBlock } from "../../ui/code-block"
 import { Dialog } from "../../ui/dialog"
 import { Notice } from "../../ui/notice"
 import { ProxyChainEditor } from "./ProxyChainEditor"
@@ -16,7 +15,13 @@ interface Props {
 }
 
 type HostKind = "github.com" | "ghe"
-type Step = "pick" | "device" | "paste"
+type Step = "pick" | "ghe-host" | "device"
+
+const GITHUB_DOTCOM_HOST = "github.com"
+// Mirrors normalizeGitHubHost in packages/gateway/src/shared/config/github-host.ts;
+// the server re-validates, this only keeps the Continue button honest.
+const GHE_TENANT_HOST = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.ghe\.com$/
+const normalizeHost = (value: string) => value.trim().toLowerCase()
 
 export function DeviceFlowModal({ onComplete, onClose }: Props) {
   const t = useT()
@@ -24,6 +29,9 @@ export function DeviceFlowModal({ onComplete, onClose }: Props) {
   // Lives here, not in HostPicker, so a "← Back" from either branch keeps the
   // user's selection.
   const [chain, setChain] = useState<ProxyFallbackEntry[]>([])
+  // Same reason: kept across "← Back" so a typo can be fixed without retyping.
+  const [gheHost, setGheHost] = useState("")
+  const [host, setHost] = useState(GITHUB_DOTCOM_HOST)
 
   // The parent mounts this only while open, so every close (Esc, a click
   // outside, Cancel/Close, completion) goes through onClose, the parent
@@ -42,22 +50,34 @@ export function DeviceFlowModal({ onComplete, onClose }: Props) {
         <HostPicker
           chain={chain}
           onChainChange={setChain}
-          onPick={(k) => setStep(k === "github.com" ? "device" : "paste")}
+          onPick={(k) => {
+            if (k === "github.com") {
+              setHost(GITHUB_DOTCOM_HOST)
+              setStep("device")
+            } else {
+              setStep("ghe-host")
+            }
+          }}
           onCancel={onClose}
         />
-      ) : step === "device" ? (
-        <DeviceFlowStep
-          chain={chain}
-          onComplete={onComplete}
+      ) : step === "ghe-host" ? (
+        <GheHostStep
+          value={gheHost}
+          onChange={setGheHost}
+          onContinue={(h) => {
+            setHost(h)
+            setStep("device")
+          }}
           onClose={onClose}
           onBack={() => setStep("pick")}
         />
       ) : (
-        <PasteTokenStep
+        <DeviceFlowStep
+          host={host}
           chain={chain}
           onComplete={onComplete}
           onClose={onClose}
-          onBack={() => setStep("pick")}
+          onBack={() => setStep(host === GITHUB_DOTCOM_HOST ? "pick" : "ghe-host")}
         />
       )}
     </Dialog>
@@ -114,12 +134,75 @@ function HostPicker({
   )
 }
 
+function GheHostStep({
+  value,
+  onChange,
+  onContinue,
+  onClose,
+  onBack,
+}: {
+  value: string
+  onChange: (next: string) => void
+  onContinue: (host: string) => void
+  onClose: () => void
+  onBack: () => void
+}) {
+  const t = useT()
+  const hostId = useId()
+  const host = normalizeHost(value)
+  const valid = GHE_TENANT_HOST.test(host)
+  const showInvalid = host !== "" && !valid
+
+  return (
+    <form
+      className="space-y-3"
+      onSubmit={(e) => {
+        e.preventDefault()
+        if (valid) onContinue(host)
+      }}
+    >
+      <p className="text-sm text-fg-subtle">{t("dash.gheHostSubtitle")}</p>
+      <div>
+        <label htmlFor={hostId} className="mb-1 block text-xs text-fg-muted">{t("dash.gheHostLabel")}</label>
+        <input
+          id={hostId}
+          type="text"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={t("dash.gheHostPlaceholder")}
+          aria-invalid={showInvalid || undefined}
+          autoComplete="off"
+          spellCheck={false}
+          autoFocus
+        />
+        {showInvalid ? <div className="mt-1 text-xs text-danger">{t("dash.gheHostInvalid")}</div> : null}
+      </div>
+      <div className="flex justify-between pt-1">
+        <Button type="button" variant="ghost" size="sm" onClick={onBack}>
+          <ArrowLeft aria-hidden="true" />
+          {t("common.back")}
+        </Button>
+        <div className="flex gap-2">
+          <Button type="button" variant="ghost" size="sm" onClick={onClose}>
+            {t("dash.cancel")}
+          </Button>
+          <Button type="submit" variant="primary" size="sm" disabled={!valid}>
+            {t("dash.gheHostContinue")}
+          </Button>
+        </div>
+      </div>
+    </form>
+  )
+}
+
 function DeviceFlowStep({
+  host,
   chain,
   onComplete,
   onClose,
   onBack,
 }: {
+  host: string
   chain: ProxyFallbackEntry[]
   onComplete: () => void
   onClose: () => void
@@ -140,7 +223,7 @@ function DeviceFlowStep({
 
     const start = async () => {
       try {
-        const d = await api.startGithubDeviceFlow(chain)
+        const d = await api.startGithubDeviceFlow(host, chain)
         if (cancelledRef.current) return
         setFlow(d)
         setStatus("waiting")
@@ -165,7 +248,7 @@ function DeviceFlowStep({
     const poll = async (deviceCode: string, interval: number) => {
       if (cancelledRef.current) return
       try {
-        const r = await api.pollGithubDeviceFlow(deviceCode, chain)
+        const r = await api.pollGithubDeviceFlow(deviceCode, host, chain)
         if (cancelledRef.current) return
         if (r.status === "complete") {
           setStatus("complete")
@@ -227,118 +310,6 @@ function DeviceFlowStep({
         <Button variant="ghost" size="sm" onClick={onClose}>
           {status === "complete" ? t("dash.closeBtn") : t("dash.cancel")}
         </Button>
-      </div>
-    </div>
-  )
-}
-
-function PasteTokenStep({
-  chain,
-  onComplete,
-  onClose,
-  onBack,
-}: {
-  chain: ProxyFallbackEntry[]
-  onComplete: () => void
-  onClose: () => void
-  onBack: () => void
-}) {
-  const { push: toast } = useToast()
-  const t = useT()
-  const [host, setHost] = useState("")
-  const [token, setToken] = useState("")
-  const [pending, setPending] = useState(false)
-  const hostId = useId()
-  const tokenId = useId()
-
-  const cmd = `bun run vnext/tools/extract-vscode-github-token.ts --host ${host || "your-company.ghe.com"}`
-
-  async function submit() {
-    if (!host.trim() || !token.trim()) return
-    setPending(true)
-    try {
-      const r = await api.pasteGithubToken(token.trim(), host.trim(), chain)
-      if (r.status === "complete") {
-        toast(t("dash.pasteTokenSuccess"), "success")
-        onComplete()
-      } else {
-        toast(r.error || t("dash.pasteTokenFailed"), "error")
-      }
-    } catch (e) {
-      toast(e instanceof Error ? e.message : String(e), "error")
-    } finally {
-      setPending(false)
-    }
-  }
-
-  return (
-    <div className="space-y-3">
-      <p className="text-sm text-fg-subtle">{t("dash.pasteTokenSubtitle")}</p>
-
-      <div>
-        <label htmlFor={hostId} className="mb-1 block text-xs text-fg-muted">{t("dash.gheHostLabel")}</label>
-        <input
-          id={hostId}
-          type="text"
-          value={host}
-          onChange={(e) => setHost(e.target.value)}
-          placeholder={t("dash.gheHostPlaceholder")}
-          autoFocus
-        />
-      </div>
-
-      <details className={detailsCls}>
-        <summary className={summaryCls}>
-          <ChevronRight className={chevronCls} aria-hidden="true" />
-          {t("dash.pasteTokenHelp")}
-        </summary>
-        <div className="mt-2 space-y-2">
-          <div className="text-xs text-fg-subtle">{t("dash.pasteTokenHelpSteps")}</div>
-          <CodeBlock
-            language="bash"
-            text={cmd}
-            copyLabel={t("dash.copy")}
-            copied={false}
-            onCopy={() => {
-              navigator.clipboard.writeText(cmd).then(
-                () => toast(t("dash.codeCopiedToClipboard"), "info"),
-                () => {},
-              )
-            }}
-          />
-        </div>
-      </details>
-
-      <div>
-        <label htmlFor={tokenId} className="mb-1 block text-xs text-fg-muted">{t("dash.pasteTokenLabel")}</label>
-        <textarea
-          id={tokenId}
-          value={token}
-          onChange={(e) => setToken(e.target.value)}
-          placeholder={t("dash.pasteTokenPlaceholder")}
-          rows={3}
-          className="w-full font-mono"
-        />
-      </div>
-
-      <div className="flex justify-between pt-1">
-        <Button variant="ghost" size="sm" onClick={onBack} disabled={pending}>
-          <ArrowLeft aria-hidden="true" />
-          {t("common.back")}
-        </Button>
-        <div className="flex gap-2">
-          <Button variant="ghost" size="sm" onClick={onClose} disabled={pending}>
-            {t("dash.cancel")}
-          </Button>
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={submit}
-            disabled={pending || !host.trim() || !token.trim()}
-          >
-            {pending ? t("dash.pasteTokenPending") : t("dash.pasteTokenBtn")}
-          </Button>
-        </div>
       </div>
     </div>
   )

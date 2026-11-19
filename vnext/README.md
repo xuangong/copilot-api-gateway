@@ -110,18 +110,9 @@ Gateway 接受下列 client shapes(与 upstream 类型正交):
 
 Upstream(provider) kind 与 client protocol 由数据面 attempt.ts 翻译打通。
 
-## GHE 数据驻留租户 token 提取
+## GHE 数据驻留租户
 
-`msft.ghe.com` 这类租户跑不了 Device Flow,走 Paste Token 路径。工具在 `vnext/tools/extract-vscode-github-token.ts`,读 macOS Keychain + VS Code `state.vscdb` 解出已登录的 GitHub token。
-
-前置(硬性): **macOS + VS Code 已用目标 GHE 账号登录成功过一次 + 首跑允许 Keychain 授权**。
-
-```sh
-bun run vnext/tools/extract-vscode-github-token.ts --host msft.ghe.com
-# Insiders: --edition insiders    JSON 输出: --json    调试: --verbose
-```
-
-完整流程(前置检查、Dashboard 绑定、CLI 直调)见仓库根 [`README.md` → GHE 数据驻留租户](../README.md#ghe-数据驻留租户paste-token-流程)。
+`SUBDOMAIN.ghe.com` 租户和 github.com 一样走 Device Flow:`/auth/github` 与 `/auth/github/poll` 带上 `github_host`,OAuth 走 `https://<host>/login/...`,REST 走 `https://api.<host>`,数据面用 token 交换返回的 `endpoints.api`。详见仓库根 [`README.md` → GHE 数据驻留租户](../README.md#ghe-数据驻留租户)。
 
 ## 状态
 

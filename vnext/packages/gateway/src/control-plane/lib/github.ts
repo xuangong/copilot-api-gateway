@@ -28,6 +28,7 @@ export interface GithubCredentials {
 
 export interface AddGithubAccountOpts {
   githubHost?: string
+  /** 'paste' only on rows created by the removed paste-token route. */
   source?: 'device-flow' | 'paste'
   copilotApiEndpoint?: string
   /**

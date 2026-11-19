@@ -121,8 +121,8 @@ export async function detectAccountType(
     // provider-copilot/plugin.ts). The session-auth fallback drops
     // apiEndpoint (session-auth.ts:117, registry.ts:61), so there a
     // misclassified tenant keeps the wrong base URL until it is re-added.
-    // Both production call sites — the device-flow poll and the paste-token
-    // route in github-routes.ts — now pass the request's resolved fetcher, so
+    // The production call site — the device-flow poll in github-routes.ts —
+    // passes the request's resolved fetcher, so
     // on a proxy-only host the probe reaches GitHub instead of failing here.
     // The `fetcher = fetch` default is left reachable only from tests
     // (control-plane-auth-utils.test.ts). What this swallow still hides is a

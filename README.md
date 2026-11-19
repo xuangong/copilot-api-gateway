@@ -113,8 +113,7 @@ cd vnext && bun run build:ui
 | `GET /dashboard` | 管理面板 |
 | `POST /auth/login` | 登录（ADMIN_KEY / User Key / API key / 邀请码） |
 | `POST /auth/register` | 邀请码注册（设置 User Key） |
-| `POST /auth/github` | GitHub Device Flow 绑定 |
-| `POST /auth/github/paste-token` | 粘贴 GHE token 绑定(数据驻留租户) |
+| `POST /auth/github` | GitHub Device Flow 绑定(github.com 或 `*.ghe.com` 租户,`github_host` 字段) |
 | `GET /api/keys` | API key 列表 |
 | `POST /api/keys` | 创建 API key |
 | `GET /api/token-usage` | 用量统计查询 |
@@ -335,7 +334,7 @@ curl -X PATCH https://your-gateway/api/keys/{id} \
 3. **用户** 使用邀请码登录 → 设置 User Key → 自动创建账号
 4. **用户** 在 Upstream 标签页绑定 Copilot 账号:
    - **GitHub.com**(个人/团队/商业订阅) → 走 Device Flow
-   - **GitHub Enterprise**(数据驻留租户 `SUBDOMAIN.ghe.com`) → 走 Paste Token(见下文)
+   - **GitHub Enterprise**(数据驻留租户 `SUBDOMAIN.ghe.com`) → 填租户主机后同样走 Device Flow(见下文)
 5. **用户** 在 Keys 标签页创建 API key → 使用该 key 调用 AI API
 
 ### 隔离机制
@@ -347,57 +346,19 @@ curl -X PATCH https://your-gateway/api/keys/{id} \
 - 用户被禁用后，其所有 API key 无法调用 AI API（Dashboard 仍可登录查看）；重新启用后立即恢复
 - 用户被删除后，其所有 API key、GitHub 账号、会话数据一并清除
 
-### GHE 数据驻留租户(Paste Token 流程)
+### GHE 数据驻留租户
 
-数据驻留租户(`SUBDOMAIN.ghe.com`,例如 `msft.ghe.com`)不支持本网关 client_id 的 Device Flow,需要走 **Paste Token** 路径。
+数据驻留租户(`SUBDOMAIN.ghe.com`,例如 `msft.ghe.com`)与 github.com 走同一套 Device Flow 和同一个 Copilot client id,只是所有 GitHub 调用都换到租户域名上:
 
-**前置要求(硬性):**
+| 步骤 | github.com | `SUBDOMAIN.ghe.com` |
+|---|---|---|
+| Device code / access token | `https://github.com/login/...` | `https://SUBDOMAIN.ghe.com/login/...` |
+| 用户信息、`copilot_internal/*` | `https://api.github.com` | `https://api.SUBDOMAIN.ghe.com` |
+| Copilot 数据面 | token 交换返回的 `endpoints.api` | token 交换返回的 `endpoints.api`(例如 `copilot-api.msft.ghe.com`) |
 
-| 项 | 要求 |
-|---|---|
-| 操作系统 | **macOS only**(工具走 Keychain + Chromium safeStorage;Linux/Windows 未实现) |
-| VS Code | Stable 或 Insiders,任一版本装了 `vscode.github-authentication` 扩展(默认自带) |
-| 登录状态 | 该 VS Code **必须已经用目标 GHE 账号登录成功过一次**(例如 `msft.ghe.com`),即 Command Palette → "GitHub: Sign In" 走完一遍,VS Code 里能看到 Copilot 图标激活 |
-| 权限 | 首次跑 extract 脚本时,macOS 会弹 Keychain 授权(`security` 请求读取 `Code Safe Storage`),必须点"Always Allow"或"Allow" |
+**步骤:** Dashboard → Upstreams → + Add Copilot → 选 "GitHub Enterprise (GHE)" → 填租户主机(例如 `msft.ghe.com`)→ 在租户页面输入一次性验证码并授权。
 
-工具读的东西:
-
-- Keychain 服务名 `Code Safe Storage`(Insiders 是 `Code Insiders Safe Storage`)—— 用来解密 safeStorage 主密钥
-- `~/Library/Application Support/Code/User/globalStorage/state.vscdb`(Insiders 走 `Code - Insiders/User/...`)—— 存 GitHub 扩展的加密 token blob
-
-**步骤:**
-
-1. **确认 VS Code 已登录目标 GHE 租户**(例如 `msft.ghe.com`),Copilot 面板能拉到模型
-2. **提取 VS Code 中的 token**:
-   ```bash
-   # 生产例子
-   bun run vnext/tools/extract-vscode-github-token.ts --host msft.ghe.com
-
-   # 通用形式
-   bun run vnext/tools/extract-vscode-github-token.ts --host your-company.ghe.com
-   # 用 Insiders 版本:
-   bun run vnext/tools/extract-vscode-github-token.ts --host msft.ghe.com --edition insiders
-   # 加 --verbose 可看解密过程;--json 输出 { token, host }
-   ```
-   首次运行会弹 Keychain 授权对话框,点 "Always Allow"。之后每次静默运行。
-3. **在 Dashboard → Upstreams → + Add Copilot 里选 "GitHub Enterprise (GHE)"**,填入 host + 粘贴上一步拿到的 token,点 Connect
-4. 网关会:
-   - 调用 `https://api.<host>/user` 校验 token
-   - 调用 `/copilot_internal/v2/token` 拿到租户 `endpoints.api`(例如 `copilot-api.msft.ghe.com`)
-   - 如果租户没有 advertise `endpoints.api`,请求会被拒绝(不会 fallback 到 `api.githubcopilot.com`,防止跨租户泄露)
-   - 将账号写入 upstream registry,`source="paste"`,后续 `/v1/*` 请求会走该租户 API
-
-**也可以走 CLI**(不通过 UI):
-
-```bash
-TOKEN=$(bun run vnext/tools/extract-vscode-github-token.ts --host msft.ghe.com)
-curl -X POST https://your-gateway/auth/github/paste-token \
-  -H 'content-type: application/json' \
-  -b 'session=<dashboard-session-cookie>' \
-  -d "{\"github_token\":\"$TOKEN\",\"github_host\":\"msft.ghe.com\"}"
-```
-
-> **注意**:该端点要求已登录 Dashboard(session cookie 或 admin key),匿名调用返回 401。Linux / Windows 的 VS Code 密钥库读取尚未实现,可手动拿到 token 后走上面第 3 步或 CLI 步骤。
+网关在保存账号前会先换一次 Copilot token:没有 Copilot 权限的账号直接报错;租户没有返回 `endpoints.api` 时也会拒绝,不会回退到 `api.githubcopilot.com`,避免把租户 token 发到 github.com 的后端。
 
 ## Dashboard
 

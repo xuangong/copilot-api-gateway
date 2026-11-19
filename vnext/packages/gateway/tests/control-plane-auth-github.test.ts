@@ -1,7 +1,7 @@
 /**
  * GitHub OAuth router tests — Week 5b.
  *
- * Covers /github, /github/poll, /github/paste-token, /me, DELETE /github/:id,
+ * Covers /github, /github/poll (github.com and *.ghe.com tenants), /me, DELETE /github/:id,
  * /github/switch ported from old src/routes/auth/github.ts, plus the auth
  * guard on the two device-flow routes. Most cases use an in-memory repo; the
  * seven that submit a proxy chain use a real BunSqliteRepo, so the proxies
@@ -124,6 +124,14 @@ function jsonResp(body: unknown, status = 200): Response {
 
 const J = { 'content-type': 'application/json' }
 
+/** A /copilot_internal/v2/token payload; `api` is the advertised data plane. */
+function copilotTokenBody(api: string | null = 'https://api.individual.githubcopilot.com') {
+  return {
+    token: 'tid=copilot', expires_at: Math.floor(Date.now() / 1000) + 1800, refresh_in: 1500,
+    ...(api ? { endpoints: { api } } : {}),
+  }
+}
+
 let store: ReturnType<typeof inMemoryRepo>
 
 beforeEach(() => {
@@ -217,6 +225,7 @@ test('POST /github/poll complete saves account + mirrors upstream', async () => 
     if (url.includes('/oauth/access_token')) {
       return jsonResp({ access_token: 'gho_abc' })
     }
+    if (url.includes('/copilot_internal/v2/token')) return jsonResp(copilotTokenBody())
     if (url.includes('/user')) {
       return jsonResp({
         id: 42, login: 'octo', name: 'Octo Cat',
@@ -498,26 +507,12 @@ test('POST /github/poll routes all three outbound calls through the resolved fet
   expect(direct).toBe(0)
 })
 
-test('POST /github/paste-token rejects an unknown proxy id before touching GitHub', async () => {
-  await realRepo()
-  let direct = 0
-  stubGlobalFetch(async () => { direct += 1; return jsonResp({}) })
-
-  const res = await buildApp({ userId: 'u1' }).request('/auth/github/paste-token', {
-    method: 'POST',
-    headers: J,
-    body: JSON.stringify({ github_token: 'gho_x', proxy_fallback_list: [{ id: 'px_missing' }] }),
-  })
-  expect(res.status).toBe(400)
-  expect(direct).toBe(0)
-})
-
 test('a successful device-flow login persists the submitted chain', async () => {
   const r = await realRepo()
   stubGlobalFetch(async (input) => {
     const url = String(input)
     if (url.includes('/oauth/access_token')) return jsonResp({ access_token: 'gho_abc' })
-    if (url.includes('/copilot_internal')) return jsonResp({ token: 'tok' })
+    if (url.includes('/copilot_internal/v2/token')) return jsonResp(copilotTokenBody())
     if (url.includes('/user')) {
       return jsonResp({ id: 42, login: 'octo', name: 'Octo Cat', avatar_url: 'https://a/o.png' })
     }
@@ -542,7 +537,7 @@ test('a successful device-flow login persists the submitted chain', async () => 
  * Seeds the mirrored Copilot row a re-login would find, carrying a chain that
  * was edited after the first login. `up_copilot_u1_42` is what
  * `copilotUpstreamRowId('u1', 42)` builds for the GitHub user both re-entry
- * cases below log back in as.
+ * case below logs back in as.
  */
 async function seedChainedCopilotRow(r: Awaited<ReturnType<typeof realRepo>>) {
   const now = new Date().toISOString()
@@ -567,16 +562,16 @@ async function seedChainedCopilotRow(r: Awaited<ReturnType<typeof realRepo>>) {
 }
 
 /**
- * The complement of the two "persists the submitted chain" paths: an *absent*
+ * The complement of the "persists the submitted chain" path: an *absent*
  * `proxy_fallback_list` must reach `addGithubAccount` as `undefined`, which
  * lib/github.ts:79-82 reads as "keep the row's existing chain". Sending `[]`
  * instead would look harmless but silently wipes a chain the user edited after
  * their first login, and on a proxy-only host that turns the account's egress
  * direct. Verified by mutation: `proxyFallbackList: proxy_fallback_list ?? []`
- * at github-routes.ts:211 (device-flow) and :301 (paste) passes every other
- * case in this file and fails only these two.
+ * in the device-flow poll passes every other case in this file and fails only
+ * this one.
  *
- * Neither case submits a chain, so `egressFetcher` returns undefined and the
+ * The case submits no chain, so `egressFetcher` returns undefined and the
  * route keeps globalThis.fetch — the stub below answers every outbound call,
  * and `px_keep` never has to be dialled.
  */
@@ -586,7 +581,7 @@ test('a re-login without a chain keeps the chain already on the row', async () =
   stubGlobalFetch(async (input) => {
     const url = String(input)
     if (url.includes('/oauth/access_token')) return jsonResp({ access_token: 'gho_abc' })
-    if (url.includes('/copilot_internal')) return jsonResp({ token: 'tok' })
+    if (url.includes('/copilot_internal/v2/token')) return jsonResp(copilotTokenBody())
     if (url.includes('/user')) {
       return jsonResp({ id: 42, login: 'octo', name: 'Octo Cat', avatar_url: 'https://a/o.png' })
     }
@@ -604,25 +599,99 @@ test('a re-login without a chain keeps the chain already on the row', async () =
   expect(row?.proxyFallbackList).toEqual([{ id: 'px_keep' }])
 })
 
-test('a re-paste without a chain keeps the chain already on the row', async () => {
-  const r = await realRepo()
-  await seedChainedCopilotRow(r)
-  stubGlobalFetch(async (input) => {
-    const url = String(input)
-    if (url.includes('/copilot_internal')) return jsonResp({ token: 'tok' })
-    if (url.includes('/user')) {
-      return jsonResp({ id: 42, login: 'octo', name: 'Octo Cat', avatar_url: 'https://a/o.png' })
-    }
-    return jsonResp({}, 404)
-  })
+// --- GHE.com tenants (SUBDOMAIN.ghe.com) ---
+//
+// Device flow runs against the tenant's own web origin with the same public
+// client id as github.com; REST lives at api.SUBDOMAIN.ghe.com; the data plane
+// is whatever /copilot_internal/v2/token advertises in endpoints.api.
 
-  const res = await buildApp({ userId: 'u1' }).request('/auth/github/paste-token', {
-    method: 'POST',
-    headers: J,
-    body: JSON.stringify({ github_token: 'gho_x' }),
+test('POST /github with a ghe.com host starts the device flow on the tenant', async () => {
+  const urls: string[] = []
+  stubGlobalFetch(async (input) => {
+    urls.push(String(input))
+    return jsonResp({
+      device_code: 'dev123', user_code: 'ABCD-EFGH', verification_uri: 'https://acme.ghe.com/login/device',
+      expires_in: 900, interval: 5,
+    })
+  })
+  const res = await buildApp({ userId: 'u1' }).request('/auth/github', {
+    method: 'POST', headers: J, body: JSON.stringify({ github_host: ' Acme.GHE.com ' }),
   })
   expect(res.status).toBe(200)
+  expect(urls).toEqual(['https://acme.ghe.com/login/device/code'])
+  expect(((await res.json()) as any).verification_uri).toBe('https://acme.ghe.com/login/device')
+})
 
-  const row = await r.upstreams.getById('up_copilot_u1_42')
-  expect(row?.proxyFallbackList).toEqual([{ id: 'px_keep' }])
+test('POST /github rejects a host that is neither github.com nor *.ghe.com before any fetch', async () => {
+  let direct = 0
+  stubGlobalFetch(async () => { direct += 1; return jsonResp({}) })
+  for (const github_host of ['evil.example.com', 'ghe.com', 'a.b.ghe.com']) {
+    const res = await buildApp({ userId: 'u1' }).request('/auth/github', {
+      method: 'POST', headers: J, body: JSON.stringify({ github_host }),
+    })
+    expect(res.status).toBe(400)
+  }
+  expect(direct).toBe(0)
+})
+
+test('POST /github/poll with a ghe.com host talks to the tenant and stores host + data plane', async () => {
+  const urls: string[] = []
+  stubGlobalFetch(async (input) => {
+    const url = String(input)
+    urls.push(url)
+    if (url.includes('/login/oauth/access_token')) return jsonResp({ access_token: 'ghu_tenant' })
+    if (url.endsWith('/copilot_internal/v2/token')) return jsonResp(copilotTokenBody('https://copilot-api.acme.ghe.com'))
+    if (url.endsWith('/copilot_internal/user')) return jsonResp({ copilot_plan: 'enterprise' })
+    if (url.endsWith('/user')) return jsonResp({ id: 7, login: 'alice_acme', name: 'Alice', avatar_url: '' })
+    return jsonResp({}, 404)
+  })
+  const res = await buildApp({ userId: 'u1' }).request('/auth/github/poll', {
+    method: 'POST', headers: J, body: JSON.stringify({ device_code: 'd1', github_host: 'acme.ghe.com' }),
+  })
+  expect(res.status).toBe(200)
+  expect(((await res.json()) as any).status).toBe('complete')
+
+  expect(urls).toContain('https://acme.ghe.com/login/oauth/access_token')
+  expect(urls).toContain('https://api.acme.ghe.com/user')
+  expect(urls).toContain('https://api.acme.ghe.com/copilot_internal/v2/token')
+  expect(urls.some(u => u.includes('github.com/') && !u.includes('ghe.com'))).toBe(false)
+
+  const acct = store.gh.accountsByOwner.get('u1')?.get(7)
+  expect(acct?.githubHost).toBe('acme.ghe.com')
+  expect(acct?.accountType).toBe('enterprise')
+  const up = await store.repo.upstreams.getById(copilotUpstreamRowId('u1', 7))
+  expect(up?.config).toMatchObject({ githubHost: 'acme.ghe.com', githubToken: 'ghu_tenant', source: 'device-flow' })
+  expect(up?.state).toMatchObject({ copilotApiEndpoint: 'https://copilot-api.acme.ghe.com' })
+})
+
+test('POST /github/poll refuses a ghe.com login whose token exchange advertises no data plane', async () => {
+  stubGlobalFetch(async (input) => {
+    const url = String(input)
+    if (url.includes('/login/oauth/access_token')) return jsonResp({ access_token: 'ghu_tenant' })
+    if (url.endsWith('/copilot_internal/v2/token')) return jsonResp(copilotTokenBody(null))
+    if (url.endsWith('/user')) return jsonResp({ id: 7, login: 'alice_acme', name: 'Alice', avatar_url: '' })
+    return jsonResp({}, 404)
+  })
+  const res = await buildApp({ userId: 'u1' }).request('/auth/github/poll', {
+    method: 'POST', headers: J, body: JSON.stringify({ device_code: 'd1', github_host: 'acme.ghe.com' }),
+  })
+  expect(res.status).toBe(502)
+  expect(((await res.json()) as any).status).toBe('error')
+  expect(store.gh.accountsByOwner.get('u1')?.get(7)).toBeUndefined()
+  expect(await store.repo.upstreams.getById(copilotUpstreamRowId('u1', 7))).toBeNull()
+})
+
+test('POST /github/poll refuses a login whose GitHub token has no Copilot access', async () => {
+  stubGlobalFetch(async (input) => {
+    const url = String(input)
+    if (url.includes('/login/oauth/access_token')) return jsonResp({ access_token: 'gho_nocopilot' })
+    if (url.endsWith('/copilot_internal/v2/token')) return jsonResp({ message: 'Not Found' }, 404)
+    if (url.endsWith('/user')) return jsonResp({ id: 9, login: 'nocopilot', name: null, avatar_url: '' })
+    return jsonResp({}, 404)
+  })
+  const res = await buildApp({ userId: 'u1' }).request('/auth/github/poll', {
+    method: 'POST', headers: J, body: JSON.stringify({ device_code: 'd1' }),
+  })
+  expect(res.status).toBe(502)
+  expect(store.gh.accountsByOwner.get('u1')?.get(9)).toBeUndefined()
 })

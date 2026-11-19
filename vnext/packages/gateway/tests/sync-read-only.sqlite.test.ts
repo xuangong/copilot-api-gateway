@@ -207,7 +207,7 @@ test("a replace import keeps synced rows and the next sync restores them from a 
   expect(await runScheduledSync(deps)).toBe("not_modified")
 })
 
-test("pasting a token or finishing device flow for the GitHub user behind a synced row is refused before any account write", async () => {
+test("finishing device flow for the GitHub user behind a synced row is refused before any account write", async () => {
   const user = { id: 7, login: "octo", name: "Octo", avatar_url: "" }
   await synced(copilotUpstreamRowId(owner, user.id as GitHubAccountId), "copilot")
   const realFetch = globalThis.fetch
@@ -215,11 +215,11 @@ test("pasting a token or finishing device flow for the GitHub user behind a sync
     const url = String(input)
     if (url.includes("/oauth/access_token")) return Response.json({ access_token: "gho_local" })
     if (url.endsWith("/user")) return Response.json(user)
-    if (url.includes("/copilot_internal")) return Response.json({ token: "tok", expires_at: Math.floor(Date.now() / 1000) + 3600 })
+    if (url.includes("/copilot_internal")) return Response.json({ token: "tok", expires_at: Math.floor(Date.now() / 1000) + 3600, endpoints: { api: "https://api.githubcopilot.com" } })
     return Response.json({}, { status: 404 })
   }, realFetch)
   try {
-    for (const [path, body] of [["/api/auth/github/paste-token", { github_token: "gho_local" }], ["/api/auth/github/poll", { device_code: "dc" }]] as const) {
+    for (const [path, body] of [["/api/auth/github/poll", { device_code: "dc" }]] as const) {
       const response = await send(accountsApp, path, "POST", body)
       expect([response.status, await response.json()]).toEqual([409, readOnly])
       expect(await repo.github.listAccounts()).toEqual([])

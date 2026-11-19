@@ -137,8 +137,10 @@ export interface DeviceFlowStart {
   interval?: number
 }
 // POST, not GET: the request carries the draft proxy chain, and a GET has
-// nowhere to put a body. Always sends at least `{}` so the server's zod
-// validator sees a parseable JSON body.
+// nowhere to put a body. Always sends at least `{ github_host }` so the
+// server's zod validator sees a parseable JSON body.
+// `githubHost` is `github.com` or a GHE.com tenant root (`acme.ghe.com`); the
+// poll must send the same host the flow was started with.
 // An empty chain drops `proxy_fallback_list` from the body entirely instead of
 // sending `[]` — the two are not interchangeable on the server. See
 // `AddGithubAccountOpts.proxyFallbackList` in
@@ -147,11 +149,14 @@ export interface DeviceFlowStart {
 // chose direct and overwrites it. Collapsing them would wipe an existing chain
 // on every re-login.
 export function startGithubDeviceFlow(
+  githubHost: string,
   proxyFallbackList?: ProxyFallbackEntry[],
 ): Promise<DeviceFlowStart> {
   return api<DeviceFlowStart>("/auth/github", {
     method: "POST",
-    body: proxyFallbackList?.length ? { proxy_fallback_list: proxyFallbackList } : {},
+    body: proxyFallbackList?.length
+      ? { github_host: githubHost, proxy_fallback_list: proxyFallbackList }
+      : { github_host: githubHost },
   })
 }
 
@@ -162,33 +167,14 @@ export interface DeviceFlowPoll {
 }
 export function pollGithubDeviceFlow(
   deviceCode: string,
+  githubHost: string,
   proxyFallbackList?: ProxyFallbackEntry[],
 ): Promise<DeviceFlowPoll> {
   return api<DeviceFlowPoll>("/auth/github/poll", {
     method: "POST",
     body: proxyFallbackList?.length
-      ? { device_code: deviceCode, proxy_fallback_list: proxyFallbackList }
-      : { device_code: deviceCode },
-  })
-}
-
-export interface PasteTokenResult {
-  status: "complete" | "error"
-  user?: { login: string; id: number }
-  github_host?: string
-  account_type?: string
-  error?: string
-}
-export function pasteGithubToken(
-  github_token: string,
-  github_host: string,
-  proxyFallbackList?: ProxyFallbackEntry[],
-): Promise<PasteTokenResult> {
-  return api<PasteTokenResult>("/auth/github/paste-token", {
-    method: "POST",
-    body: proxyFallbackList?.length
-      ? { github_token, github_host, proxy_fallback_list: proxyFallbackList }
-      : { github_token, github_host },
+      ? { device_code: deviceCode, github_host: githubHost, proxy_fallback_list: proxyFallbackList }
+      : { device_code: deviceCode, github_host: githubHost },
   })
 }
 
