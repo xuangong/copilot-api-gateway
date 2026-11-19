@@ -17,6 +17,8 @@ export interface ClaudeCodeAccessTokenEntry {
 
 export interface ClaudeCodeQuotaSnapshotEntry {
   fetchedAt: number
+  // Wire model whose response supplied this observation, when known.
+  modelId?: string
   data: ClaudeCodeQuotaSnapshot
 }
 
@@ -63,7 +65,7 @@ const assertOnlyKeys = (
 }
 
 const ACCESS_TOKEN_KEYS = ['token', 'expiresAt', 'refreshedAt'] as const
-const QUOTA_SNAPSHOT_KEYS = ['fetchedAt', 'data'] as const
+const QUOTA_SNAPSHOT_KEYS = ['fetchedAt', 'modelId', 'data'] as const
 const USAGE_PROBE_SNAPSHOT_KEYS = ['fetchedAt', 'data'] as const
 const CREDENTIAL_KEYS = [
   'accountUuid',
@@ -103,6 +105,9 @@ const assertClaudeCodeQuotaSnapshotEntry = (value: unknown, where: string): void
   assertOnlyKeys(obj, QUOTA_SNAPSHOT_KEYS, where)
   if (typeof obj.fetchedAt !== 'number' || !Number.isFinite(obj.fetchedAt)) {
     throw new TypeError(`${where}.fetchedAt must be a finite number`)
+  }
+  if (obj.modelId !== undefined && (typeof obj.modelId !== 'string' || obj.modelId === '')) {
+    throw new TypeError(`${where}.modelId must be a non-empty string`)
   }
   assertClaudeCodeQuotaSnapshot(obj.data, `${where}.data`)
 }

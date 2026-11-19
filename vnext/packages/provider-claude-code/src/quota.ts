@@ -7,6 +7,7 @@ import {
 } from './state'
 import { claudeCodeBearerEffect, ignoreGoneClaudeCodeEffect, updateClaudeCodeCredential } from './credential-effects'
 import type { EnsuredAccessToken } from './access-token'
+import type { ClaudeCodeQuotaSnapshotEntry } from './state'
 
 const HEADER_PREFIX = 'anthropic-ratelimit-'
 
@@ -34,6 +35,44 @@ export interface ClaudeCodeQuotaSnapshot {
   fiveHour: ClaudeCodeQuotaWindow | null
   sevenDay: ClaudeCodeQuotaSevenDay | null
   raw: Record<string, string>
+}
+
+// Omitting modelId checks shared limits only; supplying it also includes the
+// quota observation made on that model.
+//
+// five_hour and seven_day are shared claims; any other representative claim
+// (e.g. seven_day_overage_included, Fable's weekly allowance) is per-model.
+// https://registry.npmjs.org/@anthropic-ai/claude-code-darwin-arm64/-/claude-code-darwin-arm64-2.1.322.tgz
+//
+// `overage.status: rejected` (out_of_credits) is never a gate: it only says the
+// account has no extra-usage credits. A rejection with no reset is non-gating
+// (sub2api ratelimit_service.go:953-961), else nothing would ever refresh it.
+// Reset times bound the cached rejection's lifetime.
+export const claudeCodeRateLimitedUntil = (
+  snapshot: ClaudeCodeQuotaSnapshotEntry | null | undefined,
+  now: number,
+  modelId?: string,
+): string | null => {
+  if (snapshot?.data.status !== 'rejected') return null
+  const { data } = snapshot
+  const resets: (string | null)[] = []
+  for (const window of [data.fiveHour, data.sevenDay]) {
+    if (window?.status === 'rejected') resets.push(window.reset)
+  }
+  if (
+    data.representativeClaim === 'five_hour' ||
+    data.representativeClaim === 'seven_day' ||
+    (modelId !== undefined && snapshot.modelId === modelId)
+  ) {
+    resets.push(data.reset)
+  }
+  return resets.reduce<string | null>(
+    (latest, reset) =>
+      reset !== null && Date.parse(reset) > (latest === null ? now : Date.parse(latest))
+        ? reset
+        : latest,
+    null,
+  )
 }
 
 const parseUnixSecondsToIso = (raw: string | null): string | null => {
@@ -216,11 +255,12 @@ export const getClaudeCodeQuota = async (
 export const putClaudeCodeQuota = async (
   lease: EnsuredAccessToken,
   snapshot: ClaudeCodeQuotaSnapshot,
+  modelId: string,
 ): Promise<void> => {
   // Stamped before the write so a replay against a winning sibling produces
   // the same document rather than a later `fetchedAt`.
   const fetchedAt = Date.now()
   await ignoreGoneClaudeCodeEffect(updateClaudeCodeCredential(claudeCodeBearerEffect(lease), account => ({
-    ...account, quotaSnapshot: { fetchedAt, data: snapshot },
+    ...account, quotaSnapshot: { fetchedAt, modelId, data: snapshot },
   })))
 }

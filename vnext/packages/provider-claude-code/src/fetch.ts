@@ -25,7 +25,7 @@ import { ClaudeCodeOAuthSessionTerminatedError } from './auth/oauth'
 import type { Fetcher } from './fetcher'
 import { pickClaudeCodeHeaders } from './headers'
 import type { ClaudeCodeProviderModel } from './models'
-import { parseClaudeCodeQuotaHeaders, putClaudeCodeQuota, type ClaudeCodeQuotaSnapshot } from './quota'
+import { claudeCodeRateLimitedUntil, parseClaudeCodeQuotaHeaders, putClaudeCodeQuota, type ClaudeCodeQuotaSnapshot } from './quota'
 import { readClaudeCodeCredential, type ClaudeCodeCredentialSnapshot, type ClaudeCodeCredentialTarget } from './credential-effects'
 import { assertClaudeCodeExecutionAuthority, claudeCodeAffinityTarget, ClaudeCodeAffinityChangedError, type ClaudeCodeExecutionAuthority } from './affinity-execution'
 import { waitUntil } from '@vibe-core/platform'
@@ -81,13 +81,11 @@ export const callClaudeCodeMessagesPrepared = async (
   }
 
   const now = new Date()
-  const quotaData = account.quotaSnapshot === null ? null : account.quotaSnapshot.data
-  if (isRateLimitedNow(quotaData, now)) {
-    return { response: synthetic429(
-      `Claude Code upstream rate-limited until ${quotaData.reset}`,
-      quotaData.reset,
-      now,
-    ) }
+  // A cached quota deadline short-circuits before any OAuth refresh; see
+  // claudeCodeRateLimitedUntil for which rejections gate which models.
+  const resetIso = claudeCodeRateLimitedUntil(account.quotaSnapshot, now.getTime(), upstreamModelId)
+  if (resetIso !== null) {
+    return { response: synthetic429(`Claude Code upstream rate-limited until ${resetIso}`, resetIso, now) }
   }
 
   const ensured = await ensureOrSession503(opts, snapshot)
@@ -95,41 +93,6 @@ export const callClaudeCodeMessagesPrepared = async (
 
   const bodyText = JSON.stringify({ ...opts.body, model: upstreamModelId, stream: true })
   return await performStreamingMessagesCall(opts, upstreamModelId, bodyText, ensured, false)
-}
-
-// ─── Pre-flight quota gate ─────────────────────────────────────────────────
-// `anthropic-ratelimit-unified-status: rejected` paired with a future
-// `unified-reset` timestamp means the upstream's primary plan window is
-// exhausted and a fresh request would 429 right away; short-circuit at the
-// gate so we don't burn an OAuth refresh on a request that has no chance.
-//
-// Note 1: `overage.status: rejected` (typically paired with
-// `overage-disabled-reason: out_of_credits`) is NOT a short-circuit signal.
-// It only reports that the account has no extra-usage credits to spill into
-// once the primary window runs out — which is the steady state for any
-// plan-tier account that hasn't bought extra credits, so blocking on it would
-// refuse every request to such accounts. The primary `status` already reflects
-// whether the upstream will actually reject the next request.
-//
-// Note 2: a primary `status: rejected` WITHOUT a `reset` is treated as
-// non-gating. Sub2api `ratelimit_service.go:953-961` flags this exact shape as
-// "likely not a real rate limit" (e.g. an "Extra usage required" body
-// sentinel) and passes it through verbatim — without a reset we'd otherwise
-// lock the account out indefinitely because the next request never fires to
-// refresh the snapshot.
-//
-// The `reset > now` clause doubles as the freshness bound: a snapshot whose
-// window already elapsed stops gating on its own, so this reads the account
-// state already in hand rather than re-reading through the TTL-gated
-// `getClaudeCodeQuota`.
-const isRateLimitedNow = (
-  snapshot: ClaudeCodeQuotaSnapshot | null,
-  now: Date,
-): snapshot is ClaudeCodeQuotaSnapshot => {
-  if (!snapshot) return false
-  if (snapshot.status !== 'rejected') return false
-  if (!snapshot.reset) return false
-  return new Date(snapshot.reset).getTime() > now.getTime()
 }
 
 // ─── Pre-fetch access-token gate ───────────────────────────────────────────
@@ -227,7 +190,7 @@ const performStreamingMessagesCall = async (
   if (response.ok || response.status === 429) {
     const snapshot = parseClaudeCodeQuotaHeaders(response.headers)
     if (Object.keys(snapshot.raw).length > 0) {
-      waitUntil(putClaudeCodeQuota(accessToken, snapshot))
+      waitUntil(putClaudeCodeQuota(accessToken, snapshot, upstreamModelId))
     }
   }
 

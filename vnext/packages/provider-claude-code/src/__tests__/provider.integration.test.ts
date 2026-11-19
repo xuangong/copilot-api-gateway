@@ -109,6 +109,8 @@ const CATALOG_JSON = {
       display_name: 'Claude Opus 4.7',
       max_input_tokens: 200000,
     },
+    { id: 'claude-fable-5-1', display_name: 'Claude Fable 5.1', max_input_tokens: 200000 },
+    { id: 'claude-sonnet-5-5', display_name: 'Claude Sonnet 5.5', max_input_tokens: 200000 },
     {
       id: 'claude-sonnet-4-5-20250929',
       display_name: 'Claude Sonnet 4.5',
@@ -418,7 +420,7 @@ test('setup-token expired → 503, no wire round-trip', async () => {
 
 test('exhausted primary window → synthetic 429 with retry-after, no wire call', async () => {
   const resetIso = isoIn(15 * 60 * 1000)
-  repo.put(baseRecord({ quotaSnapshot: quotaSnapshot({ status: 'rejected', reset: resetIso }) }))
+  repo.put(baseRecord({ quotaSnapshot: quotaSnapshot({ status: 'rejected', reset: resetIso, representativeClaim: 'five_hour' }) }))
   const harness = makeHarness(() => okSSE())
   const provider = new ClaudeCodeProvider(await storedRecord(), harness.fetcher)
   const resp = await provider.fetch(makeRequest())
@@ -482,6 +484,53 @@ test('rejected without a reset does not gate', async () => {
   const resp = await provider.fetch(makeRequest())
 
   expect(resp.status).toBe(200)
+  expect(harness.calls.filter((c) => c.url === ANTHROPIC_MESSAGES)).toHaveLength(1)
+})
+
+// Adapted from reference copilot-gateway 49813611a (#716): a per-model weekly
+// allowance (seven_day_overage_included, Fable) rejected on one model must not
+// turn into a local 429 for sibling models; shared five_hour/seven_day still do.
+const modelQuotaHeaders = (claim: string): Record<string, string> => ({
+  'content-type': 'application/json',
+  'anthropic-ratelimit-unified-status': 'rejected',
+  'anthropic-ratelimit-unified-representative-claim': claim,
+  'anthropic-ratelimit-unified-reset': String(Math.floor(Date.now() / 1000) + 6 * 24 * 3600),
+})
+const requestFor = (model: string): ProviderRequest => {
+  const req = makeRequest()
+  return { ...req, payload: { ...(req.payload as object), model } as ProviderRequest['payload'] }
+}
+
+test('a per-model quota 429 (seven_day_overage_included) gates only the observed model', async () => {
+  repo.put(baseRecord())
+  const harness = makeHarness((_c, attempt) => attempt === 1
+    ? new Response('{"error":{"type":"rate_limit_error"}}', { status: 429, headers: modelQuotaHeaders('seven_day_overage_included') })
+    : okSSE())
+  const provider = new ClaudeCodeProvider(await storedRecord(), harness.fetcher)
+  const first = await provider.fetch(requestFor('claude-fable-5-1'))
+  expect(first.status).toBe(429)
+  await settleBackground()
+  const wireCalls = () => harness.calls.filter((c) => c.url === ANTHROPIC_MESSAGES).length
+  expect(wireCalls()).toBe(1)
+
+  const sibling = await new ClaudeCodeProvider(await storedRecord(), harness.fetcher).fetch(requestFor('claude-sonnet-5-5'))
+  expect(sibling.status).toBe(200)
+  expect(wireCalls()).toBe(2)
+
+  const again = await new ClaudeCodeProvider(await storedRecord(), harness.fetcher).fetch(requestFor('claude-fable-5-1'))
+  expect(again.status).toBe(429)
+  expect(wireCalls()).toBe(2)
+})
+
+test.each(['five_hour', 'seven_day'])('a shared %s quota 429 gates every model', async (claim) => {
+  repo.put(baseRecord())
+  const harness = makeHarness((_c, attempt) => attempt === 1
+    ? new Response('{"error":{"type":"rate_limit_error"}}', { status: 429, headers: modelQuotaHeaders(claim) })
+    : okSSE())
+  await new ClaudeCodeProvider(await storedRecord(), harness.fetcher).fetch(requestFor('claude-fable-5-1'))
+  await settleBackground()
+  const sibling = await new ClaudeCodeProvider(await storedRecord(), harness.fetcher).fetch(requestFor('claude-sonnet-5-5'))
+  expect(sibling.status).toBe(429)
   expect(harness.calls.filter((c) => c.url === ANTHROPIC_MESSAGES)).toHaveLength(1)
 })
 
@@ -554,7 +603,7 @@ test('unshaped request is re-mimicked by the interceptor chain', async () => {
 // ─── Gateway-built responses and the real 401s behind them (upstream protection) ───
 
 test('protection: the quota-gate 429 and a refresh-failure 503 are gateway-generated; a real 429 is not', async () => {
-  repo.put(baseRecord({ quotaSnapshot: quotaSnapshot({ status: 'rejected', reset: isoIn(15 * 60 * 1000) }) }))
+  repo.put(baseRecord({ quotaSnapshot: quotaSnapshot({ status: 'rejected', reset: isoIn(15 * 60 * 1000), representativeClaim: 'five_hour' }) }))
   const gated = await new ClaudeCodeProvider(await storedRecord(), makeHarness(() => okSSE()).fetcher).fetch(makeRequest())
   expect(gated.status).toBe(429)
   expect(gated.gatewayGenerated).toBe(true)
