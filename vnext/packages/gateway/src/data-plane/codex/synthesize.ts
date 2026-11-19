@@ -12,7 +12,10 @@
  *   - `slug` — always overwritten with the vNext model id (matches reference).
  *   - `display_name` — `model.name ?? source.display_name ?? model.id`.
  *   - `context_window` / `max_context_window` —
- *     `capabilities.limits.max_context_window_tokens ?? source ?? 128k`.
+ *     Codex rows carry a private default (`providerData.contextWindow`) and a
+ *     published ceiling (`limits.max_context_window_tokens`) and keep them
+ *     separate; other providers use `min(max_context_window_tokens,
+ *     max_prompt_tokens)` for both, else `source ?? 128k`.
  *   - `service_tiers` — only the chosen upstream endpoint's catalog-proved
  *     Fast lane; bundled model metadata cannot establish account availability.
  *   - `input_modalities`, `supported_reasoning_levels`, and
@@ -31,6 +34,7 @@
  */
 import type { CatalogModel, CodexCatalogCapabilities, CodexReasoningLevel } from './catalog.ts'
 import { synthesizedBaseInstructions } from './synthesized-base-instructions.ts'
+import { codexModelContextWindow } from '@vibe-llm/provider-codex'
 import { supportsOriginalImageDetail } from '../providers/catalog-image-detail.ts'
 
 // See BASELINE.context_window rationale in reference synthesize.ts — codex's
@@ -91,9 +95,12 @@ export interface CodexSynthesizeModel {
     image_detail_original?: boolean
     modalities?: { input: readonly ('text' | 'image')[] }
   }
+  limits?: { max_context_window_tokens?: number }
+  providerData?: unknown
   capabilities?: {
     limits?: {
       max_context_window_tokens?: number
+      max_prompt_tokens?: number
     }
   }
 }
@@ -117,11 +124,23 @@ export const synthesizeCatalogEntry = (
       : supportedReasoning
   const shouldEnableUltra = advertisedReasoning !== supportedReasoning
 
-  const registryWindow = model.capabilities?.limits?.max_context_window_tokens
-  const contextWindow = (registryWindow
+  // Codex providers publish a private default window beside their ceiling.
+  // Everyone else has a single input budget: the prompt cap, never beyond the
+  // context cap (reference copilot-gateway 5a6c62963, #559).
+  const providerData = model.providerData as { contextWindow?: unknown } | undefined
+  const codexWindow = typeof providerData?.contextWindow === 'number'
+    ? codexModelContextWindow({ id: model.id, providerData, limits: model.limits })
+    : undefined
+  const registryLimits = model.capabilities?.limits
+  const caps = [registryLimits?.max_context_window_tokens, registryLimits?.max_prompt_tokens]
+    .filter((n): n is number => typeof n === 'number')
+  const registryWindow = caps.length > 0 ? Math.min(...caps) : undefined
+  const contextWindow = (codexWindow?.context_window
+    ?? registryWindow
     ?? source.context_window
     ?? BASELINE.context_window) as number
-  const maxContextWindow = (registryWindow
+  const maxContextWindow = (codexWindow?.max_context_window
+    ?? registryWindow
     ?? source.max_context_window
     ?? BASELINE.max_context_window) as number
 

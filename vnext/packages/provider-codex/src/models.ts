@@ -28,11 +28,13 @@ import type { ModelPricing } from '@vibe-llm/protocols/common'
 export interface CodexRawModel {
   id: string
   display_name: string
-  // Per-request context window. Upstream also returns a sibling
+  // Default per-request context window. Upstream also returns a sibling
   // `max_context_window` field as the upper bound for config overrides
-  // (https://github.com/openai/codex/blob/d66708232299bdbf373ec55b0d6b938c246cfa60/codex-rs/protocol/src/openai_models.rs#L383-L386);
-  // vNext has no override path, so only the operational value is kept.
+  // (https://github.com/openai/codex/blob/d66708232299bdbf373ec55b0d6b938c246cfa60/codex-rs/protocol/src/openai_models.rs#L383-L386).
+  // Both are kept separate (reference copilot-gateway 5a6c62963, #559) so a
+  // client can opt into the long window without changing its compaction default.
   context_window: number
+  max_context_window?: number
   input_modalities?: readonly ('text' | 'image')[]
   reasoning_efforts?: readonly string[]
   default_reasoning_effort?: string
@@ -45,7 +47,7 @@ export interface CodexProviderModel {
   display_name: string
   owned_by: 'openai'
   kind: 'chat'
-  providerData: { useResponsesLite: boolean }
+  providerData: { useResponsesLite: boolean; contextWindow: number }
   limits: { max_context_window_tokens: number }
   endpoints: { responses: Record<string, never> }
   pricing?: ModelPricing
@@ -130,6 +132,13 @@ const assertRawModel = (value: unknown): CodexRawModel => {
 
   const raw: CodexRawModel = { id: slug, display_name, context_window }
 
+  if (value.max_context_window !== undefined && value.max_context_window !== null) {
+    if (typeof value.max_context_window !== 'number') {
+      throw new TypeError(`Codex model entry ${slug} max_context_window not a number`)
+    }
+    raw.max_context_window = value.max_context_window
+  }
+
   if (value.input_modalities !== undefined) {
     if (!Array.isArray(value.input_modalities)) {
       throw new TypeError(`Codex model entry ${slug} input_modalities not an array`)
@@ -192,6 +201,20 @@ export const codexModelUsesResponsesLite = (model: { id: string; providerData?: 
   return value
 }
 
+export interface CodexContextWindow { context_window: number; max_context_window: number }
+
+// Default window (private providerData) and published ceiling (limits). Catalog
+// snapshots stored before #559 lack the default and fall back to the ceiling.
+export const codexModelContextWindow = (
+  model: { id: string; providerData?: unknown; limits?: { max_context_window_tokens?: number } },
+): CodexContextWindow | undefined => {
+  const max = model.limits?.max_context_window_tokens
+  if (typeof max !== 'number') return undefined
+  const data = model.providerData
+  const def = isPlainRecord(data) && typeof data.contextWindow === 'number' ? data.contextWindow : max
+  return { context_window: def, max_context_window: max }
+}
+
 // Codex exposes only the Responses endpoint. Pricing is looked up from the
 // per-slug table in pricing.ts so the dashboard can report a notional
 // API-rate pricing even though Codex itself bills as a flat-fee subscription.
@@ -224,8 +247,8 @@ export const codexRawToProviderModel = (raw: CodexRawModel): CodexProviderModel 
     display_name: raw.display_name,
     owned_by: 'openai',
     kind: 'chat',
-    providerData: { useResponsesLite: raw.use_responses_lite ?? false },
-    limits: { max_context_window_tokens: raw.context_window },
+    providerData: { useResponsesLite: raw.use_responses_lite ?? false, contextWindow: raw.context_window },
+    limits: { max_context_window_tokens: raw.max_context_window ?? raw.context_window },
     endpoints: { responses: {} },
     ...(pricing ? { pricing } : {}),
     ...(Object.keys(chat).length > 0 ? { chat } : {}),

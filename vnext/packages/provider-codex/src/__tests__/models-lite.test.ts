@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { codexModelUsesResponsesLite, codexRawToProviderModel, fetchCodexCatalog } from "../models.ts"
+import { codexModelContextWindow, codexModelUsesResponsesLite, codexRawToProviderModel, fetchCodexCatalog } from "../models.ts"
 
 const discover = (use_responses_lite: unknown) => fetchCodexCatalog({
   accessToken: "synthetic", accountId: "synthetic",
@@ -12,7 +12,7 @@ test.each([true, false, undefined])("catalog carries strict Lite selection %s", 
   if (!raw) throw new Error("Missing catalog model")
   const model = codexRawToProviderModel(raw)
   expect(raw.use_responses_lite).toBe(value)
-  expect(model.providerData).toEqual({ useResponsesLite: value ?? false })
+  expect(model.providerData).toEqual({ useResponsesLite: value ?? false, contextWindow: 128000 })
   expect(codexModelUsesResponsesLite(model)).toBe(value ?? false)
   expect(model.chat?.image_detail_original).toBe(true)
   expect(model.endpoints).toEqual({ responses: {} })
@@ -49,4 +49,22 @@ test("catalog request pins the current stable Codex client identity", async () =
   })
   expect(url).toEndWith("/codex/models?client_version=0.159.3")
   expect(headers.get("user-agent")).toBe("codex_cli_rs/0.159.3 (Mac OS 26.5.0; arm64) iTerm.app/3.6.10")
+})
+
+// Adapted from reference copilot-gateway 5a6c62963 (#559): the backend's default
+// window and its override ceiling are different facts. Collapsing them makes
+// clients compact at the ceiling (or lose long-context opt-in).
+test("catalog keeps the default context window separate from the maximum ceiling", async () => {
+  const [raw, plain] = await fetchCodexCatalog({
+    accessToken: "synthetic", accountId: "synthetic",
+    fetcher: async () => Response.json({ models: [
+      { slug: "long", display_name: "Long", context_window: 272000, max_context_window: 1000000 },
+      { slug: "plain", display_name: "Plain", context_window: 64000 },
+    ] }),
+  })
+  if (!raw || !plain) throw new Error("Missing catalog model")
+  const model = codexRawToProviderModel(raw)
+  expect(model.limits.max_context_window_tokens).toBe(1000000)
+  expect(codexModelContextWindow(model)).toEqual({ context_window: 272000, max_context_window: 1000000 })
+  expect(codexModelContextWindow(codexRawToProviderModel(plain))).toEqual({ context_window: 64000, max_context_window: 64000 })
 })
