@@ -9,48 +9,21 @@
  */
 import { test, expect, beforeEach, afterEach } from 'bun:test'
 import { Hono } from 'hono'
-import { initRepo } from '../src/repo/index.ts'
-import { __resetPlatformForTests, initRuntimeLocation, initSocketDial } from '@vibe-core/platform'
-import type { GitHubAccount, Repo, UpstreamRecord } from '../src/repo/types.ts'
+import { __resetPlatformForTests, initSocketDial } from '@vibe-core/platform'
+import type { GitHubAccount, UpstreamRecord } from '../src/repo/types.ts'
 import type { UserId } from '../src/repo/branded-ids.ts'
 import type { ProxyRecord } from '@vibe-core/proxy-repo'
+import { setupTestPlatform } from './_setup-platform.ts'
 import {
   githubAccountsRouter,
   type ViewCtx,
 } from '../src/control-plane/github-accounts/routes.ts'
 
-function inMemoryRepo() {
-  const accounts = new Map<string, GitHubAccount>()
-  let activeId: number | null = null
-  const activeByUser = new Map<string, number>()
-
-  const repo = {
-    github: {
-      listAccounts: async () => [...accounts.values()],
-      listAccountsByOwner: async (ownerId: string) =>
-        [...accounts.values()].filter((a) => a.ownerId === ownerId),
-      getAccount: async () => null,
-      saveAccount: async (userId: number, a: GitHubAccount) => { accounts.set(String(userId), a) },
-      deleteAccount: async () => { },
-      deleteAllAccounts: async () => { accounts.clear() },
-      getActiveId: async () => activeId,
-      setActiveId: async (id: number | null) => { activeId = id },
-      clearActiveId: async () => { activeId = null },
-      getActiveIdForUser: async (ownerId: string) => activeByUser.get(ownerId) ?? null,
-      setActiveIdForUser: async (ownerId: string, id: number) => { activeByUser.set(ownerId, id) },
-      clearActiveIdForUser: async (ownerId: string) => { activeByUser.delete(ownerId) },
-    },
-    // The enrichment loop looks the account's mirrored Copilot upstream row up
-    // to decide whether a chain is configured. This stub always misses, so
-    // every test that keeps it enriches through globalThis.fetch. The last
-    // three tests in this file re-call initRepo with a `getById` that does
-    // return a row, to reach the chain path.
-    upstreams: {
-      getById: async () => null,
-    },
-  } as unknown as Repo
-
-  return { repo, accounts, setActiveId: (id: number | null) => { activeId = id }, activeByUser }
+// The real repo over in-memory SQLite (setupTestPlatform) rather than a
+// hand-written fake, so upstream rows, proxies and dial backoffs behave as in
+// production.
+function testStore() {
+  return setupTestPlatform()
 }
 
 function buildApp(auth: ViewCtx) {
@@ -76,7 +49,7 @@ function ghAccount(over: Partial<GitHubAccount> & { userId?: number } = {}): Git
   } as GitHubAccount
 }
 
-let store: ReturnType<typeof inMemoryRepo>
+let store: ReturnType<typeof testStore>
 let originalFetch: typeof fetch
 
 beforeEach(() => {
@@ -84,10 +57,7 @@ beforeEach(() => {
   // carries across test files in one process; reset first so this file neither
   // inherits nor leaks a platform singleton. The enrichment loop resolves an
   // egress fetcher, which reads the runtime location, so set one for every test.
-  __resetPlatformForTests()
-  store = inMemoryRepo()
-  initRepo(store.repo)
-  initRuntimeLocation('bun')
+  store = testStore()
   originalFetch = globalThis.fetch
   // Shim: /user → 200 (token valid), /copilot_internal/user → quota json
   globalThis.fetch = (async (input: RequestInfo | URL) => {
@@ -141,7 +111,7 @@ test('admin self-view sees ALL accounts', async () => {
 test('active flag reflects activeIdForUser for non-admin', async () => {
   await store.repo.github.saveAccount(1, ghAccount({ userId: 1, ownerId: 'u1' }))
   await store.repo.github.saveAccount(2, ghAccount({ userId: 2, ownerId: 'u1' }))
-  store.activeByUser.set('u1', 2)
+  await store.repo.github.setActiveIdForUser('u1' as UserId, 2 as GitHubAccountId)
   const res = await buildApp({ authKind: 'session', userId: 'u1' }).request('/api/upstream-accounts')
   const body = await res.json() as any[]
   const a1 = body.find((b) => b.id === '1')
@@ -197,17 +167,9 @@ test('GET / with an unresolvable chain → 502, not token_valid:false', async ()
     proxyFallbackList: [{ id: 'px_gone' }],
   }
 
-  // Replace the inert `getById: () => null` stub with a row that DOES carry a
-  // chain, pointing at a proxy id the (empty) proxies table cannot resolve.
-  // `proxies.list` is what loadProxyCatalog reads to discover that miss.
-  initRepo({
-    ...store.repo,
-    upstreams: {
-      ...store.repo.upstreams,
-      getById: async (id: string) => (id === chained.id ? chained : null),
-    },
-    proxies: { ...store.repo.proxies, list: async () => [] },
-  })
+  // A stored row whose chain names a proxy id the (empty) proxies table
+  // cannot resolve.
+  await store.repo.upstreams.save(chained)
 
   await store.repo.github.saveAccount(42, ghAccount({ userId: 42, ownerId: 'u1' as UserId }))
 
@@ -242,31 +204,10 @@ function copilotRow(chain: UpstreamRecord['proxyFallbackList']): UpstreamRecord 
   }
 }
 
-/**
- * Installs `row` as the only upstream the route can find, plus the proxy and
- * backoff surfaces the dial path reads: `proxies.list` feeds `loadProxyCatalog`
- * (packages/dial/src/proxy-catalog.ts), and `proxyBackoffs.listForUpstream` is
- * read by `runFallbacks`' first pass whenever the chain holds a non-builtin id
- * (packages/dial/src/fetcher.ts). `recordDialFailure` and `recordDialSuccess`
- * are what that dialer calls on the two outcomes; a missing stub would only
- * `console.warn`, but the write is real behaviour so both are stubbed rather
- * than left to throw.
- */
-function useChainedRow(row: UpstreamRecord, proxies: ProxyRecord[]) {
-  initRepo({
-    ...store.repo,
-    upstreams: {
-      ...store.repo.upstreams,
-      getById: async (id: string) => (id === row.id ? row : null),
-    },
-    proxies: { ...store.repo.proxies, list: async () => proxies },
-    proxyBackoffs: {
-      ...store.repo.proxyBackoffs,
-      listForUpstream: async () => [],
-      recordDialFailure: async () => { },
-      recordDialSuccess: async () => { },
-    },
-  })
+/** Stores `row` and `proxies`; the route then resolves the chain from the real tables. */
+async function useChainedRow(row: UpstreamRecord, proxies: ProxyRecord[]) {
+  await store.repo.upstreams.save(row)
+  for (const proxy of proxies) await store.repo.proxies.save(proxy)
 }
 
 /**
@@ -306,7 +247,7 @@ test('a saved chain sends the enrichment calls through the resolved fetcher', as
   })
 
   const now = new Date().toISOString()
-  useChainedRow(copilotRow([{ id: 'px_local' }]), [
+  await useChainedRow(copilotRow([{ id: 'px_local' }]), [
     {
       id: 'px_local',
       name: 'local',
@@ -358,7 +299,7 @@ test('a row without a chain keeps the global fetch (no dial)', async () => {
     },
   })
 
-  useChainedRow(copilotRow([]), [])
+  await useChainedRow(copilotRow([]), [])
   await store.repo.github.saveAccount(42, ghAccount({ userId: 42, ownerId: 'u1' as UserId }))
 
   const res = await buildApp({ authKind: 'session', userId: 'u1' as UserId })

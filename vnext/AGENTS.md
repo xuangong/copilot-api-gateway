@@ -94,19 +94,39 @@ export const ADMIN_EMAILS: readonly string[] = ["zhangxian1124@gmail.com", "test
 
 ### 4.1 层次
 
-| 层 | 位置 | 跑法 | 用什么 |
+| 层 | 位置 / 命名 | 跑法 | 说明 |
 |---|---|---|---|
-| Unit / repo / route | `packages/*/tests/` `packages/*/__tests__/` | `bun test` (从 `vnext/`) | `bun:test` |
+| fast | 进程内的测试:纯单元、Hono `app.request`(含 `.e2e.`)、内存 SQLite(`.sqlite.`) | `bun run test:fast`(~80 s) | 本地改代码时的默认循环 |
+| slow | `.proc.test.ts`(起真实子进程)、`.d1.test.ts`(Miniflare)、`.workerd.test.ts` | `bun run test:slow`(~20 s) | 名字决定分层,见 `scripts/test-tiers/` |
+| research | `docs/superpowers/research/**/harness` | `bun run test:research` | 测量工具自身的测试 |
+| isolation | 每个 fast 文件单独一个进程 | `bun run test:isolation`(~25 s) | 抓“只在全量里能过”的测试(依赖别的文件留下的平台单例) |
 | Framework purity | `scripts/check-framework-purity.ts` | 自动被 `bun test` 前置 | 静态导入分析 |
 | SDK 集成 | 仓库根 `tests/sdk-*.test.ts` | 先另开 shell `bun run local`,再 `bun run test:integration:{openai,anthropic,gemini}` | 官方 SDK |
 | Parity(vNext ↔ 旧版) | `vnext/scripts/parity/*.test.ts` | 手动,需要 `PARITY_*` env | bun:test |
 | Wrangler dry-run | `bun run --filter '@vibe-llm/platform-cloudflare' deploy:dry` | CI 会跑 | wrangler |
 
+`bun test`(CI)仍然跑全部分层。本机 16 GB 内存在别的负载下,单进程全量偶尔会被 SIGKILL(exit 137),这时分层跑。
+
+### 4.1.1 写测试的约定
+
+- **平台**:每个测试文件自己调用 `setupTestPlatform()`(`packages/gateway/tests/_setup-platform.ts`),不要依赖别的文件留下的 repo / background / cache。`test:isolation` 会抓出来。
+- **Repo**:用 `setupTestPlatform()` 返回的真实内存 SQLite repo,把行存进去,而不是手写 `… as unknown as Repo` 的假 repo。`tests/architecture/repo-fakes-ratchet.test.ts` 只允许这个数量下降;迁移一个文件就把 `MAX` 调低。
+- **共享工具** `@vibe-core/test-utils`:`jsonResponse`、`sseResponse`、`collect`、`readBodyText`、`recordingFetcher`(可注入的 fetcher)、`withMockedFetch`、`createFetchStub`(文件顶层调用一次,每个测试后自动恢复全局 fetch)。不要再手写 `globalThis.fetch = …` 加手动恢复。
+- **会起子进程的测试**必须命名为 `.proc.test.ts`(守卫:`scripts/test-tiers/tiers.test.ts`)。
+- **时间边界**:构造 JWT / 过期时间这类用例时留足余量,不要用 `now + 1` 这种跨一秒就变合法的值。
+- **测试要能因为有意义的原因失败**:不复述常量、不写被别的用例完全覆盖的用例;同形重复的用例改成一张表。
+
+### 4.1.2 架构守卫(`packages/gateway/tests/architecture/`)
+
+- `github-host-boundary`:gateway 源码不得写死 github.com 的 REST / OAuth 地址;GitHub 相关调用全部走 `@vibe-llm/provider-copilot/github`(按账号的 host,支持 `*.ghe.com`)。
+- `provider-plugin-contract`:每个内置 provider 插件必须声明 `publicConfig`(Dashboard 能看到哪些配置字段由 provider 自己决定,凭据打码)。通用创建/探测路由按插件的 `normalizeConfig` / `probeConfig` 分派,不要在 gateway 里按 provider kind 写分支。
+- `repo-fakes-ratchet`:见上。
+
 ### 4.2 硬性
 
-- **PR 前必过 `bun run ci:local`** —— 打包了 purity + typecheck + test + lint + build:ui + wrangler dry-run。
+- **PR 前必过 `bun run ci:local`** —— 打包了 purity + typecheck + test + test:isolation + lint + build:ui + wrangler dry-run。
 - **新功能 = 新测试**。特别是 repo 层新分支、control-plane route、翻译器改动。
-- **不要 mock `bun:sqlite`**。Bun 1.3 `mock.module()` 会跨文件泄漏(见 memory `bun_mock_module_unrestorable.md`),用真实 `SqliteRepo` + 临时 db 文件。
+- **不要 mock `bun:sqlite`**。Bun 1.3 `mock.module()` 会跨文件泄漏(见 memory `bun_mock_module_unrestorable.md`),用真实 `SqliteRepo`(`setupTestPlatform()` 的内存库)。
 - **不要 mock 数据库调用做"通过"**。历史事故:mock 通过、prod migration 挂。测 repo 就用真实 sqlite。
 - SDK 集成测试改动大时,同时对 OpenAI + Anthropic + Gemini 三边都跑一遍,防止翻译层单边回归。
 
@@ -158,3 +178,13 @@ export const ADMIN_EMAILS: readonly string[] = ["zhangxian1124@gmail.com", "test
 - **D1 migration drift**:先 push 代码后跑 migration → schema 报错。永远 `deploy:full`
 - **`ownerId ?? ''` 陷阱**:任何 optional ownerId 的分支都要考虑 admin path 传 `undefined` 的情况
 - **`bun test` 里 `mock.module`**:不要用,写测试用真实依赖 + 依赖注入
+
+## 7. 跟进参考项目(copilot-gateway)
+
+参考项目在 `../copilot-gateway`。跟进方法见 `docs/superpowers/plans/2026-11-19-reference-gap-adoption.md`:
+
+- 参考的代码形状不是规格,它**为什么改**才是:先读提交说明、PR 和测试,写下“输入 → 期望输出”的验收标准。
+- 验收测试必须在旧代码上失败、在新代码上通过;测试里注明参考提交号。
+- 修这一类问题,而不只是这一个输入(共享函数 + 守卫测试)。
+- 改所有用户默认行为的是**策略**,不是 bug,列进“待决定”,不要顺手改。
+- 上次对齐到参考 `ab7d27239`(#751,2026-11-19)。

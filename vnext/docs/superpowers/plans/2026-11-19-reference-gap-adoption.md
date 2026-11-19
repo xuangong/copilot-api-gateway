@@ -83,12 +83,11 @@ Status: `[x]` done (commit), `[ ]` adopt, `[-]` deferred with reason.
   its source corrupted compact replay / repeated dispatch. Accept: no object
   in a translated target is reachable from its source or a previous target
   (nine pairs).
-- [ ] #548 bounded namespace name allocation (performance only; next batch). Accept: allocation work linear in
+- [x] (f62a1517) #548 bounded namespace name allocation. Accept: allocation work linear in
   tools; names unique and ≤ 64 chars.
-- [ ] #658 sparse/interleaved Messages streams in the web-search shim. Why:
+- [x] (9aff5e4f) #658 sparse/interleaved Messages streams in the web-search shim. Why:
   vLLM-style streams omit usage; translated streams overlap blocks. Accept:
   overlapping blocks pass through the shim unchanged; missing usage tolerated.
-  Not started: larger shim change, next batch.
 - [-] #582 serialize overlapping content blocks for specific SDK user agents —
   feature flag keyed on client UA; revisit after #658.
 - [-] #724 only `max_completion_tokens` on Chat targets — changes the wire for
@@ -180,18 +179,30 @@ provider-copilot; ~27 gateway files branch on provider kind).
   `ci:local`). It found three files that passed only because earlier files left
   the platform initialized (`compact-window`, `attempt`, `stream-failure-wire`);
   each now calls `setupTestPlatform()`.
-- [ ] Shared test-utils package (`jsonResponse`, `sseResponse`, stream readers,
-  `withMockedFetch` with a lock and automatic restore, recording fetcher,
-  stub upstream/model); migrate call sites incrementally.
-- [ ] `fakeRepo(overrides)` over the real in-memory SQLite repo instead of
-  hand-written no-op repos.
+- [x] (c2b8bd96) Shared `@vibe-core/test-utils` (`jsonResponse`, `sseResponse`,
+  `collect`, `readBodyText`, `recordingFetcher`, `withMockedFetch`,
+  per-file `createFetchStub`). Migrated gateway's `_stub-global-fetch.ts` and
+  the 18 exact-duplicate helper definitions; the audit's larger counts were
+  name/shape variants, left for incremental migration when files are touched.
+- [x] Real repo instead of hand-written fakes: `copilot-quota` and
+  `github-accounts` tests now store rows in `setupTestPlatform()`'s SQLite
+  repo (−100 lines; chain tests still fail under the bypass mutation). A
+  ratchet test (`repo-fakes-ratchet`, MAX 77) stops new `as unknown as Repo`
+  fakes; the rest migrate when their files are touched. No `fakeRepo()`
+  builder was needed — storing rows covered every override.
 - [x] (0192bf96) Move Copilot/GitHub ownership (host helpers, token exchange,
   account-type detection, management-plane calls, device-flow requests) into
   `@vibe-llm/provider-copilot/github`; gateway copies and dead constants
   removed; one table test in provider-copilot covers every call × host.
-- [ ] Generic provider plugin hooks (credential, public DTO, export config) to
-  replace per-kind branches in gateway; then provider-owned dashboard form
-  descriptors.
+- [x] (b8818763) Provider plugin hooks `publicConfig` / `normalizeConfig` /
+  `probeConfig` replace the gateway's per-kind switches for the dashboard DTO,
+  generic create/edit validation and draft probing; SDF validation moved into
+  provider-sdf. Pinned by a secret-in-every-field characterization test and an
+  architecture test. Remaining per-kind code is Copilot's genuinely special
+  credential flows (request-supplied fallback token, session prewarm) and
+  import/export opaque-compatibility parsing.
+- [-] Provider-owned dashboard form descriptors — UI rewrite of
+  `UpstreamFormModal`; worth doing with the next provider addition.
 - [-] Retire the root v1 `src/` — confirm nothing deploys the legacy worker
   first.
 
@@ -208,6 +219,11 @@ they were updated to the adopted contract (`60892d6c`, `88e09031`).
 
 A single-process `bun test` over all 740 files was SIGKILLed twice on this
 16 GB machine under other load; the tiers ran to completion.
+
+## Conventions
+
+The resulting test conventions and architecture guards are documented in
+`vnext/AGENTS.md` §4 and §7.
 
 ## Decisions needed
 

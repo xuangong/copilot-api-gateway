@@ -6,49 +6,20 @@
  */
 import { test, expect, beforeEach, afterEach } from 'bun:test'
 import { Hono } from 'hono'
-import { initRepo } from '../src/repo/index.ts'
-import { __resetPlatformForTests, initRuntimeLocation } from '@vibe-core/platform'
-import type { GitHubAccount, Repo, UpstreamRecord } from '../src/repo/types.ts'
-import type { UserId } from '../src/repo/branded-ids.ts'
+import { __resetPlatformForTests } from '@vibe-core/platform'
+import type { GitHubAccount, UpstreamRecord } from '../src/repo/types.ts'
+import type { GitHubAccountId, UserId } from '../src/repo/branded-ids.ts'
+import { setupTestPlatform } from './_setup-platform.ts'
 import {
   copilotQuotaRouter,
   type CopilotQuotaAuthCtx,
 } from '../src/control-plane/copilot-quota/routes.ts'
 
-function inMemoryRepo() {
-  const accounts = new Map<string, GitHubAccount>()
-  const activeByUser = new Map<string, number>()
-
-  const repo = {
-    github: {
-      listAccounts: async () => [...accounts.values()],
-      listAccountsByOwner: async (ownerId: string) =>
-        [...accounts.values()].filter((a) => a.ownerId === ownerId),
-      getAccount: async (userId: number, ownerId?: string) => {
-        const a = accounts.get(String(userId))
-        if (!a) return null
-        if (ownerId && a.ownerId !== ownerId) return null
-        return a
-      },
-      saveAccount: async (userId: number, a: GitHubAccount) => { accounts.set(String(userId), a) },
-      deleteAccount: async () => { },
-      deleteAllAccounts: async () => { accounts.clear() },
-      getActiveId: async () => null,
-      setActiveId: async () => { },
-      clearActiveId: async () => { },
-      getActiveIdForUser: async (ownerId: string) => activeByUser.get(ownerId) ?? null,
-      setActiveIdForUser: async (ownerId: string, id: number) => { activeByUser.set(ownerId, id) },
-      clearActiveIdForUser: async (ownerId: string) => { activeByUser.delete(ownerId) },
-    },
-    // resolveControlPlaneFetcher looks the row up to decide whether a chain is
-    // configured. These tests never create one, so every lookup misses and the
-    // relay keeps using globalThis.fetch.
-    upstreams: {
-      getById: async () => null,
-    },
-  } as unknown as Repo
-
-  return { repo, accounts, activeByUser }
+// The real repo over in-memory SQLite (setupTestPlatform), not a hand-written
+// fake: a fake drifts from the Repo contract, e.g. ignoring the owner in
+// getAccount's (user_id, owner_id) key.
+function testStore() {
+  return setupTestPlatform()
 }
 
 function buildApp(auth: CopilotQuotaAuthCtx) {
@@ -72,7 +43,7 @@ function ghAccount(userId: number, ownerId: string, token = 'gh_token'): GitHubA
   } as GitHubAccount
 }
 
-let store: ReturnType<typeof inMemoryRepo>
+let store: ReturnType<typeof testStore>
 let originalFetch: typeof fetch
 
 beforeEach(() => {
@@ -80,10 +51,7 @@ beforeEach(() => {
   // carries across test files in one process; reset first so this file neither
   // inherits nor leaks a platform singleton. The relay resolves an egress
   // fetcher, which reads the runtime location, so set one for every test.
-  __resetPlatformForTests()
-  store = inMemoryRepo()
-  initRepo(store.repo)
-  initRuntimeLocation('bun')
+  store = testStore()
   originalFetch = globalThis.fetch
   globalThis.fetch = (async (input: RequestInfo | URL) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
@@ -113,7 +81,7 @@ test('GET /api/copilot-quota with no connected account → 502', async () => {
 
 test('GET /api/copilot-quota returns quota for active account', async () => {
   await store.repo.github.saveAccount(1, ghAccount(1, 'u1'))
-  store.activeByUser.set('u1', 1)
+  await store.repo.github.setActiveIdForUser('u1' as UserId, 1 as GitHubAccountId)
   const res = await buildApp({ userId: 'u1' }).request('/api/copilot-quota')
   expect(res.status).toBe(200)
   const body = await res.json() as { remaining: number }
@@ -122,7 +90,7 @@ test('GET /api/copilot-quota returns quota for active account', async () => {
 
 test('effectiveUserId overrides userId (shared-view target)', async () => {
   await store.repo.github.saveAccount(5, ghAccount(5, 'owner'))
-  store.activeByUser.set('owner', 5)
+  await store.repo.github.setActiveIdForUser('owner' as UserId, 5 as GitHubAccountId)
   const res = await buildApp({ userId: 'viewer', effectiveUserId: 'owner' })
     .request('/api/copilot-quota')
   expect(res.status).toBe(200)
@@ -130,7 +98,7 @@ test('effectiveUserId overrides userId (shared-view target)', async () => {
 
 test('GET /api/copilot-quota propagates GitHub error status', async () => {
   await store.repo.github.saveAccount(1, ghAccount(1, 'u1'))
-  store.activeByUser.set('u1', 1)
+  await store.repo.github.setActiveIdForUser('u1' as UserId, 1 as GitHubAccountId)
   globalThis.fetch = (async () =>
     new Response('forbidden', { status: 403 })) as unknown as typeof fetch
   const res = await buildApp({ userId: 'u1' }).request('/api/copilot-quota')
@@ -176,22 +144,12 @@ test('GET /api/copilot-quota with an unresolvable chain → 502 naming the proxy
     proxyFallbackList: [{ id: 'px_gone' }],
   }
 
-  // Replace the inert `getById: () => null` stub with a row that DOES carry a
-  // chain, pointing at a proxy id the (empty) proxies table cannot resolve.
-  // `proxies.list` feeds loadProxyCatalog; `proxyBackoffs.listForUpstream` is
-  // read by the dialer's first pass because the chain holds a non-direct id.
-  initRepo({
-    ...store.repo,
-    upstreams: {
-      ...store.repo.upstreams,
-      getById: async (id: string) => (id === chained.id ? chained : null),
-    },
-    proxies: { ...store.repo.proxies, list: async () => [] },
-    proxyBackoffs: { ...store.repo.proxyBackoffs, listForUpstream: async () => [] },
-  })
+  // A stored row whose chain names a proxy id the (empty) proxies table
+  // cannot resolve.
+  await store.repo.upstreams.save(chained)
 
   await store.repo.github.saveAccount(42, ghAccount(42, 'u1'))
-  store.activeByUser.set('u1', 42)
+  await store.repo.github.setActiveIdForUser('u1' as UserId, 42 as GitHubAccountId)
 
   const res = await buildApp({ userId: 'u1' as UserId }).request('/api/copilot-quota')
   expect(res.status).toBe(502)
@@ -206,10 +164,9 @@ test('GET /api/copilot-quota with an unresolvable chain → 502 naming the proxy
  * ownerId was carried through.
  *
  * Verified by mutation: dropping `account.ownerId ?? ''` to a bare `''` builds
- * `up_copilot_global_7`, which this stub answers with null, and the route then
+ * `up_copilot_global_7`, which is not stored, and the route then
  * relays over the ambient fetch and 200s. Every other admin case in this file
- * survives that mutation, because they all leave `getById` returning null for
- * both ids.
+ * survives that mutation, because none of them stores a chained row.
  */
 test('GET /api/admin/copilot-quota/:id resolves the chain of the account owner', async () => {
   const now = new Date().toISOString()
@@ -228,15 +185,7 @@ test('GET /api/admin/copilot-quota/:id resolves the chain of the account owner',
     proxyFallbackList: [{ id: 'px_gone' }],
   }
 
-  initRepo({
-    ...store.repo,
-    upstreams: {
-      ...store.repo.upstreams,
-      getById: async (id: string) => (id === chained.id ? chained : null),
-    },
-    proxies: { ...store.repo.proxies, list: async () => [] },
-    proxyBackoffs: { ...store.repo.proxyBackoffs, listForUpstream: async () => [] },
-  })
+  await store.repo.upstreams.save(chained)
 
   await store.repo.github.saveAccount(7, ghAccount(7, 'u2'))
 
@@ -261,7 +210,7 @@ test('quota for a ghe.com account is fetched from the tenant API, for the user a
     return new Response('not found', { status: 404 })
   }) as unknown as typeof fetch
   await store.repo.github.saveAccount(9, { ...ghAccount(9, 'u1'), githubHost: 'acme.ghe.com' })
-  store.activeByUser.set('u1', 9)
+  await store.repo.github.setActiveIdForUser('u1' as UserId, 9 as GitHubAccountId)
 
   const own = await buildApp({ userId: 'u1' }).request('/api/copilot-quota')
   expect(own.status).toBe(200)
