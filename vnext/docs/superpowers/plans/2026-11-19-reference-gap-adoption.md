@@ -90,8 +90,7 @@ Status: `[x]` done (commit), `[ ]` adopt, `[-]` deferred with reason.
   overlapping blocks pass through the shim unchanged; missing usage tolerated.
 - [-] #582 serialize overlapping content blocks for specific SDK user agents —
   feature flag keyed on client UA; revisit after #658.
-- [-] #724 only `max_completion_tokens` on Chat targets — changes the wire for
-  every custom Chat upstream; Copilot already handled. Needs a decision.
+- [-] #724 only `max_completion_tokens` on Chat targets — not followed (see Decisions 6).
 - [-] #711 multiple choices — reference intent for single-choice clients unclear.
 - [-] #594/#599/#673 shared stream/input IR — architectural rewrite of the
   pairwise translators; see Architecture.
@@ -230,7 +229,7 @@ The resulting test conventions and architecture guards are documented in
 1. #614 selective inline-system downgrade: **adopted**, on for Claude Code and Copilot (`fa444409`).
 2. #572 / #601: **follow** — done (`fa444409`).
 3. #543 Lite tool positions: **not followed**; keep hoisting caller `additional_tools`.
-4. #619 hosted tools on non-Responses targets: under analysis.
-5. #713 `/v1beta/models` shape: pending; reference reason is consistency (shape chosen by client identity), not a defect.
-6. #724 `max_completion_tokens`: pending; DeepSeek (production custom upstream) documents only `max_tokens`.
+4. #619 hosted tools on non-Responses targets: **keep the split behavior** — offered hosted tools are dropped (Codex attaches `web_search` to most requests), forcing one through `tool_choice` / required `allowed_tools` is rejected. Measured: this was already the behavior; now pinned by `translate/tests/shared/target-capability-policy.test.ts`. No drop log (it would fire on most Codex requests).
+5. #713 `/v1beta/models` shape: **not followed**. The reference's reason is consistency (shape chosen by client identity), not a defect; switching would hand non-SDK Gemini-style callers an OpenAI-shaped list.
+6. #724 `max_completion_tokens`: **not followed**. DeepSeek (the only production custom upstream) documents only `max_tokens` and would fall back to its 8K default; no environment has an Azure upstream. Copilot's gpt-5 rename stays in its provider; a future provider needing the modern spelling renames at its own boundary. Pinned by the same policy test.
 7. Catalog revision: **bumped to 8** (`fa444409`).
