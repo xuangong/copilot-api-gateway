@@ -228,7 +228,7 @@ function handleContentBlockStart(ev: ContentBlockStartLike, state: State): Respo
       const outputIndex = state.outputIndex++
       const custom = state.customToolNames.includes(tb.name)
       const itemId = `${custom ? 'ct' : 'fc'}_${outputIndex}`
-      state.blockMap.set(ev.index, { kind: 'tool_use', outputIndex, itemId, toolCallId: tb.id, name: tb.name, args: '', initialArgs: tb.input && Object.keys(tb.input).length ? JSON.stringify(tb.input) : undefined })
+      state.blockMap.set(ev.index, { kind: 'tool_use', outputIndex, itemId, toolCallId: tb.id, name: tb.name, args: '', initialArgs: custom ? (tb.input && Object.keys(tb.input).length ? JSON.stringify(tb.input) : undefined) : JSON.stringify(tb.input ?? {}) })
       const item: ResponseOutputItem = {
         type: custom ? 'custom_tool_call' : 'function_call',
         id: itemId,
