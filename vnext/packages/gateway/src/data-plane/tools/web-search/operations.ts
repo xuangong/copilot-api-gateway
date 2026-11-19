@@ -592,6 +592,37 @@ type FetchAndCacheResult =
 
 export type WebSearchPageFetchMap = Map<string, FetchAndCacheResult>
 
+const comparablePageUrl = (value: string): string => {
+  try {
+    const url = new URL(value)
+    // Fragments are never sent to the server and providers routinely omit them
+    // from the URL they report; parsing also normalizes a bare origin's slash.
+    url.hash = ''
+    return url.href
+  } catch {
+    return value
+  }
+}
+
+// Claims one provider outcome for a requested URL: exact match first, then the
+// canonical form. Claims are one-to-one so a duplicate request cannot consume
+// the same outcome twice.
+// Adapted from reference copilot-gateway 3cccbef74 (#671).
+const claimFetchOutcome = <Outcome extends { url: string }>(
+  outcomes: readonly Outcome[],
+  claimed: Set<number>,
+  requestedUrl: string,
+): Outcome | undefined => {
+  let index = outcomes.findIndex((outcome, i) => !claimed.has(i) && outcome.url === requestedUrl)
+  if (index === -1) {
+    const comparable = comparablePageUrl(requestedUrl)
+    index = outcomes.findIndex((outcome, i) => !claimed.has(i) && comparablePageUrl(outcome.url) === comparable)
+  }
+  if (index === -1) return undefined
+  claimed.add(index)
+  return outcomes[index]
+}
+
 const runBatchFetch = async (
   needFetch: string[],
   session: WebSearchExecutionSession,
@@ -628,15 +659,39 @@ const runBatchFetch = async (
       return perUrl
     }
 
-    const failureByUrl = new Map(result.failures.map(f => [f.url, f]))
-    const pageByUrl = new Map(result.pages.map(p => [p.url, p]))
+    type Failure = typeof result.failures[number]
+    type Page = typeof result.pages[number]
+    type Outcome = { type: 'failure'; value: Failure } | { type: 'page'; value: Page }
+    const outcomes = new Map<string, Outcome>()
+    const unmatchedUrls: string[] = []
+    const claimedFailures = new Set<number>()
+    const claimedPages = new Set<number>()
     for (const url of needFetch) {
-      const failure = failureByUrl.get(url)
-      if (failure) {
+      const matchedFailure = claimFetchOutcome(result.failures, claimedFailures, url)
+      if (matchedFailure !== undefined) { outcomes.set(url, { type: 'failure', value: matchedFailure }); continue }
+      const matchedPage = claimFetchOutcome(result.pages, claimedPages, url)
+      if (matchedPage !== undefined) { outcomes.set(url, { type: 'page', value: matchedPage }); continue }
+      unmatchedUrls.push(url)
+    }
+    // A provider may report the post-redirect URL instead of the one it was
+    // asked for. Pair it only when exactly one request and one outcome remain;
+    // guessing across several redirects could attach the wrong page.
+    const remainingFailures = result.failures.filter((_, i) => !claimedFailures.has(i))
+    const remainingPages = result.pages.filter((_, i) => !claimedPages.has(i))
+    if (unmatchedUrls.length === 1 && remainingFailures.length + remainingPages.length === 1) {
+      const url = unmatchedUrls[0]!
+      outcomes.set(url, remainingFailures.length === 1
+        ? { type: 'failure', value: remainingFailures[0]! }
+        : { type: 'page', value: remainingPages[0]! })
+    }
+    for (const url of needFetch) {
+      const outcome = outcomes.get(url)
+      if (outcome?.type === 'failure') {
+        const failure = outcome.value
         perUrl.set(url, { ok: false, output: openFailedText(url, failure.message ?? failure.errorCode) })
         continue
       }
-      const page = pageByUrl.get(url)
+      const page = outcome?.value as Page | undefined
       if (!page) {
         perUrl.set(url, { ok: false, output: openFailedText(url, 'No page returned') })
         continue

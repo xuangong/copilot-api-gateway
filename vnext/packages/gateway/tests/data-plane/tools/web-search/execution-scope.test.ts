@@ -472,6 +472,46 @@ test("page cache excess latches fatal invocation failure before publication or l
   await scope.settled()
 })
 
+// Adapted from reference copilot-gateway 3cccbef74 (#671): providers report the
+// canonical or post-redirect URL, so a successful fetch of `https://openai.com`
+// used to surface as "No page returned" when the provider said `https://openai.com/`.
+// Outcomes are claimed one-to-one: exact URL, then canonical (fragment dropped,
+// parsed form), then a single leftover request against a single leftover outcome.
+const openPages = async (requested: string[], reported: Array<{ url: string; content: string }>) => {
+  const scope = createWebSearchExecutionScope({ ...session, getProvider: async () => configured(provider({
+    fetchPage: async () => ({ type: "ok", pages: reported.map(page => ({ ...page, title: "t", truncated: false, fullContentBytes: page.content.length })), failures: [] }),
+  })) })
+  const batch = scope.prepare(scope.admit({ open: requested.map(ref_id => ({ ref_id })) })).start()
+  const irs = await Promise.all(batch.calls.map(call => call.result()))
+  await scope.settled()
+  return irs
+}
+
+test("open_page matches a provider URL normalized with a trailing slash or fragment", async () => {
+  const [ir] = await openPages(["https://openai.com"], [{ url: "https://openai.com/", content: "body" }])
+  expect(ir?.action).toEqual({ type: "open_page", url: "https://openai.com" })
+  expect(ir?.results[0]).toMatchObject({ url: "https://openai.com", snippet: "body" })
+  const [withFragment] = await openPages(["https://a.example/p#section"], [{ url: "https://a.example/p", content: "frag" }])
+  expect(withFragment?.results[0]).toMatchObject({ url: "https://a.example/p#section", snippet: "frag" })
+})
+
+test("open_page pairs one remaining redirected page after exact matches are claimed", async () => {
+  const irs = await openPages(["https://example.com/page", "https://www.openai.com"], [
+    { url: "https://example.com/page", content: "exact" },
+    { url: "https://openai.com/", content: "redirected" },
+  ])
+  expect(irs[0]?.results[0]).toMatchObject({ url: "https://example.com/page", snippet: "exact" })
+  expect(irs[1]?.results[0]).toMatchObject({ url: "https://www.openai.com", snippet: "redirected" })
+})
+
+test("open_page does not guess among several redirected pages", async () => {
+  const irs = await openPages(["https://www.one.test", "https://www.two.test"], [
+    { url: "https://one.test/", content: "one" },
+    { url: "https://two.test/", content: "two" },
+  ])
+  for (const ir of irs) expect(ir.results[0]?.snippet).toContain("No page returned")
+})
+
 test("page bytes admit actual normalized title graph instead of trusting source size", async () => {
   const scope = createWebSearchExecutionScope({ ...session, getProvider: async () => configured(provider({ fetchPage: async ({ urls }) => ({ type: "ok", pages: urls.map(url => ({ url, title: "t".repeat(1000), content: "x", truncated: false, fullContentBytes: 1 })), failures: [] }) })) }, { pageBytes: 1000 })
   const batch = scope.prepare(scope.admit({ open: [{ ref_id: "https://a.example" }] })).start()
