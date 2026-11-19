@@ -55,6 +55,38 @@ test('claude-opus-4-1-20250805 pricing', () => {
   })
 })
 
+// Reference copilot-gateway fde457ebd (#715) and its claude-code pricing table:
+// these catalog ids were unpriced, so their usage cost showed as unknown.
+// Cache write is the 5-minute rate (vNext has one write slot); Haiku 5.5's
+// >100k-input long-context tier is not modelled (flat ModelPricing), so the
+// base tier is used.
+test('claude-sonnet-5-5 pricing (cache reads cut to $0.10, distinct from Sonnet 5)', () => {
+  expect(pricingForClaudeCodeModelKey('claude-sonnet-5-5')).toEqual({
+    input: 2,
+    input_cache_read: 0.1,
+    input_cache_write: 2.5,
+    output: 10,
+  })
+})
+
+test('claude-haiku-5-5 pricing (base tier)', () => {
+  expect(pricingForClaudeCodeModelKey('claude-haiku-5-5')).toEqual({
+    input: 0.1,
+    input_cache_read: 0.01,
+    input_cache_write: 0.125,
+    output: 0.5,
+  })
+})
+
+test('claude-fable-5-1 pricing (cache reads cut to $0.25, distinct from Fable 5)', () => {
+  expect(pricingForClaudeCodeModelKey('claude-fable-5-1')).toEqual({
+    input: 10,
+    input_cache_read: 0.25,
+    input_cache_write: 12.5,
+    output: 50,
+  })
+})
+
 test('unknown model → null', () => {
   expect(pricingForClaudeCodeModelKey('claude-nonexistent')).toBeNull()
 })
