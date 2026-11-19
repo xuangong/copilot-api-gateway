@@ -35,6 +35,7 @@ import { initCatalogTestRepo as initRepo } from '../helpers/catalog-test-repo.ts
 import { initBackground, initRuntimeLocation, __resetPlatformForTests } from '@vibe-core/platform'
 import type { Repo, UpstreamRecord } from '../../src/repo/types.ts'
 import type { DataPlaneAuthCtx } from '../../src/data-plane/models/routes.ts'
+import { readBodyText as readSSEText } from '@vibe-core/test-utils'
 
 const env = {} as never
 const MODEL_ID = 'my-llm-gemini-to-resp'
@@ -155,18 +156,6 @@ async function postGemini(
     body: JSON.stringify(body),
   })
   return app.fetch(req, env)
-}
-
-async function readSSEText(res: Response): Promise<string> {
-  const reader = res.body?.getReader()
-  if (!reader) return ''
-  const decoder = new TextDecoder()
-  let out = ''
-  for (;;) {
-    const { value, done } = await reader.read()
-    if (done) return out
-    if (value) out += decoder.decode(value, { stream: true })
-  }
 }
 
 test('gemini client → responses upstream (non-streaming): returns gemini JSON; upstream URL is /responses', async () => {

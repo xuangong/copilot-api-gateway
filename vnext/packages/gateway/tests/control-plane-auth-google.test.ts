@@ -15,6 +15,7 @@ import type {
 import { authRouter } from '../src/control-plane/auth/routes.ts'
 import { setGoogleFetcherForTest } from '../src/control-plane/auth/google-routes.ts'
 import { resetAuthStoresForTest, saveOAuthState } from '../src/control-plane/auth/stores.ts'
+import { jsonResponse as jsonResp } from '@vibe-core/test-utils'
 
 function inMemoryRepo() {
   const users = new Map<string, User>()
@@ -84,12 +85,6 @@ function buildApp(env: { GOOGLE_CLIENT_ID?: string; GOOGLE_CLIENT_SECRET?: strin
   })
   app.route('/auth', authRouter)
   return app
-}
-
-function jsonResp(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status, headers: { 'content-type': 'application/json' },
-  })
 }
 
 let store: ReturnType<typeof inMemoryRepo>

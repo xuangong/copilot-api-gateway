@@ -10,7 +10,10 @@ import { syncManagementRouter } from "../src/control-plane/sync/routes"
 import { onConfigurationImported } from "../src/sync/hooks"
 import { syncDocument } from "../src/sync/protocol"
 import type { SessionToken, UpstreamId, UserId } from "../src/repo/branded-ids"
-import { realFetch, stubGlobalFetch } from "./_stub-global-fetch"
+import { createFetchStub } from '@vibe-core/test-utils'
+
+// Restores the global fetch after every test in this file.
+const stubGlobalFetch = createFetchStub()
 
 const owner = "device-owner" as UserId
 const other = "device-other" as UserId
@@ -41,20 +44,20 @@ beforeEach(async () => {
     await repo.sessions.create({ token: token as SessionToken, userId: userId as UserId, createdAt: stamp, expiresAt: "2099-01-01T00:00:00.000Z" })
   }
   central = { entries: [entry("up_a"), entry("up_b")], mode: "ok", calls: 0 }
-  stubGlobalFetch(async (_input, init) => {
+  stubGlobalFetch(async (input) => {
     central.calls++
     if (central.mode === "down") throw new Error("network down")
     if (central.mode === "redirect") return new Response(null, { status: 302, headers: { location: "https://evil.example/" } })
     if (central.mode === "error") return new Response("boom", { status: 500 })
     if (central.mode === "generic401") return new Response(null, { status: 401 })
-    if (central.mode === "revoked" || new Headers(init?.headers).get("authorization") !== `Bearer ${secret}`) return new Response('{"error":{"code":"invalid_device"}}', { status: 401 })
+    if (central.mode === "revoked" || input.headers.get("authorization") !== `Bearer ${secret}`) return new Response('{"error":{"code":"invalid_device"}}', { status: 401 })
     return Response.json({ version: 1, deviceId, upstreams: central.entries })
   })
   app = new Hono()
   app.use("*", sessionAuthMiddleware)
   app.route("/api/sync", syncManagementRouter)
 })
-afterEach(() => { globalThis.fetch = realFetch; db.close(); __resetPlatformForTests() })
+afterEach(() => { db.close(); __resetPlatformForTests() })
 
 function call(method: string, body?: unknown, user: UserId = owner, path = "/source") {
   return app.request(`http://device.local/api/sync${path}`, { method, headers: { authorization: `Bearer ${tokens[user]}`, "content-type": "application/json" },

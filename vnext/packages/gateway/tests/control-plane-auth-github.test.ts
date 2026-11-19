@@ -21,7 +21,11 @@ import type {
 } from '../src/repo/types.ts'
 import { authRouter, type AuthCtx } from '../src/control-plane/auth/routes.ts'
 import { copilotUpstreamRowId } from '../src/control-plane/lib/github.ts'
-import { realFetch, stubGlobalFetch } from './_stub-global-fetch.ts'
+import { createFetchStub } from '@vibe-core/test-utils'
+import { jsonResponse as jsonResp } from '@vibe-core/test-utils'
+
+// Restores the global fetch after every test in this file.
+const stubGlobalFetch = createFetchStub()
 
 interface GhStore {
   accountsByOwner: Map<string, Map<number, GitHubAccount>>
@@ -116,12 +120,6 @@ function buildApp(auth?: AuthCtx) {
   return app
 }
 
-function jsonResp(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status, headers: { 'content-type': 'application/json' },
-  })
-}
-
 const J = { 'content-type': 'application/json' }
 
 /** A /copilot_internal/v2/token payload; `api` is the advertised data plane. */
@@ -151,7 +149,6 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  globalThis.fetch = realFetch
   store.db.close()
 })
 
@@ -221,7 +218,7 @@ test('POST /github/poll complete saves account + mirrors upstream', async () => 
   // previous two-seam setup produced.
   stubGlobalFetch(async (input) => {
     call += 1
-    const url = typeof input === 'string' ? input : input.toString()
+    const url = input.url
     if (url.includes('/oauth/access_token')) {
       return jsonResp({ access_token: 'gho_abc' })
     }
@@ -510,7 +507,7 @@ test('POST /github/poll routes all three outbound calls through the resolved fet
 test('a successful device-flow login persists the submitted chain', async () => {
   const r = await realRepo()
   stubGlobalFetch(async (input) => {
-    const url = String(input)
+    const url = input.url
     if (url.includes('/oauth/access_token')) return jsonResp({ access_token: 'gho_abc' })
     if (url.includes('/copilot_internal/v2/token')) return jsonResp(copilotTokenBody())
     if (url.includes('/user')) {
@@ -579,7 +576,7 @@ test('a re-login without a chain keeps the chain already on the row', async () =
   const r = await realRepo()
   await seedChainedCopilotRow(r)
   stubGlobalFetch(async (input) => {
-    const url = String(input)
+    const url = input.url
     if (url.includes('/oauth/access_token')) return jsonResp({ access_token: 'gho_abc' })
     if (url.includes('/copilot_internal/v2/token')) return jsonResp(copilotTokenBody())
     if (url.includes('/user')) {
@@ -608,7 +605,7 @@ test('a re-login without a chain keeps the chain already on the row', async () =
 test('POST /github with a ghe.com host starts the device flow on the tenant', async () => {
   const urls: string[] = []
   stubGlobalFetch(async (input) => {
-    urls.push(String(input))
+    urls.push(input.url)
     return jsonResp({
       device_code: 'dev123', user_code: 'ABCD-EFGH', verification_uri: 'https://acme.ghe.com/login/device',
       expires_in: 900, interval: 5,
@@ -637,7 +634,7 @@ test('POST /github rejects a host that is neither github.com nor *.ghe.com befor
 test('POST /github/poll with a ghe.com host talks to the tenant and stores host + data plane', async () => {
   const urls: string[] = []
   stubGlobalFetch(async (input) => {
-    const url = String(input)
+    const url = input.url
     urls.push(url)
     if (url.includes('/login/oauth/access_token')) return jsonResp({ access_token: 'ghu_tenant' })
     if (url.endsWith('/copilot_internal/v2/token')) return jsonResp(copilotTokenBody('https://copilot-api.acme.ghe.com'))
@@ -666,7 +663,7 @@ test('POST /github/poll with a ghe.com host talks to the tenant and stores host 
 
 test('POST /github/poll refuses a ghe.com login whose token exchange advertises no data plane', async () => {
   stubGlobalFetch(async (input) => {
-    const url = String(input)
+    const url = input.url
     if (url.includes('/login/oauth/access_token')) return jsonResp({ access_token: 'ghu_tenant' })
     if (url.endsWith('/copilot_internal/v2/token')) return jsonResp(copilotTokenBody(null))
     if (url.endsWith('/user')) return jsonResp({ id: 7, login: 'alice_acme', name: 'Alice', avatar_url: '' })
@@ -683,7 +680,7 @@ test('POST /github/poll refuses a ghe.com login whose token exchange advertises 
 
 test('POST /github/poll refuses a login whose GitHub token has no Copilot access', async () => {
   stubGlobalFetch(async (input) => {
-    const url = String(input)
+    const url = input.url
     if (url.includes('/login/oauth/access_token')) return jsonResp({ access_token: 'gho_nocopilot' })
     if (url.endsWith('/copilot_internal/v2/token')) return jsonResp({ message: 'Not Found' }, 404)
     if (url.endsWith('/user')) return jsonResp({ id: 9, login: 'nocopilot', name: null, avatar_url: '' })

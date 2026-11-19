@@ -132,6 +132,7 @@
       },
       "devDependencies": {
         "@cloudflare/workers-types": "4.20260602.1",
+        "@vibe-core/test-utils": "workspace:*",
         "@vibe-llm/platform-bun": "workspace:*",
         "@vibe-llm/platform-cloudflare": "workspace:*",
       },
@@ -291,12 +292,22 @@
       "name": "@vibe-llm/setup-local",
       "version": "0.0.0",
     },
+    "packages/test-utils": {
+      "name": "@vibe-core/test-utils",
+      "version": "0.0.0",
+      "dependencies": {
+        "@vibe-core/upstream": "workspace:*",
+      },
+    },
     "packages/translate": {
       "name": "@vibe-llm/translate",
       "version": "0.0.0",
       "dependencies": {
         "@vibe-core/result": "workspace:*",
         "@vibe-llm/protocols": "workspace:*",
+      },
+      "devDependencies": {
+        "@vibe-core/test-utils": "workspace:*",
       },
     },
     "packages/upstream": {
@@ -792,6 +803,8 @@
     "@vibe-core/result": ["@vibe-core/result@workspace:packages/result"],
 
     "@vibe-core/service": ["@vibe-core/service@workspace:packages/service"],
+
+    "@vibe-core/test-utils": ["@vibe-core/test-utils@workspace:packages/test-utils"],
 
     "@vibe-core/upstream": ["@vibe-core/upstream@workspace:packages/upstream"],
 

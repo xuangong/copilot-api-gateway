@@ -22,7 +22,10 @@ import { initRepo, type UpstreamRecord } from '../src/repo/index.ts'
 import type { ProxyFallbackEntry } from '@vibe-core/proxy-repo'
 import type { SessionToken, UpstreamId, UserId } from '../src/repo/branded-ids.ts'
 import { sessionAuthMiddleware } from '../src/control-plane/auth/session-auth.ts'
-import { realFetch, stubGlobalFetch } from './_stub-global-fetch.ts'
+import { createFetchStub } from '@vibe-core/test-utils'
+
+// Restores the global fetch after every test in this file.
+const stubGlobalFetch = createFetchStub()
 
 const OWNER = 'u1' as UserId
 const NOW = '2026-01-01T00:00:00.000Z'
@@ -63,7 +66,7 @@ beforeEach(() => {
   // which *does* reach the ambient fetch succeeds visibly (ctx.copilot set)
   // rather than failing for an unrelated reason.
   stubGlobalFetch(async (input) => {
-    const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
+    const url = input.url
     globalFetchUrls.push(url)
     return Response.json({
       token: 'copilot_session_from_global_fetch',
@@ -74,7 +77,6 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  globalThis.fetch = realFetch
   __resetPlatformForTests()
 })
 

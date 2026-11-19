@@ -1,14 +1,10 @@
 import { describe, it, expect } from 'bun:test'
 import { translateResponsesEventsToMessagesEvents } from '@vibe-llm/translate/messages-via-responses'
+import { collect } from '@vibe-core/test-utils'
 
 interface RespEv { type: string; [k: string]: unknown }
 
 async function* fromArray<T>(items: T[]): AsyncGenerator<T> { for (const it of items) yield it }
-async function collect<T>(src: AsyncIterable<T>): Promise<T[]> {
-  const out: T[] = []
-  for await (const v of src) out.push(v)
-  return out
-}
 
 describe('messages-via-responses :: events', () => {
   it("preserves unknown input usage while retaining an explicitly reported zero", async () => {

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'bun:test'
 import { translateGeminiToMessagesEvents } from '@vibe-llm/translate/messages-via-gemini'
+import { collect } from '@vibe-core/test-utils'
 
 interface GeminiPart {
   text?: string
@@ -19,12 +20,6 @@ interface GeminiStreamResponse {
 
 async function* fromArray(chunks: GeminiStreamResponse[]): AsyncGenerator<GeminiStreamResponse> {
   for (const c of chunks) yield c
-}
-
-async function collect<T>(gen: AsyncGenerator<T>): Promise<T[]> {
-  const out: T[] = []
-  for await (const v of gen) out.push(v)
-  return out
 }
 
 describe('messages-via-gemini :: events', () => {

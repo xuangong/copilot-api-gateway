@@ -2,10 +2,13 @@ import { afterEach, expect, test } from "bun:test"
 import { __resetPlatformForTests } from "@vibe-core/platform"
 import type { StoredUpstreamRecord } from "@vibe-core/upstream-repo"
 import { setupTestPlatform } from "./_setup-platform"
-import { realFetch, stubGlobalFetch } from "./_stub-global-fetch"
+import { createFetchStub } from '@vibe-core/test-utils'
 import { _clearModelsMemoForTest, createProviderFromUpstream, isSyncableProvider, providerPlugin } from "../src/data-plane/providers/registry"
 
-afterEach(() => { globalThis.fetch = realFetch; _clearModelsMemoForTest(); __resetPlatformForTests() })
+// Restores the global fetch after every test in this file.
+const stubGlobalFetch = createFetchStub()
+
+afterEach(() => { _clearModelsMemoForTest(); __resetPlatformForTests() })
 
 const stamp = "2026-11-16T00:00:00.000Z"
 const account = { homeAccountId: "home", tenantId: "11111111-1111-4111-8111-111111111111" }
@@ -65,8 +68,8 @@ test("a synced Loki upstream serves from the synced credential and a plain one w
     config: { profileId: "loki-df-v1" }, state })
   const stored = (await repo.upstreams.getById("up_loki_synced" as never))!
   const bearers: string[] = []
-  stubGlobalFetch(async (input, init) => {
-    bearers.push(new Headers(init?.headers).get("authorization") ?? "")
+  stubGlobalFetch(async (input) => {
+    bearers.push(input.headers.get("authorization") ?? "")
     expect(urlOf(input)).toBe("https://loki.delve.office.com/api/v1/llmapi/models")
     return Response.json({ data: [{ id: "claude-opus-5.5", supported_endpoints: ["/v1/messages"] }] })
   })

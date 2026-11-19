@@ -1,15 +1,10 @@
 import { describe, it, expect } from 'bun:test'
 import { translateMessagesToGeminiEvents } from '@vibe-llm/translate/gemini-via-messages'
 import type { MessagesEvent } from '@vibe-llm/protocols/messages'
+import { collect } from '@vibe-core/test-utils'
 
 async function* fromArray(events: MessagesEvent[]): AsyncGenerator<MessagesEvent> {
   for (const e of events) yield e
-}
-
-async function collect<T>(gen: AsyncGenerator<T>): Promise<T[]> {
-  const out: T[] = []
-  for await (const v of gen) out.push(v)
-  return out
 }
 
 describe('gemini-via-messages :: events', () => {

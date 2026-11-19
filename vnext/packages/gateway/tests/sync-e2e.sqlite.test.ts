@@ -10,7 +10,10 @@ import type { SessionToken, UpstreamId, UserId } from "../src/repo/branded-ids"
 import { runScheduledSync } from "../src/sync/engine"
 import { setupTestPlatform } from "./_setup-platform"
 import { syntheticCopilotTokenResponse } from "./helpers/catalog-test-repo"
-import { realFetch, stubGlobalFetch } from "./_stub-global-fetch"
+import { createFetchStub } from '@vibe-core/test-utils'
+
+// Restores the global fetch after every test in this file.
+const stubGlobalFetch = createFetchStub()
 
 const stamp = "2026-11-16T00:00:00.000Z"
 const account = { homeAccountId: "home", tenantId: "11111111-1111-4111-8111-111111111111" }
@@ -68,8 +71,8 @@ beforeEach(async () => {
     config: { profileId: "loki-df-v1" }, state: lokiState("central-loki-token") })
   await central.upstreams.save({ ...base, id: "up_copilot_d", provider: "copilot", name: "Second Copilot", sortOrder: 3,
     config: { githubToken: "ghp_second_token", accountType: "individual", user: { id: 2, login: "octo2" } }, state: null })
-  stubGlobalFetch(async (input, init) => {
-    const request = input instanceof Request ? input : new Request(String(input), init)
+  stubGlobalFetch(async (input) => {
+    const request = input
     const url = new URL(request.url)
     if (url.origin === "https://central.example") {
       traffic.central++
@@ -94,7 +97,7 @@ beforeEach(async () => {
     throw new Error(`unexpected egress ${request.url}`)
   })
 })
-afterEach(() => { globalThis.fetch = realFetch; __resetPlatformForTests() })
+afterEach(() => { __resetPlatformForTests() })
 
 test("issue, import, serve with synced credentials, follow central edits and token rotation, then lose everything on revoke", async () => {
   // 1. Central issues a document for the Copilot and Loki upstreams.

@@ -23,5 +23,8 @@
   "dependencies": {
     "@vibe-core/result": "workspace:*",
     "@vibe-llm/protocols": "workspace:*"
+  },
+  "devDependencies": {
+    "@vibe-core/test-utils": "workspace:*"
   }
 }

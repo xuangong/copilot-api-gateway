@@ -1,11 +1,6 @@
 import { describe, test, expect } from 'bun:test'
 import { translateResponsesToChatSSE } from '../../src/chat-completions-via-responses/index.ts'
-
-async function collect<T>(it: AsyncIterable<T>): Promise<T[]> {
-  const out: T[] = []
-  for await (const v of it) out.push(v)
-  return out
-}
+import { collect } from '@vibe-core/test-utils'
 
 async function* feed(items: unknown[]): AsyncIterable<unknown> {
   for (const i of items) yield i

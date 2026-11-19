@@ -15,11 +15,11 @@
 import { test, expect, afterEach } from 'bun:test'
 import type { Fetcher } from '@vibe-core/upstream'
 import { getCachedCopilotToken } from '../src/shared/copilot-token-cache.ts'
-import { realFetch, stubGlobalFetch } from './_stub-global-fetch.ts'
+import { createFetchStub } from '@vibe-core/test-utils'
 
-afterEach(() => {
-  globalThis.fetch = realFetch
-})
+// Restores the global fetch after every test in this file.
+const stubGlobalFetch = createFetchStub()
+
 
 function tokenResponse() {
   return new Response(

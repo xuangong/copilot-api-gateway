@@ -1,12 +1,7 @@
 import { describe, it, expect } from 'bun:test'
 import { translateChatSSEToMessagesEvents } from '@vibe-llm/translate/messages-via-chat-completions'
 import type { MessagesEvent } from '@vibe-llm/protocols/messages'
-
-async function collect<T>(src: AsyncIterable<T>): Promise<T[]> {
-  const out: T[] = []
-  for await (const v of src) out.push(v)
-  return out
-}
+import { collect } from '@vibe-core/test-utils'
 
 async function* fromArray<T>(items: T[]): AsyncGenerator<T> { for (const it of items) yield it }
 
