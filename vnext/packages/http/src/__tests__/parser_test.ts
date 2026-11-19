@@ -8,7 +8,7 @@ import { describe, expect, it } from 'bun:test';
 
 import { collectBody, collectBodyBytes, makeFakeDuplex, respondAndEnd } from './test-utils.ts';
 import { parseHttpResponse, toWebResponse } from '../parser.ts';
-import { deflateSync, gzipSync } from 'node:zlib';
+import { brotliCompressSync, deflateSync, gzipSync, zstdCompressSync } from 'node:zlib';
 
 describe('parseHttpResponse — status-line grammar', () => {
   it('accepts HTTP/1.0 200 OK', async () => {
@@ -840,8 +840,8 @@ describe('toWebResponse', () => {
     });
   }
 
-  it('rejects unknown or stacked content coding and cancels the raw body', async () => {
-    for (const coding of ['br', 'gzip, deflate']) {
+  it('rejects an unknown content coding (alone or inside a stack) and cancels the raw body', async () => {
+    for (const coding of ['compress', 'gzip, x-unknown']) {
       let cancelled = false;
       const body = new ReadableStream<Uint8Array>({ cancel() { cancelled = true; } });
       expect(() => toWebResponse({ status: 200, statusText: 'OK', headers: new Headers({ 'Content-Encoding': coding }), body }))
@@ -849,6 +849,39 @@ describe('toWebResponse', () => {
       await Promise.resolve();
       expect(cancelled).toBe(true);
     }
+  });
+
+  // Reference copilot-gateway a6478e7d8 (#638): Claude Code advertises
+  // `gzip, deflate, br, zstd`; a br/zstd-compressed upstream error (e.g. a 429
+  // carrying quota headers) must keep its status, headers and body rather than
+  // throw UNSUPPORTED_CONTENT_ENCODING.
+  const quota429 = '{"error":{"type":"rate_limit_error"}}';
+  for (const [coding, compress] of [['br', brotliCompressSync], ['zstd', zstdCompressSync]] as const) {
+    it(`decodes a ${coding} 429 and keeps its status and headers`, async () => {
+      const encoded = compress(quota429);
+      const fake = makeFakeDuplex();
+      fake.respond(`HTTP/1.1 429 Too Many Requests\r\nContent-Encoding: ${coding}\r\nRetry-After: 30\r\nContent-Length: ${encoded.length}\r\n\r\n`);
+      fake.respond(encoded);
+      fake.endResponse();
+      const response = toWebResponse(await parseHttpResponse(fake.readable));
+      expect(response.status).toBe(429);
+      expect(response.headers.get('retry-after')).toBe('30');
+      expect(response.headers.get('content-encoding')).toBeNull();
+      expect(response.headers.get('content-length')).toBeNull();
+      expect(await response.text()).toBe(quota429);
+    });
+  }
+
+  it('decodes stacked content codings in reverse application order', async () => {
+    const encoded = brotliCompressSync(gzipSync(quota429));
+    const fake = makeFakeDuplex();
+    fake.respond(`HTTP/1.1 429 Too Many Requests\r\nContent-Encoding: gzip, Br\r\nContent-Length: ${encoded.length}\r\n\r\n`);
+    fake.respond(encoded);
+    fake.endResponse();
+    const response = toWebResponse(await parseHttpResponse(fake.readable));
+    expect(response.status).toBe(429);
+    expect(response.headers.get('content-encoding')).toBeNull();
+    expect(await response.text()).toBe(quota429);
   });
 
   it('surfaces malformed gzip as a body read error', async () => {

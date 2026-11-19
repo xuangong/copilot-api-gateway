@@ -2,9 +2,8 @@
 // wire-faithful → Web Response bridge.
 
 import { copy } from './bytes.ts';
-import { createGunzip, createInflate } from 'node:zlib';
-import { Readable } from 'node:stream';
-import { pipeline } from 'node:stream/promises';
+import * as zlib from 'node:zlib';
+import { Duplex } from 'node:stream';
 import { decodeChunked } from './chunked.ts';
 import { HttpProtocolError } from './errors.ts';
 import { STATUS_LINE, TCHAR, trimFieldValueOws, validateFieldValueBytes } from './grammar.ts';
@@ -43,26 +42,65 @@ export const toWebResponse = (raw: RawHttpResponse): Response => {
     return new Response(null, { status: raw.status, statusText: raw.statusText, headers: raw.headers });
   }
   const headers = new Headers(raw.headers);
-  const coding = headers.get('content-encoding')?.trim().toLowerCase();
-  let body = raw.body;
-  if (coding && coding !== 'identity') {
-    if (coding !== 'gzip' && coding !== 'deflate') {
-      void raw.body.cancel().catch(() => {});
-      throw new HttpProtocolError(`unsupported Content-Encoding: ${coding}`, 'UNSUPPORTED_CONTENT_ENCODING');
-    }
-    if (typeof DecompressionStream !== 'undefined') {
-      body = raw.body.pipeThrough(new DecompressionStream(coding) as unknown as TransformStream<Uint8Array, Uint8Array>);
-    } else {
-      const decoder = coding === 'gzip' ? createGunzip() : createInflate();
-      // pipeline owns both ends: canceling the Web output also tears down the
-      // framed source. Observe its rejection while the reader sees stream errors.
-      void pipeline(Readable.fromWeb(raw.body as unknown as import('node:stream/web').ReadableStream<Uint8Array>), decoder).catch(() => {});
-      body = Readable.toWeb(decoder) as unknown as ReadableStream<Uint8Array>;
-    }
-    headers.delete('content-encoding');
-    headers.delete('content-length');
-  }
+  const body = decodeContentEncoding(raw.body, headers);
   return new Response(body, { status: raw.status, statusText: raw.statusText, headers });
+};
+
+type Codec = ReadableWritablePair<Uint8Array, Uint8Array>;
+
+// node:zlib is available on both Bun and Cloudflare Workers (nodejs_compat);
+// Web DecompressionStream is not (Bun 1.3 lacks it, and neither runtime is
+// guaranteed to offer br/zstd through it), so br/zstd always go through zlib.
+// gzip/deflate prefer the Web stream. A factory owns one decoding stream.
+const nodeCodec = (create: (() => Duplex) | undefined): (() => Codec) | undefined =>
+  create === undefined ? undefined : () => Duplex.toWeb(create()) as unknown as Codec;
+
+const webOrNodeCodec = (format: 'gzip' | 'deflate', create: () => Duplex): (() => Codec) =>
+  typeof DecompressionStream !== 'undefined'
+    ? () => new DecompressionStream(format) as unknown as Codec
+    : nodeCodec(create)!;
+
+const contentDecoders = (): Map<string, () => Codec> => {
+  const decoders = new Map<string, () => Codec>([
+    ['gzip', webOrNodeCodec('gzip', () => zlib.createGunzip())],
+    ['deflate', webOrNodeCodec('deflate', () => zlib.createInflate())],
+  ]);
+  // https://nodejs.org/api/zlib.html#zlibcreatebrotlidecompressoptions
+  // https://nodejs.org/api/zlib.html#zlibcreatezstddecompressoptions
+  const br = nodeCodec(typeof zlib.createBrotliDecompress === 'function' ? () => zlib.createBrotliDecompress() : undefined);
+  if (br) decoders.set('br', br);
+  const zstd = nodeCodec(typeof zlib.createZstdDecompress === 'function' ? () => zlib.createZstdDecompress() : undefined);
+  if (zstd) decoders.set('zstd', zstd);
+  return decoders;
+};
+
+// Content codings are listed in application order (RFC 9110 section 8.4), so a
+// stack like `gzip, br` is unwrapped in reverse.
+const decodeContentEncoding = (body: ReadableStream<Uint8Array>, headers: Headers): ReadableStream<Uint8Array> => {
+  const header = headers.get('content-encoding');
+  if (header === null) return body;
+  const codings = header.toLowerCase().split(',').map(c => c.trim()).filter(c => c !== '' && c !== 'identity');
+  if (codings.length === 0) return body;
+  const decoders = contentDecoders();
+  try {
+    const factories = codings.reverse().map(coding => {
+      const factory = decoders.get(coding);
+      if (factory === undefined) {
+        throw new HttpProtocolError(
+          `unsupported Content-Encoding: ${coding}; supported codings are ${[...decoders.keys()].join(', ')}`,
+          'UNSUPPORTED_CONTENT_ENCODING',
+        );
+      }
+      return factory;
+    });
+    for (const factory of factories) body = body.pipeThrough(factory());
+  } catch (error) {
+    void body.cancel(error).catch(() => {});
+    throw error;
+  }
+  headers.delete('content-encoding');
+  headers.delete('content-length');
+  return body;
 };
 
 /**
