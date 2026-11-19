@@ -2,15 +2,18 @@
  * Data-plane models / embeddings / images route tests — Week 5a-impl.
  *
  * Covers the three ported routes from old src/routes/{models,embeddings,images}.ts.
- * Strategy: stub the repo with one Copilot upstream + stub globalThis.fetch for
+ * Strategy: store one Copilot upstream in the real in-memory repo + stub globalThis.fetch for
  * the Copilot /models and endpoint URLs. The router builds a real CopilotProvider,
  * so we exercise the full resolveBinding → provider.fetch path.
  */
-import { test, expect, afterEach, beforeEach } from 'bun:test'
+import { test, expect, afterEach, beforeEach, mock } from 'bun:test'
 import { Hono } from 'hono'
-import { initCatalogTestRepo as initRepo, syntheticCopilotTokenResponse } from './helpers/catalog-test-repo.ts'
+import { syntheticCopilotTokenResponse } from './helpers/catalog-test-repo.ts'
+import { setupTestPlatform } from './_setup-platform.ts'
+import { seedApiKey } from './helpers/seed-fixtures.ts'
+import { captureRepoWrites } from './helpers/repo-write-spy.ts'
 import { __resetPlatformForTests, initRuntimeLocation } from '@vibe-core/platform'
-import type { Repo, UpstreamRecord } from '../src/repo/types.ts'
+import type { UpstreamRecord, UsageRecord } from '../src/repo/types.ts'
 import type { Model, ModelsResponse } from '@vibe-llm/provider-copilot'
 import { modelsRouter, type DataPlaneAuthCtx } from '../src/data-plane/models/routes.ts'
 import { embeddingsRouter } from '../src/data-plane/embeddings/routes.ts'
@@ -51,9 +54,13 @@ const stubUpstream = (overrides: Partial<UpstreamRecord> = {}): UpstreamRecord =
   ...overrides,
 })
 
-const stubRepo = (upstreams: UpstreamRecord[]): Repo => ({
-  upstreams: { list: async () => upstreams },
-} as unknown as Repo)
+/** The real in-memory repo, holding the given upstreams (and any keys the test authenticates with). */
+const seedRepo = async (upstreams: UpstreamRecord[], keyIds: string[] = []) => {
+  const { repo } = setupTestPlatform()
+  for (const upstream of upstreams) await repo.upstreams.save(upstream)
+  for (const id of keyIds) await seedApiKey(repo, { id, key: `synthetic-${id}` })
+  return repo
+}
 
 const originalFetch = globalThis.fetch
 type FetchHandler = (req: Request) => Promise<Response> | Response
@@ -71,6 +78,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  mock.restore()
   globalThis.fetch = originalFetch
   __resetPlatformForTests()
 })
@@ -85,7 +93,7 @@ function buildApp(router: Hono, auth: DataPlaneAuthCtx = {}) {
 // ── models ───────────────────────────────────────────────────────────────────
 
 test('GET /api/models returns empty list with no upstream', async () => {
-  initRepo(stubRepo([]))
+  await seedRepo([])
   const res = await buildApp(modelsRouter).request('/api/models')
   expect(res.status).toBe(200)
   const body = await res.json() as { data: unknown[] }
@@ -96,7 +104,7 @@ test('GET /api/models returns empty list with no upstream', async () => {
 // upstream (fresh, all disabled, empty key scope) is a normal state, so discovery
 // answers 200 with the client format's natural empty list, never a 404/502.
 test('model discovery returns empty catalogs when no upstream is reachable', async () => {
-  initRepo(stubRepo([]))
+  await seedRepo([])
   installFetch(async () => new Response(null, { status: 404 }))
   const cases: Array<{ path: string; userAgent?: string; body: unknown }> = [
     { path: '/v1/models', body: { object: 'list', data: [] } },
@@ -114,7 +122,7 @@ test('model discovery returns empty catalogs when no upstream is reachable', asy
 })
 
 test('GET /v1/models success when stored upstream serves models', async () => {
-  initRepo(stubRepo([stubUpstream()]))
+  await seedRepo([stubUpstream()])
   installFetch(async () => new Response(
     JSON.stringify({ object: 'list', data: [stubModel('gpt-4o')] } satisfies ModelsResponse),
     { status: 200, headers: { 'content-type': 'application/json' } },
@@ -128,7 +136,7 @@ test('GET /v1/models success when stored upstream serves models', async () => {
 // ── embeddings ───────────────────────────────────────────────────────────────
 
 test('POST /v1/embeddings 400 without model', async () => {
-  initRepo(stubRepo([]))
+  await seedRepo([])
   const res = await buildApp(embeddingsRouter).request('/v1/embeddings', {
     method: 'POST', body: '{}', headers: { 'content-type': 'application/json' },
   })
@@ -136,7 +144,7 @@ test('POST /v1/embeddings 400 without model', async () => {
 })
 
 test('POST /v1/embeddings 404 when no binding', async () => {
-  initRepo(stubRepo([]))
+  await seedRepo([])
   const res = await buildApp(embeddingsRouter).request('/v1/embeddings', {
     method: 'POST',
     body: JSON.stringify({ model: 'text-embedding-3', input: 'hi' }),
@@ -146,13 +154,8 @@ test('POST /v1/embeddings 404 when no binding', async () => {
 })
 
 test('POST /v1/embeddings persists mapped source and routed destination identities', async () => {
-  const recorded: Array<{ incomingModel: string; model: string; modelKey: string }> = []
-  initRepo({
-    ...stubRepo([stubUpstream()]),
-    apiKeys: { getById: async () => null, touchLastUsed: async () => {} },
-    usage: { record: async (row) => { recorded.push(row) } },
-    performance: { record: async () => {} },
-  } as Repo)
+  const repo = await seedRepo([stubUpstream()], ['key-1'])
+  const writes = captureRepoWrites(repo)
   installFetch(async (req) => {
     if (new URL(req.url).pathname.endsWith('/models')) {
       return new Response(JSON.stringify({
@@ -175,6 +178,7 @@ test('POST /v1/embeddings persists mapped source and routed destination identiti
   })
 
   expect(res.status).toBe(200)
+  const recorded = writes.usage
   expect(recorded).toHaveLength(1)
   expect(recorded[0]?.incomingModel).toBe('embedding-source')
   expect(recorded[0]?.model).toBe('embedding-destination')
@@ -182,7 +186,7 @@ test('POST /v1/embeddings persists mapped source and routed destination identiti
 })
 
 test('POST /v1/embeddings success forwards upstream JSON', async () => {
-  initRepo(stubRepo([stubUpstream()]))
+  await seedRepo([stubUpstream()])
   installFetch(async (req) => {
     const url = new URL(req.url)
     if (url.pathname.endsWith('/models')) {
@@ -207,7 +211,7 @@ test('POST /v1/embeddings success forwards upstream JSON', async () => {
 // ── images ───────────────────────────────────────────────────────────────────
 
 test('POST /v1/images/generations 400 without model', async () => {
-  initRepo(stubRepo([]))
+  await seedRepo([])
   const res = await buildApp(imagesRouter).request('/v1/images/generations', {
     method: 'POST', body: '{}', headers: { 'content-type': 'application/json' },
   })
@@ -215,7 +219,7 @@ test('POST /v1/images/generations 400 without model', async () => {
 })
 
 test('POST /v1/images/generations 404 when no binding', async () => {
-  initRepo(stubRepo([]))
+  await seedRepo([])
   const res = await buildApp(imagesRouter).request('/v1/images/generations', {
     method: 'POST',
     body: JSON.stringify({ model: 'gpt-image-1', prompt: 'a cat' }),
@@ -239,7 +243,7 @@ for (const withFailingUpstream of [false, true]) {
   test(`POST /v1/images/generations routes a Copilot image model${withFailingUpstream ? ' while another catalog fails' : ''}`, async () => {
     const upstreams = [stubUpstream({ id: 'copilot:images' })]
     if (withFailingUpstream) upstreams.push(stubUpstream({ id: 'copilot:broken', config: { githubToken: 'ghp_broken' } }))
-    initRepo(stubRepo(upstreams))
+    await seedRepo(upstreams)
     const inference: string[] = []
     globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
       const req = input instanceof Request ? input : new Request(input as string, init)
@@ -280,7 +284,7 @@ const installDecisionCatalog = () => installFetch(async () => Response.json({
 const COPILOT_REQUEST_AUTH: DataPlaneAuthCtx = { copilot: { copilotToken: 'tkn', accountType: 'individual' } }
 
 test('GET /v1/models lists Copilot decision models with the path each one serves', async () => {
-  initRepo(stubRepo([stubUpstream()]))
+  await seedRepo([stubUpstream()])
   installDecisionCatalog()
   const res = await buildApp(modelsRouter, COPILOT_REQUEST_AUTH).request('/v1/models')
   expect(res.status).toBe(200)
@@ -293,7 +297,7 @@ test('GET /v1/models lists Copilot decision models with the path each one serves
 })
 
 test('chat-only catalogs leave decision models out', async () => {
-  initRepo(stubRepo([stubUpstream()]))
+  await seedRepo([stubUpstream()])
   installDecisionCatalog()
   const app = buildApp(modelsRouter, COPILOT_REQUEST_AUTH)
   const claudeCode = await app.request('/v1/models', { headers: { 'user-agent': 'claude-code/2.1.247' } })
@@ -309,7 +313,7 @@ test('chat-only catalogs leave decision models out', async () => {
 // (google-genai-sdk/, genai-js/, genai-py/) gets the Gemini list shape on the shared
 // /v1/models and /models routes while every other caller keeps the OpenAI shape.
 test('Gemini model detail and list are reachable under /v1 and selected by client identity', async () => {
-  initRepo(stubRepo([stubUpstream()]))
+  await seedRepo([stubUpstream()])
   installDecisionCatalog()
   const app = buildApp(modelsRouter, COPILOT_REQUEST_AUTH)
   const detail = await Promise.all(['/v1beta/models/gpt-4o', '/v1/models/gpt-4o'].map(async path => {
@@ -338,7 +342,7 @@ test('Gemini model detail and list are reachable under /v1 and selected by clien
 // `{ models: [{ name, description, release_date }] }` and identify themselves
 // as `typesafe-sdk/<version>`; every other caller keeps the OpenAI shape.
 test('GET /v1/models answers TypeSafe SDKs in their own catalog shape', async () => {
-  initRepo(stubRepo([stubUpstream()]))
+  await seedRepo([stubUpstream()])
   installDecisionCatalog()
   const res = await buildApp(modelsRouter, COPILOT_REQUEST_AUTH)
     .request('/v1/models', { headers: { 'user-agent': 'typesafe-sdk/0.7.5' } })
@@ -379,13 +383,9 @@ const imageUsageUpstream = stubUpstream({
   },
 } as Partial<UpstreamRecord>)
 
-function initImageUsageRepo(recorded: Array<{ incomingModel: string; model: string; modelKey: string; upstream: string | null; cost: unknown; tokens: unknown; requests: number; client: string }>) {
-  initRepo({
-    ...stubRepo([imageUsageUpstream]),
-    apiKeys: { getById: async () => null, touchLastUsed: async () => {} },
-    usage: { record: async (row) => { recorded.push(row) } },
-    performance: { record: async () => {} },
-  } as Repo)
+async function initImageUsageRepo(): Promise<UsageRecord[]> {
+  const repo = await seedRepo([imageUsageUpstream], ['image-key'])
+  return captureRepoWrites(repo).usage
 }
 
 function installImageUsageFetch() {
@@ -400,7 +400,7 @@ function installImageUsageFetch() {
   })
 }
 
-function expectRecordedImageUsage(recorded: Array<{ incomingModel: string; model: string; modelKey: string; upstream: string | null; cost: unknown; tokens: unknown; requests: number; client: string }>) {
+function expectRecordedImageUsage(recorded: UsageRecord[]) {
   expect(recorded).toHaveLength(1)
   expect(recorded[0]).toMatchObject({
     incomingModel: 'image-source',
@@ -415,8 +415,7 @@ function expectRecordedImageUsage(recorded: Array<{ incomingModel: string; model
 }
 
 test('POST /v1/images/generations records mapped image usage and forwards its body', async () => {
-  const recorded: Array<{ incomingModel: string; model: string; modelKey: string; upstream: string | null; cost: unknown; tokens: unknown; requests: number; client: string }> = []
-  initImageUsageRepo(recorded)
+  const recorded = await initImageUsageRepo()
   installImageUsageFetch()
 
   const res = await buildApp(imagesRouter, imageUsageAuth).request('/v1/images/generations', {
@@ -431,8 +430,7 @@ test('POST /v1/images/generations records mapped image usage and forwards its bo
 })
 
 test('POST /v1/images/edits JSON records mapped image usage and forwards its body', async () => {
-  const recorded: Array<{ incomingModel: string; model: string; modelKey: string; upstream: string | null; cost: unknown; tokens: unknown; requests: number; client: string }> = []
-  initImageUsageRepo(recorded)
+  const recorded = await initImageUsageRepo()
   installImageUsageFetch()
 
   const res = await buildApp(imagesRouter, imageUsageAuth).request('/v1/images/edits', {
@@ -451,8 +449,7 @@ test('POST /v1/images/edits JSON records mapped image usage and forwards its bod
 })
 
 test('POST /v1/images/edits multipart records mapped image usage and forwards its body', async () => {
-  const recorded: Array<{ incomingModel: string; model: string; modelKey: string; upstream: string | null; cost: unknown; tokens: unknown; requests: number; client: string }> = []
-  initImageUsageRepo(recorded)
+  const recorded = await initImageUsageRepo()
   installImageUsageFetch()
   const form = new FormData()
   form.append('model', 'image-source')
@@ -471,7 +468,7 @@ test('POST /v1/images/edits multipart records mapped image usage and forwards it
 })
 
 test('POST /v1/images/edits 400 when not multipart', async () => {
-  initRepo(stubRepo([]))
+  await seedRepo([])
   const res = await buildApp(imagesRouter).request('/v1/images/edits', {
     method: 'POST', body: '{}', headers: { 'content-type': 'application/json' },
   })
@@ -479,7 +476,7 @@ test('POST /v1/images/edits 400 when not multipart', async () => {
 })
 
 test('POST /v1/images/edits 400 when model field missing', async () => {
-  initRepo(stubRepo([]))
+  await seedRepo([])
   const fd = new FormData()
   fd.append('image', new Blob(['x'], { type: 'image/png' }), 'a.png')
   const res = await buildApp(imagesRouter).request('/v1/images/edits', {
@@ -501,23 +498,12 @@ const ASSIGNEE = 'user-assignee'
 const STRANGER = 'user-stranger'
 const SHARED_KEY = 'key-shared'
 
-/** Honours the ownerId filter so a wrong scope shows up as an empty catalog. */
-const scopedRepo = (): Repo => {
-  const owned = stubUpstream({ id: 'copilot:owner-u1', ownerId: OWNER } as Partial<UpstreamRecord>)
-  return {
-    upstreams: {
-      list: async (f: { ownerId?: string } = {}) =>
-        f.ownerId === OWNER ? [owned] : [],
-    },
-    apiKeys: {
-      getById: async (id: string) =>
-        id === SHARED_KEY ? { id: SHARED_KEY, name: 'shared', ownerId: OWNER, modelMappingsEnabled: false, modelMappings: [] } : null,
-    },
-    keyAssignments: {
-      listByUser: async (userId: string) =>
-        userId === ASSIGNEE ? [{ keyId: SHARED_KEY, userId: ASSIGNEE }] : [],
-    },
-  } as unknown as Repo
+/** The real repo scopes upstreams by owner, so a wrong scope shows up as an empty catalog. */
+const scopedRepo = async () => {
+  const repo = await seedRepo([stubUpstream({ id: 'copilot:owner-u1', ownerId: OWNER } as Partial<UpstreamRecord>)])
+  await seedApiKey(repo, { id: SHARED_KEY, key: 'synthetic-shared-key', name: 'shared', ownerId: OWNER })
+  await repo.keyAssignments.assign(SHARED_KEY as never, ASSIGNEE as never, OWNER as never)
+  return repo
 }
 
 // Answers the githubToken→copilotToken exchange as well as /models so the
@@ -541,7 +527,7 @@ const modelIds = async (res: Response) =>
   ((await res.json()) as { data: Array<{ id: string }> }).data.map((m) => m.id)
 
 test('GET /api/models?keyId= lets an assignee see the key owner\'s models', async () => {
-  initRepo(scopedRepo())
+  await scopedRepo()
   serveOneModel()
   const res = await buildApp(modelsRouter, { userId: ASSIGNEE as never })
     .request(`/api/models?keyId=${SHARED_KEY}`)
@@ -550,7 +536,7 @@ test('GET /api/models?keyId= lets an assignee see the key owner\'s models', asyn
 })
 
 test('GET /api/models without keyId still scopes to the caller (the old bug)', async () => {
-  initRepo(scopedRepo())
+  await scopedRepo()
   serveOneModel()
   const res = await buildApp(modelsRouter, { userId: ASSIGNEE as never }).request('/api/models')
   expect(res.status).toBe(200)
@@ -558,7 +544,7 @@ test('GET /api/models without keyId still scopes to the caller (the old bug)', a
 })
 
 test('GET /api/models?keyId= 403 for a user with no claim on the key', async () => {
-  initRepo(scopedRepo())
+  await scopedRepo()
   serveOneModel()
   const res = await buildApp(modelsRouter, { userId: STRANGER as never })
     .request(`/api/models?keyId=${SHARED_KEY}`)
@@ -566,7 +552,7 @@ test('GET /api/models?keyId= 403 for a user with no claim on the key', async () 
 })
 
 test('GET /api/models?keyId= 403 for an unknown key', async () => {
-  initRepo(scopedRepo())
+  await scopedRepo()
   serveOneModel()
   const res = await buildApp(modelsRouter, { userId: OWNER as never })
     .request('/api/models?keyId=key-does-not-exist')
@@ -574,7 +560,7 @@ test('GET /api/models?keyId= 403 for an unknown key', async () => {
 })
 
 test('GET /api/models?keyId= works for the owner too', async () => {
-  initRepo(scopedRepo())
+  await scopedRepo()
   serveOneModel()
   const res = await buildApp(modelsRouter, { userId: OWNER as never })
     .request(`/api/models?keyId=${SHARED_KEY}`)

@@ -13,9 +13,10 @@
  */
 import { test, expect, afterEach, beforeEach } from 'bun:test'
 import { Hono } from 'hono'
-import { initCatalogTestRepo as initRepo, syntheticCopilotTokenResponse } from '../../helpers/catalog-test-repo.ts'
+import { syntheticCopilotTokenResponse } from '../../helpers/catalog-test-repo.ts'
+import { setupTestPlatform } from '../../_setup-platform.ts'
 import { __resetPlatformForTests, initRuntimeLocation } from '@vibe-core/platform'
-import type { Repo, UpstreamRecord } from '../../../src/repo/types.ts'
+import type { UpstreamRecord } from '../../../src/repo/types.ts'
 import type { Model, ModelsResponse } from '@vibe-llm/provider-copilot'
 import { dmrRouter } from '../../../src/data-plane/dmr/routes.ts'
 
@@ -37,28 +38,30 @@ const stubModel = (id: string): Model => ({
   },
 })
 
-const stubRepo = (): Repo => ({
-  upstreams: {
-    list: async (): Promise<UpstreamRecord[]> => [{
-      id: 'copilot:u1',
-      provider: 'copilot',
-      name: 'u1',
-      enabled: true,
-      sortOrder: 0,
-      config: { githubToken: 'ghp_test' },
-      flagOverrides: {},
-      disabledPublicModelIds: [],
-      state: null,
-      proxyFallbackList: [{ id: 'direct_fetch' }],
-      createdAt: '2026-01-01T00:00:00Z',
-      updatedAt: '2026-01-01T00:00:00Z',
-    }],
-  },
-} as unknown as Repo)
+const upstream: UpstreamRecord = {
+  id: 'copilot:u1',
+  provider: 'copilot',
+  name: 'u1',
+  enabled: true,
+  sortOrder: 0,
+  config: { githubToken: 'ghp_test' },
+  flagOverrides: {},
+  disabledPublicModelIds: [],
+  state: null,
+  proxyFallbackList: [{ id: 'direct_fetch' }],
+  createdAt: '2026-01-01T00:00:00Z',
+  updatedAt: '2026-01-01T00:00:00Z',
+}
+
+/** The real in-memory repo, holding the one Copilot upstream. */
+const initUpstreamRepo = async (): Promise<void> => {
+  const { repo } = setupTestPlatform()
+  await repo.upstreams.save(upstream)
+}
 
 const originalFetch = globalThis.fetch
 
-beforeEach(() => {
+beforeEach(async () => {
   process.env.DMR_COMPAT = '1'
   initRuntimeLocation('bun')
 })
@@ -91,7 +94,7 @@ function parseLikeAnythingLLM(payload: Array<{ tags: string[]; config?: { size?:
 }
 
 async function fetchOurModels() {
-  initRepo(stubRepo())
+  await initUpstreamRepo()
   globalThis.fetch = (async (input: RequestInfo | URL) => syntheticCopilotTokenResponse(input instanceof Request ? input : new Request(input)) ?? new Response(
     JSON.stringify({
       object: 'list',

@@ -17,14 +17,16 @@
 import { test, expect, afterEach, beforeEach } from 'bun:test'
 import { Hono } from 'hono'
 import { app as innerApp } from '../src/app.ts'
-import { initCatalogTestRepo as initRepo, syntheticCopilotTokenResponse } from './helpers/catalog-test-repo.ts'
+import { syntheticCopilotTokenResponse } from './helpers/catalog-test-repo.ts'
+import { setupTestPlatform } from './_setup-platform.ts'
+import { seedApiKey } from './helpers/seed-fixtures.ts'
 import { initResponsesStore } from '../src/data-plane/runtime/responses-store.ts'
 import {
   __resetPlatformForTests,
   initBackground,
   initRuntimeLocation,
 } from '@vibe-core/platform'
-import type { Repo, UpstreamRecord } from '../src/repo/types.ts'
+import type { UpstreamRecord } from '../src/repo/types.ts'
 import type { Model } from '@vibe-llm/provider-copilot'
 import type { DataPlaneAuthCtx } from '../src/data-plane/models/routes.ts'
 import { InMemoryResponsesSnapshotStore } from '@vibe-llm/responses-store'
@@ -57,13 +59,12 @@ const stubUpstream = (): UpstreamRecord => ({
   createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z',
 })
 
-const stubRepo = (ups: UpstreamRecord[]): Repo => ({
-  upstreams: { list: async () => ups },
-  apiKeys: { getById: async () => null, touchLastUsed: async () => undefined },
-  usage: { query: async () => [], record: async () => undefined, recordWithTimestamp: async () => undefined },
-  latency: { record: async () => undefined },
-  performance: { record: async () => undefined },
-} as unknown as Repo)
+/** The real in-memory repo, holding the upstreams and the authenticated key. */
+const seedRepo = async (ups: UpstreamRecord[]): Promise<void> => {
+  const { repo } = setupTestPlatform()
+  for (const upstream of ups) await repo.upstreams.save(upstream)
+  await seedApiKey(repo, { id: 'k1', key: 'synthetic-k1-key', ownerId: 'u1' })
+}
 
 const originalFetch = globalThis.fetch
 function installFetch(handler: (req: Request) => Promise<Response> | Response) {
@@ -98,7 +99,7 @@ async function waitForSave(store: InMemoryResponsesSnapshotStore, id: string, ap
 }
 
 test('round-trip: responses→responses identity preserves id across turns', async () => {
-  initRepo(stubRepo([stubUpstream()]), { apiKeys: [{ id: "k1", ownerId: "u1" }] })
+  await seedRepo([stubUpstream()])
   const store = new InMemoryResponsesSnapshotStore()
   initResponsesStore(store)
 
@@ -182,7 +183,7 @@ for (const stream of [false, true]) {
   for (const retention of [undefined, 0, 86400, 259200, 604800]) {
     for (const requestedStore of [undefined, false, true]) {
       test(`snapshot policy: stream=${stream}, retention=${retention}, store=${requestedStore}`, async () => {
-        initRepo(stubRepo([stubUpstream()]), { apiKeys: [{ id: "k1", ownerId: "u1" }] })
+        await seedRepo([stubUpstream()])
         const store = new InMemoryResponsesSnapshotStore()
         initResponsesStore(store)
         const pending: Promise<unknown>[] = []
@@ -234,7 +235,7 @@ for (const stream of [false, true]) {
 
 for (const retention of [0, 86400]) {
   test(`store:false continuation reads prior state only when key retention=${retention}`, async () => {
-    initRepo(stubRepo([stubUpstream()]), { apiKeys: [{ id: "k1", ownerId: "u1" }] })
+    await seedRepo([stubUpstream()])
     const store = new InMemoryResponsesSnapshotStore()
     initResponsesStore(store)
     const expiresAt = Date.now() + 60_000
@@ -274,7 +275,7 @@ for (const retention of [0, 86400]) {
 
 for (const requestedStore of [undefined, true]) {
   test(`continuation renews previous snapshot when store=${requestedStore}`, async () => {
-    initRepo(stubRepo([stubUpstream()]), { apiKeys: [{ id: "k1", ownerId: "u1" }] })
+    await seedRepo([stubUpstream()])
     const store = new InMemoryResponsesSnapshotStore()
     initResponsesStore(store)
     const now = Date.now()

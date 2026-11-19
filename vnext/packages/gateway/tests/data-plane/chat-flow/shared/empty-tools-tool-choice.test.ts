@@ -7,8 +7,8 @@ import { resolveEffectiveFlags } from "../../../../src/data-plane/flags/resolve"
 import { chatCompletionsInterceptors } from "../../../../src/data-plane/chat-flow/chat-completions/interceptors"
 import { messagesInterceptors } from "../../../../src/data-plane/chat-flow/messages/interceptors"
 import { responsesInterceptors } from "../../../../src/data-plane/chat-flow/responses/interceptors"
-import { initRepo } from "../../../../src/repo/index"
-import type { Repo } from "../../../../src/repo/types"
+import { setupTestPlatform } from "../../../_setup-platform"
+import { seedApiKey } from "../../../helpers/seed-fixtures"
 
 const flag = "empty-tools-tool-choice-none"
 const ctx: RequestContext = { requestStartedAt: Date.now() }
@@ -68,18 +68,17 @@ test("Responses injected image tool retains caller choice", async () => {
   expect((seen.tools as unknown[]).length).toBe(1)
 })
 
-const searchRepo = {
-  apiKeys: { getById: async () => ({
-    id: "key_search", name: "search", key: "sk", createdAt: "2026-01-01T00:00:00Z",
-    webSearchEnabled: true, modelMappingsEnabled: false, modelMappings: [],
-    webSearchPriority: ["tavily"], webSearchTavilyKey: "test-key",
-  }) },
-  webSearchUsage: { record: async () => {} },
-  webSearchEngineUsage: { record: async () => {} },
-} as unknown as Repo
+/** The real in-memory repo, holding a key with web search enabled. */
+const initSearchRepo = async (): Promise<void> => {
+  const { repo } = setupTestPlatform()
+  await seedApiKey(repo, {
+    id: "key_search", name: "search", key: "sk",
+    webSearchEnabled: true, webSearchPriority: ["tavily"], webSearchTavilyKey: "test-key",
+  })
+}
 
 test("Chat hosted search injection retains caller choice when original tools is empty", async () => {
-  initRepo(searchRepo)
+  await initSearchRepo()
   const inv: Invocation = {
     endpoint: "chat_completions", sourceApi: "chat_completions",
     enabledFlags: new Set([flag, "chat-completions-web-search-shim"]),
@@ -95,7 +94,7 @@ test("Chat hosted search injection retains caller choice when original tools is 
 })
 
 test("Messages native search preparation retains a usable tool and caller choice", async () => {
-  initRepo(searchRepo)
+  await initSearchRepo()
   const inv: Invocation = {
     endpoint: "messages", sourceApi: "messages",
     enabledFlags: new Set([flag, "messages-web-search-shim"]),

@@ -1,11 +1,12 @@
 import { afterEach, expect, test } from 'bun:test'
 import { Hono } from 'hono'
 import { app as innerApp } from '../src/app.ts'
-import { initCatalogTestRepo as initRepo } from './helpers/catalog-test-repo.ts'
+import { setupTestPlatform } from './_setup-platform.ts'
+import { seedApiKey } from './helpers/seed-fixtures.ts'
 import { initResponsesStore } from '../src/data-plane/runtime/responses-store.ts'
 import { __resetPlatformForTests, initBackground, initRuntimeLocation } from '@vibe-core/platform'
 import { InMemoryResponsesSnapshotStore } from '@vibe-llm/responses-store'
-import type { Repo, UpstreamRecord } from '../src/repo/types.ts'
+import type { UpstreamRecord } from '../src/repo/types.ts'
 import type { DataPlaneAuthCtx } from '../src/data-plane/models/routes.ts'
 import { initDumpBroker, initDumpStore, resetDumpRegistryForTests } from '../src/shared/dump/registry.ts'
 import { DumpAccumulator } from '../src/shared/dump/accumulator.ts'
@@ -54,19 +55,11 @@ function customUpstream(id: string, endpoints: string[] = ['chat_completions', '
   }
 }
 
-function stubRepo(upstreams: UpstreamRecord[], apiKey?: ApiKey): Repo {
-  return {
-    upstreams: {
-      list: async () => upstreams,
-      getById: async (id: string) => upstreams.find((upstream) => upstream.id === id) ?? null,
-    },
-    apiKeys: apiKey ? {
-      getById: async (id: string) => id === apiKey.id ? apiKey : null,
-      touchLastUsed: async () => {},
-    } : undefined,
-    usage: { record: async () => {} },
-    performance: { record: async () => {} },
-  } as unknown as Repo
+/** The real in-memory repo, holding the upstreams (and the authenticated key, when given). */
+async function initRepo(upstreams: UpstreamRecord[], apiKey?: ApiKey): Promise<void> {
+  const { repo } = setupTestPlatform()
+  for (const upstream of upstreams) await repo.upstreams.save(upstream)
+  if (apiKey) await seedApiKey(repo, apiKey)
 }
 
 class CapturedDumpStore implements DumpStore {
@@ -136,8 +129,8 @@ function buildApp(auth: DataPlaneAuthCtx) {
   return wrapper
 }
 
-function boot(upstreams: UpstreamRecord[], auth: DataPlaneAuthCtx): { app: Hono; calls: Calls } {
-  initRepo(stubRepo(upstreams))
+async function boot(upstreams: UpstreamRecord[], auth: DataPlaneAuthCtx): Promise<{ app: Hono; calls: Calls }> {
+  await initRepo(upstreams)
   initResponsesStore(new InMemoryResponsesSnapshotStore())
   initBackground({ waitUntil: (promise) => { void promise.catch(() => {}) } })
   initRuntimeLocation('bun')
@@ -167,7 +160,7 @@ function requestFor(protocol: Protocol, model: string): Request {
 }
 
 async function serve(protocol: Protocol, model: string, upstreams: UpstreamRecord[], auth: DataPlaneAuthCtx): Promise<{ response: Response; calls: Calls }> {
-  const { app, calls } = boot(upstreams, auth)
+  const { app, calls } = await boot(upstreams, auth)
   return { response: await app.fetch(requestFor(protocol, model), env), calls }
 }
 
@@ -239,7 +232,7 @@ test.each(['chat', 'messages', 'responses'] as const)('custom slash alias is map
 })
 
 test('embeddings sends the mapped destination upstream', async () => {
-  initRepo(stubRepo([customUpstream('up_A', ['embeddings'])]))
+  await initRepo([customUpstream('up_A', ['embeddings'])])
   initRuntimeLocation('bun')
   let upstreamModel: unknown
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -268,7 +261,7 @@ test('embeddings sends the mapped destination upstream', async () => {
 })
 
 test('pinned image edit does not fall back to another provider', async () => {
-  initRepo(stubRepo([customUpstream('up_A', ['images_edits'], false), customUpstream('up_B', ['images_edits'])]))
+  await initRepo([customUpstream('up_A', ['images_edits'], false), customUpstream('up_B', ['images_edits'])])
   initRuntimeLocation('bun')
   globalThis.fetch = (async () => new Response('unexpected')) as typeof fetch
   const form = new FormData()
@@ -282,7 +275,7 @@ test('pinned image edit does not fall back to another provider', async () => {
 })
 
 test('messages count tokens sends the mapped destination upstream', async () => {
-  initRepo(stubRepo([customUpstream('up_A', ['messages', 'messages_count_tokens'])]))
+  await initRepo([customUpstream('up_A', ['messages', 'messages_count_tokens'])])
   initRuntimeLocation('bun')
   let upstreamModel: unknown
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -309,7 +302,7 @@ test('messages count tokens sends the mapped destination upstream', async () => 
 })
 
 test('Gemini count tokens sends the mapped destination upstream', async () => {
-  initRepo(stubRepo([customUpstream('up_A', ['messages', 'messages_count_tokens'])]))
+  await initRepo([customUpstream('up_A', ['messages', 'messages_count_tokens'])])
   initRuntimeLocation('bun')
   let upstreamModel: unknown
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -336,7 +329,7 @@ test('Gemini count tokens sends the mapped destination upstream', async () => {
 })
 
 test('JSON image edits replace their model with the mapped destination', async () => {
-  initRepo(stubRepo([customUpstream('up_A', ['images_edits'])]))
+  await initRepo([customUpstream('up_A', ['images_edits'])])
   initRuntimeLocation('bun')
   let upstreamForm: FormData | undefined
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -370,7 +363,7 @@ test('JSON image edits replace their model with the mapped destination', async (
 })
 
 test('image edits replace every source model field with one mapped destination', async () => {
-  initRepo(stubRepo([customUpstream('up_A', ['images_edits'])]))
+  await initRepo([customUpstream('up_A', ['images_edits'])])
   initRuntimeLocation('bun')
   let upstreamForm: FormData | undefined
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -406,7 +399,7 @@ test('image edits replace every source model field with one mapped destination',
 })
 
 test('image edits preserve their source model when mappings are disabled', async () => {
-  initRepo(stubRepo([customUpstream('up_A', ['images_edits'])]))
+  await initRepo([customUpstream('up_A', ['images_edits'])])
   initRuntimeLocation('bun')
   let upstreamForm: FormData | undefined
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -432,7 +425,7 @@ test('image edits preserve their source model when mappings are disabled', async
 })
 
 test('image generation sends the mapped destination upstream', async () => {
-  initRepo(stubRepo([customUpstream('up_A', ['images_generations'])]))
+  await initRepo([customUpstream('up_A', ['images_generations'])])
   initRuntimeLocation('bun')
   let upstreamModel: unknown
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -470,7 +463,7 @@ test("all direct handler model carriers retain the requested source in dumps", a
       "images_edits",
     ]),
   ];
-  initRepo(stubRepo(upstreams, dumpKey));
+  await initRepo(upstreams, dumpKey);
   initRuntimeLocation("bun");
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const request =
@@ -563,7 +556,7 @@ test("all direct handler model carriers retain the requested source in dumps", a
     },
     dump: directDump("/v1beta/models/gemini-3-flash-preview:countTokens"),
   });
-  initRepo(stubRepo(upstreams, dumpKey));
+  await initRepo(upstreams, dumpKey);
   initRuntimeLocation("bun");
   const embedding = await app.fetch(
     new Request("http://local/v1/embeddings", {
@@ -641,7 +634,7 @@ test("count-token boundaries preserve disabled models, map slash aliases, and ho
     policy: DataPlaneAuthCtx["routingPolicy"],
     upstreams: UpstreamRecord[],
   ) => {
-    initRepo(stubRepo(upstreams));
+    await initRepo(upstreams);
     initRuntimeLocation("bun");
     const seen: Array<{ provider: string; model: unknown }> = [];
     globalThis.fetch = (async (
@@ -709,11 +702,11 @@ test("count-token boundaries preserve disabled models, map slash aliases, and ho
 });
 
 test("Gemini countTokens normalizes a pinned built-in alias before mapping and does not fall back", async () => {
-  initRepo(
-    stubRepo([
+  await initRepo(
+    [
       customUpstream("up_A", ["messages_count_tokens"]),
       customUpstream("up_B", ["messages_count_tokens"]),
-    ]),
+    ],
   );
   initRuntimeLocation("bun");
   const seen: Array<{ provider: string; model: unknown }> = [];
@@ -759,11 +752,11 @@ test("Gemini countTokens normalizes a pinned built-in alias before mapping and d
   expect(response.status).toBe(200);
   expect(seen).toEqual([{ provider: "up_a", model: destination }]);
 
-  initRepo(
-    stubRepo([
+  await initRepo(
+    [
       customUpstream("up_A", ["messages_count_tokens"], false),
       customUpstream("up_B", ["messages_count_tokens"]),
-    ]),
+    ],
   );
   const unavailable = await serveGeminiCountTokens({
     raw: { contents: [] },
@@ -780,11 +773,11 @@ test("Gemini countTokens normalizes a pinned built-in alias before mapping and d
 });
 
 test("embeddings route maps slash aliases and never falls back from unavailable pins", async () => {
-  initRepo(
-    stubRepo([
+  await initRepo(
+    [
       customUpstream("up_A", ["embeddings"]),
       customUpstream("up_B", ["embeddings"]),
-    ]),
+    ],
   );
   initRuntimeLocation("bun");
   const calls: string[] = [];
@@ -829,11 +822,11 @@ test("embeddings route maps slash aliases and never falls back from unavailable 
   expect(aliased.status).toBe(200);
   expect(calls).toEqual(["up_a.test"]);
 
-  initRepo(
-    stubRepo([
+  await initRepo(
+    [
       customUpstream("up_A", ["embeddings"], false),
       customUpstream("up_B", ["embeddings"]),
-    ]),
+    ],
   );
   const pinned = await app.fetch(
     new Request("http://local/v1/embeddings", {
@@ -854,7 +847,7 @@ test("image generation mapping handles disabled, slash aliases, and unavailable 
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ model, prompt: "hi" }),
     });
-  initRepo(stubRepo([customUpstream("up_A", ["images_generations"])]));
+  await initRepo([customUpstream("up_A", ["images_generations"])]);
   initRuntimeLocation("bun");
   let received: unknown;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -897,11 +890,11 @@ test("image generation mapping handles disabled, slash aliases, and unavailable 
   expect(alias.status).toBe(200);
   expect(received).toBe(destination);
 
-  initRepo(
-    stubRepo([
+  await initRepo(
+    [
       customUpstream("up_A", ["images_generations"], false),
       customUpstream("up_B", ["images_generations"]),
-    ]),
+    ],
   );
   const pinned = await buildApp({ routingPolicy: mappedPolicy }).fetch(
     request("up_A/source"),
@@ -913,7 +906,7 @@ test("image generation mapping handles disabled, slash aliases, and unavailable 
 test.each([400, 429])('mapped Custom embeddings upstream %i is forwarded without becoming a 500', async (status) => {
   const { store, drain } = initCapturedDumps()
   const upstreams = [customUpstream('up_A', ['embeddings'])]
-  initRepo(stubRepo(upstreams, dumpKey))
+  await initRepo(upstreams, dumpKey)
   initRuntimeLocation('bun')
   let upstreamModel: unknown
   const upstreamBody = JSON.stringify({ error: { type: 'invalid_request_error', message: `mapped upstream ${status}` } })
@@ -972,7 +965,7 @@ test.each([400, 429])('mapped Custom embeddings upstream %i is forwarded without
 })
 
 test("image generation sends the mapped destination upstream", async () => {
-  initRepo(stubRepo([customUpstream("up_A", ["images_generations"])]));
+  await initRepo([customUpstream("up_A", ["images_generations"])]);
   initRuntimeLocation("bun");
   let upstreamModel: unknown;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -1054,7 +1047,7 @@ function expectSanitizedImageErrorHeaders(response: Response, status: number): v
 
 test('mapped Custom image generation HTTP 400 preserves its OpenAI body and sanitizes forwarded headers', async () => {
   const { store, drain } = initCapturedDumps()
-  initRepo(stubRepo([customUpstream('up_A', ['images_generations'])], dumpKey))
+  await initRepo([customUpstream('up_A', ['images_generations'])], dumpKey)
   initRuntimeLocation('bun')
   let upstreamModel: unknown
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -1088,7 +1081,7 @@ test('mapped Custom image generation HTTP 400 preserves its OpenAI body and sani
 
 test('mapped Custom image edit HTTP 429 preserves its OpenAI body and sanitizes forwarded headers', async () => {
   const { store, drain } = initCapturedDumps()
-  initRepo(stubRepo([customUpstream('up_A', ['images_edits'])], dumpKey))
+  await initRepo([customUpstream('up_A', ['images_edits'])], dumpKey)
   initRuntimeLocation('bun')
   let upstreamModel: FormDataEntryValue | null = null
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {

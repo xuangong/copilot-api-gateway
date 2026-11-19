@@ -2,14 +2,16 @@
 import { test, expect, afterEach, beforeEach } from 'bun:test'
 import { Hono } from 'hono'
 import { app as innerApp } from '../src/app.ts'
-import { initCatalogTestRepo as initRepo, syntheticCopilotTokenResponse } from './helpers/catalog-test-repo.ts'
+import { syntheticCopilotTokenResponse } from './helpers/catalog-test-repo.ts'
+import { setupTestPlatform } from './_setup-platform.ts'
+import { seedApiKey } from './helpers/seed-fixtures.ts'
 import { initResponsesStore } from '../src/data-plane/runtime/responses-store.ts'
 import {
   __resetPlatformForTests,
   initBackground,
   initRuntimeLocation,
 } from '@vibe-core/platform'
-import type { Repo, UpstreamRecord } from '../src/repo/types.ts'
+import type { UpstreamRecord } from '../src/repo/types.ts'
 import type { Model } from '@vibe-llm/provider-copilot'
 import type { DataPlaneAuthCtx } from '../src/data-plane/models/routes.ts'
 import { InMemoryResponsesSnapshotStore } from '@vibe-llm/responses-store'
@@ -34,13 +36,12 @@ const stubUpstream = (): UpstreamRecord => ({
   createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z',
 })
 
-const stubRepo = (ups: UpstreamRecord[]): Repo => ({
-  upstreams: { list: async () => ups },
-  apiKeys: { getById: async () => null, touchLastUsed: async () => undefined },
-  usage: { query: async () => [], record: async () => undefined, recordWithTimestamp: async () => undefined },
-  latency: { record: async () => undefined },
-  performance: { record: async () => undefined },
-} as unknown as Repo)
+/** The real in-memory repo, holding the upstreams and the authenticated key. */
+const seedRepo = async (ups: UpstreamRecord[]): Promise<void> => {
+  const { repo } = setupTestPlatform()
+  for (const upstream of ups) await repo.upstreams.save(upstream)
+  await seedApiKey(repo, { id: 'k1', key: 'synthetic-k1-key', ownerId: 'u1' })
+}
 
 const originalFetch = globalThis.fetch
 function installFetch(handler: (req: Request) => Promise<Response> | Response) {
@@ -66,7 +67,7 @@ const COPILOT_TOKEN = 'tkn'
 const MODEL_ID = 'gpt-5-mini'
 
 test('responses + previous_response_id expands snapshot and clears the field', async () => {
-  initRepo(stubRepo([stubUpstream()]), { apiKeys: [{ id: "k1", ownerId: "u1" }] })
+  await seedRepo([stubUpstream()])
   const store = new InMemoryResponsesSnapshotStore()
   await store.save({
     responseId: 'resp_prev',
@@ -127,7 +128,7 @@ test('responses + previous_response_id expands snapshot and clears the field', a
 
 test('responses maps the model after expanding previous_response_id', async () => {
   const source = 'source-model'
-  initRepo(stubRepo([stubUpstream()]), { apiKeys: [{ id: "k1", ownerId: "u1" }] })
+  await seedRepo([stubUpstream()])
   const store = new InMemoryResponsesSnapshotStore()
   await store.save({
     responseId: 'resp_prev', apiKeyId: 'k1', model: MODEL_ID,
@@ -166,7 +167,7 @@ test('responses maps the model after expanding previous_response_id', async () =
 
 test('responses continuation keeps current source model when routing is disabled', async () => {
   const source = 'gpt-5-mini-source'
-  initRepo(stubRepo([stubUpstream()]), { apiKeys: [{ id: "k1", ownerId: "u1" }] })
+  await seedRepo([stubUpstream()])
   const store = new InMemoryResponsesSnapshotStore()
   await store.save({
     responseId: 'resp_prev', apiKeyId: 'k1', model: 'snapshot-model',
@@ -199,7 +200,7 @@ test('responses continuation keeps current source model when routing is disabled
 })
 
 test('responses + unknown previous_response_id returns 400 with verbatim envelope', async () => {
-  initRepo(stubRepo([stubUpstream()]), { apiKeys: [{ id: "k1", ownerId: "u1" }] })
+  await seedRepo([stubUpstream()])
   const store = new InMemoryResponsesSnapshotStore()
   initResponsesStore(store)
   installFetch((req) => {
@@ -238,7 +239,7 @@ test('responses + non-array input is rejected by Zod before expand mutates paylo
   // silently coerce a non-array `input` to []. With expand moved into dispatch
   // (post-parse), Zod must reject malformed input first and the snapshot store
   // must never be touched.
-  initRepo(stubRepo([stubUpstream()]), { apiKeys: [{ id: "k1", ownerId: "u1" }] })
+  await seedRepo([stubUpstream()])
   const store = new InMemoryResponsesSnapshotStore()
   // If expand were to fire we'd want it to fail loudly — wrap load() to throw.
   const guardedStore = new Proxy(store, {
@@ -270,7 +271,7 @@ test('responses + non-array input is rejected by Zod before expand mutates paylo
 })
 
 test('responses + previous_response_id owned by another api key returns 400', async () => {
-  initRepo(stubRepo([stubUpstream()]), { apiKeys: [{ id: "k1", ownerId: "u1" }] })
+  await seedRepo([stubUpstream()])
   const store = new InMemoryResponsesSnapshotStore()
   await store.save({
     responseId: 'resp_owned',
@@ -309,7 +310,7 @@ test('responses + previous_response_id owned by another api key returns 400', as
 })
 
 test('responses non-stream saves snapshot using upstream response.id', async () => {
-  initRepo(stubRepo([stubUpstream()]), { apiKeys: [{ id: "k1", ownerId: "u1" }] })
+  await seedRepo([stubUpstream()])
   const store = new InMemoryResponsesSnapshotStore()
   initResponsesStore(store)
   installFetch((req) => {
@@ -352,7 +353,7 @@ test('responses non-stream saves snapshot using upstream response.id', async () 
 })
 
 test('responses stream saves snapshot when response.completed fires', async () => {
-  initRepo(stubRepo([stubUpstream()]), { apiKeys: [{ id: "k1", ownerId: "u1" }] })
+  await seedRepo([stubUpstream()])
   const store = new InMemoryResponsesSnapshotStore()
   initResponsesStore(store)
 
@@ -424,7 +425,7 @@ for (const stream of [false, true]) {
       const store = createBunResponsesStore(new BunSqliteDatabase(db))
       const gate = Promise.withResolvers<void>()
       let writes = 0
-      initRepo(stubRepo([stubUpstream()]), { apiKeys: [{ id: "k1", ownerId: "u1" }] })
+      await seedRepo([stubUpstream()])
       initResponsesStore({
         load: (...args) => store.load(...args),
         save: async (snapshot) => { writes++; await gate.promise; await store.save(snapshot) },
