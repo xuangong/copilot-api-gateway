@@ -7,6 +7,10 @@ import { COMMENT_KEEPALIVE_FRAME } from "../shared/sse-keepalive"
 export type { CompletedResponsesSnapshot, ResponsesCompletionWriter, RespondResponsesInput } from "./turn"
 export type RespondResponsesOptions = ResponsesTurnOptions
 
+// Codex reads this as "reported usage already counts historical encrypted
+// reasoning" and skips its own re-estimate (which compacts too early).
+const REASONING_INCLUDED_HEADER = "x-reasoning-included"
+
 /** HTTP is only a consumer of the canonical source. WS can consume turn.events
  * directly, without going through this serialization boundary. */
 export async function renderResponsesTurn(turn: ResponsesTurn): Promise<Response> {
@@ -41,6 +45,7 @@ export async function renderResponsesTurn(turn: ResponsesTurn): Promise<Response
       })])
     } finally { if (onAbort) turn.abortController.signal.removeEventListener("abort", onAbort) }
     headers.set("content-type", "application/json")
+    if (!failed && metadata.status < 400 && (body as { status?: string } | undefined)?.status !== "failed") headers.set(REASONING_INCLUDED_HEADER, "true")
     const init = { status: metadata.status >= 400 ? metadata.status : failed ? 502 : metadata.status, headers }
     // Reuse the counted JSON without a second serialization or counting buffer.
     // Abort may replace the body; undefined JSON retains native platform behavior.
@@ -48,6 +53,7 @@ export async function renderResponsesTurn(turn: ResponsesTurn): Promise<Response
       ? new Response(serialized.json, init)
       : Response.json(body, init)
   }
+  headers.set(REASONING_INCLUDED_HEADER, "true")
   headers.set("content-type", "text/event-stream")
   headers.set("cache-control", "no-cache")
   headers.set("connection", "keep-alive")
