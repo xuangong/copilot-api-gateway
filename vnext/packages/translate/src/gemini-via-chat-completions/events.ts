@@ -178,7 +178,8 @@ const accumulateToolCalls = (
   for (const toolCall of toolCalls) {
     const current = (state.toolCalls[toolCall.index] ??= { argsJson: '' })
     if (toolCall.id !== undefined) current.id = toolCall.id
-    if (toolCall.function?.name !== undefined) current.name = toolCall.function.name
+    // A later fragment may repeat name "": an empty name never renames an open call.
+    if (toolCall.function?.name) current.name = toolCall.function.name
     if (toolCall.function?.arguments !== undefined) current.argsJson += toolCall.function.arguments
   }
 }

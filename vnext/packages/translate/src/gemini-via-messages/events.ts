@@ -181,7 +181,7 @@ function buildChunkResponses(state: State, chunk: ChatSSEChunk): GeminiStreamRes
           cs.toolCalls.set(tc.index, draft)
         }
         if (tc.id !== undefined) draft.id = tc.id
-        if (tc.function?.name !== undefined) draft.name = tc.function.name
+        if (tc.function?.name) draft.name = tc.function.name // empty repeats never rename
         if (tc.function?.arguments !== undefined) {
           draft.argsJson += tc.function.arguments
         }
