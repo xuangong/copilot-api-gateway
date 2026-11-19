@@ -75,11 +75,7 @@ export class CustomProvider implements LlmModelProvider {
 
   constructor(cfg: CustomProviderConfig, fetcher: Fetcher = directFetcher, executionFetcher?: ExecutionFetcherForRequest, private readonly affinityAuthority?: ProviderAffinityAuthority) {
     this.opaqueCompatibility = parseOpaqueCompatibilityMap(cfg.opaqueCompatibility)
-    const authStyle = cfg.authStyle ?? 'bearer'
-    if (authStyle !== 'none' && !cfg.apiKey) {
-      throw new Error('Custom provider requires an apiKey')
-    }
-    this.authStyle = authStyle
+    this.authStyle = cfg.authStyle ?? 'bearer'
     if (!cfg.baseUrl) throw new Error('Custom provider requires a baseUrl')
     this.name = cfg.name
     this.baseUrl = cfg.baseUrl.replace(/\/+$/, '')
@@ -227,6 +223,7 @@ export class CustomProvider implements LlmModelProvider {
       { method: 'POST', body, headers: req.headers, signal: req.signal },
       { operationName: req.operationName, timeout: req.timeout, fetcher: fenced },
       `call ${req.endpoint}`,
+      req.endpoint === 'messages' || req.endpoint === 'messages_count_tokens' ? 'anthropic' : 'bearer',
     )
     return { status: res.status, headers: res.headers, body: res.body, affinityExecution }
   }
@@ -247,18 +244,26 @@ export class CustomProvider implements LlmModelProvider {
     return path
   }
 
+  /**
+   * `credential` is the header scheme for this call. Inference calls pick it
+   * from the protocol they invoke (Messages -> x-api-key, everything else ->
+   * Bearer); only the `/models` catalog call, which has no protocol, falls
+   * back to the configured `authStyle`. An empty key, or the legacy `'none'`
+   * style, sends no credential at all.
+   */
   private authHeaders(
     extra: Record<string, string> = {},
-    opts: { includeJsonContentType?: boolean } = {},
+    opts: { includeJsonContentType?: boolean; credential?: Exclude<CustomAuthStyle, 'none'> } = {},
   ): Record<string, string> {
     // Built-in keys stay lowercase to match mergeHeaders' normalization of
     // defaultHeaders. A capitalized key would sit beside an operator's
     // lowercase one rather than being replaced by it, and listModels hands
     // this Record to fetch unnormalized, where the pair would concatenate.
     const base: Record<string, string> = {}
-    if (this.authStyle === 'bearer') {
+    const credential = this.authStyle === 'none' || this.apiKey === '' ? undefined : opts.credential ?? this.authStyle
+    if (credential === 'bearer') {
       base['authorization'] = `Bearer ${this.apiKey}`
-    } else if (this.authStyle === 'anthropic') {
+    } else if (credential === 'anthropic') {
       base['x-api-key'] = this.apiKey
       base['anthropic-version'] = '2023-06-01'
     }
@@ -274,6 +279,7 @@ export class CustomProvider implements LlmModelProvider {
     init: RequestInit,
     opts: { operationName?: string; timeout?: number; fetcher?: Fetcher },
     defaultOpName: string,
+    credential: Exclude<CustomAuthStyle, 'none'>,
   ): Promise<Response> {
     const url = `${this.baseUrl}${path}`
     const bodyIsFormData = init.body instanceof FormData
@@ -284,6 +290,7 @@ export class CustomProvider implements LlmModelProvider {
     const outHeaders = new Headers()
     const defaults = this.authHeaders(mergeHeaders(init.headers, undefined), {
       includeJsonContentType: !bodyIsFormData,
+      credential,
     })
     for (const [k, v] of Object.entries(defaults)) outHeaders.set(k, v)
     // Defense-in-depth: any caller-supplied content-type would kill the

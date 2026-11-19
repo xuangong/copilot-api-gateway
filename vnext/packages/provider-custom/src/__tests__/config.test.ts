@@ -142,8 +142,10 @@ describe('normalizeCustomConfig', () => {
       .toThrow(/config.authStyle must be one of bearer, anthropic, none/)
   })
 
-  test('requires an apiKey when authStyle is bearer', () => {
-    expect(() => normalizeCustomConfig({ ...base, apiKey: '' })).toThrow(/config.apiKey required/)
+  // Reference copilot-gateway 4c1ffa0be (#729): an empty key is the anonymous
+  // upstream, so it is valid for every authStyle.
+  test('allows an empty apiKey for any authStyle (anonymous upstream)', () => {
+    expect(normalizeCustomConfig({ ...base, apiKey: '' }).apiKey).toBeUndefined()
   })
 
   test('allows a missing apiKey when authStyle is none', () => {

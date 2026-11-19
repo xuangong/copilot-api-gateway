@@ -2,10 +2,12 @@ import { describe, test, expect } from 'bun:test'
 import { CustomProvider } from '../provider.ts'
 
 describe('CustomProvider constructor', () => {
-  test('throws when apiKey is missing', () => {
+  // Reference copilot-gateway 4c1ffa0be (#729): an empty key is the anonymous
+  // upstream (replaces authStyle 'none'), so it is no longer a config error.
+  test('an empty apiKey is allowed (anonymous upstream)', () => {
     expect(() => new CustomProvider({
       name: 'x', baseUrl: 'https://api.example.com/v1', apiKey: '',
-    })).toThrow(/apiKey/)
+    })).not.toThrow()
   })
 
   test('throws when baseUrl is missing', () => {
@@ -277,6 +279,49 @@ describe('CustomProvider.fetch', () => {
     }
   })
 
+  // Reference copilot-gateway 4c1ffa0be (#729): the credential header follows the
+  // protocol actually invoked, not an upstream-wide style. A bearer-styled
+  // upstream that also serves Messages used to send Authorization to
+  // /messages; an anthropic-styled one sent x-api-key to OpenAI endpoints.
+  test('inference credential header follows the request protocol, whatever authStyle says', async () => {
+    const cases: Array<[Parameters<CustomProvider['fetch']>[0]['endpoint'], 'openai' | 'anthropic', boolean]> = [
+      ['chat_completions', 'openai', false],
+      ['responses', 'openai', false],
+      ['embeddings', 'openai', false],
+      ['messages', 'anthropic', true],
+      ['messages_count_tokens', 'anthropic', true],
+    ]
+    for (const authStyle of ['bearer', 'anthropic'] as const) {
+      for (const [endpoint, sourceApi, anthropicWire] of cases) {
+        const { calls, restore } = captureFetch(() => Response.json({ ok: true }))
+        try {
+          const p = new CustomProvider({ name: 'x', baseUrl: 'https://x/v1', apiKey: 'sk-1', authStyle })
+          await p.fetch({ endpoint, payload: {}, headers: new Headers(), sourceApi })
+          const h = new Headers(calls[0]!.init?.headers)
+          if (anthropicWire) {
+            expect([endpoint, authStyle, h.get('x-api-key'), h.get('anthropic-version'), h.get('authorization')])
+              .toEqual([endpoint, authStyle, 'sk-1', '2023-06-01', null])
+          } else {
+            expect([endpoint, authStyle, h.get('authorization'), h.get('x-api-key'), h.get('anthropic-version')])
+              .toEqual([endpoint, authStyle, 'Bearer sk-1', null, null])
+          }
+        } finally { restore() }
+      }
+    }
+  })
+
+  test('an empty key sends no credential header on any protocol', async () => {
+    for (const [endpoint, sourceApi] of [['chat_completions', 'openai'], ['messages', 'anthropic']] as const) {
+      const { calls, restore } = captureFetch(() => Response.json({ ok: true }))
+      try {
+        const p = new CustomProvider({ name: 'x', baseUrl: 'https://x/v1', apiKey: '' })
+        await p.fetch({ endpoint, payload: {}, headers: new Headers(), sourceApi })
+        const h = new Headers(calls[0]!.init?.headers)
+        expect([h.get('authorization'), h.get('x-api-key')]).toEqual([null, null])
+      } finally { restore() }
+    }
+  })
+
   test('defaultHeaders and request headers both flow through; authorization never overridden', async () => {
     const { calls, restore } = captureFetch(() => Response.json({ ok: true }))
     try {
@@ -485,16 +530,12 @@ describe('CustomProvider auth styles', () => {
     })).not.toThrow()
   })
 
-  test('bearer style still requires an apiKey', () => {
-    expect(() => new CustomProvider({
-      name: 'x', baseUrl: 'https://x', authStyle: 'bearer',
-    })).toThrow(/apiKey/)
-  })
-
-  test('anthropic style still requires an apiKey', () => {
-    expect(() => new CustomProvider({
-      name: 'x', baseUrl: 'https://x', authStyle: 'anthropic',
-    })).toThrow(/apiKey/)
+  test.each(['bearer', 'anthropic'] as const)('%s style with an empty key sends no credential', (authStyle) => {
+    const p = new CustomProvider({ name: 'x', baseUrl: 'https://x', authStyle })
+    const h = headers(p)
+    expect(h['authorization']).toBeUndefined()
+    expect(h['x-api-key']).toBeUndefined()
+    expect(h['anthropic-version']).toBeUndefined()
   })
 
   // Deliberate divergence from copilot-gateway, which guards built-in headers

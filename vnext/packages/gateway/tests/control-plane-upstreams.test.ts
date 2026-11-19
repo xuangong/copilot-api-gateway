@@ -183,10 +183,12 @@ test('POST /api/upstream-probe azure valid config → ok via probe', async () =>
   }
 })
 
-test('POST /api/upstream-probe custom missing apiKey → 200 { ok:false }', async () => {
+// An empty apiKey is a valid anonymous upstream (reference 4c1ffa0be, #729);
+// the invalid shape probed here is a missing baseUrl.
+test('POST /api/upstream-probe custom missing baseUrl → 200 { ok:false }', async () => {
   const res = await buildApp({ isAdmin: true }).request('/api/upstream-probe', {
     method: 'POST',
-    body: JSON.stringify({ kind: 'custom', config: { name: 'x', baseUrl: 'https://e.com' } }),
+    body: JSON.stringify({ kind: 'custom', config: { name: 'x', apiKey: 'k' } }),
     headers: { 'content-type': 'application/json' },
   })
   expect(res.status).toBe(200)

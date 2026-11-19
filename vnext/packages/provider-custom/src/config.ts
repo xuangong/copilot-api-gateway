@@ -113,9 +113,14 @@ export interface CustomProviderConfig {
   opaqueCompatibility?: OpaqueCompatibilityMap
   name: string
   baseUrl: string
-  /** Required unless `authStyle` is `'none'`. */
+  /** Empty/absent means anonymous: no credential header is sent. */
   apiKey?: string
-  /** Defaults to `'bearer'`. */
+  /**
+   * Credential scheme for the `/models` catalog call only (defaults to
+   * `'bearer'`); inference calls choose Bearer or x-api-key from their own
+   * protocol. `'none'` is the legacy spelling of an empty key and is kept so
+   * stored configs keep their meaning without a data migration.
+   */
   authStyle?: CustomAuthStyle
   /**
    * Replaces the default path for an endpoint. Paths are appended to
@@ -316,7 +321,6 @@ export function normalizeCustomConfig(config: Record<string, unknown>): CustomPr
   }
   const authStyle = parseAuthStyle(config.authStyle)
   const apiKey = typeof config.apiKey === 'string' && config.apiKey ? config.apiKey : undefined
-  if (authStyle !== 'none' && !apiKey) throw new Error('custom config.apiKey required')
   const modelsEndpoint =
     typeof config.modelsEndpoint === 'string' && config.modelsEndpoint.trim()
       ? validateModelsEndpoint(config.modelsEndpoint.trim())
