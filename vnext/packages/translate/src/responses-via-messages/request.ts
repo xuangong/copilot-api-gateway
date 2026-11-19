@@ -227,7 +227,7 @@ function translateTools(tools: ResponsesPayload['tools']): ToolLike[] | undefine
     out.push({
       name: raw.name,
       ...(raw.description ? { description: raw.description } : {}),
-      ...(raw.type === 'custom' ? { input_schema: customToolParameters() } : raw.parameters ? { input_schema: raw.parameters } : {}),
+      ...(raw.type === 'custom' ? { input_schema: customToolParameters() } : raw.parameters ? { input_schema: structuredClone(raw.parameters) } : {}),
     })
   }
   return out.length > 0 ? out : undefined

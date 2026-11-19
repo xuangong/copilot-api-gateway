@@ -146,7 +146,7 @@ function translateTools(tools: ChatPayload['tools']): ResponsesTool[] | undefine
       type: 'function',
       name: fn.name,
       ...(fn.description ? { description: fn.description } : {}),
-      parameters: fn.parameters,
+      parameters: structuredClone(fn.parameters),
       strict: false,
     }
     out.push(tool)
@@ -220,7 +220,7 @@ export function translateChatToResponses(
   // Forwarded verbatim, including '' (reference #619): the caller's value is never judged by truthiness.
   if (typeof payload.reasoning_effort === 'string') target.reasoning = { effort: payload.reasoning_effort }
   const ext = payload as ChatPayload & { metadata?: Record<string, string> }
-  if (ext.metadata) target.metadata = { ...ext.metadata }
+  if (ext.metadata) target.metadata = structuredClone(ext.metadata)
   const tools = translateTools(payload.tools)
   if (tools) target.tools = tools
   const webSearchOptions = (payload as { web_search_options?: unknown }).web_search_options

@@ -13,6 +13,10 @@
 
 export const EPHEMERAL_CACHE_CONTROL = { type: 'ephemeral' } as const
 
+// Every breakpoint gets its own object: later stages mutate targets in place, so a shared
+// constant would leak one request's edits into the next (reference #557).
+const ephemeralCacheControl = (): CacheControl => ({ ...EPHEMERAL_CACHE_CONTROL })
+
 type CacheControl = { type: 'ephemeral' }
 type Cacheable = { cache_control?: CacheControl }
 
@@ -32,7 +36,7 @@ export function applyLastToolCacheBreakpoint(tools: ToolLike[] | undefined): voi
     // `type`; cache_control belongs on the last *custom* tool. A missing
     // `type` or `type === "custom"` qualifies as a custom tool.
     if (!tool.type || tool.type === 'custom') {
-      tool.cache_control = EPHEMERAL_CACHE_CONTROL
+      tool.cache_control = ephemeralCacheControl()
       return
     }
   }
@@ -46,7 +50,7 @@ export function applyLastMessageCacheBreakpoint(messages: MessageLike[]): void {
       const block: TextBlockLike = {
         type: 'text',
         text: message.content,
-        cache_control: EPHEMERAL_CACHE_CONTROL,
+        cache_control: ephemeralCacheControl(),
       }
       message.content = [block]
       return
@@ -54,7 +58,7 @@ export function applyLastMessageCacheBreakpoint(messages: MessageLike[]): void {
     for (let b = message.content.length - 1; b >= 0; b--) {
       const block = message.content[b]
       if (block && CACHEABLE_BLOCK_TYPES.has(block.type)) {
-        block.cache_control = EPHEMERAL_CACHE_CONTROL
+        block.cache_control = ephemeralCacheControl()
         return
       }
     }
@@ -67,5 +71,5 @@ export function applyLastMessageCacheBreakpoint(messages: MessageLike[]): void {
  */
 export function systemWithCacheBreakpoint(text: string | undefined): TextBlockLike[] | undefined {
   if (!text) return undefined
-  return [{ type: 'text', text, cache_control: EPHEMERAL_CACHE_CONTROL }]
+  return [{ type: 'text', text, cache_control: ephemeralCacheControl() }]
 }

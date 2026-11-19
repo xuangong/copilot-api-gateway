@@ -226,7 +226,7 @@ function translateTools(tools: MessagesTool[] | undefined): ResponseTool[] | und
       type: 'function',
       name: t.name,
       ...(t.description ? { description: t.description } : {}),
-      parameters: t.input_schema,
+      parameters: structuredClone(t.input_schema),
       strict: false,
     }
   })
@@ -275,7 +275,7 @@ function translateOutputFormat(payload: MessagesPayload): { format: { type: 'jso
       type: 'json_schema',
       name: MESSAGES_OPENAI_JSON_SCHEMA_NAME,
       strict: true,
-      schema: fmt.schema as Record<string, unknown>,
+      schema: structuredClone(fmt.schema) as Record<string, unknown>,
     },
   }
 }
@@ -306,7 +306,7 @@ export function translateMessagesToResponses(payload: MessagesPayload): Messages
   if (instructions !== undefined) target.instructions = instructions
   if (payload.temperature !== undefined) target.temperature = payload.temperature
   if (payload.top_p !== undefined) target.top_p = payload.top_p
-  if (ext.metadata) target.metadata = { ...ext.metadata }
+  if (ext.metadata) target.metadata = structuredClone(ext.metadata)
   assertForcedToolDeclared(ext.tool_choice, payload.tools)
   if (tools !== undefined) {
     const translated = translateTools(tools)

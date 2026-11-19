@@ -182,13 +182,16 @@ function translateTools(tools: ChatToolDef[] | undefined): MessagesToolDef[] | u
   return tools.map((t) => ({
     name: t.function.name,
     description: t.function.description,
-    input_schema: t.function.parameters ?? { type: 'object', properties: {} },
+    input_schema: structuredClone(t.function.parameters) ?? { type: 'object', properties: {} },
   }))
 }
 
 function translateToolChoice(choice: unknown): { type: 'auto' | 'any' | 'tool' | 'none'; name?: string } | undefined {
   if (choice === undefined) return undefined
-  if (typeof choice === 'string') return CHAT_TOOL_CHOICE[choice]
+  if (typeof choice === 'string') {
+    const preset = CHAT_TOOL_CHOICE[choice]
+    return preset && { ...preset }
+  }
   if (choice && typeof choice === 'object') {
     const c = choice as { type?: string; function?: { name?: string } }
     if (c.type === 'function' && c.function?.name) {
@@ -261,7 +264,7 @@ export function translateChatToMessages(
   const output_config = reasoning.effort !== undefined || formatSchema
     ? {
         ...(reasoning.effort !== undefined ? { effort: reasoning.effort } : {}),
-        ...(formatSchema ? { format: { type: 'json_schema' as const, schema: formatSchema } } : {}),
+        ...(formatSchema ? { format: { type: 'json_schema' as const, schema: structuredClone(formatSchema) } } : {}),
       }
     : undefined
 
@@ -275,7 +278,7 @@ export function translateChatToMessages(
   if (payload.temperature != null) out.temperature = payload.temperature
   if (payload.top_p != null) out.top_p = payload.top_p
   if (payload.stop != null) {
-    out.stop_sequences = Array.isArray(payload.stop) ? payload.stop : [payload.stop]
+    out.stop_sequences = Array.isArray(payload.stop) ? [...payload.stop] : [payload.stop]
   }
   if (tools) out.tools = tools
   // Appended after `applyLastToolCacheBreakpoint` so the breakpoint stays on

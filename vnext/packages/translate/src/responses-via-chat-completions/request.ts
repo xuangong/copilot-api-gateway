@@ -157,7 +157,7 @@ function translateTools(tools: ResponsesPayload['tools']): ChatPayload['tools'] 
       function: {
         name: t.name,
         ...(t.description ? { description: t.description } : {}),
-        ...(t.type === 'custom' ? { parameters: customToolParameters() } : t.parameters !== undefined ? { parameters: t.parameters } : {}),
+        ...(t.type === 'custom' ? { parameters: customToolParameters() } : t.parameters !== undefined ? { parameters: structuredClone(t.parameters) } : {}),
       },
     } as NonNullable<ChatPayload['tools']>[number])
   }
@@ -204,7 +204,7 @@ export function translateResponsesToChat(source: ResponsesPayload): ResponsesToC
   const effort = (payload.reasoning as { effort?: unknown } | null | undefined)?.effort
   if (typeof effort === 'string') target.reasoning_effort = effort
   const ext = payload as ResponsesPayload & { metadata?: Record<string, string> }
-  if (ext.metadata) target.metadata = { ...ext.metadata }
+  if (ext.metadata) target.metadata = structuredClone(ext.metadata)
   if (payload.max_output_tokens !== undefined) target.max_tokens = payload.max_output_tokens
   const tools = translateTools(selected.tools)
   if (tools) target.tools = tools

@@ -218,7 +218,7 @@ function translateTools(tools: MessagesPayload['tools']): ChatTool[] | undefined
     function: {
       name: t.name,
       description: t.description,
-      parameters: (t.input_schema ?? { type: 'object', properties: {} }) as Record<string, unknown>,
+      parameters: structuredClone(t.input_schema ?? { type: 'object', properties: {} }) as Record<string, unknown>,
     },
   }))
 }
@@ -261,7 +261,7 @@ export function translateMessagesToChat(payload: MessagesPayload): ChatPayload {
   if (reasoning_effort !== undefined) out.reasoning_effort = reasoning_effort
   if (ext.temperature !== undefined) out.temperature = ext.temperature
   if (ext.top_p !== undefined) out.top_p = ext.top_p
-  if (ext.stop_sequences && ext.stop_sequences.length > 0) out.stop = ext.stop_sequences
+  if (ext.stop_sequences && ext.stop_sequences.length > 0) out.stop = [...ext.stop_sequences]
   if (tools) out.tools = tools
   const toolChoice = translateToolChoice(ext.tool_choice, tools, payload.tools)
   if (toolChoice !== undefined) out.tool_choice = toolChoice

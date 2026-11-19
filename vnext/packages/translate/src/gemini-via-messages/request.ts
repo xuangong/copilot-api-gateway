@@ -164,7 +164,7 @@ function translateTools(groups: GeminiToolGroup[] | undefined): ChatTool[] | und
     for (const fn of g.functionDeclarations ?? []) {
       const params =
         fn.parameters && Object.keys(fn.parameters).length > 0
-          ? fn.parameters
+          ? structuredClone(fn.parameters)
           : { type: 'object', properties: {} }
       out.push({
         type: 'function',
@@ -224,14 +224,14 @@ function translateGeminiToChat(payload: GeminiPayload, model: string): ChatPaylo
   if (genCfg.maxOutputTokens != null) out.max_tokens = genCfg.maxOutputTokens
   if (genCfg.temperature != null) out.temperature = genCfg.temperature
   if (genCfg.topP != null) out.top_p = genCfg.topP
-  if (genCfg.stopSequences?.length) out.stop = genCfg.stopSequences
+  if (genCfg.stopSequences?.length) out.stop = [...genCfg.stopSequences]
   if (tools) out.tools = tools
   if (toolChoice) out.tool_choice = toolChoice
   if (effort !== undefined) out.reasoning_effort = effort
   if (genCfg.responseSchema) {
     out.response_format = {
       type: 'json_schema',
-      json_schema: { name: 'gemini_response', strict: true, schema: genCfg.responseSchema },
+      json_schema: { name: 'gemini_response', strict: true, schema: structuredClone(genCfg.responseSchema) },
     }
   } else if (genCfg.responseMimeType === 'application/json') {
     out.response_format = { type: 'json_object' }

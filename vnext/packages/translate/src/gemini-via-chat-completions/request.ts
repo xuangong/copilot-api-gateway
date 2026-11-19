@@ -264,7 +264,7 @@ const applyGenerationConfig = (
 
   if (generationConfig.temperature !== undefined) request.temperature = generationConfig.temperature
   if (generationConfig.topP !== undefined) request.top_p = generationConfig.topP
-  if (generationConfig.stopSequences !== undefined) request.stop = generationConfig.stopSequences
+  if (generationConfig.stopSequences !== undefined) request.stop = [...generationConfig.stopSequences]
   if (generationConfig.candidateCount !== undefined) request.n = generationConfig.candidateCount
   if (generationConfig.presencePenalty !== undefined) request.presence_penalty = generationConfig.presencePenalty
   if (generationConfig.frequencyPenalty !== undefined) request.frequency_penalty = generationConfig.frequencyPenalty
@@ -273,7 +273,7 @@ const applyGenerationConfig = (
   if (generationConfig.responseSchema !== undefined) {
     request.response_format = {
       type: 'json_schema',
-      json_schema: { name: 'gemini_response', schema: generationConfig.responseSchema },
+      json_schema: { name: 'gemini_response', schema: structuredClone(generationConfig.responseSchema) },
     }
   } else if (generationConfig.responseMimeType === 'application/json') {
     request.response_format = { type: 'json_object' }
@@ -289,7 +289,7 @@ const buildTools = (payload: GeminiPayload): ChatTool[] | undefined => {
     function: {
       name: declaration.name,
       ...(declaration.description !== undefined ? { description: declaration.description } : {}),
-      ...(declaration.parameters !== undefined ? { parameters: declaration.parameters } : {}),
+      ...(declaration.parameters !== undefined ? { parameters: structuredClone(declaration.parameters) } : {}),
     },
   }))
   return tools.length ? tools : undefined

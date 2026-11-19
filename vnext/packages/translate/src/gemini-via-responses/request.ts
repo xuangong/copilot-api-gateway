@@ -246,7 +246,7 @@ const applyGenerationConfig = (
     request.text = {
       format: {
         type: 'json_schema',
-        json_schema: { name: 'gemini_response', schema: generationConfig.responseSchema },
+        json_schema: { name: 'gemini_response', schema: structuredClone(generationConfig.responseSchema) },
       },
     }
   } else if (generationConfig.responseMimeType === 'application/json') {
@@ -269,7 +269,7 @@ const buildTools = (payload: GeminiPayload): ResponsesTool[] | undefined => {
     type: 'function' as const,
     name: declaration.name,
     ...(declaration.description !== undefined ? { description: declaration.description } : {}),
-    parameters: declaration.parameters ?? { type: 'object', properties: {} },
+    parameters: structuredClone(declaration.parameters) ?? { type: 'object', properties: {} },
     strict: false,
   }))
   // `googleSearch` / `googleSearchRetrieval` → the Responses hosted web search,
