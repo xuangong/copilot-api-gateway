@@ -338,6 +338,22 @@ test('Gemini model detail and list are reachable under /v1 and selected by clien
   expect(generic.data.map(m => m.id)).toContain('gpt-4o')
 })
 
+// Gemini's own credential carriers also identify a Gemini-native caller on the
+// shared /v1/models: the `x-goog-api-key` header and the `?key=` query. Current
+// Gemini SDKs default to v1, and curl or hand-rolled clients send no SDK label.
+// Same rule as new-api (router/relay-router.go) and CLIProxyAPI; /v1beta/models
+// stays Gemini by path.
+test('Gemini credential carriers select the Gemini list shape on /v1/models', async () => {
+  await seedRepo([stubUpstream()])
+  installDecisionCatalog()
+  const app = buildApp(modelsRouter, COPILOT_REQUEST_AUTH)
+  for (const [path, headers] of [['/v1/models', { 'x-goog-api-key': 'k' }], ['/v1/models?key=k', {}]] as const) {
+    const body = await (await app.request(path, { headers })).json() as { models?: Array<{ name: string }>; data?: unknown }
+    expect(body.models?.map(m => m.name)).toEqual(['models/gpt-4o'])
+    expect(body.data).toBeUndefined()
+  }
+})
+
 // Both official TypeSafe SDKs parse `/v1/models` as
 // `{ models: [{ name, description, release_date }] }` and identify themselves
 // as `typesafe-sdk/<version>`; every other caller keeps the OpenAI shape.

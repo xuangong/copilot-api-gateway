@@ -196,15 +196,18 @@ async function handleList(auth: DataPlaneAuthCtx) {
 // Any other UA (including OpenAI public SDKs) keeps the historic OpenAI-shape
 // response so existing SDK consumers see byte-identical output.
 async function handleModelsRequest(c: {
-  req: { header: (name: string) => string | undefined }
+  req: { header: (name: string) => string | undefined; query: (name: string) => string | undefined }
   get: (key: 'auth') => DataPlaneAuthCtx | undefined
   json: (body: unknown, status?: 200 | 404) => Response
 }) {
   const auth = c.get('auth') ?? {}
   const ua = c.req.header('user-agent')
-  // Gemini SDKs parse `{ models: [{ name }] }` only. The shape follows the client's
-  // own telemetry headers, not the path, because Gemini serves v1 and v1beta alike.
-  if (isGeminiClient(c.req.header('user-agent'), c.req.header('x-goog-api-client'))) return c.json(await geminiList(auth))
+  // Gemini SDKs parse `{ models: [{ name }] }` only. /v1beta/models is Gemini by
+  // path; on this shared route the caller is recognized as Gemini-native by its
+  // SDK telemetry or by Gemini's own credential carriers (x-goog-api-key, ?key=),
+  // as new-api and CLIProxyAPI do — current Gemini SDKs default to v1.
+  if (isGeminiClient(c.req.header('user-agent'), c.req.header('x-goog-api-client'))
+    || c.req.header('x-goog-api-key') !== undefined || c.req.query('key') !== undefined) return c.json(await geminiList(auth))
   const models = await handleList(auth)
   if (isClaudeCodeUserAgent(ua)) return c.json(toClaudeCodeCatalog(models.data))
   if (isTypeSafeUserAgent(ua)) return c.json(toTypeSafeCatalog(models.data))
