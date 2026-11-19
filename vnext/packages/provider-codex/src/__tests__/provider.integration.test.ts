@@ -118,6 +118,7 @@ const CATALOG_JSON = {
   models: [
     { slug: 'gpt-5', display_name: 'GPT-5', context_window: 128000 },
     { slug: 'gpt-5-codex', display_name: 'GPT-5 Codex', context_window: 128000 },
+    { slug: 'gpt-lite', display_name: 'GPT Lite', context_window: 128000, use_responses_lite: true },
   ],
 }
 
@@ -835,6 +836,25 @@ test('bucket at 100% used but never 429d does not gate', async () => {
 
   expect(resp.status).toBe(200)
   expect(harness.calls.filter((c) => c.url.endsWith(CODEX_RESPONSES_PATH))).toHaveLength(1)
+})
+
+// Adapted from reference copilot-gateway 3cb6120c9 (#543): Lite models accept an
+// empty top-level `instructions` (base instructions travel as a tagged developer
+// item), so the neutral default must not be injected and then re-encoded as a
+// fake developer message. Standard models still need the default.
+test.each([
+  ['gpt-lite', false],
+  ['gpt-5', true],
+])('default instructions for %s are injected: %s', async (model, injected) => {
+  const record = baseRecord()
+  repo.put(record)
+  const harness = makeHarness(() => okSSE())
+  const provider = new CodexProvider(record, harness.fetcher)
+  const req = makeRequest()
+  req.payload = { model, input: [{ type: 'message', role: 'user', content: 'hi' }] }
+  expect((await provider.fetch(req)).status).toBe(200)
+  const call = harness.calls.find((c) => c.url.endsWith(CODEX_RESPONSES_PATH))
+  expect(call?.bodyText?.includes("You're a helpful assistant.")).toBe(injected)
 })
 
 // ─── Gateway-built responses and the real 401s behind them (upstream protection) ───

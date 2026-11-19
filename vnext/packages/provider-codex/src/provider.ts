@@ -27,7 +27,7 @@ import {
   type CodexPreparedCallResult,
 } from './fetch'
 import { directFetcher, type Fetcher } from './fetcher'
-import { codexResponsesBoundary } from './interceptors/responses'
+import { codexResponsesBoundaryFor } from './interceptors/responses'
 import {
   CodexCatalogAuthError,
   codexRawToProviderModel,
@@ -191,7 +191,7 @@ export class CodexProvider implements LlmModelProvider {
     }
 
     let preparedResult: CodexPreparedCallResult | undefined
-    const upstreamResp = await runInterceptors(inv, ctx, codexResponsesBoundary, async () => {
+    const upstreamResp = await runInterceptors(inv, ctx, codexResponsesBoundaryFor(model), async () => {
       const { account, credential } = await readCodexCredential(this.upstreamId, this.config.accounts[0].chatgptAccountId, this.writeTarget)
       const { model: _ignored, ...wireBody } = inv.payload as Record<string, unknown>
       const backendCallBase = {
