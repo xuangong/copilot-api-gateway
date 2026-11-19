@@ -209,6 +209,29 @@ const syntheticEventsFromResult = async function* (
   for (const frame of responsesResultToEvents(result, { genericOutputItems: true })) yield frame
 }
 
+const CACHE_SHARING_SUMMARIZATION_PROMPT
+  = `${SUMMARIZATION_PROMPT}\n\nDo not call any tools while writing this summary; respond with text only.`
+
+const sumResponseUsage = (a: ResponsesResult['usage'], b: ResponsesResult['usage']): ResponsesResult['usage'] => {
+  if (a === undefined) return b
+  if (b === undefined) return a
+  const cached = a.input_tokens_details !== undefined || b.input_tokens_details !== undefined
+  const written = a.input_tokens_details?.cache_write_tokens !== undefined || b.input_tokens_details?.cache_write_tokens !== undefined
+  const reasoning = a.output_tokens_details !== undefined || b.output_tokens_details !== undefined
+  return {
+    input_tokens: (a.input_tokens ?? 0) + (b.input_tokens ?? 0),
+    output_tokens: (a.output_tokens ?? 0) + (b.output_tokens ?? 0),
+    total_tokens: (a.total_tokens ?? 0) + (b.total_tokens ?? 0),
+    ...(cached ? { input_tokens_details: {
+      cached_tokens: (a.input_tokens_details?.cached_tokens ?? 0) + (b.input_tokens_details?.cached_tokens ?? 0),
+      ...(written ? { cache_write_tokens: (a.input_tokens_details?.cache_write_tokens ?? 0) + (b.input_tokens_details?.cache_write_tokens ?? 0) } : {}),
+    } } : {}),
+    ...(reasoning ? { output_tokens_details: {
+      reasoning_tokens: (a.output_tokens_details?.reasoning_tokens ?? 0) + (b.output_tokens_details?.reasoning_tokens ?? 0),
+    } } : {}),
+  }
+}
+
 const simulateCompaction = async (
   inv: Parameters<ResponsesInterceptor>[0],
   run: ChainRun,
@@ -245,49 +268,70 @@ const simulateCompaction = async (
     role: 'system',
     content: [{ type: 'input_text', text: SUMMARIZATION_PROMPT }],
   }
-  const inputForSummarization = [compactorSystemMessage, ...historyItems, terminalUserMessage]
-
-  inv.payload = {
-    ...originalPayload,
-    input: inputForSummarization,
-    // Do not persist the ephemeral summarization turn in the upstream's
-    // conversation history.
-    store: false,
-  } as unknown as typeof inv.payload
-
-  // Pivot the action so the inner dispatch routes to the upstream's
-  // generate wire instead of its compact wire. The mutation is one-way:
-  // every `ctx.*` write propagates downstream and is never restored on the
-  // way out.
-  inv.action = 'generate'
-
-  const result = await run()
-
-  if (result.type !== 'events') {
-    // api-error / internal-error from the upstream propagate so the client
-    // learns the compaction failed rather than receiving a silent empty
-    // envelope.
-    return result
+  // Both attempts are rebuilt from the original payload. Pivoting the action
+  // routes the inner dispatch to the upstream's generate wire; the mutation is
+  // one-way (every `ctx.*` write propagates downstream).
+  const runGenerate = async (input: ResponsesInputItem[]): Promise<ResponsesRunResult> => {
+    inv.payload = {
+      ...originalPayload,
+      input,
+      // Do not persist the ephemeral summarization turn upstream.
+      store: false,
+    } as unknown as typeof inv.payload
+    inv.action = 'generate'
+    return run()
   }
 
-  const upstreamResult = await materializeResponsesSource(result, inv.payload.stream === true, undefined, abortUpstream)
-  const closedItems = new Map<number, ResponsesOutputItem>()
-  const observed = (async function* (): AsyncIterable<ProtocolFrame<ResponsesStreamEvent>> {
-    for await (const frame of upstreamResult.events) {
-      if (frame.type === 'event' && frame.event.type === 'response.output_item.done') {
-        closedItems.set(frame.event.output_index, frame.event.item)
+  const collectTurn = async (result: Extract<ResponsesRunResult, { type: 'events' }>) => {
+    const upstreamResult = await materializeResponsesSource(result, inv.payload.stream === true, undefined, abortUpstream)
+    const closedItems = new Map<number, ResponsesOutputItem>()
+    const observed = (async function* (): AsyncIterable<ProtocolFrame<ResponsesStreamEvent>> {
+      for await (const frame of upstreamResult.events) {
+        if (frame.type === 'event' && frame.event.type === 'response.output_item.done') {
+          closedItems.set(frame.event.output_index, frame.event.item)
+        }
+        yield frame
       }
-      yield frame
-    }
-  })()
+    })()
+    const collected = await collectResponsesProtocolEventsToResult(observed)
+    return { upstreamResult, collected, summaryText: summaryTextFrom(closedItems, collected.output) }
+  }
 
-  const collected = await collectResponsesProtocolEventsToResult(observed)
-  const summaryText = summaryTextFrom(closedItems, collected.output)
+  // Cache-sharing attempt: keep the caller's system/tools/history prefix
+  // untouched and append the summarization request as the final user message,
+  // so the upstream can reuse the prompt cache of the ordinary agent turn.
+  // Tools stay declared (changing them would break the prefix); the prompt
+  // forbids calling them.
+  // Adapted from reference copilot-gateway ad6fa3ffa (#616).
+  const first = await runGenerate([...historyItems, {
+    type: 'message',
+    role: 'user',
+    content: [{ type: 'input_text', text: CACHE_SHARING_SUMMARIZATION_PROMPT }],
+  }])
+  // api-error / internal-error propagate so the client learns the compaction failed.
+  if (first.type !== 'events') return first
+  const firstTurn = await collectTurn(first)
+
+  let finalTurn = firstTurn
+  let summaryText = firstTurn.summaryText
+  let usage = firstTurn.collected.usage
+  if (summaryText.trim().length === 0) {
+    // A tool-only or empty reply is a cache-sharing failure: warn and retry
+    // once with the established system-prompt summarizer.
+    console.warn('Compact shim cache-sharing summarization returned no assistant text; retrying with the system-prompt summarizer')
+    const second = await runGenerate([compactorSystemMessage, ...historyItems, terminalUserMessage])
+    if (second.type !== 'events') return second
+    finalTurn = await collectTurn(second)
+    summaryText = finalTurn.summaryText
+    usage = sumResponseUsage(usage, finalTurn.collected.usage)
+  }
   // A compaction blob is the whole of what the next turn inherits, so an
   // empty one silently discards the conversation.
-  if (summaryText.length === 0) {
+  if (summaryText.trim().length === 0) {
     throw new Error('Responses compact shim: the summarization turn closed no assistant text to summarize')
   }
+  const upstreamResult = finalTurn.upstreamResult
+  const collected = { ...finalTurn.collected, ...(usage === undefined ? {} : { usage }) }
   const cmpId = createRandomResponsesItemId('compaction')
   const synthesized = buildCompactionEnvelope(cmpId, summaryText, collected)
   for (const item of synthesized.output) registerPlaintextCompaction?.(item as { id?: string; encrypted_content?: string })
