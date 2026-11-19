@@ -259,3 +259,36 @@ LLM gateways handle them, not deferred. Sources are cited in the tests.
 - [x] One test location per package (`79f878b1`); surfaced 20 never-typechecked test type errors; guarded in scripts/test-tiers.
 - [x] Vendor-constant source links backfilled (11 constants) and linted (`35f5335f`).
 - [x] More kind branches → hooks (`publicStatus`, `configManagedBy`, `fixedOwner`); ratchet 28 → 20 (`15bc0b01`).
+
+## Architecture boundary: what stays in the gateway (2026-11-19)
+
+Provider-specific *behavior* is owned by the provider plugin
+(`LlmProviderPlugin` hooks: publicConfig, normalizeConfig, probeConfig,
+backup, catalog, opaqueAffinity, publicStatus, configManagedBy, fixedOwner,
+syncView), checked for every bundled provider by the conformance suite.
+Provider-kind comparisons left in gateway source: **16**, each listed with
+its reason in `tests/architecture/provider-kind-branches-ratchet.test.ts`
+and capped there.
+
+Provider-specific *HTTP surfaces* (Loki pairing/sync, Codex credential and
+quota routes, Copilot device login) stay in the gateway on purpose:
+
+- They are built from gateway infrastructure — browser-session guards,
+  ownership loading, the repo, DTO serialization, sync read-only rules,
+  proxy-chain resolution. Moving them into provider packages would make
+  those packages depend on gateway internals, inverting the workspace
+  dependency direction (reference AGENTS.md: "preserve the dependency
+  direction encoded by workspace manifests").
+- Their domain logic already lives in the provider packages
+  (`applyLokiSyncUpdate`, `LokiSyncError`, `readCodexQuotaObservations`,
+  `publicCodexCredentialStatus`); the gateway route only authenticates,
+  loads the row, checks it is the right kind, and serializes.
+- The reference makes the same split: `packages/gateway/src/control-plane/
+  upstreams/{chatgpt,claude-code,copilot,kimi-code,ollama}.ts`, with 60
+  provider-kind comparisons in its gateway source (counted 2026-11-19 at
+  ab7d27239) against our 16.
+
+The remaining identity checks are one-liners whose error semantics differ
+per route (401 for a sync credential, 404 for management, 409 for a
+replaced binding), so they are kept inline rather than funnelled through a
+shared helper.
