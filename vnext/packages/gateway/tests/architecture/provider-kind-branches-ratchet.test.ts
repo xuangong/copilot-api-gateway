@@ -11,7 +11,8 @@
  * - Identity checks in routes that exist only for one provider — "is this row
  *   really a Loki / Codex / Copilot row?" before acting on it:
  *   control-plane/loki/{routes,sync}.ts, upstreams/codex-quota-routes.ts,
- *   upstreams/codex-credentials-routes.ts, lib/github.ts (Copilot mirror).
+ *   upstreams/codex-credentials-routes.ts, lib/github.ts (Copilot mirror),
+ *   quota-balance/credential.ts (is this row a Copilot row with a stored credential, for quota reads and group membership).
  * - Copilot's request-scoped credential flows, which exist because Copilot
  *   alone can authenticate a request without a stored row:
  *   data-plane/providers/registry.ts (fallback token), control-plane/auth/
@@ -28,7 +29,7 @@ import { expect, test } from "bun:test"
 import { Glob } from "bun"
 import { join } from "node:path"
 
-const MAX = 16
+const MAX = 17
 const SRC = join(import.meta.dir, "../../src")
 const KIND_COMPARISON = /(?:provider|kind)\s*[!=]==\s*['"](?:copilot|codex|claude-code|custom|azure|loki|sdf)['"]/g
 

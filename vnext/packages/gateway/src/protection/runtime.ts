@@ -3,7 +3,7 @@ import { __registerPlatformReset, waitUntil } from "@vibe-core/platform"
 import { getRepo } from "../repo/index.ts"
 import type { Repo } from "../repo/types.ts"
 import type { ApiKeyId, UpstreamId } from "../repo/branded-ids.ts"
-import { PROTECTION_MESSAGE_MAX, SAMPLED_CLASSES, type ErrorClass, type NewPause, type PauseRecord, type PauseResolver } from "../repo/protection.ts"
+import { PROTECTION_MESSAGE_MAX, SAMPLED_CLASSES, type ErrorClass, type NewPause, type PauseReason, type PauseRecord, type PauseResolver } from "../repo/protection.ts"
 import { isRiskyClass } from "./classify.ts"
 import { assess, cooldownMinutes, covered } from "./detect.ts"
 import { resolveProtection } from "./settings.ts"
@@ -138,6 +138,24 @@ export class ProtectionRuntime {
     // This isolate enforces the new row at once; other isolates see it within `cacheTtlMs`.
     this.localEdit(rows => [...rows.filter(row => row.id !== created.id), created])
     return created
+  }
+
+  /**
+   * Inserts a pause that was not detected from error counts (the quota hard line). Null when an unresolved, unexpired row
+   * of the same target already covers it. This isolate enforces the new row at once; others see it within `cacheTtlMs`.
+   */
+  async insertExternal(pause: NewPause): Promise<PauseRecord | null> {
+    if (!(await this.repo().protection.insertPauseIfNone(pause, this.now()))) return null
+    const created: PauseRecord = { ...pause, resolvedAt: null, resolvedBy: null }
+    this.localEdit(rows => [...rows.filter(row => row.id !== created.id), created])
+    return created
+  }
+
+  /** Rewrites the reason of an active row in place (a provisional quota cut-off confirmed by a real read) and patches the local cache. */
+  async updateReason(id: string, reason: PauseReason): Promise<boolean> {
+    const updated = await this.repo().protection.updatePauseReason(id, reason)
+    if (updated) this.localEdit(rows => rows.map(row => row.id === id ? { ...row, reason } : row))
+    return updated
   }
 
   /**

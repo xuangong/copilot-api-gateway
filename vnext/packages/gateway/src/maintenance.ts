@@ -6,6 +6,8 @@ import { collectDumpFiles, sweepDumpRecords } from "./repo/dump-maintenance.ts"
 import { PROTECTION_PURGE_CHUNK } from "./repo/protection.ts"
 import { TELEMETRY_PURGE_CHUNK } from "./repo/telemetry.ts"
 import { sweepResponsesSnapshots } from "./responses-maintenance.ts"
+import "./control-plane/quota-balance/fetcher.ts"
+import { resetQuotaRetentionState, sweepQuotaBalance, sweepQuotaRetention } from "./quota-balance/sweep.ts"
 
 export { collectDumpFiles, sweepDumpRecords, sweepResponsesSnapshots }
 
@@ -21,7 +23,7 @@ export const isTelemetryRetentionDue = (now: number): boolean => new Date(now).g
 
 let orphanBacklog = false
 let protectionOrphanBacklog = false
-export const resetTelemetryRetentionState = (): void => { orphanBacklog = false; protectionOrphanBacklog = false }
+export const resetTelemetryRetentionState = (): void => { orphanBacklog = false; protectionOrphanBacklog = false; resetQuotaRetentionState() }
 
 /**
  * Protection retention: the date-based deletes run on every sweep; the two orphan scans (samples and settings of vanished upstreams,
@@ -55,6 +57,9 @@ export async function sweepMaintenance(db: SqlDatabase, files: FileProvider, now
     // One idle sweep is about three statements (stamp, minutes, pauses), five in an orphan-scan hour. A backlog is capped at 41 statements
     // (the stamp plus at most 10 chunked DELETEs on each of four tables) and continues on the next sweep.
     ["protection_retention", () => sweepProtection(now)],
+    // Quota balancing: one directory read per minute when no group exists; with groups, the reads the scheduler asks for (staggered, a few a day per member).
+    ["quota_balance", () => sweepQuotaBalance(now).then(() => {})],
+    ["quota_balance_retention", () => sweepQuotaRetention(now, isTelemetryRetentionDue(now))],
   ] as const) {
     try { await run() } catch { console.warn(JSON.stringify({ evt: "maintenance_failed", operation })) }
   }

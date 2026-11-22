@@ -28,9 +28,15 @@ export function pausedRoute(
       ? (hidden === 1 ? "An upstream" : `${hidden} upstreams`)
       : `Upstream${named.length > 1 ? "s" : ""} ${named.join(", ")} and ${hidden} other upstream${hidden > 1 ? "s" : ""}`
   const plural = rows.length > 1
+  const allQuota = rows.every(row => row.reason.trigger === "quota")
+  const cause = allQuota
+    ? "paused because the monthly usage allowance is nearly used up"
+    : rows.some(row => row.reason.trigger === "quota")
+      ? "paused (nearly used-up monthly usage allowance or error flood)"
+      : "paused to protect the account after an error flood"
   return {
     retryAfterSeconds: seconds,
-    message: `${subject} ${plural ? "are" : "is"} paused to protect the account after an error flood; service resumes at ${new Date(resumesAt).toISOString()}. Retry after ${seconds} seconds.`,
+    message: `${subject} ${plural ? "are" : "is"} ${cause}; service resumes at ${new Date(resumesAt).toISOString()}. Retry after ${seconds} seconds.`,
   }
 }
 
