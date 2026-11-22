@@ -1,6 +1,6 @@
 // packages/gateway/src/quota-balance/facts.ts
-import { COST_BUCKET_MS, type GroupSettings, type MemberFacts, type QuotaState } from "../repo/quota-balance.ts"
-import { DEFAULT_K_SHARE_PER_USD, MIN_K_SAMPLES, burnRateUsdPerHour, estimateShare, projectShare, type Estimate, type EstimatorParams } from "./estimator.ts"
+import { COST_BUCKET_MS, type GroupSettings, type MemberFacts, type MemberPlanFact, type QuotaState } from "../repo/quota-balance.ts"
+import { DEFAULT_K_SHARE_PER_USD, MIN_K_SAMPLES, burnRateUsdPerHour, kLearned, estimateShare, projectShare, type Estimate, type EstimatorParams } from "./estimator.ts"
 import { warn, type QuotaDeps } from "./deps.ts"
 import type { MemberView } from "./selection.ts"
 import { MONTH_START_SETTLE_MS } from "./read-schedule.ts"
@@ -19,6 +19,9 @@ export class MemberFactsCache {
   private readonly reloading = new Set<string>()
   /** Members whose last load failed while nothing was cached: eligible but ranked last (`viewMembers`). Members with cached facts keep using them. */
   readonly unavailable = new Set<string>()
+  /** Plan facts of every grouped member (peer-seeded k, D33): one query, same TTL; a failed load keeps the previous answer (or none: the current fallback). */
+  private planCache: { plans: readonly MemberPlanFact[]; at: number } | null = null
+  private planLoad: Promise<void> | null = null
 
   constructor(private readonly deps: QuotaDeps, readonly ttlMs = 20_000) {}
 
@@ -35,8 +38,27 @@ export class MemberFactsCache {
     return new Map(ids.map(id => [id, this.view(id, now)]))
   }
 
+  async plans(options: { fresh?: boolean } = {}): Promise<readonly MemberPlanFact[]> {
+    const now = this.deps.now()
+    if (!this.planCache || options.fresh) await this.loadPlans(now)
+    else if (now - this.planCache.at >= this.ttlMs && !this.planLoad) this.deps.schedule(this.loadPlans(now))
+    return this.planCache?.plans ?? []
+  }
+
+  private loadPlans(now: number): Promise<void> {
+    if (this.planLoad) return this.planLoad
+    const work: Promise<void> = (async () => {
+      try { this.planCache = { plans: await this.deps.repo().quotaBalance.listPlanFacts(), at: now } } catch (error) {
+        warn("quota_plan_facts_refresh_failed", error)
+        this.planCache = { plans: this.planCache?.plans ?? [], at: now }
+      }
+    })().finally(() => { if (this.planLoad === work) this.planLoad = null })
+    this.planLoad = work
+    return work
+  }
+
   addLocalCost(upstreamId: string, costUsd: number): void { this.local.set(upstreamId, (this.local.get(upstreamId) ?? 0) + costUsd) }
-  invalidate(upstreamId?: string): void { if (upstreamId === undefined) this.entries.clear(); else this.entries.delete(upstreamId) }
+  invalidate(upstreamId?: string): void { if (upstreamId === undefined) { this.entries.clear(); this.planCache = null } else this.entries.delete(upstreamId) }
 
   private view(id: string, now: number): MemberFacts {
     const entry = this.entries.get(id)
@@ -74,6 +96,41 @@ export function kFallbackOf(states: ReadonlyArray<QuotaState | null>): number {
   const middle = Math.floor(learned.length / 2)
   return learned.length % 2 === 1 ? learned[middle]! : (learned[middle - 1]! + learned[middle]!) / 2
 }
+
+/** Margin on the peers' median k: a seed errs towards "more used". */
+export const K_SEED_MARGIN = 1.2
+export interface KSeed { k: number; peers: number }
+export type KSource = { kind: "own" } | { kind: "peer"; peers: number } | { kind: "default" }
+
+const median = (values: number[]): number => {
+  const sorted = [...values].sort((a, b) => a - b)
+  const middle = Math.floor(sorted.length / 2)
+  return sorted.length % 2 === 1 ? sorted[middle]! : (sorted[middle - 1]! + sorted[middle]!) / 2
+}
+
+/**
+ * D33: a k for a member that has not learned its own, from members of groups of the same owner on the same plan: same latest entitlement, snapshot key and unit form
+ * (all known, not unlimited) and a learned k (at least MIN_K_SAMPLES). Median of the peers x K_SEED_MARGIN. Null when the member is unknown, unlimited, or has no such peer.
+ */
+export function seedKFor(upstreamId: string, plans: readonly MemberPlanFact[]): KSeed | null {
+  const me = plans.find(plan => plan.upstreamId === upstreamId)
+  if (!me || me.unlimited || me.entitlement === null || me.entitlement <= 0 || me.snapshotKey === null || me.unitForm === null) return null
+  const peers = plans.flatMap(plan =>
+    plan.upstreamId !== upstreamId && plan.ownerId === me.ownerId && !plan.unlimited && plan.entitlement === me.entitlement
+      && plan.snapshotKey === me.snapshotKey && plan.unitForm === me.unitForm && plan.k !== null && Number.isFinite(plan.k) && plan.k > 0 && kLearned(plan) ? [plan.k] : [])
+  return peers.length === 0 ? null : { k: median(peers) * K_SEED_MARGIN, peers: peers.length }
+}
+
+/** Where the k behind a member's numbers comes from: its own once learned, else the peer seed, else the fallback (group median / global default). */
+export const kSourceOf = (params: Pick<EstimatorParams, "k" | "kSamples">, seed: KSeed | null): KSource =>
+  kLearned(params) ? { kind: "own" } : seed ? { kind: "peer", peers: seed.peers } : { kind: "default" }
+
+/**
+ * The fallback k of a member (what `effectiveK` uses until its own is learned): the peer seed when there is one, else the group's. `conservative` is for
+ * D32's failing estimate: never below the group fallback it used before the seed existed.
+ */
+export const kFallbackFor = (groupFallback: number, seed: KSeed | null): { kFallback: number; conservative: number } =>
+  ({ kFallback: seed?.k ?? groupFallback, conservative: Math.max(groupFallback, seed?.k ?? 0) })
 
 export const paramsOf = (state: QuotaState | null): EstimatorParams => ({ k: state?.k ?? null, kSamples: state?.kSamples ?? 0, o: state?.o ?? 0 })
 
@@ -129,15 +186,16 @@ export const UNAVAILABLE_PROJECTED_SHARE = 1e6
  * Selection views (shares only) of the given members. A member in `unavailable` (facts failed to load, none cached) is eligible, below the soft line
  * and ranked last: a storage problem must not take a whole group out of rotation.
  */
-export function viewMembers(ids: readonly string[], facts: ReadonlyMap<string, MemberFacts>, settings: Pick<GroupSettings, "burnHorizonHours">, now: number, unavailable: ReadonlySet<string> = new Set()): MemberView[] {
-  const kFallback = kFallbackOf(ids.map(id => facts.get(id)?.state ?? null))
+export function viewMembers(ids: readonly string[], facts: ReadonlyMap<string, MemberFacts>, settings: Pick<GroupSettings, "burnHorizonHours">, now: number, unavailable: ReadonlySet<string> = new Set(), plans: readonly MemberPlanFact[] = []): MemberView[] {
+  const groupFallback = kFallbackOf(ids.map(id => facts.get(id)?.state ?? null))
   return ids.map(id => {
     if (unavailable.has(id)) return { upstreamId: id, known: true, usedShare: 0, projectedShare: UNAVAILABLE_PROJECTED_SHARE, unavailable: true }
     const f = facts.get(id)
     if (isNeverReadFailing(f?.state ?? null)) return { upstreamId: id, known: false, usedShare: 0, projectedShare: 0, neverRead: true }
+    const { kFallback, conservative: kConservative } = kFallbackFor(groupFallback, plans.length > 0 ? seedKFor(id, plans) : null)
     const failing = isReadFailing(f?.state ?? null, now) && f?.state?.lastReadUnlimited !== true
     if (failing) {
-      const conservative = failingEstimate(f, now, kFallback)
+      const conservative = failingEstimate(f, now, kConservative)
       const projectedShare = projectShare({
         usedShare: conservative.usedShare, params: conservative.params, burnUsdPerHour: burnRateUsdPerHour(f?.burnBuckets ?? [], now),
         burnHorizonHours: settings.burnHorizonHours, now, kFallback: conservative.params.k ?? DEFAULT_K_SHARE_PER_USD,

@@ -1,8 +1,8 @@
 import { getRepo } from "../../repo/index.ts"
-import type { GroupMembership, GroupSettings, QuotaReadSource, UpstreamGroup } from "../../repo/quota-balance.ts"
+import type { GroupMembership, GroupSettings, MemberPlanFact, QuotaReadSource, UpstreamGroup } from "../../repo/quota-balance.ts"
 import { getProtection } from "../../protection/runtime.ts"
 import { effectiveK } from "../../quota-balance/estimator.ts"
-import { kFallbackOf, memberEstimate, viewMembers } from "../../quota-balance/facts.ts"
+import { kFallbackFor, kFallbackOf, kSourceOf, memberEstimate, paramsOf, seedKFor, viewMembers, type KSource } from "../../quota-balance/facts.ts"
 import { getQuotaBalance } from "../../quota-balance/runtime.ts"
 import { groupState, type GroupState, type MemberView } from "../../quota-balance/selection.ts"
 import { HOUR_MS } from "../../quota-balance/time.ts"
@@ -51,6 +51,8 @@ export interface MemberStatusDto {
   k: number | null
   kPrevious: number | null
   kSamples: number
+  /** Where the k behind the numbers comes from: its own once learned, the same-plan peers' (seeded, D33) or the default fallback. */
+  kSource: KSource
   /** Share per hour. */
   outsideRate: number
   /** Share of the last day's consumption that did not go through the gateway; null without data. */
@@ -85,6 +87,7 @@ interface Context {
   upstreams: Map<string, Awaited<ReturnType<ReturnType<typeof getRepo>["upstreams"]["list"]>>[number]>
   facts: Awaited<ReturnType<ReturnType<typeof getQuotaBalance>["facts"]["get"]>>
   unavailable: ReadonlySet<string>
+  plans: readonly MemberPlanFact[]
   pauses: Paused[]
 }
 
@@ -95,24 +98,25 @@ async function loadContext(groups: readonly UpstreamGroup[], nowMs: number, view
   const groupIds = new Set(groups.map(g => g.id))
   const mine = all.filter(m => groupIds.has(m.groupId) && mayView(viewer, m.ownerId))
   const ids = mine.map(m => m.upstreamId)
-  const [upstreams, facts, pauses] = await Promise.all([
+  const [upstreams, facts, plans, pauses] = await Promise.all([
     ids.length === 0 ? [] : repo.upstreams.list({ ...(viewer.isAdmin ? {} : { ownerId: viewer.userId as never }), includeDisabled: true }),
     qb.facts.get(ids, { fresh: true }),
+    qb.facts.plans({ fresh: true }),
     getProtection().activePauses(),
   ])
   return {
-    nowMs, viewer, memberships: mine, upstreams: new Map(upstreams.map(u => [u.id as string, u])), facts, unavailable: qb.facts.unavailable,
+    nowMs, viewer, memberships: mine, upstreams: new Map(upstreams.map(u => [u.id as string, u])), facts, plans, unavailable: qb.facts.unavailable,
     pauses: pauses.filter(p => p.mode === "pause" && p.targetKind === "upstream"),
   }
 }
 
-interface Assessed { id: string; view: MemberView; reason: IneligibleReason | null; quotaPause: Paused | undefined; kFallback: number }
+interface Assessed { id: string; view: MemberView; reason: IneligibleReason | null; quotaPause: Paused | undefined; kFallback: number; kSource: KSource }
 
 /** Eligibility of every member and the group state, from the member views only (no DTO). */
 function assess(group: UpstreamGroup, ctx: Context): { ids: string[]; assessed: Assessed[]; state: GroupStateDto } {
   const ids = ctx.memberships.filter(m => m.groupId === group.id).map(m => m.upstreamId)
-  const views = viewMembers(ids, ctx.facts, group.settings, ctx.nowMs, ctx.unavailable)
-  const kFallback = kFallbackOf(ids.map(id => ctx.facts.get(id)?.state ?? null))
+  const views = viewMembers(ids, ctx.facts, group.settings, ctx.nowMs, ctx.unavailable, ctx.plans)
+  const groupFallback = kFallbackOf(ids.map(id => ctx.facts.get(id)?.state ?? null))
   const assessed = ids.map((id, index): Assessed => {
     const view = views[index]!
     const own = ctx.pauses.filter(p => p.targetId === id)
@@ -124,7 +128,8 @@ function assess(group: UpstreamGroup, ctx: Context): { ids: string[]; assessed: 
     else if (own.length > 0) reason = "paused"
     else if (!view.known) reason = "no_read"
     else if (group.settings.exhaustedPolicy === "stop" && !view.unavailable && view.usedShare >= group.settings.softShare) reason = "soft_line"
-    return { id, view, reason, quotaPause, kFallback }
+    const seed = seedKFor(id, ctx.plans)
+    return { id, view, reason, quotaPause, kFallback: kFallbackFor(groupFallback, seed).kFallback, kSource: kSourceOf(paramsOf(ctx.facts.get(id)?.state ?? null), seed) }
   })
   // No data anywhere (or only unavailable facts): unknown. Data but nobody can take a session (cut off, paused, disabled): stopped.
   // Unavailable facts are never counted as room below the soft line.
@@ -149,7 +154,7 @@ export async function buildGroupStatus(group: UpstreamGroup, nowMs: number, view
     repo.quotaBalance.costBetweenMany(ids, nowMs - DAY_MS, nowMs),
   ])
   const attention: AttentionDto[] = []
-  const members: MemberStatusDto[] = assessed.map(({ id, view, reason, quotaPause, kFallback }) => {
+  const members: MemberStatusDto[] = assessed.map(({ id, view, reason, quotaPause, kFallback, kSource }) => {
     const f = ctx.facts.get(id)
     const state = f?.state ?? null
     const upstream = ctx.upstreams.get(id)
@@ -175,7 +180,7 @@ export async function buildGroupStatus(group: UpstreamGroup, nowMs: number, view
       projectedShare: shown ? view.projectedShare : null,
       lastRead: state && state.lastReadAt !== null && state.lastReadShare !== null && entitlement !== null && state.lastReadSource
         ? { at: state.lastReadAt, source: state.lastReadSource, used: state.lastReadShare * entitlement, entitlement, share: state.lastReadShare } : null,
-      k, kPrevious: state?.kPrev ?? null, kSamples: state?.kSamples ?? 0, outsideRate: state?.o ?? 0,
+      k, kPrevious: state?.kPrev ?? null, kSamples: state?.kSamples ?? 0, kSource, outsideRate: state?.o ?? 0,
       outsideShareLastDay: denominator > 0 ? outside / denominator : null,
       lastErrorPoints: state?.lastErrorPoints ?? null, intervalHours: state?.intervalHours ?? group.settings.readIntervalHours, nextReadAt: state?.nextReadAt ?? 0,
       failures: state?.failures ?? 0, lastError: state?.lastError ?? null, readFailing, readFailingReason, entitlementChange: change,

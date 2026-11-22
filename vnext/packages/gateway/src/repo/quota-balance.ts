@@ -159,6 +159,21 @@ export interface MemberFacts {
   monthCostUsd: number
   burnBuckets: CostBucket[]
 }
+/** What decides whether two members are on the same plan, plus their learned k: one row per grouped member (the peer-seeded k, D33). */
+export interface MemberPlanFact {
+  upstreamId: string
+  /** Owner of the member's GROUP (peers are found across the groups of one owner). */
+  ownerId: string
+  k: number | null
+  kSamples: number
+  /** Latest read's entitlement; null before the first read. */
+  entitlement: number | null
+  /** The latest read was unlimited. */
+  unlimited: boolean
+  /** Snapshot key and unit form of the latest read; null before a read or after a manual one. */
+  snapshotKey: string | null
+  unitForm: string | null
+}
 export interface EstimatorPatch {
   k: number | null
   kPrev: number | null
@@ -218,6 +233,8 @@ export interface QuotaBalanceRepo {
   getStates(upstreamIds: readonly string[]): Promise<Map<string, QuotaState>>
   /** States plus the cost since each read, the month cost and the burn buckets of the last 3 hours. */
   loadFacts(upstreamIds: readonly string[], nowMs: number, monthKey: string): Promise<Map<string, MemberFacts>>
+  /** One query for every grouped member: group owner, learned k, latest entitlement and the latest read's snapshot key and unit form (peer-seeded k). */
+  listPlanFacts(): Promise<MemberPlanFact[]>
   recordCost(entry: CostEntry): Promise<void>
   /** Cost between two instants from the 10-minute buckets (bucket resolution). */
   costBetween(upstreamId: string, fromMs: number, toMs: number): Promise<number>

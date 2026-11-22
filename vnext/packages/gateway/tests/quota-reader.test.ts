@@ -190,6 +190,29 @@ test("a fresh member whose estimate crosses the hard line with the fallback k is
   expect((await protection.pausedUpstreams()).size).toBe(0)
 })
 
+test("D33: a peer-seeded k lets the estimate order and ask for a read but never cut the member off provisionally; its own learned k does", async () => {
+  for (const id of ["up_test_p1", "up_test_p2"]) {
+    f.addUpstream(id)
+    await f.repo.quotaBalance.setMembership(id, gid(1), { nowMs: T0, intervalHours: 6 })
+    await f.repo.quotaBalance.recordRead({ upstreamId: id, at: T0 - H, source: "github", used: 100, entitlement: 1000, unlimited: false, estimatedShareBefore: null, errorPoints: null, snapshotKey: "premium_interactions", unitForm: "absolute", resetAt: null, costAdjustUsd: 0, entitlementChange: null }, T0 - H)
+    await f.repo.quotaBalance.saveEstimator(id, { k: 0.05, kPrev: null, kSamples: 5, o: 0, oSamples: 0, intervalHours: 6, learnSince: 0, nextReadAt: T0 + 6 * H, lastErrorPoints: null }, T0)
+  }
+  respond = () => snapshot(900) // share 0.1; own k not learned
+  await reader.evaluateMember("up_test_a", { allowScheduled: true })
+  f.clock.now = T0 + 20 * 60_000 // inside the read floor
+  await f.repo.quotaBalance.recordCost({ upstreamId: "up_test_a", nowMs: f.clock.now, costUsd: 20, monthKey: "2026-11" })
+  facts.invalidate()
+  const seeded = memberEstimate((await facts.get(["up_test_a"])).get("up_test_a"), f.clock.now, 0.06)
+  expect(seeded.usedShare).toBeCloseTo(0.1 + 0.06 * 20) // the seed (0.05 x 1.2) is in use...
+  expect(await reader.evaluateMember("up_test_a", { allowScheduled: false })).toEqual({ status: "idle" })
+  expect(calls).toHaveLength(1)
+  expect((await protection.pausedUpstreams()).size).toBe(0) // ...but is not trusted to cut off
+  await f.repo.quotaBalance.saveEstimator("up_test_a", { k: 0.05, kPrev: null, kSamples: 3, o: 0, oSamples: 0, intervalHours: 6, learnSince: 0, nextReadAt: T0 + 6 * H, lastErrorPoints: null }, f.clock.now)
+  facts.invalidate()
+  expect(await reader.evaluateMember("up_test_a", { allowScheduled: false })).toEqual({ status: "idle" })
+  expect((await protection.pausedUpstreams()).get("up_test_a")?.reason.quota).toMatchObject({ source: "estimate", provisional: true })
+})
+
 test("two concurrent reads of one member send exactly one request (the read is claimed atomically before the fetch); calibrations race the same way", async () => {
   const outcomes = await Promise.all([reader.readNow("up_test_a", { reason: "scheduled", manual: false }), reader.readNow("up_test_a", { reason: "scheduled", manual: false }), reader.readNow("up_test_a", { reason: "manual", manual: true })])
   expect(calls).toHaveLength(1)

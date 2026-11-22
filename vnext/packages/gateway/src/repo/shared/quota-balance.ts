@@ -1,7 +1,7 @@
 import {
   COST_BUCKETS_RETENTION_DAYS, COST_BUCKET_MS, MAX_READS_PER_DAY, utcDayKey, COST_BURN_WINDOW_MS, QUOTA_PURGE_CHUNK, QUOTA_PURGE_MAX_CHUNKS, QUOTA_READS_PER_MEMBER_LIMIT, QUOTA_READS_RETENTION_DAYS,
   GROUP_SETTINGS_LIMITS, resolveGroupSettings,
-  type CostBucket, type CostEntry, type EstimatorPatch, type GroupMembership, type MemberFacts, type NewQuotaRead, type QuotaBalanceRepo, type QuotaRead, type QuotaReadSource,
+  type CostBucket, type CostEntry, type EstimatorPatch, type GroupMembership, type MemberFacts, type MemberPlanFact, type NewQuotaRead, type QuotaBalanceRepo, type QuotaRead, type QuotaReadSource,
   type QuotaState, type SessionAssignment, type UpstreamGroup,
 } from "../quota-balance.ts"
 import type { SqlExecutor, SqlStatement } from "./executor.ts"
@@ -212,6 +212,20 @@ export class SharedQuotaBalanceRepo implements QuotaBalanceRepo {
       })
     }
     return out
+  }
+
+  async listPlanFacts(): Promise<MemberPlanFact[]> {
+    const rows = await this.x.all<{ upstream_id: string; owner_id: string; k: number | null; k_samples: number; entitlement: number | null; last_read_unlimited: number; snapshot_key: string | null; unit_form: string | null }>(
+      `SELECT u.id AS upstream_id, g.owner_id AS owner_id, s.k AS k, s.k_samples AS k_samples, s.entitlement AS entitlement, s.last_read_unlimited AS last_read_unlimited,
+              r.snapshot_key AS snapshot_key, r.unit_form AS unit_form
+       FROM upstreams u
+       JOIN upstream_groups g ON g.id = u.group_id
+       JOIN upstream_quota_state s ON s.upstream_id = u.id
+       LEFT JOIN quota_reads r ON r.upstream_id = s.upstream_id AND r.at = s.last_read_at`, [])
+    return rows.map(row => ({
+      upstreamId: row.upstream_id, ownerId: row.owner_id, k: opt(row.k), kSamples: Number(row.k_samples), entitlement: opt(row.entitlement),
+      unlimited: row.last_read_unlimited !== 0, snapshotKey: row.snapshot_key ?? null, unitForm: row.unit_form ?? null,
+    }))
   }
 
   async recordCost(entry: CostEntry): Promise<void> {

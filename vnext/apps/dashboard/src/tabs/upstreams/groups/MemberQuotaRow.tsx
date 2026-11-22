@@ -34,6 +34,7 @@ export function MemberQuotaRow({ member: m, group, nowMs, busy, readOnly, onRefr
     m.lastErrorPoints !== null ? t("dash.qbError", { points: m.lastErrorPoints.toFixed(1) }) : null,
     t("dash.qbInterval", { hours: m.intervalHours }),
     m.k !== null && m.kPrevious !== null ? t("dash.qbKTrend", { k: m.k.toFixed(2), prev: m.kPrevious.toFixed(2) }) : null,
+    m.unlimited || m.lastRead === null ? null : m.kSource.kind === "own" ? t("dash.qbKOwn") : m.kSource.kind === "peer" ? t("dash.qbKPeer", { n: m.kSource.peers }) : t("dash.qbKDefault"),
   ].filter((text): text is string => text !== null)
   return (
     <div data-quota-member={m.upstreamId} role="group" aria-label={m.name} className="mt-2 space-y-1.5 border-t border-border pt-2">

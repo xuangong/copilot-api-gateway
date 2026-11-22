@@ -10,7 +10,7 @@ beforeEach(() => { restore = installDictionary("en") })
 afterEach(() => restore())
 const member = (over: Partial<MemberStatus> = {}): MemberStatus => ({
   upstreamId: "up_a", name: "A", login: "a", enabled: true, unlimited: false, usedShare: 0.5, entitlement: 1000, estimatedUsed: 500, projectedShare: 0.7,
-  lastRead: { at: NOW - 3 * 3_600_000, source: "github", used: 450, entitlement: 1000, share: 0.45 }, k: 0.02, kPrevious: null, kSamples: 5, outsideRate: 0, outsideShareLastDay: null,
+  lastRead: { at: NOW - 3 * 3_600_000, source: "github", used: 450, entitlement: 1000, share: 0.45 }, k: 0.02, kPrevious: null, kSamples: 5, kSource: { kind: "own" }, outsideRate: 0, outsideShareLastDay: null,
   lastErrorPoints: null, intervalHours: 6, nextReadAt: NOW, failures: 0, lastError: null, readFailing: false, entitlementChange: null, cutOff: null, eligibility: { eligible: true, reason: null }, activeSessions: 0, ...over,
 })
 

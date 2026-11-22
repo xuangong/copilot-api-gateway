@@ -42,6 +42,8 @@ export interface MemberStatus {
   k: number | null
   kPrevious: number | null
   kSamples: number
+  /** Where the k behind the numbers comes from: its own once learned, the same-plan peers' (seeded) or the default fallback. */
+  kSource: { kind: "own" } | { kind: "peer"; peers: number } | { kind: "default" }
   outsideRate: number
   outsideShareLastDay: number | null
   lastErrorPoints: number | null

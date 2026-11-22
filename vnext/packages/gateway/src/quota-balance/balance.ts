@@ -66,7 +66,7 @@ async function balance<T>(parts: BalanceParts, args: BalanceArgs<T>): Promise<Ba
     // A single candidate skips only the ranking: `planGroupChoice` still applies the soft line (skip or overage).
     const memberIds = block.map(args.upstreamOf)
     const facts = await parts.facts.get(memberIds)
-    const viewed = viewMembers(memberIds, facts, group.settings, now, parts.facts.unavailable)
+    const viewed = viewMembers(memberIds, facts, group.settings, now, parts.facts.unavailable, await parts.facts.plans())
     const members = args.ignoreSoftLine ? viewed.map(m => m.known ? m : { ...m, known: true, projectedShare: UNAVAILABLE_PROJECTED_SHARE }) : viewed
     const settings = args.ignoreSoftLine ? { ...group.settings, exhaustedPolicy: "overage" as const } : group.settings
     const assignment = sessionKey !== null ? await parts.assignments.get(group.id, sessionKey) : null

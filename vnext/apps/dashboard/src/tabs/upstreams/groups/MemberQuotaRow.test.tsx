@@ -13,7 +13,7 @@ afterEach(() => { restore(); setDisplayZone(null) })
 const group = { id: "ug_1", settings: { softShare: 0.9, hardShare: 0.95 } } as UpstreamGroup
 const member = (over: Partial<MemberStatus> = {}): MemberStatus => ({
   upstreamId: "up_a", name: "A", login: "a", enabled: true, unlimited: false, usedShare: 0.5, entitlement: 1000, estimatedUsed: 500, projectedShare: 0.7,
-  lastRead: { at: NOW - 2 * 3_600_000, source: "github", used: 450, entitlement: 1000, share: 0.45 }, k: 0.02, kPrevious: 0.03, kSamples: 5, outsideRate: 0.001, outsideShareLastDay: 0.25,
+  lastRead: { at: NOW - 2 * 3_600_000, source: "github", used: 450, entitlement: 1000, share: 0.45 }, k: 0.02, kPrevious: 0.03, kSamples: 5, kSource: { kind: "own" }, outsideRate: 0.001, outsideShareLastDay: 0.25,
   lastErrorPoints: -2.4, intervalHours: 3, nextReadAt: NOW, failures: 0, lastError: null, readFailing: false, entitlementChange: null, cutOff: null, eligibility: { eligible: true, reason: null }, activeSessions: 2, ...over,
 })
 const html = (m: MemberStatus, extra: { busy?: boolean; readOnly?: boolean } = {}) =>
@@ -31,6 +31,14 @@ test("a member row shows used / entitlement and share, the source and age, the p
   expect(out).toContain("Last estimate error -2.4 points")
   expect(out).toContain("Read every 3 h")
   expect(out).toContain("k 0.02 (before 0.03)")
+})
+
+test("the k line says where k comes from: own reads, same-plan peers (with their count) or the default estimate; nothing for an unread or unlimited member", () => {
+  expect(html(member())).toContain("k learned from its own reads")
+  expect(html(member({ k: null, kPrevious: null, kSamples: 0, kSource: { kind: "peer", peers: 3 } }))).toContain("k seeded from 3 same-plan peers")
+  expect(html(member({ k: null, kPrevious: null, kSamples: 0, kSource: { kind: "default" } }))).toContain("k not learned yet (default estimate)")
+  expect(html(member({ lastRead: null, usedShare: null, estimatedUsed: null, projectedShare: null, kSource: { kind: "peer", peers: 3 } }))).not.toContain("seeded")
+  expect(html(member({ unlimited: true, kSource: { kind: "default" } }))).not.toContain("not learned yet")
 })
 
 test("the bar has a solid read part, a shaded estimated part and the two line markers", () => {

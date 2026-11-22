@@ -143,6 +143,26 @@ test("the status shows per member the estimated share, the last read, the learne
   expect(a.outsideShareLastDay).toBeCloseTo((0.001 * 24) / (0.001 * 24 + 0.02 * 5), 6)
   const b = status.members.find((m: any) => m.upstreamId === "up_test_b")
   expect(b).toMatchObject({ lastRead: null, usedShare: null, eligibility: { eligible: false, reason: "no_read" } })
+  expect(a.kSource).toEqual({ kind: "own" })
+  expect(b.kSource).toEqual({ kind: "default" })
+})
+
+test("D33: the status says where each member's k comes from; a member without its own k is seeded from same-plan peers and its numbers follow the seed", async () => {
+  const { id } = await create()
+  for (const upstream of ["up_test_a", "up_test_b"]) await call(`/api/upstreams/${upstream}/group`, "PUT", owner, { groupId: id })
+  for (const [upstream, k, kSamples] of [["up_test_a", 0.02, 5], ["up_test_b", null, 0]] as const) {
+    const at = NOW - H + ++seedCount * 1000
+    await repo.quotaBalance.recordRead({ upstreamId: upstream, at, source: "github", used: 500, entitlement: 1000, unlimited: false, estimatedShareBefore: null, errorPoints: null, snapshotKey: "premium_interactions", unitForm: "absolute", resetAt: null, costAdjustUsd: 0, entitlementChange: null }, at)
+    await repo.quotaBalance.saveEstimator(upstream, { k, kPrev: null, kSamples, o: 0, oSamples: 0, intervalHours: 3, learnSince: 0, nextReadAt: NOW + 3 * H, lastErrorPoints: null }, NOW)
+  }
+  await repo.quotaBalance.recordCost({ upstreamId: "up_test_b", nowMs: NOW - 30 * 60_000, costUsd: 5, monthKey: "2026-11" })
+  const status = await json(await call(`/api/upstream-groups/${id}/status`))
+  const a = status.members.find((m: any) => m.upstreamId === "up_test_a")
+  const b = status.members.find((m: any) => m.upstreamId === "up_test_b")
+  expect(a.kSource).toEqual({ kind: "own" })
+  expect(b.kSource).toEqual({ kind: "peer", peers: 1 })
+  expect(b.k).toBeNull() // its own k is still not learned
+  expect(b.usedShare).toBeCloseTo(0.5 + 0.02 * 1.2 * 5, 6)
 })
 
 test("soft line, cut-off, other pauses and a disabled upstream are reported as the reason a member takes no new sessions, and the group state follows", async () => {

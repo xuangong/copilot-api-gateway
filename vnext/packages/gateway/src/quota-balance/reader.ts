@@ -9,7 +9,7 @@ import type { QuotaCutoff } from "./cutoff.ts"
 import { warn, type QuotaDeps } from "./deps.ts"
 import type { GroupDirectoryCache } from "./directory.ts"
 import { K_WINDOW_MS, learn, type ReadPoint } from "./estimator.ts"
-import { failingEstimate, isReadFailing, kFallbackOf, memberEstimate, paramsOf, type MemberFactsCache } from "./facts.ts"
+import { failingEstimate, isReadFailing, kFallbackFor, kFallbackOf, memberEstimate, paramsOf, seedKFor, type MemberFactsCache } from "./facts.ts"
 import {
   MANUAL_MIN_READ_GAP_MS, MIN_INTERVAL_HOURS, backoffHours, nextIntervalHours, readAllowedAt, readDecision, readFloorMs, scheduleNextRead, type ReadReason, type SchedState,
 } from "./read-schedule.ts"
@@ -53,7 +53,8 @@ async function withTimeout<T>(work: (signal: AbortSignal) => Promise<T>, ms: num
   try { return await Promise.race([work(controller.signal), expired]) } finally { clearTimeout(timer) }
 }
 
-interface Member { upstreamId: string; group: UpstreamGroup; state: QuotaState; kFallback: number }
+/** `kFallback`: the peer-seeded k when there is one (D33), else the group's; `kConservative` is what D32's failing estimate uses (never below the group's). */
+interface Member { upstreamId: string; group: UpstreamGroup; state: QuotaState; kFallback: number; kConservative: number }
 
 export class QuotaReader {
   private readonly lastEvaluated = new Map<string, number>()
@@ -71,7 +72,9 @@ export class QuotaReader {
     const all = await this.parts.facts.get(siblings, { fresh })
     const state = all.get(upstreamId)?.state
     if (!state) return null
-    return { upstreamId, group, state, kFallback: kFallbackOf(siblings.map(id => all.get(id)?.state ?? null)) }
+    const seed = seedKFor(upstreamId, await this.parts.facts.plans({ fresh }))
+    const { kFallback, conservative } = kFallbackFor(kFallbackOf(siblings.map(id => all.get(id)?.state ?? null)), seed)
+    return { upstreamId, group, state, kFallback, kConservative: conservative }
   }
 
   /**
@@ -203,7 +206,7 @@ export class QuotaReader {
     // D32: reads keep failing, so nothing real protects this member: the conservative estimate may cut it off provisionally (under any exhausted policy, k learned or not).
     const failing = isReadFailing(member.state, now) && !member.state.lastReadUnlimited
     const estimate = failing
-      ? { known: true, unlimited: false, kLearned: true, usedShare: failingEstimate(facts, now, member.kFallback).usedShare }
+      ? { known: true, unlimited: false, kLearned: true, usedShare: failingEstimate(facts, now, member.kConservative).usedShare }
       : memberEstimate(facts, now, member.kFallback)
     // The caller's pause snapshot predates anything this call inserts: after a provisional cut-off here it is not used again.
     let pauses = options.pauses

@@ -271,4 +271,25 @@ export function quotaBalanceRepoContract(getRepo: () => QuotaBalanceRepo, run: (
     await repo.createGroup(group(122))
     expect(await repo.hasGroups()).toBe(true)
   })
+
+  test.serial("listPlanFacts: one row per grouped member with its group owner, learned k, latest entitlement and the latest read's snapshot key and unit form", async () => {
+    const repo = getRepo()
+    await run("DELETE FROM upstream_groups")
+    await repo.createGroup(group(131)); await repo.createGroup(group(132, { ownerId: "user_test_other" }))
+    for (const id of ["up_test_pf1", "up_test_pf2", "up_test_pf3", "up_test_pf4"]) await insertUpstream(id)
+    await repo.setMembership("up_test_pf1", gid(131), { nowMs: T0, intervalHours: 6 })
+    await repo.setMembership("up_test_pf2", gid(132), { nowMs: T0, intervalHours: 6 })
+    await repo.setMembership("up_test_pf3", gid(131), { nowMs: T0, intervalHours: 6 }) // never read
+    await repo.recordRead(read({ upstreamId: "up_test_pf1", at: T0, used: 100, entitlement: 1000, snapshotKey: "old", unitForm: "percent" }), T0)
+    await repo.recordRead(read({ upstreamId: "up_test_pf1", at: T0 + HOUR, used: 200, entitlement: 1500, snapshotKey: "premium_interactions", unitForm: "absolute" }), T0 + HOUR)
+    await repo.recordRead(read({ upstreamId: "up_test_pf2", at: T0, unlimited: true, used: 0, entitlement: 0, snapshotKey: "premium_interactions", unitForm: "unlimited" }), T0)
+    const patch = { kPrev: null, o: 0, oSamples: 0, intervalHours: 6, learnSince: 0, nextReadAt: T0, lastErrorPoints: null }
+    await repo.saveEstimator("up_test_pf1", { ...patch, k: 0.04, kSamples: 4 }, T0)
+    const facts = await repo.listPlanFacts()
+    const by = new Map(facts.map(fact => [fact.upstreamId, fact]))
+    expect(by.get("up_test_pf1")).toEqual({ upstreamId: "up_test_pf1", ownerId: "user_test_o", k: 0.04, kSamples: 4, entitlement: 1500, unlimited: false, snapshotKey: "premium_interactions", unitForm: "absolute" })
+    expect(by.get("up_test_pf2")).toMatchObject({ ownerId: "user_test_other", k: null, unlimited: true })
+    expect(by.get("up_test_pf3")).toMatchObject({ ownerId: "user_test_o", entitlement: null, snapshotKey: null, unitForm: null })
+    expect(by.has("up_test_pf4")).toBe(false) // not a member
+  })
 }
