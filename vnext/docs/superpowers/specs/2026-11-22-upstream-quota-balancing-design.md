@@ -128,6 +128,8 @@ Intervals that cross a monthly reset, show a falling share, or span an entitleme
 
 Before enough intervals exist (new member, new month, `k` unknown), the estimator errs high (a conservative `k` and the recent `o`), so an under-estimate can't send extra sessions to a nearly exhausted account.
 
+**Peer-seeded `k` (D33).** A member whose own `k` is not learned (fewer than 3 usable intervals) uses a `k` seeded from peers on the same plan instead of the group median / global default, when any exist: the other members of any group of the same owner whose `k` IS learned (at least 3 usable intervals), with the same latest entitlement, snapshot key and unit form (all known; not unlimited). Seeded `k` = median of the peers' `k` x 1.2 (errs high). The seed drives estimates, projections, the soft line and the status display, but is not learned: a provisional cut-off on the estimate still needs the member's own learned `k`. The failing-read estimate (D32) uses the larger of the seed and what it used before, so it is never less conservative. From 3 own intervals the member's own `k` is used. With no qualifying peer nothing changes. Peers are found with one query for all members (`listPlanFacts`), cached with the facts TTL; a failed load keeps the previous answer or falls back to the current behaviour. The status reports the source per member: `own`, `peer` (with the peer count) or `default`.
+
 ### Entitlement changes
 
 The entitlement (the allowance's total) can change at any time: a plan upgrade or downgrade, or GitHub changing the flex allotment or its accounting. Every read records its entitlement and all shares use the latest one. When a read's entitlement differs from the previous read's:
