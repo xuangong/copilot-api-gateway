@@ -20,12 +20,16 @@ import {
   type EnumerateOptions,
 } from '../../routing/candidates.ts'
 import { getTranslator, type PairTranslator } from '../../dispatch/translator-registry.ts'
-import { describePausedRoute } from '../../routing/paused-route.ts'
+import { describeGroupExhausted, describePausedRoute } from '../../routing/paused-route.ts'
+import { getQuotaBalance } from '../../../quota-balance/runtime.ts'
+import type { BalanceOutcome } from '../../../quota-balance/balance.ts'
+import type { BalanceSession } from '../../../quota-balance/session-key.ts'
+import { getProtection } from '../../../protection/runtime.ts'
 import type { ApiKeyId } from '../../../repo/branded-ids.ts'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-export interface UpstreamPausedSelection { kind: 'upstream-paused'; bareModel: string; message: string; retryAfterSeconds: number }
+export interface UpstreamPausedSelection { kind: 'upstream-paused'; bareModel: string; message: string; retryAfterSeconds: number; code?: 'upstream_paused' | 'group_quota_exhausted' }
 
 export type SelectBindingResult =
   | UpstreamPausedSelection
@@ -41,6 +45,7 @@ export interface SelectBindingAuth {
   readonly pin?: string
   readonly copilot?: EnumerateOptions['copilot']
   readonly apiKeyId?: ApiKeyId
+  readonly balanceSession?: BalanceSession
 }
 
 type EnumerateFn = (args: {
@@ -107,9 +112,16 @@ export async function selectBindingForProtocol(
   if (enumeration.catalogUnavailable) return catalogUnavailable()
   if (!enumeration.sawModel) return { kind: "model-not-found", bareModel }
 
+  // Quota balancing: not for pinned requests, not for requests whose owned opaque state binds them to an upstream. Fail-open (the original order).
+  const constrained = !!args.affinity && 'analysis' in args.affinity && args.affinity.analysis.hasRouteConstraints
+  const candidates = enumeration.candidates
+  let balance: BalanceOutcome<(typeof candidates)[number]> | undefined
+  if (!constrained && !args.auth.pin && !enumeration.upstreamPin) {
+    try { balance = await getQuotaBalance().balance({ items: candidates, upstreamOf: candidate => candidate.binding.upstream, session: args.auth.balanceSession }) } catch { balance = undefined }
+  }
   let first
   try {
-    first = await selectAffinityCandidate(enumeration.candidates, args.affinity, bareModel, args.affinityOptions, enumeration.materialize)
+    first = await selectAffinityCandidate(balance?.ordered ?? candidates, args.affinity, bareModel, args.affinityOptions, enumeration.materialize)
   } catch (error) {
     // Constructor failures remove catalog contributions; preparation failures
     // instead remain affinity proof errors for still-advertised candidates.
@@ -125,9 +137,16 @@ export async function selectBindingForProtocol(
     }
     throw error
   }
+  if (first) { try { balance?.commit(first.binding.upstream) } catch { /* the request is served regardless */ } }
   if (!first) {
     if (enumeration.catalogUnavailable) return catalogUnavailable()
     if (!enumeration.sawModel) return { kind: "model-not-found", bareModel }
+    // D31: the quota answer only when every skipped group was skipped for quota; a group skipped for lack of data is not a quota statement.
+    if (balance && balance.skipped.length > 0 && balance.unknown.length === 0) {
+      const ends = (enumeration.pausedCandidates ?? []).flatMap(candidate => { const row = enumeration.pausedUpstreams?.get(candidate.binding.upstream); return row ? [row.endsAt] : [] })
+      const exhausted = describeGroupExhausted(balance.skipped, ends, args.auth.ownerId, getProtection().now())
+      return { kind: "upstream-paused", bareModel, code: "group_quota_exhausted", ...exhausted }
+    }
     const paused = await pausedFor()
     if (paused) return { kind: "upstream-paused", bareModel, ...paused }
     return { kind: "no-eligible-binding", bareModel }

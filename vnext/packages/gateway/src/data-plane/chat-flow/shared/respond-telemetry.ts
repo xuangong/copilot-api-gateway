@@ -41,6 +41,7 @@ import type {
 } from '../../../repo/types.ts'
 import type { TelemetryRequestContext } from './telemetry-ctx.ts'
 import type { ApiKeyId } from '../../../repo/branded-ids.ts'
+import { trackQuotaCost } from '../../../quota-balance/cost-hook.ts'
 
 /**
  * Map the inbound source-api to the upstream target-api the request resolves
@@ -241,6 +242,7 @@ export async function recordUsage(
     repo.usage.record(row),
     repo.apiKeys.touchLastUsed(telemetryCtx.apiKeyId),
   ])
+  trackQuotaCost(row, telemetryCtx.quotaSession)
 }
 
 /**

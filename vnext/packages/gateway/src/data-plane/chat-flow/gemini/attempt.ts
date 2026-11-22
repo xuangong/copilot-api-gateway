@@ -165,7 +165,7 @@ export const geminiAttempt = {
     if (sel.kind === 'catalog-unavailable') return llmInternalErrorResult(503, new Error(modelCatalogUnavailableMessage(sel.bareModel, sel.failedCatalogs?.length ?? 0)))
     if (sel.kind === 'model-not-found') return llmInternalErrorResult(404, new Error(`model not found: ${sel.bareModel}`))
     if (sel.kind === 'no-eligible-binding') return llmInternalErrorResult(404, new Error(`no eligible binding for: ${sel.bareModel}`))
-    if (sel.kind === 'upstream-paused') return llmInternalErrorResult(503, new Error(sel.message), undefined, 'upstream-paused', { code: 'upstream_paused', retryAfterSeconds: sel.retryAfterSeconds })
+    if (sel.kind === 'upstream-paused') return llmInternalErrorResult(503, new Error(sel.message), undefined, 'upstream-paused', { code: sel.code ?? 'upstream_paused', retryAfterSeconds: sel.retryAfterSeconds })
     if (sel.kind === 'no-translator') return llmInternalErrorResult(500, new Error(`no translator for gemini → ${sel.targetEndpoint}`))
 
     // Gemini has no identity target — selectPair('gemini', …) never returns

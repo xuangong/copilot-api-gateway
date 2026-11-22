@@ -25,6 +25,7 @@ import { detectClient } from '../../../data-plane/observability/client-detect.ts
 import { recordResponse, recordThrown } from '../../../protection/observe.ts'
 import { extractFromJson } from '../../../data-plane/observability/usage-extractor.ts'
 import { getRepo } from '../../../repo/index.ts'
+import { trackQuotaCost } from '../../../quota-balance/cost-hook.ts'
 import type { TokenUsage, UsageRecord } from '../../../repo/types.ts'
 import type { ApiKeyId } from '../../../repo/branded-ids.ts'
 import type { DumpAccumulator } from '../../../shared/dump/accumulator.ts'
@@ -79,6 +80,7 @@ async function trackNonStreamingUsage(
     repo.usage.record(rec),
     repo.apiKeys.touchLastUsed(keyId),
   ])
+  trackQuotaCost(rec)
 }
 
 export interface EmbeddingsAttemptInput {

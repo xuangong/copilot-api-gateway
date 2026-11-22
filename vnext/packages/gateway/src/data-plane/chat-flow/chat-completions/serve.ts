@@ -125,6 +125,7 @@ export async function serveChatCompletions(args: ChatCompletionsServeArgs): Prom
     copilot: args.auth.copilot,
     apiKeyId: args.auth.apiKeyId,
     routingPolicy: args.auth.routingPolicy,
+    balanceSession: args.auth.balanceSession,
   }
   const { response } = await serveTemplate(
     chatCompletionsHooks,

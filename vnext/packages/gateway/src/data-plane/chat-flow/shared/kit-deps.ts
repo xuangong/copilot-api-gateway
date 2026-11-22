@@ -27,6 +27,7 @@ import { runQuotaGate } from './quota-gate.ts'
 import type { TelemetryRequestContext } from './telemetry-ctx.ts'
 import type { PerformanceSourceApi } from '../../../repo/types.ts'
 import type { ApiKeyId } from '../../../repo/branded-ids.ts'
+import type { BalanceSession } from '../../../quota-balance/session-key.ts'
 
 export type PreparedModelIdentity = { readonly incomingModel: string }
 
@@ -83,6 +84,7 @@ export const kitDeps: ServeTemplateDeps<AuthWithApiKey, TelemetryRequestContext,
     runtimeLocation: getRuntimeLocation(),
     requestStartedAt,
     sourceApi: endpointTagToSourceApi(endpointTag),
+    quotaSession: (auth as { balanceSession?: BalanceSession }).balanceSession,
   }),
 }
 

@@ -1,3 +1,4 @@
+import { withBalanceSession } from "../shared/balance-session"
 import { withBackground, type BackgroundExecutor } from "@vibe-core/platform"
 import { extractHeaderCredential, resolveCredential, type FullAuthCtx } from "../../../shared/credential-auth.ts"
 import { getDataPlaneConfiguration, withFreshConfigurationSnapshot } from "../../../repo/index.ts"
@@ -194,7 +195,7 @@ export function createResponsesSession(options: {
         let sourceJson: string | undefined
         let compactTriggered = false
         const turn = startResponsesTurn({
-          raw: message.raw, auth, warmup: message.warmup, localContinuation: local,
+          raw: message.raw, auth: withBalanceSession(auth, "responses", message.raw, headers), warmup: message.warmup, localContinuation: local,
           retainInputHistory: false,
           signal: job.controller.signal, dump,
           obsCtx: { apiKeyId: auth.apiKeyId, userAgent: headers.get("user-agent") ?? undefined, requestId: crypto.randomUUID() },

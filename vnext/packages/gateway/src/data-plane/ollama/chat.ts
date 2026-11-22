@@ -20,6 +20,7 @@ import { withDumpExceptionCleanup } from '@vibe-core/chat-flow-kit'
 import type { Context } from 'hono'
 import type { Env } from '../../app.ts'
 import { serveChatCompletions } from '../chat-flow/chat-completions/serve.ts'
+import { withBalanceSession } from '../chat-flow/shared/balance-session.ts'
 import { readAuth, readObsCtx } from '../chat-flow/shared/gateway-ctx.ts'
 import { openRequestDump, parseJsonBody } from '../chat-flow/shared/dump-open.ts'
 import { parseChatSSEStream } from '@vibe-llm/provider-copilot'
@@ -59,9 +60,10 @@ export async function ollamaChatHandler(c: Context<{ Bindings: Env }>): Promise<
     const startMs = performance.now()
     const createdAt = new Date().toISOString()
 
+    const raw = ollamaToOpenAIBody(body)
     const upstream = await serveChatCompletions({
-      raw: ollamaToOpenAIBody(body),
-      auth,
+      raw,
+      auth: withBalanceSession(auth, 'chat_completions', raw, c.req.raw.headers),
       obsCtx: readObsCtx(c, auth),
       signal: c.req.raw.signal,
       dump,

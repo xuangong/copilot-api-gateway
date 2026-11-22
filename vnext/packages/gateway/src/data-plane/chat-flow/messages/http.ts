@@ -1,3 +1,4 @@
+import { withBalanceSession } from '../shared/balance-session'
 import { ClientDisconnect } from "../shared/client-disconnect"
 // packages/gateway/src/data-plane/chat-flow/messages/http.ts
 import type { Context } from 'hono'
@@ -13,5 +14,5 @@ export async function messagesHandler(c: Context<{ Bindings: Env }>): Promise<Re
   let raw: unknown
   try { raw = parseJsonBody(requestBody.bytes) } catch { return dump ? dump.finalize(invalidJsonResponse()) : invalidJsonResponse() }
   const disconnect = new ClientDisconnect(c.req.raw.signal)
-  return disconnect.wrap(await serveMessages({ raw, auth, obsCtx: readObsCtx(c, auth), signal: disconnect.controller.signal, dump, inboundHeaders: c.req.raw.headers }))
+  return disconnect.wrap(await serveMessages({ raw, auth: withBalanceSession(auth, 'messages', raw, c.req.raw.headers), obsCtx: readObsCtx(c, auth), signal: disconnect.controller.signal, dump, inboundHeaders: c.req.raw.headers }))
 }

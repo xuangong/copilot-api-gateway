@@ -279,6 +279,7 @@ async function prepareResponses(args: ResponsesServeArgs, upstreamAbortControlle
     copilot: args.auth.copilot,
     apiKeyId: args.auth.apiKeyId,
     routingPolicy: args.auth.routingPolicy,
+    balanceSession: args.auth.balanceSession,
     responsesRetentionSeconds: args.auth.responsesRetentionSeconds,
   }
   return await prepareTemplate(

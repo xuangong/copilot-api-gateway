@@ -132,6 +132,7 @@ export async function serveMessages(args: MessagesServeArgs): Promise<Response> 
     copilot: args.auth.copilot,
     apiKeyId: args.auth.apiKeyId,
     routingPolicy: args.auth.routingPolicy,
+    balanceSession: args.auth.balanceSession,
   }
   const { response } = await serveTemplate(
     messagesHooks,

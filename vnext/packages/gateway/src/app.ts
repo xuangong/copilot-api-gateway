@@ -13,6 +13,7 @@ import { setupExchangeRouter } from './control-plane/setup/routes.ts'
 import { lokiSyncRouter } from './control-plane/loki/sync.ts'
 import { syncSnapshotRouter } from './control-plane/sync/snapshot.ts'
 import { telemetryPushRouter } from './control-plane/telemetry/push.ts'
+import './control-plane/quota-balance/fetcher.ts' // registers the proxy-chain aware fetcher for quota reads (this is the composition root)
 import { isInferencePath } from './data-plane/inference-paths.ts'
 import { keyPausedMiddleware } from './data-plane/protection/key-guard.ts'
 import { dmrRouter } from './data-plane/dmr/routes.ts'

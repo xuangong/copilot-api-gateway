@@ -1,3 +1,4 @@
+import { withBalanceSession } from '../shared/balance-session'
 import { ClientDisconnect } from "../shared/client-disconnect"
 // vnext/packages/gateway/src/data-plane/chat-flow/responses/http.ts
 /**
@@ -53,7 +54,7 @@ async function responsesHandlerCore(
   const { response } = await serveResponses({
     raw,
     retainInputHistory: false,
-    auth,
+    auth: withBalanceSession(auth, 'responses', raw, c.req.raw.headers),
     obsCtx,
     signal: disconnect.controller.signal,
     requestId: obsCtx.requestId,

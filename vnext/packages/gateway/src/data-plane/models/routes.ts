@@ -9,6 +9,7 @@
  * Auth context: caller-supplied via `c.get('auth')` carrying optional `userId` +
  * `copilot` ({copilotToken, accountType}); registry handles the request-scoped fallback.
  */
+import type { BalanceSession } from '../../quota-balance/session-key.ts'
 import { Hono } from 'hono'
 import type { Env } from '../../app.ts'
 import { ModelCatalogUnavailableError } from '../errors/model-catalog.ts'
@@ -118,6 +119,8 @@ export interface DataPlaneAuthCtx {
   githubToken?: string
   /** Env-derived Microsoft Grounding key, surfaced via auth ctx so handlers don't reach into env directly. */
   msGroundingKey?: string
+  /** Quota-balancing session of this request, attached by the HTTP handler; the balancer reads it and records the assigned member on it. */
+  balanceSession?: BalanceSession
 }
 
 type Vars = { auth: DataPlaneAuthCtx }

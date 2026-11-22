@@ -20,6 +20,7 @@
  */
 import type { ModelPricing } from '@vibe-llm/protocols/common'
 import { getRepo } from '../../repo/index.ts'
+import { trackQuotaCost } from '../../quota-balance/cost-hook.ts'
 import type { Repo, TokenUsage, UsageRecord } from '../../repo/types.ts'
 import type { ApiKeyId } from '../../repo/branded-ids.ts'
 
@@ -148,4 +149,5 @@ export const recordTokenUsage = async (
     cost: modelIdentity.cost,
   }
   await repo.usage.record(row)
+  trackQuotaCost(row)
 }

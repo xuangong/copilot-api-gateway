@@ -8,6 +8,7 @@ import type { PerformanceRecorder } from "../../observability/performance-record
 import type { RuntimeLocation } from '@vibe-core/platform'
 import type { PerformanceSourceApi } from '../../../repo/types.ts'
 import type { ApiKeyId } from '../../../repo/branded-ids.ts'
+import type { BalanceSession } from '../../../quota-balance/session-key.ts'
 
 export interface TelemetryRequestContext {
   readonly metrics?: PerformanceRecorder
@@ -30,4 +31,6 @@ export interface TelemetryRequestContext {
    * absent we fall back to 'chat-completions'.
    */
   readonly sourceApi?: PerformanceSourceApi
+  /** The quota-balancing session of this request (set by the HTTP handler); the cost hook charges the session's assigned member. */
+  readonly quotaSession?: BalanceSession
 }

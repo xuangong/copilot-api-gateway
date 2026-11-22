@@ -18,7 +18,10 @@ import { listRoutingBindings, routingScope, type CreateProviderOptions } from '.
 import { parseCompositeModelId } from '@vibe-llm/provider-copilot'
 import { parseModelRouting } from './model-routing.ts'
 import { getProtection } from '../../protection/runtime.ts'
-import { describePausedRoute } from './paused-route.ts'
+import { describeGroupExhausted, describePausedRoute } from './paused-route.ts'
+import { getQuotaBalance } from '../../quota-balance/runtime.ts'
+import type { BalanceOutcome, SkippedGroup } from '../../quota-balance/balance.ts'
+import type { RoutingBindingDescriptor } from '../providers/routing-projection.ts'
 import { UpstreamPausedError } from '../errors/upstream-paused.ts'
 
 export { parseModelRouting } from './model-routing.ts'
@@ -59,15 +62,33 @@ export async function resolveBinding(
   const skipped: string[] = []
   // This resolver intentionally prefers all direct matches before any base
   // fallback; chat candidate enumeration preserves upstream order instead.
+  const exhaustedGroups: SkippedGroup[] = []
+  let unknownGroups = 0
   for (const id of ids) {
+    const usable: RoutingBindingDescriptor[] = []
     for (const descriptor of bindings.find([id])) {
       if ((upstreamPin && descriptor.upstream !== upstreamPin) || descriptor.model.endpoints[endpoint] === undefined) continue
       if (paused.has(descriptor.upstream)) { skipped.push(descriptor.upstream); continue }
+      usable.push(descriptor)
+    }
+    // Groups: balanced per request without a session (embeddings, images, decisions, count tokens); a pinned request is not balanced.
+    let balance: BalanceOutcome<RoutingBindingDescriptor> | undefined
+    if (!upstreamPin) { try { balance = await getQuotaBalance().balance({ items: usable, upstreamOf: descriptor => descriptor.upstream, ignoreSoftLine: endpoint === 'messages_count_tokens' }) } catch { balance = undefined } }
+    for (const group of balance?.skipped ?? []) if (!exhaustedGroups.some(known => known.groupId === group.groupId)) exhaustedGroups.push(group)
+    unknownGroups += balance?.unknown.length ?? 0
+    for (const descriptor of balance?.ordered ?? usable) {
       const binding = await bindings.materialize(descriptor)
       if (binding) return binding
     }
   }
   await bindings.reconcile()
+
+  // D31: the quota answer only when every skipped group was skipped for quota.
+  if (exhaustedGroups.length > 0 && unknownGroups === 0) {
+    const ends = skipped.flatMap(upstreamId => { const row = paused.get(upstreamId); return row ? [row.endsAt] : [] })
+    const route = describeGroupExhausted(exhaustedGroups, ends, opts.ownerId, getProtection().now())
+    throw new UpstreamPausedError(route.message, route.retryAfterSeconds, opts.errorFormat ?? (opts.anthropicErrors ? 'anthropic' : undefined), 'group_quota_exhausted')
+  }
 
   // A candidate dropped only because it is paused is a known answer: prefer it over an unrelated failed catalog (as chat does).
   const route = await describePausedRoute(skipped, paused, opts.ownerId)

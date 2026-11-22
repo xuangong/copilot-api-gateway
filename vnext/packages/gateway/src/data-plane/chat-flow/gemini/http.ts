@@ -1,3 +1,4 @@
+import { withBalanceSession } from '../shared/balance-session'
 import { ClientDisconnect } from "../shared/client-disconnect"
 // packages/gateway/src/data-plane/chat-flow/gemini/http.ts
 import type { Context } from 'hono'
@@ -51,7 +52,7 @@ export async function geminiHandler(c: Context<{ Bindings: Env }>): Promise<Resp
     raw,
     model,
     forceStream: verb === 'streamGenerateContent',
-    auth,
+    auth: withBalanceSession(auth, 'gemini', raw, c.req.raw.headers),
     obsCtx: readObsCtx(c, auth),
     signal: disconnect.controller.signal,
     dump,

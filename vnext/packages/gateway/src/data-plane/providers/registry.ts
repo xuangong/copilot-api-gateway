@@ -1,3 +1,6 @@
+import { orderUpstreamsForRouting } from '../../quota-balance/ordering.ts'
+import { EMPTY_DIRECTORY, type GroupDirectory } from '../../quota-balance/directory.ts'
+import { getQuotaBalance } from '../../quota-balance/runtime.ts'
 import { RoutingProjection, RoutingProjectionCache, type RoutingBindingDescriptor, type RoutingScope } from "./routing-projection.ts"
 import { configurationAffinityAuthority } from "./affinity-authority"
 import { parseOpaqueCompatibilityDeclaration } from "@vibe-llm/provider-llm"
@@ -286,10 +289,11 @@ async function requestCatalog(opts: CreateProviderOptions, fetcher: Fetcher, sig
 export function _clearModelsMemoForTest(): void { coordinators = new WeakMap(); projections = new WeakMap() }
 __registerPlatformReset(_clearModelsMemoForTest)
 
-function sortUpstreams(upstreams: StoredUpstreamRecord[]): StoredUpstreamRecord[] {
-  return upstreams.sort((a, b) =>
-    a.sortOrder - b.sortOrder || a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id),
-  )
+async function sortUpstreams(upstreams: StoredUpstreamRecord[]): Promise<StoredUpstreamRecord[]> {
+  // A group is one routing item (its own sort order); the directory is cached and fail-open (no groups on any failure).
+  let directory: GroupDirectory = EMPTY_DIRECTORY
+  try { directory = await getQuotaBalance().directory.get() } catch { /* plain order */ }
+  return orderUpstreamsForRouting(upstreams, directory)
 }
 
 async function listVisibleUpstreams(ownerId?: UserId, allOwners = false): Promise<StoredUpstreamRecord[]> {
