@@ -139,6 +139,41 @@ export function protectionRepoContract(getRepo: () => ProtectionRepo, run: (sql:
     expect(await repo.lastOwnerResolvedAt("up_test_other_r", 0)).toBeNull()
   })
 
+  const quotaReason = (): NewPause["reason"] => ({ ...pause(1).reason, trigger: "quota", requests: 0, risky: 0, quota: { groupId: "ug_" + "1".repeat(32), groupName: "G", share: 0.96, hardShare: 0.95, source: "real", provisional: false } })
+
+  test.serial("a quota pause can coexist with a flood pause of the same upstream, but only one quota pause is active at a time; a flood row is still blocked by any active row", async () => {
+    const repo = getRepo()
+    const target = { targetId: "up_test_q1", upstreamId: "up_test_q1" }
+    expect(await repo.insertPauseIfNone(pause(40, target), 2_000)).toBe(true) // flood
+    expect(await repo.insertPauseIfNone(pause(41, { ...target, reason: quotaReason() }), 2_000)).toBe(true) // quota alongside
+    expect(await repo.insertPauseIfNone(pause(42, { ...target, reason: quotaReason() }), 2_000)).toBe(false) // second quota row
+    expect(await repo.insertPauseIfNone(pause(43, target), 2_000)).toBe(false) // flood unchanged
+    expect((await repo.listActive(2_000)).filter(row => row.upstreamId === "up_test_q1")).toHaveLength(2)
+  })
+
+  test.serial("lastOwnerResolvedQuotaAt only sees owner resolves of quota pauses of the upstream; the flood query ignores quota rows", async () => {
+    const repo = getRepo()
+    const target = { targetId: "up_test_q2", upstreamId: "up_test_q2" }
+    await repo.insertPauseIfNone(pause(50, target), 2_000)
+    await repo.insertPauseIfNone(pause(51, { ...target, reason: quotaReason() }), 2_000)
+    await repo.resolvePause(pid(50), "owner", 3_000)
+    expect(await repo.lastOwnerResolvedQuotaAt("up_test_q2", 0)).toBeNull()
+    await repo.resolvePause(pid(51), "owner", 4_000)
+    expect(await repo.lastOwnerResolvedQuotaAt("up_test_q2", 0)).toBe(4_000)
+    expect(await repo.lastOwnerResolvedQuotaAt("up_test_q2", 4_001)).toBeNull()
+    expect(await repo.lastOwnerResolvedAt("up_test_q2", 0)).toBe(3_000)
+  })
+
+  test.serial("updatePauseReason rewrites an unresolved row in place and leaves resolved rows alone", async () => {
+    const repo = getRepo()
+    await repo.insertPauseIfNone(pause(60, { targetId: "up_test_q3", upstreamId: "up_test_q3", reason: quotaReason() }), 2_000)
+    const next = { ...quotaReason(), keyShare: null, quota: { ...quotaReason().quota!, provisional: true } }
+    expect(await repo.updatePauseReason(pid(60), next)).toBe(true)
+    expect((await repo.getPause(pid(60)))?.reason.quota?.provisional).toBe(true)
+    await repo.resolvePause(pid(60), "auto", 3_000)
+    expect(await repo.updatePauseReason(pid(60), quotaReason())).toBe(false)
+  })
+
   test.serial("retention deletes old minutes and pauses, auto-resolves expired rows and drops samples and settings of vanished upstreams", async () => {
     const repo = getRepo()
     const now = Date.UTC(2026, 10, 17)

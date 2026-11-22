@@ -20,7 +20,7 @@ export async function enforcementFixture(ids: readonly string[] = ["up_test_firs
   initRepo(repo)
   for (const [index, id] of ids.entries()) {
     const row: UpstreamRecord = { id, ...(opts.ownerId ? { ownerId: opts.ownerId } : {}), provider: "custom", name: id, enabled: true, sortOrder: index,
-      config: { name: id, baseUrl: `https://${id}.invalid`, authStyle: "none", endpoints: ["chat_completions", "responses", "embeddings", "alpha_search"], models: ["shared"] },
+      config: { name: id, baseUrl: `https://${id}.invalid`, authStyle: "none", endpoints: ["chat_completions", "responses", "embeddings", "alpha_search", "messages_count_tokens"], models: ["shared"] },
       flagOverrides: {}, disabledPublicModelIds: [], proxyFallbackList: [{ id: "direct_fetch" }], state: null,
       createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z" }
     await repo.upstreams.save(row)

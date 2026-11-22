@@ -13,6 +13,8 @@ import { setupTestPlatform } from '../../_setup-platform.ts'
 import { __resetPlatformForTests } from '@vibe-core/platform'
 import type { ApiKeyId, UserId } from '../../../src/repo/branded-ids.ts'
 import type { UpstreamRecord } from '../../../src/repo/types.ts'
+import { getQuotaBalance } from '../../../src/quota-balance/runtime.ts'
+import { resolveSessionKey, type BalanceSession } from '../../../src/quota-balance/session-key.ts'
 import type { Model, ModelsResponse } from '@vibe-llm/provider-copilot'
 
 const env = {} as never
@@ -265,4 +267,21 @@ test('the DMR bound key never applies to /api/* — a real key is required', asy
   // The same key sent explicitly does work, so the 401 is about the credential
   // and not about the route being missing.
   expect((await app.request('/api/tags', { headers: { authorization: `Bearer ${KEY}` } }, env)).status).toBe(200)
+})
+
+test('two /api/chat turns of one conversation carry the same balancing session; another conversation does not', async () => {
+  const qb = getQuotaBalance()
+  const sessions: Array<BalanceSession | undefined> = []
+  const original = qb.balance.bind(qb)
+  qb.balance = ((args: Parameters<typeof original>[0]) => { sessions.push(args.session); return original(args) }) as typeof qb.balance
+  const system = { role: 'system', content: 'be brief' }
+  const first = { role: 'user', content: 'plan my trip' }
+  await chat({ model: MODEL, stream: false, messages: [system, first] })
+  await chat({ model: MODEL, stream: false, messages: [system, first, { role: 'assistant', content: 'ok' }, { role: 'user', content: 'and then?' }] })
+  await chat({ model: MODEL, stream: false, messages: [system, { role: 'user', content: 'something else' }] })
+  const keys = await Promise.all(sessions.map(session => resolveSessionKey(session!)))
+  expect(keys).toHaveLength(3)
+  expect(keys[0]).toMatch(/^[0-9a-f]{32}$/)
+  expect(keys[1]).toBe(keys[0])
+  expect(keys[2]).not.toBe(keys[0])
 })
