@@ -20,6 +20,8 @@ export type PublicUpstream = Pick<UpstreamRecord<unknown>,
     syncedFrom?: { origin: string | null }
     /** Upstream error protection settings, resolved with defaults. */
     protection?: ProtectionSettings
+    /** The quota-balancing group this upstream belongs to (null: none). */
+    groupId?: string | null
   }
 
 function record(value: unknown): Record<string, unknown> {
@@ -34,7 +36,7 @@ export function publicUpstreamConfig(upstream: UpstreamRecord<unknown>): Record<
   return providerPlugin(upstream.provider)?.publicConfig?.(record(upstream.config)) ?? {}
 }
 
-export function serializeUpstream(upstream: UpstreamRecord<unknown>, options: { syncOrigin?: string | null; protection?: ProtectionSettings } = {}): PublicUpstream {
+export function serializeUpstream(upstream: UpstreamRecord<unknown>, options: { syncOrigin?: string | null; protection?: ProtectionSettings; groupId?: string | null } = {}): PublicUpstream {
   const dto: PublicUpstream = {
     id: upstream.id, ownerId: upstream.ownerId, provider: upstream.provider, name: upstream.name,
     enabled: upstream.enabled, sortOrder: upstream.sortOrder, config: publicUpstreamConfig(upstream),
@@ -50,5 +52,6 @@ export function serializeUpstream(upstream: UpstreamRecord<unknown>, options: { 
   if (blocked) dto.syncBlocked = blocked
   if (isSynced(upstream)) dto.syncedFrom = { origin: options.syncOrigin ?? null }
   if (options.protection) dto.protection = options.protection
+  if (options.groupId !== undefined) dto.groupId = options.groupId
   return dto
 }

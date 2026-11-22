@@ -90,7 +90,8 @@ export const sessionAuthMiddleware: MiddlewareHandler = async (c, next) => {
   const lokiManagement = c.req.path.startsWith('/api/loki/')
   const telemetryManagement = c.req.path.startsWith('/api/telemetry/')
   const protectionManagement = c.req.path.startsWith('/api/protection/') || /^\/api\/upstreams\/[^/]+\/(?:errors|error-samples|pauses)$/.test(c.req.path)
-  if (ctx && resolvedUserId && !hasConfigurationSnapshot() && !credentialManagementPath && !quotaObservationPath && !capabilityRead && !setupManagement && !lokiManagement && !telemetryManagement && !protectionManagement) {
+  const quotaGroupManagement = c.req.path.startsWith('/api/upstream-groups')
+  if (ctx && resolvedUserId && !hasConfigurationSnapshot() && !credentialManagementPath && !quotaObservationPath && !capabilityRead && !setupManagement && !lokiManagement && !telemetryManagement && !protectionManagement && !quotaGroupManagement) {
     // Resolve the user's copilot upstream so data-plane handlers (web search,
     // image generation) can reach into auth.copilot/githubToken without each
     // route having to repeat the lookup.

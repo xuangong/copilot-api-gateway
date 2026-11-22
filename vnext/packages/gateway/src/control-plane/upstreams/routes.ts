@@ -321,7 +321,9 @@ upstreamsRouter.get('/', async (c) => {
   try {
     settings = await getRepo().protection.getSettingsMany(upstreams.map((upstream) => upstream.id))
   } catch (err) { warnProtection('protection_settings_read_failed', err) }
-  return c.json({ upstreams: upstreams.map((upstream) => serializeUpstream(upstream, { syncOrigin, protection: resolveProtection(settings.get(upstream.id)) })) })
+  let groupOf = new Map<string, string>()
+  try { groupOf = new Map((await getRepo().quotaBalance.listMemberships()).map(m => [m.upstreamId, m.groupId])) } catch (err) { warnProtection('quota_membership_read_failed', err) }
+  return c.json({ upstreams: upstreams.map((upstream) => serializeUpstream(upstream, { syncOrigin, protection: resolveProtection(settings.get(upstream.id)), groupId: groupOf.get(upstream.id) ?? null })) })
 })
 
 upstreamsRouter.post('/', zValidator('json', upstreamBody), async (c) => {
