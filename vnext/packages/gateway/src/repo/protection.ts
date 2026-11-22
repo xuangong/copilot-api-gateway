@@ -66,6 +66,17 @@ export interface ErrorBucket extends ClassCounts { t: number }
 export type PauseTargetKind = "upstream" | "key"
 export type PauseMode = "pause" | "notify"
 export type PauseResolver = "auto" | "owner"
+/** Why a member of a quota-balancing group was cut off (`trigger: "quota"`); the flood fields of such a reason are zero. */
+export interface QuotaPauseInfo {
+  groupId: string
+  groupName: string
+  /** Used share that crossed the line. */
+  share: number
+  hardShare: number
+  /** `estimate`: the line was crossed by the estimator before a read could confirm it. */
+  source: "real" | "estimate"
+  provisional: boolean
+}
 export interface PauseReason {
   windowMinutes: number
   requests: number
@@ -73,11 +84,12 @@ export interface PauseReason {
   counts: Omit<ClassCounts, "requests">
   failureRatio: number
   topKeys: Array<{ keyId: string; risky: number }>
-  trigger: "ratio" | "authBurst"
+  trigger: "ratio" | "authBurst" | "quota"
   /** Share of the risky errors caused by the attributed key, when there is one. */
   keyShare: number | null
   upstreamName?: string
   targetName?: string
+  quota?: QuotaPauseInfo
 }
 export interface PauseRecord {
   id: string
@@ -112,6 +124,10 @@ export interface ProtectionRepo {
   countRecentPauses(kind: PauseTargetKind, targetId: string, mode: PauseMode, sinceMs: number): Promise<number>
   /** Latest `resolvedAt` (unix ms, at or after `sinceMs`) among rows of this upstream, or of keys paused for it, that the owner resolved; null when none. */
   lastOwnerResolvedAt(upstreamId: string, sinceMs: number): Promise<number | null>
+  /** Latest `resolvedAt` (at or after `sinceMs`) among quota-triggered upstream rows of this upstream that the owner resolved; null when none. */
+  lastOwnerResolvedQuotaAt(upstreamId: string, sinceMs: number): Promise<number | null>
+  /** Rewrites the reason of an unresolved row in place (a provisional quota cut-off confirmed by a real read). False when missing or resolved. */
+  updatePauseReason(id: string, reason: PauseReason): Promise<boolean>
   /** Unresolved rows with `endsAt > nowMs`, newest first. */
   listActive(nowMs: number): Promise<PauseRecord[]>
   /** Newest first. */

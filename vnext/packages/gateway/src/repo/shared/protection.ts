@@ -126,9 +126,10 @@ export class SharedProtectionRepo implements ProtectionRepo {
     const result = await this.x.run(
       `INSERT INTO protection_pauses (id, target_kind, target_id, upstream_id, mode, reason_json, started_at, ends_at)
        SELECT ?, ?, ?, ?, ?, ?, ?, ?
-       WHERE NOT EXISTS (SELECT 1 FROM protection_pauses WHERE target_kind = ? AND target_id = ? AND resolved_at IS NULL AND ends_at > ? AND (? = 'notify' OR mode = 'pause'))`,
+       WHERE NOT EXISTS (SELECT 1 FROM protection_pauses WHERE target_kind = ? AND target_id = ? AND resolved_at IS NULL AND ends_at > ? AND (? = 'notify' OR mode = 'pause')
+         AND (? <> 'quota' OR COALESCE(json_extract(reason_json, '$.trigger'), '') = 'quota'))`,
       [pause.id, pause.targetKind, pause.targetId, pause.upstreamId, pause.mode, JSON.stringify(pause.reason), pause.startedAt, pause.endsAt,
-        pause.targetKind, pause.targetId, nowMs, pause.mode])
+        pause.targetKind, pause.targetId, nowMs, pause.mode, pause.reason.trigger])
     return result.changes > 0
   }
 
@@ -140,8 +141,20 @@ export class SharedProtectionRepo implements ProtectionRepo {
 
   async lastOwnerResolvedAt(upstreamId: string, sinceMs: number): Promise<number | null> {
     const row = await this.x.first<{ at: number | null }>(
-      "SELECT MAX(resolved_at) AS at FROM protection_pauses WHERE upstream_id = ? AND resolved_by = 'owner' AND resolved_at >= ?", [upstreamId, sinceMs])
+      "SELECT MAX(resolved_at) AS at FROM protection_pauses WHERE upstream_id = ? AND resolved_by = 'owner' AND resolved_at >= ? AND COALESCE(json_extract(reason_json, '$.trigger'), '') <> 'quota'", [upstreamId, sinceMs])
     return row?.at == null ? null : Number(row.at)
+  }
+
+  async lastOwnerResolvedQuotaAt(upstreamId: string, sinceMs: number): Promise<number | null> {
+    const row = await this.x.first<{ at: number | null }>(
+      `SELECT MAX(resolved_at) AS at FROM protection_pauses WHERE upstream_id = ? AND target_kind = 'upstream' AND resolved_by = 'owner' AND resolved_at >= ?
+       AND json_extract(reason_json, '$.trigger') = 'quota'`, [upstreamId, sinceMs])
+    return row?.at == null ? null : Number(row.at)
+  }
+
+  async updatePauseReason(id: string, reason: PauseReason): Promise<boolean> {
+    const result = await this.x.run("UPDATE protection_pauses SET reason_json = ? WHERE id = ? AND resolved_at IS NULL", [JSON.stringify(reason), id])
+    return result.changes > 0
   }
 
   async listActive(nowMs: number): Promise<PauseRecord[]> {

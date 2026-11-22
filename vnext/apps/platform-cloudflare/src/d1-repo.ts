@@ -215,6 +215,7 @@ export class D1Repo implements Repo {
   syncSources: Repo["syncSources"]
   telemetry: Repo["telemetry"]
   protection: Repo["protection"]
+  quotaBalance: Repo["quotaBalance"]
   deviceCodes: Repo["deviceCodes"]
   responsesItems: Repo["responsesItems"]
   proxies: Repo["proxies"]
@@ -246,6 +247,7 @@ export class D1Repo implements Repo {
     this.syncSources = shared.syncSources
     this.telemetry = shared.telemetry
     this.protection = shared.protection
+    this.quotaBalance = shared.quotaBalance
     this.deviceCodes = shared.deviceCodes
     this.responsesItems = shared.responsesItems
     this.proxies = shared.proxies
