@@ -60,6 +60,8 @@ interface Props {
   onDragOver?: (event: DragEvent<HTMLDivElement>) => void
   onDrop?: (event: DragEvent<HTMLDivElement>) => void
   onDragEnd?: () => void
+  /** False for a group member: its group is the reorderable item, so the drag handle and the move buttons are not shown. */
+  orderable?: boolean
   /** Pointer down on the drag handle: starts a touch or pen drag (the native drag is mouse-only). */
   onHandlePointerDown?: (event: PointerEvent<HTMLButtonElement>) => void
   onEdit: () => void
@@ -93,6 +95,7 @@ export function UpstreamRow({
   onDragOver,
   onDrop,
   onDragEnd,
+  orderable = true,
   onHandlePointerDown,
   onEdit,
   onDuplicate,
@@ -209,41 +212,45 @@ export function UpstreamRow({
         </div>
 
         <div className="flex items-center gap-1 flex-wrap shrink-0">
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            draggable={!locked}
-            disabled={locked}
-            onDragStart={onDragStart}
-            onDragEnd={onDragEnd}
-            onPointerDown={onHandlePointerDown}
-            onKeyDown={onHandleKeyDown}
-            aria-label={t("dash.reorderUpstreamHandle", { name: u.name })}
-            title={t("dash.reorderUpstreamHandle", { name: u.name })}
-            className="cursor-grab enabled:active:cursor-grabbing touch-none"
-          >
-            <GripVertical aria-hidden="true" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={() => onReorder("up")}
-            disabled={locked || index === 0}
-            title={t("dash.moveUp")}
-            aria-label={t("dash.moveUp")}
-          >
-            <ChevronUp aria-hidden="true" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={() => onReorder("down")}
-            disabled={locked || index === total - 1}
-            title={t("dash.moveDown")}
-            aria-label={t("dash.moveDown")}
-          >
-            <ChevronDown aria-hidden="true" />
-          </Button>
+          {orderable ? (
+            <>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              draggable={!locked}
+              disabled={locked}
+              onDragStart={onDragStart}
+              onDragEnd={onDragEnd}
+              onPointerDown={onHandlePointerDown}
+              onKeyDown={onHandleKeyDown}
+              aria-label={t("dash.reorderUpstreamHandle", { name: u.name })}
+              title={t("dash.reorderUpstreamHandle", { name: u.name })}
+              className="cursor-grab enabled:active:cursor-grabbing touch-none"
+            >
+              <GripVertical aria-hidden="true" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={() => onReorder("up")}
+              disabled={locked || index === 0}
+              title={t("dash.moveUp")}
+              aria-label={t("dash.moveUp")}
+            >
+              <ChevronUp aria-hidden="true" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={() => onReorder("down")}
+              disabled={locked || index === total - 1}
+              title={t("dash.moveDown")}
+              aria-label={t("dash.moveDown")}
+            >
+              <ChevronDown aria-hidden="true" />
+            </Button>
+            </>
+          ) : null}
           <label className={cn("ml-1 flex items-center gap-1 text-xs text-fg-muted select-none", locked || busy ? "cursor-not-allowed" : "cursor-pointer")}>
             <input
               type="checkbox"

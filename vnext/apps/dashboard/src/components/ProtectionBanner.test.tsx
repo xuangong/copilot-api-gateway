@@ -4,7 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server"
 import type { PauseReason, ProtectionPause } from "../api/protection"
 import { installDictionary } from "../state/i18n-fixture"
 import { setDisplayZone } from "../tabs/telemetry/telemetry-format"
-import { bannerItems } from "./protection-banner-model"
+import { bannerItems, groupAlertItems } from "./protection-banner-model"
 import { ProtectionBanner } from "./ProtectionBanner"
 
 const NOW = Date.UTC(2026, 10, 17, 12, 0)
@@ -94,4 +94,47 @@ test("persistent pauses are status regions, not alerts, and Resume is disabled w
   expect(html).toContain('role="status"')
   expect(html).not.toContain('role="alert"')
   expect(html).toMatch(/<button[^>]*disabled[^>]*>Resume now/)
+})
+
+const quotaReason = (over: Partial<NonNullable<PauseReason["quota"]>> = {}): PauseReason =>
+  reason({ trigger: "quota", requests: 0, risky: 0, failureRatio: 0, counts: { rate_limited: 0, rejected: 0, auth: 0, upstream: 0, network: 0, other: 0 },
+    quota: { groupId: "ug_1", groupName: "Pool", share: 0.96, hardShare: 0.95, source: "real", provisional: false, ...over } })
+
+test("a quota cut-off reads as the usage that crossed the hard line, a provisional one says the next read decides", () => {
+  const ends = Date.UTC(2026, 11, 1)
+  expect(text(pause({ reason: quotaReason(), endsAt: ends }))).toBe("Upstream Copilot A paused until 12-01 00:00 — usage reached 96% of the monthly allowance (hard line 95%).")
+  expect(text(pause({ reason: quotaReason({ share: 0.97, source: "estimate", provisional: true }), endsAt: ends })))
+    .toBe("Upstream Copilot A paused until 12-01 00:00 — estimated usage reached 97% of the monthly allowance (hard line 95%); the next read confirms it.")
+})
+
+test("the same quota cut-off in Chinese", () => {
+  restore(); restore = installDictionary("zh")
+  expect(text(pause({ reason: quotaReason(), endsAt: Date.UTC(2026, 11, 1) }))).toBe("上游 Copilot A 已暂停至 12-01 00:00 — 用量已达月度额度的 96%（硬限制 95%）。")
+})
+
+test("a group that cannot take new sessions is a danger item, an overage group a warning; neither can be resumed or opened", () => {
+  const items = groupAlertItems([{ kind: "stopped", groupId: "ug_1", groupName: "Pool" }, { kind: "overage", groupId: "ug_2", groupName: "Spare" }, { kind: "read_failing", groupId: "ug_1", groupName: "Pool", upstreamId: "up_a", upstreamName: "Copilot A" }], window.t!)
+  expect(items.map(item => [item.tone, item.text, item.canResume, item.upstreamId])).toEqual([
+    ["danger", "Group Pool: no member can take new sessions", false, ""],
+    ["warn", "Group Spare is in overage: new sessions use members above the soft line", false, ""],
+    ["warn", "Group Pool: reads of Copilot A keep failing; its numbers are a cautious estimate", false, ""],
+  ])
+  const html = renderToStaticMarkup(<ProtectionBanner items={items} onResume={() => {}} onOpen={() => {}} canOpen={item => item.upstreamId !== ""} />)
+  expect(html).toContain("Group Pool: no member can take new sessions")
+  expect(html).not.toContain("Resume now")
+})
+
+test("a group alert offers an Open group button that names the group id; pause items keep Open settings", () => {
+  const items = groupAlertItems([{ kind: "stopped", groupId: "ug_1", groupName: "Pool" }], window.t!)
+  expect(items[0]!.groupId).toBe("ug_1")
+  const opened: string[] = []
+  const html = renderToStaticMarkup(<ProtectionBanner items={items} onResume={() => {}} onOpen={() => {}} onOpenGroup={id => opened.push(id)} canOpen={() => false} />)
+  expect(html).toContain(">Open group<")
+  expect(html).not.toContain("Open settings")
+  expect(renderToStaticMarkup(<ProtectionBanner items={items} onResume={() => {}} onOpen={() => {}} canOpen={() => false} />)).not.toContain(">Open group<")
+})
+
+test("a member that was never read has its own wording, distinct from failing reads", () => {
+  const items = groupAlertItems([{ kind: "read_failing", reason: "never_read", groupId: "ug_1", groupName: "Pool", upstreamId: "up_a", upstreamName: "Copilot A" }], window.t!)
+  expect(items.map(item => item.text)).toEqual(["Group Pool: Copilot A has never been read; it takes no sessions until you calibrate it or fix its GitHub credential."])
 })

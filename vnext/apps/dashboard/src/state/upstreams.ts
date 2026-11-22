@@ -1,11 +1,14 @@
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useToast } from "./toast"
 import { useConfirm } from "./confirm"
 import { useT } from "./i18n"
 import { upstreamErrorText } from "../tabs/upstreams/upstream-error"
 import * as api from "../api/upstreams"
 import type { UpstreamRecord } from "../api/types"
-import { ReorderController, partitionPosition } from "./reorder-upstreams"
+import * as groupApi from "../api/upstream-groups"
+import { ReorderController, partitionPosition, type ReorderRow } from "./reorder-upstreams"
+import { groupErrorText } from "./group-errors"
+import { applyRowOrder, buildOrderItems, toRows, type OrderItem } from "./group-items"
 
 function sortUpstreams(list: UpstreamRecord[]): UpstreamRecord[] {
   return [...list].sort((a, b) => {
@@ -14,24 +17,36 @@ function sortUpstreams(list: UpstreamRecord[]): UpstreamRecord[] {
   })
 }
 
+async function loadItems(): Promise<{ upstreams: UpstreamRecord[]; groups: groupApi.UpstreamGroup[]; items: OrderItem[] }> {
+  // Groups are optional for the list: if they cannot be loaded the members show as ordinary upstreams.
+  const [{ upstreams }, { groups }] = await Promise.all([api.listUpstreams(), groupApi.listGroups().catch(() => ({ groups: [] as groupApi.UpstreamGroup[] }))])
+  const sorted = sortUpstreams(upstreams)
+  return { upstreams: sorted, groups, items: buildOrderItems(sorted, groups) }
+}
+
 export function useUpstreams() {
   const { push: toast } = useToast()
   const confirm = useConfirm()
   const t = useT()
   const [upstreams, setUpstreams] = useState<UpstreamRecord[]>([])
+  const [groups, setGroups] = useState<groupApi.UpstreamGroup[]>([])
+  const [orderRows, setOrderRows] = useState<ReorderRow[]>([])
   const toastRef = useRef(toast)
   toastRef.current = toast
   const tRef = useRef(t)
   tRef.current = t
   const reloadRef = useRef<() => Promise<void>>(async () => {})
-  const controllerRef = useRef<ReorderController | null>(null)
+  const controllerRef = useRef<ReorderController<ReorderRow> | null>(null)
   if (!controllerRef.current) {
-    controllerRef.current = new ReorderController(
+    controllerRef.current = new ReorderController<ReorderRow>(
       [],
-      (id, sortOrder) => api.patchUpstream(id, { sortOrder }).then(() => {}),
+      // A group is saved like an upstream, by id: both live in one sort-order number space per owner.
+      (id, sortOrder) => id.startsWith("ug_")
+        ? groupApi.patchGroup(id, { sortOrder }).then(() => {}, (error) => { throw new Error(tRef.current("dash.qbGroupSaveFailed", { error: groupErrorText(error, tRef.current, Date.now()) })) })
+        : api.patchUpstream(id, { sortOrder }).then(() => {}),
       (error) => toastRef.current(upstreamErrorText(error, tRef.current), "error"),
       () => { void reloadRef.current() },
-      async () => sortUpstreams((await api.listUpstreams()).upstreams),
+      async () => toRows((await loadItems()).items),
     )
   }
   const controller = controllerRef.current
@@ -49,7 +64,7 @@ export function useUpstreams() {
     }
   }, [])
 
-  useEffect(() => controller.subscribe(() => setUpstreams(controller.snapshot())), [controller])
+  useEffect(() => controller.subscribe(() => setOrderRows(controller.snapshot())), [controller])
 
   const reloadGeneration = useRef(0)
 
@@ -57,8 +72,13 @@ export function useUpstreams() {
     const generation = ++reloadGeneration.current
     setLoading(true)
     try {
-      const { upstreams } = await api.listUpstreams()
-      if (generation === reloadGeneration.current) controller.replace(sortUpstreams(upstreams))
+      const loaded = await loadItems()
+      if (generation === reloadGeneration.current) {
+        setUpstreams(loaded.upstreams)
+        setGroups(loaded.groups)
+        controller.replace(toRows(loaded.items)) // ignored while moves are still being saved
+        setOrderRows(controller.snapshot())
+      }
       loadModels()
     } catch (e) {
       toast(e instanceof Error ? e.message : String(e), "error")
@@ -201,8 +221,13 @@ export function useUpstreams() {
     return ok === true
   }
 
+  const items = useMemo(() => applyRowOrder(buildOrderItems(upstreams, groups), orderRows) as OrderItem[], [upstreams, groups, orderRows])
+
   return {
     upstreams,
+    groups,
+    /** Ungrouped upstreams and groups in display order (pending moves included); members are inside their group's item. */
+    items,
     loading,
     busy,
     modelsByUpstream,

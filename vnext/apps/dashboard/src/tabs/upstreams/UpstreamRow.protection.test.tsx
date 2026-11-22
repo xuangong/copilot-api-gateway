@@ -25,3 +25,9 @@ test("an active pause or warning on the upstream shows a badge", () => {
   expect(render({ pause: pause("notify") })).toContain("dash.protWarningBadge")
   expect(render()).not.toContain("dash.protPausedBadge")
 })
+
+test("a group member (orderable false) has no drag handle and no move buttons; an ordinary row has them", () => {
+  expect(render()).toContain("dash.reorderUpstreamHandle")
+  expect(render({ orderable: false })).not.toContain("dash.reorderUpstreamHandle")
+  expect(render({ orderable: false })).not.toContain("dash.moveUp")
+})

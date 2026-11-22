@@ -44,6 +44,8 @@ export interface UpstreamRecord {
   disabledPublicModelIds: string[]
   proxyFallbackList?: ProxyFallbackEntry[]
   protection?: ProtectionSettings
+  /** The quota-balancing group this upstream belongs to (null or absent: none). */
+  groupId?: string | null
   // Set by the server only for sdf upstreams whose Substrate token's `exp` has
   // already passed — the token itself is redacted, so we cannot work this out
   // here. Present means expired; absent means "not expired, or unknowable", and

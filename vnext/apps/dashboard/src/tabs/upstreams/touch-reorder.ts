@@ -7,6 +7,16 @@ const EDGE = 48
 /** Fastest auto-scroll, px per frame. */
 const MAX_SPEED = 14
 
+interface ClosestLike { closest: (selector: string) => { dataset: Record<string, string | undefined> } | null }
+/**
+ * The reorderable item under a point: a group card (also when the point is on one of its members, which have no order of their own) or an ungrouped
+ * upstream row. The group is looked up first because a member row sits inside its card.
+ */
+export function itemIdAt(element: ClosestLike | null): string | null {
+  if (!element) return null
+  return element.closest("[data-group-id]")?.dataset.groupId ?? element.closest("[data-upstream-id]")?.dataset.upstreamId ?? null
+}
+
 /**
  * Pixels to scroll this frame for a finger at `y`: up (negative) within `edge`
  * of the top, down within `edge` of the bottom, faster the closer it gets.
@@ -165,7 +175,7 @@ export function useTouchReorder(handlers: TouchReorderHandlers) {
       cancel: () => latest.current.cancel(),
     }, {
       events: window,
-      rowAt: (x, y) => document.elementFromPoint(x, y)?.closest<HTMLElement>("[data-upstream-id]")?.dataset.upstreamId ?? null,
+      rowAt: (x, y) => itemIdAt(document.elementFromPoint(x, y)),
       autoScroll: (y) => {
         const { top, bottom } = page ? { top: 0, bottom: window.innerHeight } : scroller.getBoundingClientRect()
         const delta = edgeScrollDelta(y, top, bottom)

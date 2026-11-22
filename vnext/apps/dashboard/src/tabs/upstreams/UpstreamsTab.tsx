@@ -15,6 +15,12 @@ import { createPortableUpstreamDraft } from "./duplicate-draft"
 import type { PortableUpstreamDraft } from "./duplicate-draft"
 import type { UpstreamRecord } from "../../api/types"
 import { moveUpstream } from "../../state/reorder-upstreams"
+import { ownerSections, type OrderItem } from "../../state/group-items"
+import { GroupCard } from "./groups/GroupCard"
+import { MemberQuotaRow } from "./groups/MemberQuotaRow"
+import { useGroupStatuses } from "./groups/use-group-status"
+import { useGroupActions } from "./groups/use-group-actions"
+import { NewGroupControl } from "./groups/NewGroupControl"
 import { LokiPairingPanel } from "./LokiPairingPanel"
 import { SyncDevicesSection } from "./SyncDevicesSection"
 import { SyncSourceSection } from "./SyncSourceSection"
@@ -43,26 +49,21 @@ type CreateMode = {
   sourceId?: string
 }
 
-interface OwnerGroup {
-  ownerId: string
-  label: string
-  rows: UpstreamRecord[]
-  isMine: boolean
-}
-
 interface DragPreview { sourceId: string; targetId: string | null }
 
 export function UpstreamsTab() {
   const store = useUpstreams()
+  const { statuses, nowMs, refresh: refreshStatuses } = useGroupStatuses()
   const { session } = useAuth()
   const t = useT()
   const [createMode, setCreateMode] = useState<CreateMode | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [proxyId, setProxyId] = useState<string | null>(null)
   const protection = useProtection()
-  const { focusUpstreamId, clearFocus } = protection
+  const { focusUpstreamId, clearFocus, focusGroupId, clearGroupFocus } = protection
   const [protectionId, setProtectionId] = useState<string | null>(null)
   const [scrollToId, setScrollToId] = useState<string | null>(null)
+  const [scrollToGroupId, setScrollToGroupId] = useState<string | null>(null)
   const [deviceFlowOpen, setDeviceFlowOpen] = useState(false)
   const [createLoki, setCreateLoki] = useState(false)
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
@@ -91,30 +92,31 @@ export function UpstreamsTab() {
 
   const myOwnerId = session?.userId != null ? String(session.userId) : ""
   const isAdmin = !!session?.isAdmin
-  const previewRows = useMemo(
+  const previewItems = useMemo(
     () => drag?.targetId
-      ? moveUpstream(store.upstreams, drag.sourceId, drag.targetId, myOwnerId)
-      : store.upstreams,
-    [store.upstreams, drag, myOwnerId],
+      ? moveUpstream(store.items, drag.sourceId, drag.targetId, myOwnerId)
+      : store.items,
+    [store.items, drag, myOwnerId],
   )
-  const canDropOn = (sourceId: string, target: UpstreamRecord) => {
-    const source = store.upstreams.find((row) => row.id === sourceId)
+  const canDropOn = (sourceId: string, target: OrderItem) => {
+    const source = store.items.find((item) => item.id === sourceId)
     return !!source && source.id !== target.id &&
       source.ownerId === myOwnerId && target.ownerId === myOwnerId &&
       source.enabled === target.enabled
   }
-  // A move gives a screen reader user no feedback of its own; say where the row landed.
-  const announceMove = (row: UpstreamRecord, moved: boolean) => {
+  // A move gives a screen reader user no feedback of its own; say where the item landed.
+  const announceMove = (item: OrderItem, moved: boolean) => {
     if (!moved) return
-    const at = store.positionOf(row.id, myOwnerId)
-    if (at) setAnnouncement(t("dash.reorderUpstreamAnnounce", { name: row.name, n: at.position, total: at.total }))
+    const at = store.positionOf(item.id, myOwnerId)
+    const name = item.kind === "group" ? item.group.name : item.upstream.name
+    if (at) setAnnouncement(t("dash.reorderUpstreamAnnounce", { name, n: at.position, total: at.total }))
   }
 
   // Touch and pen drags drive the same preview as the mouse's native drag.
   const touchDrag = useTouchReorder({
     start: (sourceId) => setDrag({ sourceId, targetId: null }),
     over: (sourceId, targetId) => {
-      const target = store.upstreams.find((row) => row.id === targetId)
+      const target = store.items.find((item) => item.id === targetId)
       if (!target || !canDropOn(sourceId, target)) return false
       setDrag((d) => (d && d.sourceId === sourceId && d.targetId !== targetId ? { ...d, targetId } : d))
       return true
@@ -122,7 +124,7 @@ export function UpstreamsTab() {
     drop: (sourceId, targetId) => {
       setDrag(null)
       if (!targetId) return
-      const source = store.upstreams.find((row) => row.id === sourceId)
+      const source = store.items.find((item) => item.id === sourceId)
       const moved = store.reorderTo(sourceId, targetId, myOwnerId)
       if (source) announceMove(source, moved)
     },
@@ -156,6 +158,24 @@ export function UpstreamsTab() {
     setProtectionId(plan.id)
     setScrollToId(plan.id)
   }, [focusUpstreamId, clearFocus, upstreamRows, store.loading, isAdmin, myOwnerId])
+  // The banner's "Open group": expand the owner's section and bring the group card into view.
+  useEffect(() => {
+    if (focusGroupId === null) return
+    if (store.items.length === 0 && store.loading) return
+    const item = store.items.find((candidate) => candidate.id === focusGroupId)
+    clearGroupFocus()
+    if (!item) return
+    setCollapsed((current) => (current[item.ownerId || "__global__"] ? { ...current, [item.ownerId || "__global__"]: false } : current))
+    setScrollToGroupId(item.id)
+  }, [focusGroupId, clearGroupFocus, store.items, store.loading])
+  useEffect(() => {
+    if (scrollToGroupId === null) return
+    const card = document.querySelector<HTMLElement>(`[data-group-id="${scrollToGroupId}"]`)
+    if (!card) return // not mounted yet; runs again when it is
+    card.scrollIntoView({ block: "start", behavior: "auto" })
+    card.focus({ preventScroll: true })
+    setScrollToGroupId(null)
+  }, [scrollToGroupId, collapsed, store.items])
   useEffect(() => {
     if (scrollToId === null) return
     const section = document.getElementById(`protection-${scrollToId}`)
@@ -165,32 +185,81 @@ export function UpstreamsTab() {
     setScrollToId(null)
   }, [scrollToId, protectionId, collapsed])
 
-  const groups: OwnerGroup[] = useMemo(() => {
-    const map = new Map<string, OwnerGroup>()
-    for (const u of previewRows) {
-      const key = u.ownerId || ""
-      let g = map.get(key)
-      if (!g) {
-        g = { ownerId: key, label: "", rows: [], isMine: key === myOwnerId }
-        map.set(key, g)
-      }
-      g.rows.push(u)
-    }
-    for (const g of map.values()) {
-      const copilot = g.rows.find((r) => r.provider === "copilot" && r.config?.user?.login)
-      const login = copilot?.config?.user?.login
-      g.label = login
-        ? `@${login}`
-        : g.ownerId
-          ? `#${g.ownerId.slice(0, 8)}`
-          : t("dash.globalOwner")
-    }
-    // Own group first, then alphabetical
-    return [...map.values()].sort((a, b) => {
-      if (a.isMine !== b.isMine) return a.isMine ? -1 : 1
-      return a.label.localeCompare(b.label)
-    })
-  }, [previewRows, myOwnerId, t])
+  const groups = useMemo(() => ownerSections(previewItems, myOwnerId, t("dash.globalOwner")), [previewItems, myOwnerId, t])
+
+  const groupActions = useGroupActions({ upstreams: store.upstreams, reload: store.reload, refreshStatuses })
+
+  const itemOf = (u: UpstreamRecord): OrderItem => ({ kind: "upstream", id: u.id, ownerId: u.ownerId ?? "", enabled: u.enabled, sortOrder: u.sortOrder, upstream: u })
+  /** One upstream row with its edit, proxy and protection panels: an ungrouped upstream, or a group member (`orderable: false`: no drag handle or move buttons). */
+  const renderUpstream = (
+    u: UpstreamRecord,
+    { g, position, total, orderable, dragHandlers }: { g: { isMine: boolean }; position: number; total: number; orderable: boolean; dragHandlers: Record<string, unknown> | null },
+  ) => (
+    <div key={u.id}>
+      <UpstreamRow
+        row={u}
+        index={position}
+        total={total}
+        orderable={orderable}
+        busy={!!store.busy[u.id]}
+        dragging={drag?.sourceId === u.id}
+        dropTarget={drag?.targetId === u.id}
+        {...(dragHandlers ?? {})}
+        models={store.modelsByUpstream.get(u.id)}
+        editing={editingId === u.id}
+        readOnly={!g.isMine}
+        showProxy={isAdmin}
+        proxyOpen={proxyId === u.id}
+        onToggleProxy={() => setProxyId((v) => (v === u.id ? null : u.id))}
+        showProtection={g.isMine || isAdmin}
+        protectionOpen={protectionId === u.id}
+        onToggleProtection={() => setProtectionId((v) => (v === u.id ? null : u.id))}
+        pause={protection.pauses.find((p) => p.targetKind === "upstream" && p.targetId === u.id)}
+        onToggleEnabled={() => store.toggleEnabled(u)}
+        onReorder={(d) => announceMove(itemOf(u), store.reorder(u.id, d, myOwnerId))}
+        onEdit={() => openEdit(u)}
+        onDuplicate={() => openDuplicate(u)}
+        onRefreshModels={() => store.probe(u.id)}
+        onRefreshCredential={() => store.refreshCredential(u.id)}
+        onReauth={() => setDeviceFlowOpen(true)}
+        onDelete={async () => {
+          await store.remove(u)
+        }}
+      />
+      {editingId === u.id && g.isMine ? (
+        <Expand>
+          {u.provider === "loki" ? <LokiPairingPanel key={u.id} row={u} onChanged={() => { void store.reload() }} onClose={() => setEditingId(null)} /> : <UpstreamFormModal
+            mode={{ kind: "edit", row: u }}
+            flagCatalog={store.flagCatalog}
+            ensureFlagCatalog={store.ensureFlagCatalog}
+            onClose={() => setEditingId(null)}
+            onSaved={() => {
+              setEditingId(null)
+              store.reload()
+            }}
+          />}
+        </Expand>
+      ) : null}
+      {proxyId === u.id ? (
+        <Expand>
+          <ProxyChainModal
+            upstreamId={u.id}
+            initialChain={u.proxyFallbackList ?? []}
+            onSaved={() => {
+              setProxyId(null)
+              store.reload()
+            }}
+            onClose={() => setProxyId(null)}
+          />
+        </Expand>
+      ) : null}
+      {protectionId === u.id && (g.isMine || isAdmin) ? (
+        <Expand>
+          <ProtectionSection upstream={u} onSaved={() => { void store.reload() }} />
+        </Expand>
+      ) : null}
+    </div>
+  )
 
   return (
     <div>
@@ -228,6 +297,7 @@ export function UpstreamsTab() {
             </DropdownMenu>
             <Button variant="secondary" size="sm" onClick={() => openCreate("azure")}>{t("dash.addAzure")}</Button>
             <Button variant="secondary" size="sm" onClick={() => openCreate("sdf")}>{t("dash.addSdf")}</Button>
+            <NewGroupControl busy={groupActions.busy} onCreate={groupActions.createGroup} />
             <Button
               variant="ghost"
               size="icon-sm"
@@ -300,99 +370,63 @@ export function UpstreamsTab() {
                       )}
                     </span>
                     <span className="text-xs font-normal text-fg-subtle tabular-nums shrink-0">
-                      {t("dash.upstreamCount", { n: g.rows.length })}
+                      {t("dash.upstreamCount", { n: g.items.reduce((n, item) => n + (item.kind === "group" ? item.members.length : 1), 0) })}
                     </span>
                   </button>
                 </h2>
 
                 {!isCollapsed ? (
                   <div className="space-y-2 mt-2">
-                    {g.rows.map((u, idx) => (
-                      <div key={u.id}>
-                        <UpstreamRow
-                          row={u}
-                          index={g.rows.slice(0, idx).filter((row) => row.enabled === u.enabled).length}
-                          total={g.rows.filter((row) => row.enabled === u.enabled).length}
-                          busy={!!store.busy[u.id]}
-                          dragging={drag?.sourceId === u.id}
-                          dropTarget={drag?.targetId === u.id}
-                          onDragStart={(event) => {
-                            if (!g.isMine) { event.preventDefault(); return }
-                            event.dataTransfer.effectAllowed = "move"
-                            event.dataTransfer.setData("text/plain", u.id)
-                            setDrag({ sourceId: u.id, targetId: null })
-                          }}
-                          onDragOver={(event) => {
-                            if (!drag || !canDropOn(drag.sourceId, u)) return
-                            event.preventDefault()
-                            event.dataTransfer.dropEffect = "move"
-                            if (drag.targetId !== u.id) setDrag({ ...drag, targetId: u.id })
-                          }}
-                          onDrop={(event) => {
-                            if (!drag || !canDropOn(drag.sourceId, u)) return
-                            event.preventDefault()
-                            const source = store.upstreams.find((row) => row.id === drag.sourceId)
-                            const moved = store.reorderTo(drag.sourceId, u.id, myOwnerId)
-                            if (source) announceMove(source, moved)
-                            setDrag(null)
-                          }}
-                          onDragEnd={() => setDrag(null)}
-                          onHandlePointerDown={g.isMine ? (event) => touchDrag.begin(event, u.id) : undefined}
-                          models={store.modelsByUpstream.get(u.id)}
-                          editing={editingId === u.id}
-                          readOnly={!g.isMine}
-                          showProxy={isAdmin}
-                          proxyOpen={proxyId === u.id}
-                          onToggleProxy={() => setProxyId((v) => (v === u.id ? null : u.id))}
-                          showProtection={g.isMine || isAdmin}
-                          protectionOpen={protectionId === u.id}
-                          onToggleProtection={() => setProtectionId((v) => (v === u.id ? null : u.id))}
-                          pause={protection.pauses.find((p) => p.targetKind === "upstream" && p.targetId === u.id)}
-                          onToggleEnabled={() => store.toggleEnabled(u)}
-                          onReorder={(d) => announceMove(u, store.reorder(u.id, d, myOwnerId))}
-                          onEdit={() => openEdit(u)}
-                          onDuplicate={() => openDuplicate(u)}
-                          onRefreshModels={() => store.probe(u.id)}
-                          onRefreshCredential={() => store.refreshCredential(u.id)}
-                          onReauth={() => setDeviceFlowOpen(true)}
-                          onDelete={async () => {
-                            await store.remove(u)
-                          }}
-                        />
-                        {editingId === u.id && g.isMine ? (
-                          <Expand>
-                            {u.provider === "loki" ? <LokiPairingPanel key={u.id} row={u} onChanged={() => { void store.reload() }} onClose={() => setEditingId(null)} /> : <UpstreamFormModal
-                              mode={{ kind: "edit", row: u }}
-                              flagCatalog={store.flagCatalog}
-                              ensureFlagCatalog={store.ensureFlagCatalog}
-                              onClose={() => setEditingId(null)}
-                              onSaved={() => {
-                                setEditingId(null)
-                                store.reload()
-                              }}
-                            />}
-                          </Expand>
-                        ) : null}
-                        {proxyId === u.id ? (
-                          <Expand>
-                            <ProxyChainModal
-                              upstreamId={u.id}
-                              initialChain={u.proxyFallbackList ?? []}
-                              onSaved={() => {
-                                setProxyId(null)
-                                store.reload()
-                              }}
-                              onClose={() => setProxyId(null)}
-                            />
-                          </Expand>
-                        ) : null}
-                        {protectionId === u.id && (g.isMine || isAdmin) ? (
-                          <Expand>
-                            <ProtectionSection upstream={u} onSaved={() => { void store.reload() }} />
-                          </Expand>
-                        ) : null}
-                      </div>
-                    ))}
+                    {g.items.map((item, idx) => {
+                      const peers = g.items.filter((other) => other.enabled === item.enabled)
+                      const position = g.items.slice(0, idx).filter((other) => other.enabled === item.enabled).length
+                      const dragHandlers = {
+                        onDragStart: (event: React.DragEvent<HTMLButtonElement>) => {
+                          if (!g.isMine) { event.preventDefault(); return }
+                          event.dataTransfer.effectAllowed = "move"
+                          event.dataTransfer.setData("text/plain", item.id)
+                          setDrag({ sourceId: item.id, targetId: null })
+                        },
+                        onDragOver: (event: React.DragEvent<HTMLElement>) => {
+                          if (!drag || !canDropOn(drag.sourceId, item)) return
+                          event.preventDefault()
+                          event.dataTransfer.dropEffect = "move"
+                          if (drag.targetId !== item.id) setDrag({ ...drag, targetId: item.id })
+                        },
+                        onDrop: (event: React.DragEvent<HTMLElement>) => {
+                          if (!drag || !canDropOn(drag.sourceId, item)) return
+                          event.preventDefault()
+                          const source = store.items.find((row) => row.id === drag.sourceId)
+                          const moved = store.reorderTo(drag.sourceId, item.id, myOwnerId)
+                          if (source) announceMove(source, moved)
+                          setDrag(null)
+                        },
+                        onDragEnd: () => setDrag(null),
+                        onHandlePointerDown: g.isMine ? (event: React.PointerEvent<HTMLButtonElement>) => touchDrag.begin(event, item.id) : undefined,
+                      }
+                      if (item.kind === "upstream") return renderUpstream(item.upstream, { g, position, total: peers.length, orderable: true, dragHandlers })
+                      const status = statuses.get(item.id)
+                      return (
+                        <GroupCard key={item.id} item={item} status={status} index={position} total={peers.length} dragging={drag?.sourceId === item.id} dropTarget={drag?.targetId === item.id}
+                          readOnly={!g.isMine} busy={groupActions.busy} {...dragHandlers}
+                          onReorder={(d) => announceMove(item, store.reorder(item.id, d, myOwnerId))}
+                          onToggleEnabled={() => groupActions.toggleEnabled(item.group)} onRename={() => groupActions.rename(item.group)} onDelete={() => groupActions.remove(item.group)}
+                          onToggleSettings={() => groupActions.toggleSettings(item.group.id)} settingsOpen={groupActions.settingsOpenId === item.group.id}
+                          footer={g.isMine ? groupActions.footer(item) : null}>
+                          {item.members.map((u) => {
+                            const member = status?.members.find((m) => m.upstreamId === u.id)
+                            return (
+                              <div key={u.id}>
+                                {renderUpstream(u, { g, position: 0, total: 1, orderable: false, dragHandlers: null })}
+                                {member ? <MemberQuotaRow member={member} group={item.group} nowMs={nowMs} busy={!!store.busy[u.id] || groupActions.busy || groupActions.isMemberBusy(u.id)} readOnly={!g.isMine}
+                                  onRefresh={() => groupActions.refreshMember(u.id)} onCalibrate={() => groupActions.calibrate(u.id)} onRemove={() => groupActions.removeMember(u)} /> : null}
+                                {member ? groupActions.calibrationFor(u.id, u.name, member.lastRead?.at ?? null) : null}
+                              </div>
+                            )
+                          })}
+                        </GroupCard>
+                      )
+                    })}
                   </div>
                 ) : null}
               </div>

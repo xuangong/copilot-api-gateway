@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { edgeScrollDelta, trackTouchReorder, type GestureDeps, type GestureEvent, type TouchReorderHandlers } from "./touch-reorder"
+import { edgeScrollDelta, trackTouchReorder, type GestureDeps, type GestureEvent, type TouchReorderHandlers, itemIdAt } from "./touch-reorder"
 
 test("edgeScrollDelta scrolls up near the top, down near the bottom, faster nearer the edge", () => {
   expect(edgeScrollDelta(300, 0, 600)).toBe(0)
@@ -132,4 +132,20 @@ test("auto-scroll re-checks the row under a still finger", () => {
   h.runFrames()
   h.fire("pointerup", 150)
   expect(h.calls).toEqual(["start a", "over a→b", "over a→c", "drop a→c"])
+})
+
+// A fake element tree: `closest` finds the nearest ancestor-or-self whose attribute selector matches.
+const fakeEl = (chain: Array<{ attr: "data-group-id" | "data-upstream-id"; value: string }>) => ({
+  closest: (selector: string) => {
+    const hit = chain.find(entry => selector === `[${entry.attr}]`)
+    return hit ? { dataset: hit.attr === "data-group-id" ? { groupId: hit.value } : { upstreamId: hit.value } } : null
+  },
+})
+
+test("rowAt resolves a group card, and a member inside it resolves to its group", () => {
+  expect(itemIdAt(fakeEl([{ attr: "data-group-id", value: "ug_1" }]))).toBe("ug_1")
+  expect(itemIdAt(fakeEl([{ attr: "data-upstream-id", value: "m1" }, { attr: "data-group-id", value: "ug_1" }]))).toBe("ug_1")
+  expect(itemIdAt(fakeEl([{ attr: "data-upstream-id", value: "up_a" }]))).toBe("up_a")
+  expect(itemIdAt(fakeEl([]))).toBeNull()
+  expect(itemIdAt(null)).toBeNull()
 })

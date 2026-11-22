@@ -23,10 +23,12 @@ export interface PauseReason {
   counts: Record<ErrorClassKey, number>
   failureRatio: number
   topKeys: Array<{ keyId: string; risky: number }>
-  trigger: "ratio" | "authBurst"
+  trigger: "ratio" | "authBurst" | "quota"
   keyShare: number | null
   upstreamName?: string
   targetName?: string
+  /** Present when `trigger` is "quota": the member reached its group's hard line. */
+  quota?: { groupId: string; groupName: string; share: number; hardShare: number; source: "real" | "estimate"; provisional: boolean }
 }
 
 /** One row of `/api/protection/active` and of the pause history (times are unix ms). */

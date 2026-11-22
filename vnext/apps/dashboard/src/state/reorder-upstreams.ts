@@ -1,25 +1,28 @@
 import type { UpstreamRecord } from "../api/types"
 
+/** What ordering needs of a row: an upstream, or a group (id `ug_…`) which is reordered with the ungrouped upstreams as one item. */
+export interface ReorderRow { id: string; ownerId?: string; enabled: boolean; sortOrder: number }
+
 type Move = { sourceId: string; ownerId: string } & (
   | { targetId: string; direction?: never }
   | { direction: "up" | "down"; targetId?: never }
 )
 
-function partition(row: UpstreamRecord, ownerId: string, enabled: boolean): boolean {
+function partition(row: ReorderRow, ownerId: string, enabled: boolean): boolean {
   return (row.ownerId ?? "") === ownerId && row.enabled === enabled
 }
 
-export function moveUpstream(
-  rows: readonly UpstreamRecord[], sourceId: string, targetId: string, ownerId: string,
-): UpstreamRecord[] {
+export function moveUpstream<T extends ReorderRow>(
+  rows: readonly T[], sourceId: string, targetId: string, ownerId: string,
+): T[] {
   const source = rows.find((row) => row.id === sourceId)
   const target = rows.find((row) => row.id === targetId)
   if (!source || !target || sourceId === targetId ||
-    !partition(source, ownerId, source.enabled) || !partition(target, ownerId, source.enabled)) return rows as UpstreamRecord[]
+    !partition(source, ownerId, source.enabled) || !partition(target, ownerId, source.enabled)) return rows as T[]
   const matching = rows.filter((row) => partition(row, ownerId, source.enabled))
   const from = matching.findIndex((row) => row.id === sourceId)
   const to = matching.findIndex((row) => row.id === targetId)
-  if (from === to || from < 0 || to < 0) return rows as UpstreamRecord[]
+  if (from === to || from < 0 || to < 0) return rows as T[]
   const moved = [...matching]
   moved.splice(from, 1)
   moved.splice(to, 0, source)
@@ -28,8 +31,8 @@ export function moveUpstream(
 }
 
 /** Where `id` sits among the rows it can be reordered with (same owner and enabled state): 1-based, out of how many. */
-export function partitionPosition(
-  rows: readonly UpstreamRecord[], id: string, ownerId: string,
+export function partitionPosition<T extends ReorderRow>(
+  rows: readonly T[], id: string, ownerId: string,
 ): { position: number; total: number } | null {
   const row = rows.find((r) => r.id === id)
   if (!row || !partition(row, ownerId, row.enabled)) return null
@@ -37,8 +40,8 @@ export function partitionPosition(
   return { position: group.findIndex((r) => r.id === id) + 1, total: group.length }
 }
 
-export function sortValueForMove(
-  rows: readonly UpstreamRecord[], sourceId: string, targetId: string, ownerId: string,
+export function sortValueForMove<T extends ReorderRow>(
+  rows: readonly T[], sourceId: string, targetId: string, ownerId: string,
 ): number | null {
   const moved = moveUpstream(rows, sourceId, targetId, ownerId)
   if (moved === rows) return null
@@ -57,7 +60,7 @@ export function sortValueForMove(
   return null
 }
 
-function targetForMove(rows: readonly UpstreamRecord[], move: Move): string | null {
+function targetForMove<T extends ReorderRow>(rows: readonly T[], move: Move): string | null {
   if (move.targetId) return move.targetId
   const source = rows.find((row) => row.id === move.sourceId)
   if (!source) return null
@@ -66,24 +69,24 @@ function targetForMove(rows: readonly UpstreamRecord[], move: Move): string | nu
   return group[index + (move.direction === "up" ? -1 : 1)]?.id ?? null
 }
 
-function applyMove(rows: readonly UpstreamRecord[], move: Move): UpstreamRecord[] {
+function applyMove<T extends ReorderRow>(rows: readonly T[], move: Move): T[] {
   const targetId = targetForMove(rows, move)
-  return targetId ? moveUpstream(rows, move.sourceId, targetId, move.ownerId) : rows as UpstreamRecord[]
+  return targetId ? moveUpstream(rows, move.sourceId, targetId, move.ownerId) : rows as T[]
 }
 
-export class ReorderController {
-  private confirmed: UpstreamRecord[]
+export class ReorderController<T extends ReorderRow = UpstreamRecord> {
+  private confirmed: T[]
   private pending: Move[] = []
   private processing = false
   private listeners = new Set<() => void>()
   private waiters: Array<() => void> = []
 
   constructor(
-    rows: UpstreamRecord[],
+    rows: T[],
     private readonly patch: (id: string, sortOrder: number) => Promise<void>,
     private readonly onError: (error: unknown) => void = () => {},
     private readonly onDrained: () => void = () => {},
-    private readonly load?: () => Promise<UpstreamRecord[]>,
+    private readonly load?: () => Promise<T[]>,
   ) { this.confirmed = rows }
 
   subscribe = (listener: () => void): (() => void) => {
@@ -94,14 +97,14 @@ export class ReorderController {
   private emit() { for (const listener of this.listeners) listener() }
   hasPending() { return this.pending.length > 0 || this.processing }
 
-  snapshot(): UpstreamRecord[] {
-    return this.pending.reduce<UpstreamRecord[]>(
+  snapshot(): T[] {
+    return this.pending.reduce<T[]>(
       (rows, move) => applyMove(rows, move),
       this.confirmed,
     )
   }
 
-  replace(rows: UpstreamRecord[]) {
+  replace(rows: T[]) {
     if (this.hasPending()) return
     this.confirmed = rows
     this.emit()
@@ -156,7 +159,7 @@ export class ReorderController {
           const values = new Map(updates.map((update) => [update.id, update.sortOrder]))
           this.confirmed = moved.map((row) => {
             const sortOrder = values.get(row.id)
-            return sortOrder === undefined ? row : { ...row, sortOrder }
+            return sortOrder === undefined ? row : { ...row, sortOrder } as T
           })
         } catch (error) {
           let compensationFailed = false

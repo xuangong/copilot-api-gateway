@@ -73,3 +73,25 @@ test("start polls at once and on ticks; stopping (unmount) clears the timer and 
   release(); await settle()
   expect(seen).toEqual([])
 })
+
+test("group alerts are fetched with the pauses; a failing alerts call does not hide the pauses and the newest answer wins", async () => {
+  const alerts: string[][] = []
+  const releases: Array<() => void> = []
+  let calls = 0
+  const { controller, seen } = setup({
+    fetchActive: async () => ({ pauses: [pause("p1")] }),
+    fetchAlerts: () => { const mine = calls++; return new Promise(resolve => releases.push(() => resolve({ alerts: [{ kind: "stopped", groupId: `ug_${mine}`, groupName: "G" }] }))) },
+    onAlerts: list => alerts.push(list.map(a => a.groupId)),
+  })
+  const slow = controller.refresh()
+  const fast = controller.refresh()
+  await settle()
+  releases[1]!(); await fast
+  releases[0]!(); await slow
+  expect(alerts).toEqual([["ug_1"]])
+  expect(seen.at(-1)).toEqual(["p1"])
+
+  const failing = setup({ fetchAlerts: async () => { throw new Error("down") }, onAlerts: list => alerts.push(list.map(a => a.groupId)) })
+  await failing.controller.refresh()
+  expect(failing.seen.at(-1)).toEqual([])
+})
