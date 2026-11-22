@@ -1,5 +1,6 @@
 // packages/gateway/tests/quota-shared-k.test.ts
 import { afterEach, beforeEach, expect, test } from "bun:test"
+import { rankMembers } from "../src/quota-balance/selection"
 import { DEFAULT_K_SHARE_PER_USD } from "../src/quota-balance/estimator"
 import { K_SEED_MARGIN, MemberFactsCache, kSourceOf, memberEstimate, seedKFor, viewMembers } from "../src/quota-balance/facts"
 import type { MemberPlanFact } from "../src/repo/quota-balance"
@@ -10,12 +11,12 @@ const H = 3_600_000
 const plan = (upstreamId: string, over: Partial<MemberPlanFact> = {}): MemberPlanFact =>
   ({ upstreamId, ownerId: "o1", k: 0.05, kSamples: 5, entitlement: 1000, unlimited: false, snapshotKey: "premium_interactions", unitForm: "absolute", ...over })
 
-test("seed: the median of same-plan peers with a learned k, times 1.2, with the peer count", () => {
+test("seed: the MAX of same-plan peers' learned k, times 1.2, with the peer count", () => {
   const plans = [plan("me", { k: null, kSamples: 0 }), plan("p1", { k: 0.02 }), plan("p2", { k: 0.04 }), plan("p3", { k: 0.1 })]
   const seed = seedKFor("me", plans)!
   expect(seed.peers).toBe(3)
-  expect(seed.k).toBeCloseTo(0.04 * K_SEED_MARGIN)
-  expect(seedKFor("me", [plan("me", { k: null, kSamples: 0 }), plan("p1", { k: 0.02 }), plan("p2", { k: 0.04 })])!.k).toBeCloseTo(0.03 * 1.2) // even count: mean of the middle two
+  expect(seed.k).toBeCloseTo(0.1 * K_SEED_MARGIN)
+  expect(seedKFor("me", [plan("me", { k: null, kSamples: 0 }), plan("p1", { k: 0.02 }), plan("p2", { k: 0.04 })])!.k).toBeCloseTo(0.04 * 1.2)
 })
 
 test("seed: other owner, entitlement, snapshot key, unit form, unlimited, or not learned (fewer than 3 samples / no k) peers are not used", () => {
@@ -60,13 +61,13 @@ async function setup(peerKs: number[]) {
   return ids
 }
 
-test("views: a member without a learned k is projected with the peers' median x 1.2 (peers may sit in another group of the same owner)", async () => {
+test("views: a member without a learned k is projected with the peers' max x 1.2 (peers may sit in another group of the same owner)", async () => {
   const ids = await setup([0.02, 0.04, 0.1])
   const cache = new MemberFactsCache(f.deps)
   const facts = await cache.get(ids)
   const plans = await cache.plans()
   const views = viewMembers(["up_test_me"], facts, { burnHorizonHours: 0 }, T0 + H, new Set(), plans)
-  expect(views[0]!.usedShare).toBeCloseTo(0.5 + 0.04 * 1.2 * 5)
+  expect(views[0]!.usedShare).toBeCloseTo(0.5 + 0.1 * 1.2 * 5)
   // Without peer data the global default applies, as before.
   expect(viewMembers(["up_test_me"], facts, { burnHorizonHours: 0 }, T0 + H)[0]!.usedShare).toBeCloseTo(0.5 + DEFAULT_K_SHARE_PER_USD * 5)
 })
@@ -142,4 +143,21 @@ test("plan facts are loaded once per TTL, refreshed in the background, and fail 
   expect((await cache.plans({ fresh: true })).length).toBe(2) // the failed refresh kept the previous answer
   const cold = new MemberFactsCache(f.deps, 20_000)
   expect(await cold.plans()).toEqual([]) // nothing cached and the load fails: no seeds, current fallback
+})
+
+test("a member with no samples and a seed below the default stays under the soft line only while its seeded estimate is below it (design: the seed, not the default, decides)", async () => {
+  const ids = await setup([0.02, 0.02]) // seed 0.024 per USD, well below the default 0.1
+  const settings = { burnHorizonHours: 0, toleranceShare: 0.05, softShare: 0.9 }
+  const cache = new MemberFactsCache(f.deps)
+  const facts = await cache.get(ids)
+  const plans = await cache.plans()
+  const eligible = (costUsd: number) => {
+    const view = viewMembers(["up_test_me"], new Map([["up_test_me", { ...facts.get("up_test_me")!, costSinceReadUsd: costUsd, monthCostUsd: costUsd }]]), settings, T0 + H, new Set(), plans)
+    return { usedShare: view[0]!.usedShare, ranked: rankMembers({ members: view, settings, sessionKey: "s", heavy: false, ignoreSoft: false }).length === 1 }
+  }
+  expect(eligible(10)).toMatchObject({ ranked: true }) // 0.5 + 0.24 = 0.74
+  expect(eligible(10).usedShare).toBeCloseTo(0.74)
+  expect(eligible(20)).toMatchObject({ ranked: false }) // 0.5 + 0.48 = 0.98 >= 0.9
+  const dflt = viewMembers(["up_test_me"], new Map([["up_test_me", { ...facts.get("up_test_me")!, costSinceReadUsd: 10, monthCostUsd: 10 }]]), settings, T0 + H)
+  expect(rankMembers({ members: dflt, settings, sessionKey: "s", heavy: false, ignoreSoft: false })).toEqual([]) // without a seed the default k (0.1) would have put it over the line
 })

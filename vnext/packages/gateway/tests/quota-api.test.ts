@@ -423,6 +423,7 @@ test("status and alerts run a fixed number of queries however many members a gro
     await repo.quotaBalance.setMembership(`up_test_m${i}`, id, { nowMs: NOW, intervalHours: 6 })
   }
   getQuotaBalance().facts.invalidate()
+  await getQuotaBalance().facts.plans() // the plan facts are one cached query for all members; invalidate dropped them, warm them as they were before
   expect(await count()).toBe(few)
 })
 
@@ -447,4 +448,22 @@ test("leaving and rejoining within the hour does not read GitHub again", async (
   clock.now += H
   await getQuotaBalance().reader.evaluateMember("up_test_a", { allowScheduled: true })
   expect(fetchCalls).toBe(2)
+})
+
+test("D33: a non-admin sees kSource from peers in another group of the same owner, never from another owner's members", async () => {
+  const { id } = await create()
+  const second = await create({ name: "Second" })
+  const foreign = (await json(await call("/api/upstream-groups", "POST", other, { name: "Theirs" }))).group as { id: string }
+  await call("/api/upstreams/up_test_a/group", "PUT", owner, { groupId: id })
+  await call("/api/upstreams/up_test_b/group", "PUT", owner, { groupId: second.id })
+  await call("/api/upstreams/up_test_foreign/group", "PUT", other, { groupId: foreign.id })
+  for (const [upstream, k, kSamples] of [["up_test_a", null, 0], ["up_test_b", 0.02, 5], ["up_test_foreign", 0.9, 5]] as const) {
+    const at = NOW - H + ++seedCount * 1000
+    await repo.quotaBalance.recordRead({ upstreamId: upstream, at, source: "github", used: 500, entitlement: 1000, unlimited: false, estimatedShareBefore: null, errorPoints: null, snapshotKey: "premium_interactions", unitForm: "absolute", resetAt: null, costAdjustUsd: 0, entitlementChange: null }, at)
+    await repo.quotaBalance.saveEstimator(upstream, { k, kPrev: null, kSamples, o: 0, oSamples: 0, intervalHours: 3, learnSince: 0, nextReadAt: NOW + 3 * H, lastErrorPoints: null }, NOW)
+  }
+  await repo.quotaBalance.recordCost({ upstreamId: "up_test_a", nowMs: NOW - 30 * 60_000, costUsd: 5, monthKey: "2026-11" })
+  const a = (await json(await call(`/api/upstream-groups/${id}/status`, "GET", owner))).members.find((m: any) => m.upstreamId === "up_test_a")
+  expect(a.kSource).toEqual({ kind: "peer", peers: 1 })
+  expect(a.usedShare).toBeCloseTo(0.5 + 0.02 * 1.2 * 5, 6)
 })

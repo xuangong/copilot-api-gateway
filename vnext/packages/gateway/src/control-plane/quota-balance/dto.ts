@@ -101,7 +101,7 @@ async function loadContext(groups: readonly UpstreamGroup[], nowMs: number, view
   const [upstreams, facts, plans, pauses] = await Promise.all([
     ids.length === 0 ? [] : repo.upstreams.list({ ...(viewer.isAdmin ? {} : { ownerId: viewer.userId as never }), includeDisabled: true }),
     qb.facts.get(ids, { fresh: true }),
-    qb.facts.plans({ fresh: true }),
+    qb.facts.plans(),
     getProtection().activePauses(),
   ])
   return {

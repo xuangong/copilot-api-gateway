@@ -102,15 +102,9 @@ export const K_SEED_MARGIN = 1.2
 export interface KSeed { k: number; peers: number }
 export type KSource = { kind: "own" } | { kind: "peer"; peers: number } | { kind: "default" }
 
-const median = (values: number[]): number => {
-  const sorted = [...values].sort((a, b) => a - b)
-  const middle = Math.floor(sorted.length / 2)
-  return sorted.length % 2 === 1 ? sorted[middle]! : (sorted[middle - 1]! + sorted[middle]!) / 2
-}
-
 /**
  * D33: a k for a member that has not learned its own, from members of groups of the same owner on the same plan: same latest entitlement, snapshot key and unit form
- * (all known, not unlimited) and a learned k (at least MIN_K_SAMPLES). Median of the peers x K_SEED_MARGIN. Null when the member is unknown, unlimited, or has no such peer.
+ * (all known, not unlimited) and a learned k (at least MIN_K_SAMPLES). Max of the peers' k x K_SEED_MARGIN (k is a low quantile and plans mix models, so the highest learned k is the cautious one). Null when the member is unknown, unlimited, or has no such peer.
  */
 export function seedKFor(upstreamId: string, plans: readonly MemberPlanFact[]): KSeed | null {
   const me = plans.find(plan => plan.upstreamId === upstreamId)
@@ -118,7 +112,7 @@ export function seedKFor(upstreamId: string, plans: readonly MemberPlanFact[]): 
   const peers = plans.flatMap(plan =>
     plan.upstreamId !== upstreamId && plan.ownerId === me.ownerId && !plan.unlimited && plan.entitlement === me.entitlement
       && plan.snapshotKey === me.snapshotKey && plan.unitForm === me.unitForm && plan.k !== null && Number.isFinite(plan.k) && plan.k > 0 && kLearned(plan) ? [plan.k] : [])
-  return peers.length === 0 ? null : { k: median(peers) * K_SEED_MARGIN, peers: peers.length }
+  return peers.length === 0 ? null : { k: Math.max(...peers) * K_SEED_MARGIN, peers: peers.length }
 }
 
 /** Where the k behind a member's numbers comes from: its own once learned, else the peer seed, else the fallback (group median / global default). */
