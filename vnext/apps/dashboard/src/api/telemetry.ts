@@ -16,6 +16,8 @@ export interface TelemetrySettings {
   checkMetrics?: string[]
   labels?: Record<string, Record<string, string>>
   staleAfterHours?: number
+  /** The VM agent's name for a website source; kept by the server across settings saves. */
+  agentSource?: string
 }
 
 export interface TelemetrySource {
@@ -33,10 +35,13 @@ const base = "/api/telemetry/sources"
 const path = (id: string, rest = "") => `${base}/${encodeURIComponent(id)}${rest}`
 
 export const listTelemetrySources = () => api<{ sources: TelemetrySource[] }>(base)
-export const createTelemetrySource = (name: string) => api<{ source: TelemetrySource } & IssuedTelemetryKey>(base, { method: "POST", body: { name } })
+/** `agentSource` names a website source of the VM agent; the install command then stores the key for it and keeps the trojan key. */
+export const createTelemetrySource = (name: string, agentSource?: string) =>
+  api<{ source: TelemetrySource } & IssuedTelemetryKey>(base, { method: "POST", body: agentSource?.trim() ? { name, agentSource: agentSource.trim() } : { name } })
 export const updateTelemetrySource = (id: string, body: { name?: string; settings?: TelemetrySettings }) =>
   api<{ source: TelemetrySource }>(path(id), { method: "PATCH", body })
-export const rotateTelemetryKey = (id: string) => api<IssuedTelemetryKey>(path(id, "/rotate-key"), { method: "POST" })
+export const rotateTelemetryKey = (id: string, agentSource?: string) =>
+  api<IssuedTelemetryKey>(path(id, "/rotate-key") + (agentSource?.trim() ? `?agentSource=${encodeURIComponent(agentSource.trim())}` : ""), { method: "POST" })
 export const deleteTelemetrySource = (id: string) => api<{ sources: TelemetrySource[] }>(path(id), { method: "DELETE" })
 
 export interface TelemetryMetricInfo { metric: string; unit: TelemetryUnit; firstHour: string; lastHour: string; dims: string[] }

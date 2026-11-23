@@ -7,7 +7,7 @@ const now = Date.parse("2026-11-16T12:00:00Z")
 const source = (over: Record<string, unknown> = {}) => ({ id: `tls_${"1".repeat(32)}`, name: "trojan-vm", createdAt: "2026-11-01T00:00:00.000Z", lastPushAt: "2026-11-16T11:30:00.000Z", settings: {}, ...over })
 const issued = { sourceName: "trojan-vm", key: `tlm_${"a".repeat(8)}`, install: "curl -fsSL https://example/install.sh | sudo TELEMETRY_KEY='k' bash" }
 const view = (over: Partial<SourceListViewProps> = {}) => renderToStaticMarkup(<SourceListView sources={[]} nowMs={now} newName="" issued={null} busy={false} error=""
-  copied={null} secureOrigin onName={noop} onCreate={noop} onRotate={noop} onDelete={noop} onCopy={noop} onDismissIssued={noop} {...over} />)
+  copied={null} secureOrigin agentSource="" onAgentSource={noop} onName={noop} onCreate={noop} onRotate={noop} onDelete={noop} onCopy={noop} onDismissIssued={noop} {...over} />)
 
 test("with no sources the page explains itself and offers to create one", () => {
   const html = view()
@@ -58,4 +58,17 @@ test("an issued key shows the install command and the key once, with copy button
 
 test("errors are announced as alerts", () => {
   expect(view({ error: "dash.tlmError" })).toContain('role="alert"')
+})
+
+test("the source list has an optional agent source name field, described by its hint, that blocks creation when invalid", () => {
+  const html = view()
+  expect(html).toMatch(/<label[^>]*for="([^"]+)"[^>]*>dash\.tlmAgentSource<\/label><input[^>]*id="\1"/)
+  expect(html).not.toContain('aria-label="dash.tlmAgentSource"')
+  expect(html).toContain("dash.tlmAgentSourceHint")
+  expect(html).toContain("aria-describedby")
+  expect(html).not.toContain('aria-invalid="true"')
+  const bad = view({ newName: "x", agentSource: "Museum" })
+  expect(bad).toContain('aria-invalid="true"')
+  expect(/<button[^>]*\sdisabled=""[^>]*>[^<]*dash\.tlmCreate/.test(bad)).toBe(true)
+  expect(/<button[^>]*\sdisabled=""[^>]*>[^<]*dash\.tlmCreate/.test(view({ newName: "x", agentSource: "museum" }))).toBe(false)
 })

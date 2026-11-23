@@ -1,7 +1,8 @@
-import { useId } from "react"
+import { useEffect, useId, useRef, useState } from "react"
 import type { CheckStatus, TelemetryBudget, TelemetrySettings, TelemetrySummary, TelemetryTop, TelemetryUnit } from "../../api/telemetry"
 import { useT } from "../../state/i18n"
 import { Badge } from "../../ui/badge"
+import { Button } from "../../ui/button"
 import { Card, SectionHeading } from "../../ui/card"
 import { cn } from "../../ui/cn"
 import { Meter } from "../../ui/meter"
@@ -103,7 +104,54 @@ export function CheckStrip({ hours, statuses, stages, nowMs = Date.now() }: { ho
   </div>
 }
 
-export function TopPanel({ top, settings, groupBy, failed = false }: { top: TelemetryTop | null; settings: TelemetrySettings; groupBy: string; failed?: boolean }) {
+/** Values that stand for several or none (the empty group, folded remainders, unattributed traffic) have no single thing to name. */
+const NOT_NAMEABLE = new Set(["", "(other)", "(unmatched)"])
+
+/**
+ * "Name this value…" for one top-table value: an inline field that saves the display name (empty removes it). `onName` returns
+ * null on success or the i18n key of what went wrong.
+ */
+export function NameValueCell({ dimKey, value, current, onName, initialEditing = false, initialError = "" }: {
+  dimKey: string; value: string; current: string; onName: (value: string, name: string) => Promise<string | null>; initialEditing?: boolean; initialError?: string
+}) {
+  const t = useT()
+  const hintId = useId()
+  const [editing, setEditing] = useState(initialEditing)
+  const [draft, setDraft] = useState(current)
+  const [error, setError] = useState(initialError)
+  const [busy, setBusy] = useState(false)
+  const field = useRef<HTMLInputElement>(null)
+  const opened = useRef(false)
+  useEffect(() => {
+    if (editing && opened.current) field.current?.focus()
+  }, [editing])
+  if (!editing) {
+    return <Button variant="ghost" size="sm" aria-label={t("dash.tlmNameValueFor", { value })} data-dim={dimKey}
+      onClick={() => { opened.current = true; setDraft(current); setError(""); setEditing(true) }}>{t("dash.tlmNameValue")}</Button>
+  }
+  const save = async () => {
+    setBusy(true)
+    const failure = await onName(value, draft)
+    setBusy(false)
+    if (failure === null) setEditing(false)
+    else setError(failure)
+  }
+  return <form className="flex flex-wrap items-center gap-2" onSubmit={event => { event.preventDefault(); void save() }}
+    onKeyDown={event => { if (event.key === "Escape") setEditing(false) }}>
+    <input ref={field} type="text" value={draft} maxLength={64} disabled={busy} aria-label={t("dash.tlmNameInput", { value })} aria-describedby={hintId}
+      aria-invalid={error ? "true" : undefined} onChange={event => setDraft(event.target.value)} />
+    <Button type="submit" variant="primary" size="sm" disabled={busy}>{t("dash.tlmNameSave")}</Button>
+    <Button variant="ghost" size="sm" disabled={busy} onClick={() => setEditing(false)}>{t("dash.tlmNameCancel")}</Button>
+    <span id={hintId} className="text-xs text-fg-subtle">{t("dash.tlmNameHint")}</span>
+    {error ? <span role="alert" className="text-xs text-danger">{t(error)}</span> : null}
+  </form>
+}
+
+export function TopPanel({ top, settings, groupBy, failed = false, onName }: {
+  top: TelemetryTop | null; settings: TelemetrySettings; groupBy: string; failed?: boolean
+  /** Offers "Name this value…" on each row; resolves to null on success or the i18n key of the failure. */
+  onName?: (value: string, name: string) => Promise<string | null>
+}) {
   const t = useT()
   const titleId = useId()
   const none = t("dash.tlmNoGroup")
@@ -117,7 +165,12 @@ export function TopPanel({ top, settings, groupBy, failed = false }: { top: Tele
         <thead><tr><Th>{t("dash.tlmColGroup")}</Th><Th numeric>{t("dash.tlmColValue")}</Th><Th numeric>{t("dash.tlmColShare")}</Th><Th numeric>{t("dash.tlmColChange")}</Th></tr></thead>
         <TBody>
           {rows.map(row => <tr key={row.key}>
-            <Td>{groupLabel(settings, groupBy, row.key, none)}</Td><Td numeric>{formatValue(row.value, top.unit)}</Td>
+            <Td>
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                <span>{groupLabel(settings, groupBy, row.key, none)}</span>
+                {onName && !NOT_NAMEABLE.has(row.key) ? <NameValueCell dimKey={groupBy} value={row.key} current={settings.labels?.[groupBy]?.[row.key] ?? ""} onName={onName} /> : null}
+              </div>
+            </Td><Td numeric>{formatValue(row.value, top.unit)}</Td>
             <Td numeric>{formatShare(row.share)}</Td><Td numeric>{formatChange(row.change)}</Td>
           </tr>)}
           {top.otherCurrent > 0 ? <tr>

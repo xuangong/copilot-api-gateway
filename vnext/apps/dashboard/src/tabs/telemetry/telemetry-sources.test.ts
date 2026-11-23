@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { canCreateSource, sourceBadge, startPolling } from "./telemetry-sources"
+import { agentSourceInvalid, canCreateSource, sourceBadge, startPolling } from "./telemetry-sources"
 
 const now = Date.parse("2026-11-16T12:00:00Z")
 
@@ -69,4 +69,15 @@ test("a page shown while still hidden-then-hidden again does not refresh, and st
   expect(page.state.listeners.size).toBe(0)
   page.set(false)
   expect(runs).toBe(0)
+})
+
+test("the agent source name is optional and must be a lower-case name the installer accepts", () => {
+  for (const ok of ["", "  ", "museum", "dentalrendering", "my-site", "a", "a".repeat(32)]) expect(agentSourceInvalid(ok)).toBe(false)
+  for (const bad of ["Museum", "my site", "1x", "-x", "a".repeat(33), "a_b", "museum!", "trojan-vm"]) expect(agentSourceInvalid(bad)).toBe(true)
+})
+
+test("creating needs a valid agent source name when one is typed", () => {
+  expect(canCreateSource("x", false, "museum")).toBe(true)
+  expect(canCreateSource("x", false, "Museum")).toBe(false)
+  expect(canCreateSource("x", false)).toBe(true)
 })

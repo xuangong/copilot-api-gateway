@@ -4,7 +4,7 @@ import type { TelemetryBudget, TelemetrySummary, TelemetryTop } from "../../api/
 import { installDictionary } from "../../state/i18n-fixture"
 import { AvailabilityPanel } from "./AvailabilityPanel"
 import { ChartPanel } from "./ChartPanel"
-import { BudgetPanel, CheckStrip, FlaggedPanel, FreshnessPanel, LatencyNote, TopPanel } from "./Panels"
+import { BudgetPanel, CheckStrip, FlaggedPanel, FreshnessPanel, LatencyNote, NameValueCell, TopPanel } from "./Panels"
 import { SETTINGS_FIELDS, SettingsPanel, type SettingsPanelProps } from "./SettingsPanel"
 import { setDisplayZone } from "./telemetry-format"
 import { settingsToForm } from "./telemetry-settings-form"
@@ -118,6 +118,30 @@ test("the top table shows labelled groups with value, share and change, the empt
   expect(renderToStaticMarkup(<TopPanel top={top({ rows: [], total: 0, otherCurrent: 0, otherShare: 0 })} settings={{}} groupBy="user" />)).toContain("dash.tlmNoData")
 })
 
+test("a top-table row offers to name its value when naming is available, but never the empty group or the remainder", () => {
+  const rows = [{ key: "1.2.3.4", value: 60e9, share: 0.6, previous: 30e9, change: 1 }, { key: "", value: 20e9, share: 0.2, previous: 0, change: null }, { key: "(other)", value: 1e9, share: 0.01, previous: 0, change: null }]
+  const html = renderToStaticMarkup(<TopPanel top={top({ groupBy: "client", rows })} settings={{}} groupBy="client" onName={async () => null} />)
+  expect(html).toContain("dash.tlmNameValue")
+  expect(html.match(/dash\.tlmNameValueFor/g)).toHaveLength(1)
+  expect(html).toContain("1.2.3.4")
+  expect(renderToStaticMarkup(<TopPanel top={top({ groupBy: "client", rows })} settings={{}} groupBy="client" />)).not.toContain("dash.tlmNameValue")
+})
+
+test("the naming editor is a labelled field with save and cancel, prefilled with the current name, and says why a name was refused", () => {
+  const html = renderToStaticMarkup(<NameValueCell dimKey="client" value="1.2.3.4" current="Home" initialEditing onName={async () => null} />)
+  expect(html).toContain('aria-label="dash.tlmNameInput"')
+  expect(html).toContain('value="Home"')
+  expect(html).toContain("dash.tlmNameSave")
+  expect(html).toContain("dash.tlmNameCancel")
+  expect(html).toContain("dash.tlmNameHint")
+  expect(html).toContain('maxLength="64"')
+  expect(html).not.toContain("role=\"alert\"")
+  const idle = renderToStaticMarkup(<NameValueCell dimKey="client" value="1.2.3.4" current="" onName={async () => null} />)
+  expect(idle).toContain("dash.tlmNameValue")
+  expect(idle).not.toContain("<input")
+  expect(renderToStaticMarkup(<NameValueCell dimKey="client" value="1.2.3.4" current="" initialEditing initialError="dash.tlmNameInvalid" onName={async () => null} />)).toContain('role="alert"')
+})
+
 test("flagged hours list surges with ratio and contributors and non-zero hours with their breakdown", () => {
   const html = renderToStaticMarkup(<FlaggedPanel units={{ "nic.tx_bytes": "bytes", "probe.fail": "count" }} settings={{ labels: { user: { "#1": "MacBook" } } }} summary={summary({
     surges: [{ metric: "nic.tx_bytes", hour: "2026-11-16T11:00:00Z", value: 5e9, baseline: 1e9, ratio: 5, contributors: [{ dims: { user: "#1" }, value: 4e9 }] }],
@@ -135,7 +159,7 @@ test("flagged hours list surges with ratio and contributors and non-zero hours w
 const noop = () => {}
 const settingsProps = (over: Partial<SettingsPanelProps> = {}): SettingsPanelProps => ({
   form: settingsToForm({}, null), name: "trojan-vm", busy: false, error: "", saved: false, invalidField: null, onField: noop, onName: noop, onSave: noop,
-  onRename: noop, onRotate: noop, onDelete: noop, limitState: "ready", ...over,
+  onRename: noop, onRotate: noop, onDelete: noop, limitState: "ready", agentSource: "", onAgentSource: noop, ...over,
 })
 
 test("the settings panel has every setting, rename, rotate and delete, and marks an invalid field", () => {
@@ -367,4 +391,41 @@ test("flagged hours follow the display zone", () => {
 test("the budget panel says its month is the UTC month", () => {
   const html = renderToStaticMarkup(<BudgetPanel budget={{ metric: "m", unit: "count", mtd: 1, projection: 2, monthlyLimit: null, mtdPercent: null, projectionPercent: null } as unknown as TelemetryBudget} />)
   expect(html).toContain("dash.tlmMtd")
+})
+
+test("the naming control reads in English and Chinese with the value filled in", () => {
+  for (const [lang, name, label] of [["en", "Name this value…", "Name the value 1.2.3.4"], ["zh", "为此值命名…", "为 1.2.3.4 命名"]] as const) {
+    const restore = installDictionary(lang)
+    try {
+      const idle = renderToStaticMarkup(<NameValueCell dimKey="client" value="1.2.3.4" current="" onName={async () => null} />)
+      expect(idle).toContain(name)
+      expect(idle).toContain(`aria-label="${label}"`)
+      const editing = renderToStaticMarkup(<NameValueCell dimKey="client" value="1.2.3.4" current="" initialEditing initialError="dash.tlmNameLimit" onName={async () => null} />)
+      expect(editing).toContain("1.2.3.4")
+      expect(editing).not.toContain("dash.tlm")
+      expect(editing).not.toContain("{value}")
+    } finally { restore() }
+  }
+})
+
+test("the settings panel offers the agent source name next to the rotate action and flags an invalid one", () => {
+  const html = renderToStaticMarkup(<SettingsPanel {...settingsProps({ agentSource: "museum" })} />)
+  expect(html).toMatch(/<label[^>]*for="([^"]+)"[^>]*>dash\.tlmAgentSource<\/label><input[^>]*id="\1"/)
+  expect(html).toContain('value="museum"')
+  const form = html.slice(html.lastIndexOf("<form"))
+  expect(form).toContain("dash.tlmAgentSource")  // inside the settings form, next to the rotate action
+  expect(form.indexOf("dash.tlmAgentSource")).toBeLessThan(form.indexOf("dash.tlmRotate"))
+  expect(renderToStaticMarkup(<SettingsPanel {...settingsProps({ agentSource: "Bad Name" })} />)).toContain('aria-invalid="true"')
+  expect(/<button[^>]*\sdisabled=""[^>]*>[^<]*dash\.tlmRotate/.test(renderToStaticMarkup(<SettingsPanel {...settingsProps({ agentSource: "Bad Name" })} />))).toBe(true)
+})
+
+test("the agent source field reads in English and Chinese", () => {
+  for (const [lang, label] of [["en", "Agent source name (optional)"], ["zh", "代理来源名称（可选）"]] as const) {
+    const restore = installDictionary(lang)
+    try {
+      const html = renderToStaticMarkup(<SettingsPanel {...settingsProps()} />)
+      expect(html).toContain(label)
+      expect(html).not.toContain("dash.tlmAgentSource")
+    } finally { restore() }
+  }
 })

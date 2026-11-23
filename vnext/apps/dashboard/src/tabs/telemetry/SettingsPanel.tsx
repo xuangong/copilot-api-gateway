@@ -3,6 +3,8 @@ import { useT } from "../../state/i18n"
 import { Button } from "../../ui/button"
 import { Card, SectionHeading } from "../../ui/card"
 import { Notice } from "../../ui/notice"
+import { agentSourceInvalid } from "./telemetry-sources"
+import { AgentSourceField } from "./SourceList"
 import type { LimitState, SettingsForm, TextField } from "./telemetry-settings-form"
 
 export const SETTINGS_FIELDS: Array<{ key: TextField; labelKey: string; area?: boolean }> = [
@@ -36,6 +38,9 @@ export interface SettingsPanelProps {
   onName: (value: string) => void
   onSave: () => void
   onRename: () => void
+  /** Optional agent source name for the rotated key's install command (a website source on the VM). */
+  agentSource: string
+  onAgentSource: (value: string) => void
   onRotate: () => void
   onDelete: () => void
 }
@@ -63,9 +68,10 @@ export function SettingsPanel(props: SettingsPanelProps) {
       </div>
       <p className="text-xs text-fg-subtle">{t("dash.tlmSetLabelsHint")}</p>
       {props.limitState === "ready" ? null : <p className="text-xs text-fg-subtle">{t(LIMIT_HINTS[props.limitState])}</p>}
+      <AgentSourceField value={props.agentSource} onChange={props.onAgentSource} disabled={busy} />
       <div className="flex flex-wrap gap-2">
         <Button type="submit" variant="primary" size="sm" disabled={busy || props.limitState === "loading" || props.limitState === "mismatch"}>{busy ? t("dash.savingShort") : t("dash.save")}</Button>
-        <Button variant="secondary" size="sm" disabled={busy} onClick={props.onRotate}>{t("dash.tlmRotate")}</Button>
+        <Button variant="secondary" size="sm" disabled={busy || agentSourceInvalid(props.agentSource)} onClick={props.onRotate}>{t("dash.tlmRotate")}</Button>
         <Button variant="ghost" size="sm" disabled={busy} onClick={props.onDelete} className="text-danger hover:text-danger">{t("dash.delete")}</Button>
       </div>
     </form>

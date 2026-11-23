@@ -8,7 +8,7 @@ import { Card, SectionHeading } from "../../ui/card"
 import { Notice } from "../../ui/notice"
 import { telemetryErrorKey } from "./telemetry-errors"
 import { formatInstant } from "./telemetry-format"
-import { canCreateSource, sourceBadge, startPolling } from "./telemetry-sources"
+import { agentSourceInvalid, canCreateSource, sourceBadge, startPolling } from "./telemetry-sources"
 
 export interface IssuedKeyView extends IssuedTelemetryKey { sourceName: string }
 export type CopyTarget = "install" | "key"
@@ -32,6 +32,19 @@ export function IssuedKeyPanel({ issued, copied, onCopy, onDismiss }: { issued: 
   </div>
 }
 
+/** The optional name of a website source on the VM agent; with it the shown install command stores the key for that source. */
+export function AgentSourceField({ value, onChange, disabled = false }: { value: string; onChange: (value: string) => void; disabled?: boolean }) {
+  const t = useT()
+  const hintId = useId()
+  const inputId = useId()
+  return <div className="space-y-1">
+    <label htmlFor={inputId} className="block text-xs font-medium text-fg-muted">{t("dash.tlmAgentSource")}</label>
+    <input id={inputId} type="text" value={value} maxLength={32} spellCheck={false} placeholder="museum" aria-describedby={hintId}
+      aria-invalid={agentSourceInvalid(value) ? "true" : undefined} disabled={disabled} onChange={event => onChange(event.target.value)} />
+    <p id={hintId} className="text-xs text-fg-subtle">{t("dash.tlmAgentSourceHint")}</p>
+  </div>
+}
+
 export interface SourceListViewProps {
   sources: TelemetrySource[]
   nowMs: number
@@ -42,6 +55,8 @@ export interface SourceListViewProps {
   error: string
   copied: CopyTarget | null
   secureOrigin: boolean
+  agentSource: string
+  onAgentSource: (value: string) => void
   onName: (value: string) => void
   onCreate: () => void
   onRotate: (source: TelemetrySource) => void
@@ -73,7 +88,7 @@ export function SourceListView(props: SourceListViewProps) {
           </span>
           <span className="flex gap-1">
             {props.onOpen ? <Button variant="secondary" size="sm" disabled={busy} onClick={() => props.onOpen?.(source)}>{t("dash.tlmOpen")}</Button> : null}
-            <Button variant="ghost" size="sm" disabled={busy || !props.secureOrigin} onClick={() => props.onRotate(source)}>{t("dash.tlmRotate")}</Button>
+            <Button variant="ghost" size="sm" disabled={busy || !props.secureOrigin || agentSourceInvalid(props.agentSource)} onClick={() => props.onRotate(source)}>{t("dash.tlmRotate")}</Button>
             <Button variant="ghost" size="sm" disabled={busy} onClick={() => props.onDelete(source)} className="text-danger hover:text-danger">{t("dash.delete")}</Button>
           </span>
         </li>
@@ -82,7 +97,8 @@ export function SourceListView(props: SourceListViewProps) {
     <form className="flex flex-wrap items-center gap-2 border-t border-border pt-3" onSubmit={event => { event.preventDefault(); props.onCreate() }}>
       <input type="text" value={props.newName} maxLength={64} placeholder={t("dash.tlmName")} aria-label={t("dash.tlmName")} disabled={busy}
         onChange={event => props.onName(event.target.value)} />
-      <Button type="submit" variant="primary" size="sm" disabled={!props.secureOrigin || !canCreateSource(props.newName, busy)}>{t("dash.tlmCreate")}</Button>
+      <AgentSourceField value={props.agentSource} onChange={props.onAgentSource} disabled={busy} />
+      <Button type="submit" variant="primary" size="sm" disabled={!props.secureOrigin || !canCreateSource(props.newName, busy, props.agentSource)}>{t("dash.tlmCreate")}</Button>
     </form>
     {props.error ? <Notice tone="danger">{props.error}</Notice> : null}
     {props.issued ? <IssuedKeyPanel issued={props.issued} copied={props.copied} onCopy={props.onCopy} onDismiss={props.onDismissIssued} /> : null}
@@ -95,6 +111,7 @@ export function SourceListSection({ onOpen, onSourcesChanged }: { onOpen?: (sour
   const [sources, setSources] = useState<TelemetrySource[]>([])
   const [nowMs, setNowMs] = useState(() => Date.now())
   const [newName, setNewName] = useState("")
+  const [agentSource, setAgentSource] = useState("")
   const [issued, setIssued] = useState<IssuedKeyView | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
@@ -114,7 +131,7 @@ export function SourceListSection({ onOpen, onSourcesChanged }: { onOpen?: (sour
   const create = async () => {
     setBusy(true); setError(""); setCopied(null)
     try {
-      const result = await createTelemetrySource(newName.trim())
+      const result = await createTelemetrySource(newName.trim(), agentSource)
       apply([...sources, result.source])
       setIssued({ sourceName: result.source.name, key: result.key, install: result.install })
       setNewName("")
@@ -126,7 +143,7 @@ export function SourceListSection({ onOpen, onSourcesChanged }: { onOpen?: (sour
     if (!sure) return
     setBusy(true); setError(""); setCopied(null)
     try {
-      const result = await rotateTelemetryKey(source.id)
+      const result = await rotateTelemetryKey(source.id, agentSource)
       setIssued({ sourceName: source.name, key: result.key, install: result.install })
     } catch (failure) { setError(t(telemetryErrorKey(failure))) }
     finally { setBusy(false) }
@@ -140,7 +157,7 @@ export function SourceListSection({ onOpen, onSourcesChanged }: { onOpen?: (sour
     finally { setBusy(false) }
   }
 
-  return <SourceListView sources={sources} nowMs={nowMs} newName={newName} issued={issued} busy={busy} error={error} copied={copied} secureOrigin={secureOrigin}
+  return <SourceListView sources={sources} nowMs={nowMs} newName={newName} issued={issued} busy={busy} error={error} copied={copied} secureOrigin={secureOrigin} agentSource={agentSource} onAgentSource={setAgentSource}
     onName={setNewName} onCreate={() => void create()} onRotate={source => void rotate(source)} onDelete={source => void remove(source)} onOpen={onOpen}
     onCopy={async what => {
       if (!issued) return

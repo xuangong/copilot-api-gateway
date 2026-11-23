@@ -12,7 +12,14 @@ export function sourceBadge(source: Pick<TelemetrySource, "lastPushAt" | "settin
   return nowMs - Date.parse(source.lastPushAt) > limit ? "stale" : "fresh"
 }
 
-export const canCreateSource = (name: string, busy: boolean): boolean => !busy && name.trim().length > 0 && name.trim().length <= 64
+/** The optional agent source name: empty, or a lower-case name as the installer's TELEMETRY_SOURCE and the gateway require. */
+export const agentSourceInvalid = (value: string): boolean => value.trim() !== "" && !/^(?!trojan-vm$)[a-z][a-z0-9-]{0,31}$/.test(value.trim())
+
+/** The agent source stored for a source, to pre-fill the field. */
+export const initialAgentSource = (settings: Pick<TelemetrySource["settings"], "agentSource">): string => settings.agentSource ?? ""
+
+export const canCreateSource = (name: string, busy: boolean, agentSource = ""): boolean =>
+  !busy && name.trim().length > 0 && name.trim().length <= 64 && !agentSourceInvalid(agentSource)
 
 export const POLL_MS = 5 * 60_000
 

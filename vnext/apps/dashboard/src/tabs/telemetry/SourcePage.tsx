@@ -14,9 +14,10 @@ import { BudgetPanel, FlaggedPanel, FreshnessPanel, TopPanel } from "./Panels"
 import { SettingsPanel } from "./SettingsPanel"
 import { IssuedKeyPanel, type CopyTarget, type IssuedKeyView } from "./SourceList"
 import { telemetryErrorKey } from "./telemetry-errors"
+import { withLabel } from "./telemetry-labels"
 import { availabilityGroups, customWindow, defaultCustomDates, defaultMetric, filterDimFor, filterQuery, hourShort, isAvailabilityMetric, keepFilter, rangeWindow, localDate, type ChartRange, type RangeId } from "./telemetry-format"
 import { loadAvailability, loadSeries, type AvailabilitySeries } from "./telemetry-series"
-import { startPolling } from "./telemetry-sources"
+import { initialAgentSource, startPolling } from "./telemetry-sources"
 import { editLimit, formToSettings, limitState, reconcileLimit, settingsToForm, shouldResetForm, type FormSource, type SettingsForm, type TextField } from "./telemetry-settings-form"
 
 export function SourcePage({ source, onBack, onSourceChanged, onDeleted }: {
@@ -56,6 +57,9 @@ export function SourcePage({ source, onBack, onSourceChanged, onDeleted }: {
   const [busy, setBusy] = useState(false)
   const [settingsError, setSettingsError] = useState("")
   const [issued, setIssued] = useState<IssuedKeyView | null>(null)
+  const storedAgentSource = initialAgentSource(source.settings)
+  const [agentSource, setAgentSource] = useState(storedAgentSource)
+  useEffect(() => { setAgentSource(storedAgentSource) }, [source.id, storedAgentSource])
   const [copied, setCopied] = useState<CopyTarget | null>(null)
 
   // The unit of the budget metric typed in the form (stored one by default); the limit text is read in it.
@@ -190,6 +194,15 @@ export function SourcePage({ source, onBack, onSourceChanged, onDeleted }: {
     } catch (failure) { setSettingsError(t(telemetryErrorKey(failure))) }
     finally { setBusy(false) }
   }
+  // "Name this value…" on the top table: the new name goes into settings.labels[dimension][value] and is saved like the settings form would.
+  const nameValue = async (value: string, displayName: string): Promise<string | null> => {
+    const next = withLabel(source.settings, groupBy, value, displayName)
+    if (!next.ok) return next.reason === "name" ? "dash.tlmNameInvalid" : next.reason === "limit" ? "dash.tlmNameLimit" : "dash.tlmSettingsInvalid"
+    try {
+      onSourceChanged((await updateTelemetrySource(source.id, { settings: next.settings })).source)
+      return null
+    } catch (failure) { return telemetryErrorKey(failure) }
+  }
   const rename = async () => {
     setBusy(true); setSettingsError("")
     try { onSourceChanged((await updateTelemetrySource(source.id, { name: name.trim() })).source) }
@@ -201,7 +214,7 @@ export function SourcePage({ source, onBack, onSourceChanged, onDeleted }: {
     if (!sure) return
     setBusy(true); setSettingsError(""); setCopied(null)
     try {
-      const result = await rotateTelemetryKey(source.id)
+      const result = await rotateTelemetryKey(source.id, agentSource)
       setIssued({ sourceName: source.name, key: result.key, install: result.install })
     } catch (failure) { setSettingsError(t(telemetryErrorKey(failure))) }
     finally { setBusy(false) }
@@ -228,7 +241,7 @@ export function SourcePage({ source, onBack, onSourceChanged, onDeleted }: {
       rangeError={rangeError} windowLabel={windowLabel} onCustom={(start, end) => setCustom({ start, end })} groupBy={groupBy} filterKey={filterKey} filterValues={filterValues?.key === filterKey ? filterValues.values : null} filter={filter}
       onFilter={value => setFilterState(value === "" || filterKey === null ? null : { key: filterKey, value })} series={series} fetchedAt={fetchedAt} settings={source.settings} surgeHours={surgeHours} dark={dark}
       error={seriesError} onMetric={setMetric} onRange={setRange} onGroupBy={setGroupBy} />
-    <TopPanel top={top} settings={source.settings} groupBy={groupBy} failed={topFailed} />
+    <TopPanel top={top} settings={source.settings} groupBy={groupBy} failed={topFailed} onName={nameValue} />
     <FlaggedPanel summary={summary} settings={source.settings} units={units} failed={summaryError !== ""} />
     {issued ? <IssuedKeyPanel issued={issued} copied={copied} onDismiss={() => { setIssued(null); setCopied(null) }}
       onCopy={async what => {
@@ -237,6 +250,6 @@ export function SourcePage({ source, onBack, onSourceChanged, onDeleted }: {
       }} /> : null}
     <SettingsPanel form={form} name={name} busy={busy} error={settingsError} saved={saved} invalidField={invalidField} limitState={limit}
       onField={(field, value) => { if (field === "monthlyLimit") { limitEdited.current = true; setForm(current => editLimit(current, value, metricUnit)) } else setForm(current => ({ ...current, [field]: value })); setSaved(false) }} onName={setName}
-      onSave={() => void save()} onRename={() => void rename()} onRotate={() => void rotate()} onDelete={() => void remove()} />
+      onSave={() => void save()} onRename={() => void rename()} agentSource={agentSource} onAgentSource={setAgentSource} onRotate={() => void rotate()} onDelete={() => void remove()} />
   </div>
 }
