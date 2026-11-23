@@ -34,9 +34,9 @@ Tables (migration `0026_telemetry.sql`): `telemetry_sources` (`id` = `tls_` + 32
 Requires a real, current `ses_` session (the same guard as sync device management): a `key` query parameter is refused, a mismatched `Origin` is refused on any method and a cookie session must send `Origin` on mutations. Owner-only; administrators are not an exception.
 
 - `GET /api/telemetry/sources` returns `{ sources: [{ id, name, createdAt, lastPushAt, settings }] }`.
-- `POST /api/telemetry/sources` with `{ name }` (trimmed, 1..64) returns `201 { source, key, install }`. The request URL must be HTTPS (`400 https_required`, so the install command never names a dead origin; behind a TLS-terminating proxy the original scheme must be preserved). At most 16 sources per owner (`409 source_limit`). Unknown body fields are rejected.
+- `POST /api/telemetry/sources` with `{ name, agentSource? }` (name trimmed, 1..64; `agentSource` an optional lower-case agent source name that adds `TELEMETRY_SOURCE` to the install command) returns `201 { source, key, install }`. The request URL must be HTTPS (`400 https_required`, so the install command never names a dead origin; behind a TLS-terminating proxy the original scheme must be preserved). At most 16 sources per owner (`409 source_limit`). Unknown body fields are rejected.
 - `PATCH /api/telemetry/sources/{id}` with `{ name?, settings? }` (at least one). `settings` replaces the whole object (strict schema, at most 32 KiB serialized).
-- `POST /api/telemetry/sources/{id}/rotate-key` returns `{ key, install }` (HTTPS required); the old key stops working at once.
+- `POST /api/telemetry/sources/{id}/rotate-key` returns `{ key, install }` (HTTPS required; optional `?agentSource=<name>` as above); the old key stops working at once.
 - `DELETE /api/telemetry/sources/{id}` returns `{ sources }`.
 - The key is shown once, in the create and rotate responses; it cannot be read again.
 - `install` is the ready-to-run command: one copy-pasteable command (a subshell, so no variable leaks into your shell): `( f="$(mktemp)" && trap 'rm -f "$f"' EXIT && curl -fsSL https://github.com/xuangong/copilot-api-gateway/releases/download/telemetry-agent-v<version>/install.sh -o "$f" && printf '%s  %s\n' '<pinned installer sha256>' "$f" | { if command -v sha256sum >/dev/null 2>&1; then sha256sum -c -; else shasum -a 256 -c -; fi; } && sudo TELEMETRY_GATEWAY='<gateway origin>' TELEMETRY_KEY='<push key>' TELEMETRY_AGENT_SHA256='<pinned agent sha256>' bash "$f" )`. It downloads `install.sh` to a private temporary file, verifies it against the SHA-256 the gateway pins (`TELEMETRY_INSTALLER_SHA256`, the installer as stamped by the release build; `sha256sum -c`, else `shasum -a 256 -c`), and only then runs it as root with `TELEMETRY_AGENT_SHA256` (the pinned hash of `trojan-telemetry.py`) in the environment; the installer refuses an agent that differs. Nothing is piped from the network into a shell and the key is never echoed. The version and both hashes are built into the gateway (`agent-release.ts`; a test recomputes them from the repo, and the release workflow checks the built assets against them), so the command pins the exact bytes the gateway was built with, whatever the release page serves. Values are POSIX single-quoted.
@@ -139,6 +139,11 @@ Configuration (`/etc/trojan-telemetry.env`, mode 600, values single-quoted; vari
 | `TROJAN_USERS` | none (ordered user hashes, comma or space separated, mapped to `#1`, `#2`...) |
 | `TROJAN_CONFIG` | auto-detected |
 | `TOP_DOMAINS` | 50 (1..1000) |
+| `TOP_CLIENTS` | 50 (1..1000), top clients per hour (agent 1.1.0) |
+| `TOP_CLIENT_DOMAINS` | 20 (1..1000), top domains per client (agent 1.1.0) |
+| `TELEMETRY_SITES` | none; maps website sources to SNIs (see Client IPs and locations) |
+| `TELEMETRY_KEY_<SOURCE>` | the push key of a website source listed in `TELEMETRY_SITES` (source name upper-cased, `-` as `_`) |
+| `GEO_DOWNLOAD` | on; `0` turns the geo database downloads off (existing files are still used) |
 | `TROJAN_SNI` | `trojan.xianliao.de5.net` |
 | `PROBE_HOST` | the SNI host |
 | `PROBE_PORT` | 443 |
@@ -155,6 +160,7 @@ Each run:
 
 1. **Compute** every closed hour in `(cursor, last closed hour]`. A first run backfills 24 hours; a cursor older than 7 days is clamped to 7 days (the outbox backlog window). After downtime the missed hours are therefore caught up (and re-pushed from the outbox) when the logs and vnstat history still hold them. An hour with no traffic still writes an outbox file with no points: it records that the hour was processed so it is not recomputed, and pushing it replaces nothing, so it never clears data the gateway already holds. A docker or vnstat failure stops the loop without advancing the cursor and the run exits 1; a missing vnstat row for one hour is not a failure.
    - Proxy traffic: `docker logs --since <hour> --until <next hour> -- <container>` with absolute UTC bounds (Docker stamps UTC, so the container's and the VM's timezones do not matter). Both stdout and stderr are parsed, streamed line by line (never buffered whole), because trojan-go may log to either. Lines like `user <hash> ... tunneling to <host>:<port> closed sent: <n> <unit> recv: <n> <unit>` (units are 1024-based) are aggregated by user and registrable domain into `proxy.sent_bytes` (downloads: sent to the client), `proxy.recv_bytes` (uploads: received from the client), their sum `proxy.total_bytes` (agent 1.0.2; both directions leave the VM again, so this is the group's share of outbound traffic) and `proxy.connections` (count), dims `user` and `domain`. Traffic belongs to the hour in which the connection closed.
+   - Client attribution (agent 1.1.0, below) reads the same `docker logs` stream, which is now requested with `-t` so every line carries Docker's UTC time.
    - Per user the top `TOP_DOMAINS` domains by total bytes are kept and the rest folded into `(other)`. If an hour would still exceed one push batch, the top N is halved until it fits.
    - Domains: an empty host is `(unknown)`, a host with non-ASCII characters is `(invalid)` (hosts on the wire are ASCII punycode), values are cut at 256 characters. A user whose hash is not mapped is `#?`.
    - Registrable-domain heuristic (no public suffix list): IP literals are kept; otherwise the last 2 labels, or the last 3 when the TLD is two letters and the second label is a generic second-level label (`com`, `co`, `net`, `org`, `gov`, `edu`, `ac`, `or`, `ne`, `go`, `mil`, `ltd`, `plc`, `nhs`, `sch`, `nom`). Longer public suffixes (for example `foo.pvt.k12.ma.us`) group one level too coarse.
@@ -163,6 +169,72 @@ Each run:
 3. **Push** the outbox oldest first. An hour's hourly and probe files travel together. Batches hold at most 24 hours, 10 000 points and 1.5 MiB (an hour is never split). The push counts as success only when the gateway answers `200` and its `accepted` equals the number of points sent; the batch's files are then deleted. A network error, `401`, `404`, a `5xx`, a redirect or an `accepted` mismatch stops the push, keeps every remaining file and makes the run exit 1. Redirects are not followed, so the key is never replayed elsewhere. When a batch (of any size) gets `400` or `413` the agent sends a canary: the newest hour that has a computed hourly file alone (the newest hour when none has one; the open hour usually holds only probe points, which would not detect a refusal of hourly data), at most once per run (if that hour is the refused batch itself no extra request is needed). Systemic refusal: when the canary is refused too, the gateway refuses everything (a wrong scope, limits, an incompatible gateway, or a VM clock wrong by more than about 1 h); the run stops, nothing is quarantined, every file is kept, a warning says so and the run exits 1. Such a run costs at most 2 requests, however large the backlog. Bisection: when the canary is accepted the gateway is healthy, so the refused batch is split in halves; each half is pushed (accepted halves are deleted), refused halves are split further, and an hour still refused on its own is moved (atomic rename) to `outbox/rejected/` with a warning on stderr naming the hour and status; later batches keep pushing. Candidates confirmed this way are quarantined after the batches are tried, even if a later non-`400`/`413` failure stopped the run, because the canary proved the gateway healthy. Clock skew: hours within the last 2 hours of the agent's clock are never quarantined, they are kept for the next run with a warning. The gateway rejects points more than 1 h in the future, so a VM clock more than about 1 h ahead makes the recent hours refused (they are kept, and a lone refusing newest hour looks systemic); fix NTP on the VM. If the move itself fails (for example `outbox/rejected` is a regular file, or the filesystem is read-only or full) the agent warns `could not quarantine <hour>: <error>; keeping the remaining files` and keeps the files. Every run also prints one stderr line `N hour(s) in outbox/rejected/ (oldest <hour>); see docs` while the directory has files (this alone does not change the exit code). Quarantined files are never retried automatically (inspect them, fix the cause and move them back into `outbox/` if you want another attempt) and are discarded after 30 days. The run exits 1 when any hour was rejected or a push failed. Files in the outbox older than 7 days are discarded unpushed (the backlog window, `OUTBOX_MAX_AGE_DAYS`), so an outage longer than 7 days loses the oldest hours.
 
 User mapping: `TROJAN_USERS` wins; otherwise the SHA-224 hex of each `password` entry of the trojan-go JSON config, in file order. The config is `TROJAN_CONFIG`, else a bind mount of the container (found with `docker inspect`) holding a `config.json`, else `/etc/trojan-go/config.json`, then `/etc/trojan/config.json`.
+
+## Client IPs and locations (agent 1.1.0)
+
+The trojan VM also serves the owner's websites (dentalrendering, museum). One nginx `stream` block on port 443 routes by SNI to trojan-go or to a site, and only nginx sees the real client address (trojan-go sees `127.0.0.1`). The stream block logs one line per closed connection to the container's stdout (so it is part of `docker logs` and its json-file rotation):
+
+```
+nginx_stream_conn t=2026-11-23T08:12:44+00:00 ms=1795421564.583 ip=104.28.1.2 port=43223 sni="trojan.xianliao.de5.net" up=127.0.0.1:8443 sent=9715 recv=984 dur=1.058 st=200
+```
+
+`sent` is bytes to the client, `recv` bytes from the client. The agent routes each record by SNI: the trojan SNI feeds the correlation below, SNIs in `TELEMETRY_SITES` feed the website sources, every other SNI is ignored. Records belong to the hour `docker logs --since/--until` returned them for (their close time); a tunnel and connection that straddle an hour edge stay unmatched. The nginx config is persisted by mounting the stream config from the host into the trojan container (see Rollout).
+
+### Trojan: which client produced which traffic
+
+trojan-go logs one `... tunneling to <host>:<port> closed sent: <n> recv: <n>` line per tunnel. Each line is matched to one nginx connection with the trojan SNI:
+
+- close times within 2 s (Docker's UTC prefix has sub-second precision; if a line has no Docker prefix the line's own second-precision stamp is read as UTC, centred at +0.5 s, with 2.5 s tolerance);
+- nginx `sent` is at least trojan's `sent` and at most 15 percent above it, or at most 8 KiB above it (nginx counts TLS records and the handshake, trojan counts payload);
+- the best candidate has the smallest time gap, then the smallest relative byte difference; tunnels choose in order of their bytes (largest first) and each nginx record is used once.
+
+Unmatched tunnels get client `(unmatched)` and location `未知`. Metrics (source `trojan-vm`, dims at most three as the gateway requires):
+
+| Metric | Unit | Dims |
+| --- | --- | --- |
+| `proxy.client_bytes` (sent + recv) | bytes | `client` (full IP, `(unmatched)` or `(other)`), `location`, `domain` (registrable, or `(other)`) |
+| `proxy.client_connections` | count | same |
+| `proxy.client_match_rate` | count (per mille of the hour's tunnels that found a client; absent without tunnels) | none |
+
+Per hour the top `TOP_CLIENTS` clients by bytes are kept (`(unmatched)` always stays), each with its top `TOP_CLIENT_DOMAINS` domains; everything else folds into `(other)` for client, location and domain. The client points are limited to 3 000 points and 450 KiB per hour (halving the top N), and the existing per-user proxy points are shrunk to leave room, so an hour always fits one push batch. The existing metrics are unchanged. Data starts when the agent is upgraded; earlier hours have no client information.
+
+### Websites: where visitors come from
+
+`TELEMETRY_SITES` maps sources to SNIs and a `site` name:
+
+```
+dentalrendering=dental.xianliao.de5.net:dental,dental-minio.xianliao.de5.net:dental-minio,dental-dev.xianliao.de5.net:dental-dev;museum=museum.xianliao.de5.net:museum
+```
+
+Source names are lower case (`[a-z][a-z0-9-]{0,31}`), SNIs are unique and never the trojan SNI; a malformed value is a configuration error (exit 2). The printed size of a tunnel is rounded (for example `1.50 GiB`), so the correlation accepts an nginx `sent` up to 0.5 percent of that unit below it. Each source has its own push key in `TELEMETRY_KEY_DENTALRENDERING` and `TELEMETRY_KEY_MUSEUM`; a listed source without a key is skipped with a warning (the trojan source keeps working). Metrics per website source, with the client reduced to its network (IPv4 /24 such as `198.51.100.0/24`, IPv6 /48) before anything is stored or pushed:
+
+| Metric | Unit | Dims |
+| --- | --- | --- |
+| `site.sent_bytes`, `site.recv_bytes` | bytes | `site`, `client` (network or `(other)`), `location` |
+| `site.connections` | count | same |
+
+Top `TOP_CLIENTS` networks per site and hour, the rest as `(other)`. Websites expose traffic and connections, not paths. The location of a network is that of the first address seen in it during the hour.
+
+### Several sources, one agent
+
+The agent computes an hour once (the cursor is shared) and writes one outbox per source: `outbox/` for the trojan source (key `TELEMETRY_KEY`) and `outbox-<source>/` for each website source. Pushes are per source with that source's key; a refusal or outage for one source keeps only that source's files and never holds back the others; the run exits 1 if any source failed. Probes and NIC totals belong to the trojan source only. Hours without traffic still push an empty hour for each source, so a quiet site is not reported stale.
+
+Getting a second or third source's key onto the VM: create the source on the dashboard (the key is shown once), then run the installer with the source's key under its own name, keeping the trojan key. Either pass `TELEMETRY_KEY_MUSEUM='<key>'` directly, or run the dashboard-style command with `TELEMETRY_SOURCE='museum'` and `TELEMETRY_KEY='<museum key>'`: the installer then stores the key as `TELEMETRY_KEY_MUSEUM`, keeps the saved trojan key, gateway and every other setting, and the trojan source must be installed first. The installer refuses to replace a saved trojan `TELEMETRY_KEY` with a different one unless `TELEMETRY_REPLACE_TROJAN_KEY=1` is given (it never applies with `TELEMETRY_SOURCE`), so a website source's command pasted without `TELEMETRY_SOURCE` cannot take over the trojan source; the gateway never adds that flag, so rotating the trojan key on a VM that already has one needs `TELEMETRY_REPLACE_TROJAN_KEY=1` typed in deliberately (the installer's refusal says so). `trojan-vm` is the trojan source itself and is rejected as an agent source name (gateway, dashboard and installer). The dashboard's create and rotate forms have an optional, labelled "Agent source name" field. The gateway's create request accepts an optional `agentSource` (`POST /api/telemetry/sources` body `{"name": ..., "agentSource": "museum"}`) and the rotate request an optional `?agentSource=museum` query; with it the returned install command includes `TELEMETRY_SOURCE`. The name given at creation is stored in the source's settings JSON (`settings.agentSource`, validated like the query; no migration), settings saves from the dashboard keep it, a rotate uses it unless the query overrides it, and the dashboard pre-fills the field with it. Without it the command is the trojan one (`TELEMETRY_KEY`). `TELEMETRY_SITES` must be set once with every source's entries (pass `TELEMETRY_SITES='...'` to the installer; later runs keep it); the installer warns when the named source is not listed.
+
+### Geo databases
+
+Locations are computed offline on the VM; no IP leaves it. The databases live in `/var/lib/trojan-telemetry/geo/`:
+
+- `ip2region.xdb` (ip2region, the official repository's `data/ip2region_v4.xdb` on GitHub raw; the plain `ip2region.xdb` no longer exists upstream): China, province / city / ISP in Chinese. IPv4 only; IPv6 addresses are resolved by DB-IP alone.
+- `dbip-city-lite.mmdb` and `dbip-asn-lite.mmdb` (DB-IP Lite, `https://download.db-ip.com/free/dbip-city-lite-YYYY-MM.mmdb.gz` and `dbip-asn-lite-...`, this month's file then last month's): the rest of the world.
+
+They are downloaded after a run has collected and pushed its hours (so a slow download never delays a push, and the first hours after an install show `未知` until the next run has the files) and refreshed when older than 35 days. Downloads use HTTPS only (redirects too), 30 s socket timeouts, one 15 minute budget per run for all files together (far below the unit's 50 minute timeout), reading stops at the end of the gzip stream, size caps (64 MiB, 400 MiB, 120 MiB decompressed), are validated by opening them and replace the old file atomically. A failure keeps the previous file, logs a warning and is not retried for 6 hours; a file that cannot be opened counts as missing and is fetched again after that window; without any database `location` is `未知`. `GEO_DOWNLOAD=0` disables the downloads. The readers are a minimal pure-Python ip2region xdb searcher (region strings `country|province|city|isp|CC` as in current upstream, also the older 4 and 5 field layouts; `0` and empty fields ignored) and a minimal MMDB reader (maps, arrays, strings, integers, doubles, booleans and pointers), both Python 3.8 standard library only. The tests use small fixture databases built by the test helpers; the binary readers were also checked by hand against the real `ip2region_v4.xdb` and DB-IP ASN files.
+
+Location text: China from ip2region, `广东省 深圳市 · 电信` (province, city, ISP; a repeated name is shown once); elsewhere from DB-IP, `US, Ashburn · Amazon` (country code, city or subdivision, short ASN organization name); ASN 13335 is `Cloudflare` wherever it appears; unknown is `未知`. Limits: mobile networks usually resolve only to the province, and relays (Cloudflare, WARP, iCloud Private Relay) only to the relay.
+
+### Naming IPs
+
+On the source's Telemetry page, grouping the chart by `client` shows a top table with a "Name this value…" action on each row. It saves the name into the source's `labels[<dimension>][<value>]` setting (the same validation as the settings form: names of 1 to 64 characters, at most 8 labelled dimensions; an empty name removes it), for example a home IP as `家里宽带`.
 
 ## Installer
 
@@ -194,7 +266,7 @@ What it does:
 
 6. Reminds you that the key is visible in your shell history and the process list. If that matters, rotate it on the dashboard and run the installer again with the new key.
 
-Re-installing is the update and key-rotation path: the agent and units are replaced, `TELEMETRY_GATEWAY` and `TELEMETRY_KEY` come from the command, optional keys (`TROJAN_CONTAINER`, `TELEMETRY_IFACE`, `TROJAN_USERS`, `TOP_DOMAINS`, `TROJAN_CONFIG`, `TROJAN_SNI`, `PROBE_HOST`, `PROBE_PORT`, `PROBE_TARGET`, `PROBE_TIMEOUT`) already in the env file are kept unless passed again, and the state (cursor and outbox) is kept.
+Re-installing is the update and key-rotation path: the agent and units are replaced, `TELEMETRY_GATEWAY` and `TELEMETRY_KEY` come from the command, optional keys (`TROJAN_CONTAINER`, `TELEMETRY_IFACE`, `TROJAN_USERS`, `TOP_DOMAINS`, `TOP_CLIENTS`, `TOP_CLIENT_DOMAINS`, `TROJAN_CONFIG`, `TROJAN_SNI`, `PROBE_HOST`, `PROBE_PORT`, `PROBE_TARGET`, `PROBE_TIMEOUT`, `TELEMETRY_SITES`, `GEO_DOWNLOAD` and every `TELEMETRY_KEY_<SOURCE>`) already in the env file are kept unless passed again (a `TELEMETRY_SOURCE` run changes only that source's key), and the state (cursor and outbox) is kept.
 
 Remove it with `curl -fsSL <release>/install.sh | sudo bash -s -- --uninstall` (this form is unpinned: nothing verifies the script. For a verified removal, download `install.sh` to a file, check it against the installer hash in the dashboard's command, and run `sudo bash <file> --uninstall`): this stops and removes the timer, service, agent and env file and keeps the state. Add `--purge` to delete the state too. `vnstat` is left installed.
 
@@ -216,3 +288,4 @@ To cut a release (an owner action; nothing here is done automatically):
 4. Add the log rotation above to the trojan compose file and recreate the container (a few seconds of proxy downtime).
 5. Configure the source's settings: `budgetMetric: nic.tx_bytes` (or `nic.total_bytes` when inbound traffic is billed too), `monthlyLimit` (the cap you want to stay under), `pricePerGB` (and `freeGB`), `labels` for the users (for example `{ "user": { "#1": "MacBook" } }`), `flagNonZeroMetrics: ["probe.fail"]` and `checkMetrics: ["probe.ok"]`.
 6. Set an Azure budget alert as well: the gateway sends no notifications and its numbers are not billing-accurate.
+7. Client IPs (agent 1.1.0), in this order: (a) move `/etc/nginx/modules-enabled/stream-sni.conf` (with the `nginx_stream_conn` log lines) out of the container to the host next to the trojan compose file and mount it read-only in the compose file; recreating the container takes the proxy down for a few seconds and drops SSH over trojan briefly, so confirm first. (b) Publish `telemetry-agent-v1.1.0` (built locally while GitHub Actions is unavailable) and deploy the gateway, whose install command pins it. (c) Re-run the trojan source's install command on the VM to upgrade. (d) Create the `dentalrendering` and `museum` sources on the dashboard and install their keys with `TELEMETRY_SOURCE` or `TELEMETRY_KEY_<SOURCE>` plus `TELEMETRY_SITES` (see Several sources). (e) Name the owner's own IPs from the top table.
