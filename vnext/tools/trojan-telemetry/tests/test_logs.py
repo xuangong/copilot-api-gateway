@@ -206,3 +206,102 @@ class TimeTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+NGINX = ('nginx_stream_conn t=2026-11-23T08:12:44+00:00 ms=1795421564.583 ip=104.28.1.2 port=43223 sni="trojan.xianliao.de5.net" '
+         'up=127.0.0.1:8443 sent=9715 recv=984 dur=1.058 st=200')
+TROJAN_NATIVE = ("[INFO]  2026/11/22 12:01:11 user %s from 127.0.0.1:43454 tunneling to rr4---sn-xx.googlevideo.com:443 closed "
+                 "sent: 793.71 KiB recv: 21.69 KiB" % HASH_A)
+
+
+class NginxLineTest(unittest.TestCase):
+    def test_an_ipv4_line_is_parsed(self):
+        record = agent.parse_conn_line(NGINX)
+        self.assertEqual(record, {"ms": 1795421564.583, "ip": "104.28.1.2", "port": 43223, "sni": "trojan.xianliao.de5.net",
+                                  "sent": 9715, "recv": 984, "dur": 1.058, "status": 200})
+
+    def test_an_ipv6_line_and_a_docker_timestamp_prefix_are_parsed(self):
+        text = "2026-11-23T08:12:44.583000000Z " + NGINX.replace("ip=104.28.1.2", "ip=2606:4700:4700::1111")
+        self.assertEqual(agent.parse_conn_line(text)["ip"], "2606:4700:4700::1111")
+
+    def test_a_v4_mapped_address_is_unwrapped(self):
+        self.assertEqual(agent.parse_conn_line(NGINX.replace("ip=104.28.1.2", "ip=::ffff:1.2.3.4"))["ip"], "1.2.3.4")
+
+    def test_a_missing_or_empty_sni_is_an_empty_string_and_the_sni_is_lowercased(self):
+        self.assertEqual(agent.parse_conn_line(NGINX.replace('sni="trojan.xianliao.de5.net"', 'sni=""'))["sni"], "")
+        self.assertEqual(agent.parse_conn_line(NGINX.replace('sni="trojan.xianliao.de5.net"', 'sni="-"'))["sni"], "")
+        self.assertEqual(agent.parse_conn_line(NGINX.replace("trojan.xianliao", "TROJAN.xianliao"))["sni"], "trojan.xianliao.de5.net")
+
+    def test_garbage_is_not_a_record(self):
+        self.assertIsNone(agent.parse_conn_line("nothing here"))
+        self.assertIsNone(agent.parse_conn_line(NGINX.replace("ip=104.28.1.2", "ip=not-an-ip")))
+        self.assertIsNone(agent.parse_conn_line(NGINX.replace("sent=9715", "sent=-1")))
+
+
+class LineTimeTest(unittest.TestCase):
+    def test_a_docker_prefix_is_precise_utc(self):
+        when, tolerance = agent.parse_line_time("2026-11-22T12:01:11.250000000Z " + TROJAN_NATIVE)
+        self.assertAlmostEqual(when, agent.parse_iso("2026-11-22T12:01:11Z") + 0.25)
+        self.assertEqual(tolerance, 2.0)
+
+    def test_the_lines_own_second_timestamps_are_centred_with_a_wider_tolerance(self):
+        for text in (TROJAN_NATIVE, line(HASH_A, "a.com:80", "1 B", "1 B", "2026-11-22T12:01:11Z")):
+            when, tolerance = agent.parse_line_time(text)
+            self.assertEqual(when, agent.parse_iso("2026-11-22T12:01:11Z") + 0.5)
+            self.assertEqual(tolerance, 2.5)
+
+    def test_no_timestamp_is_none(self):
+        self.assertIsNone(agent.parse_line_time("user abc tunneling to a.com:80 closed sent: 1 B recv: 1 B"))
+
+
+class NetworkTest(unittest.TestCase):
+    def test_websites_keep_only_the_network(self):
+        self.assertEqual(agent.client_network("203.0.113.77"), "203.0.113.0/24")
+        self.assertEqual(agent.client_network("2001:db8:1:2:3:4:5:6"), "2001:db8:1::/48")
+
+
+ROUTES = {"dental.example": ("dentalrendering", "dental"), "museum.example": ("museum", "museum")}
+
+
+class ScanTest(unittest.TestCase):
+    def scan(self, lines, sni="trojan.xianliao.de5.net"):
+        scan = agent.LogScan(USERS, ROUTES, sni)
+        for raw in lines:
+            scan.add_line(raw)
+        return scan
+
+    def test_trojan_tunnels_and_nginx_connections_are_collected_next_to_the_totals(self):
+        scan = self.scan(["2026-11-22T12:01:11.250000000Z " + TROJAN_NATIVE, NGINX])
+        self.assertEqual(scan.totals[("#1", "googlevideo.com")], [int(round(793.71 * 1024)), int(round(21.69 * 1024)), 1])
+        self.assertEqual(scan.tunnels, [(agent.parse_iso("2026-11-22T12:01:11Z") + 0.25, 2.0, int(round(793.71 * 1024)), int(round(21.69 * 1024)), "#1", "googlevideo.com", 5)])
+        self.assertEqual(scan.conns, [(1795421564.583, "104.28.1.2", 9715, 984)])
+
+    def test_website_connections_aggregate_per_site_and_network(self):
+        sites = [NGINX.replace("trojan.xianliao.de5.net", "dental.example").replace("104.28.1.2", "198.51.100.%d" % n) for n in (5, 77)]
+        sites.append(NGINX.replace("trojan.xianliao.de5.net", "museum.example"))
+        scan = self.scan(sites)
+        self.assertEqual(scan.sites[("dentalrendering", "dental", "198.51.100.0/24")], [2 * 9715, 2 * 984, 2, "198.51.100.5"])
+        self.assertEqual(scan.sites[("museum", "museum", "104.28.1.0/24")], [9715, 984, 1, "104.28.1.2"])
+        self.assertEqual(scan.conns, [])
+
+    def test_other_snis_are_ignored(self):
+        scan = self.scan([NGINX.replace("trojan.xianliao.de5.net", "other.example"), NGINX.replace('sni="trojan.xianliao.de5.net"', 'sni=""')])
+        self.assertEqual((scan.conns, scan.sites), ([], {}))
+
+    def test_merging_two_scans_adds_everything(self):
+        first = self.scan([NGINX, line(HASH_A, "a.com:80", "1.00 KiB", "1.00 KiB")])
+        second = self.scan([NGINX, line(HASH_A, "a.com:80", "1.00 KiB", "1.00 KiB"), NGINX.replace("trojan.xianliao.de5.net", "dental.example")])
+        first.merge(second)
+        self.assertEqual(len(first.conns), 2)
+        self.assertEqual(first.totals[("#1", "a.com")], [2048, 2048, 2])
+        self.assertEqual(len(first.tunnels), 2)
+        self.assertEqual(first.sites[("dentalrendering", "dental", "104.28.1.0/24")][2], 1)
+
+    def test_the_default_record_cap_is_200k(self):
+        self.assertEqual(agent.MAX_RECORDS, 200000)
+
+    def test_the_record_caps_drop_the_excess_and_say_so(self):
+        scan = agent.LogScan(USERS, ROUTES, "trojan.xianliao.de5.net", limit=2)
+        for _ in range(5):
+            scan.add_line(NGINX)
+        self.assertEqual((len(scan.conns), scan.dropped), (2, 3))

@@ -71,7 +71,7 @@ class InstallTest(ReleaseCase):
         os.makedirs(self.bin)
 
     def env(self, **extra):
-        env = dict((k, v) for k, v in os.environ.items() if not k.startswith(("TELEMETRY_", "TROJAN_", "PROBE_", "TOP_DOMAINS", "FAKE_")))
+        env = dict((k, v) for k, v in os.environ.items() if not k.startswith(("TELEMETRY_", "TROJAN_", "PROBE_", "TOP_", "GEO_", "FAKE_")))
         env.update({"PATH": self.bin + os.pathsep + os.environ["PATH"], "TELEMETRY_PREFIX": self.root, "TELEMETRY_BASE_URL": "file://" + self.out})
         env.update(extra)
         return env
@@ -187,7 +187,7 @@ class InstallTest(ReleaseCase):
             handle.write('#!/bin/sh\nfor last; do :; done\nif [ "$last" = "my trojan'"'"'s" ]; then echo "json-file {}"; exit 0; fi\necho "wrong container: $last" >&2\nexit 1\n')
         os.chmod(script, 0o755)
         self.assertEqual(self.install(TROJAN_CONTAINER="my trojan's")[0], 0)
-        code, output = self.install(TELEMETRY_KEY="tlm_second")
+        code, output = self.install(TELEMETRY_KEY="tlm_second", TELEMETRY_REPLACE_TROJAN_KEY="1")
         self.assertEqual(code, 0, output)
         self.assertIn("no log rotation", output)
         self.assertNotIn("was not found", output)
@@ -215,14 +215,102 @@ class InstallTest(ReleaseCase):
 
     def test_reinstalling_replaces_the_key_and_keeps_optional_settings_unless_overridden(self):
         self.assertEqual(self.install(TROJAN_CONTAINER="mytrojan", TOP_DOMAINS="20", TELEMETRY_KEY="tlm_first")[0], 0)
-        self.assertEqual(self.install(TELEMETRY_KEY="tlm_second")[0], 0)
+        self.assertEqual(self.install(TELEMETRY_KEY="tlm_second", TELEMETRY_REPLACE_TROJAN_KEY="1")[0], 0)
         loaded = {}
         agent.load_env_file(self.path("etc", "trojan-telemetry.env"), loaded)
         self.assertEqual(loaded, {"TELEMETRY_GATEWAY": "https://gw.example", "TELEMETRY_KEY": "tlm_second", "TROJAN_CONTAINER": "mytrojan", "TOP_DOMAINS": "20"})
-        self.assertEqual(self.install(TELEMETRY_KEY="tlm_third", TOP_DOMAINS="5")[0], 0)
+        self.assertEqual(self.install(TELEMETRY_KEY="tlm_third", TOP_DOMAINS="5", TELEMETRY_REPLACE_TROJAN_KEY="1")[0], 0)
         loaded = {}
         agent.load_env_file(self.path("etc", "trojan-telemetry.env"), loaded)
         self.assertEqual((loaded["TOP_DOMAINS"], loaded["TROJAN_CONTAINER"], loaded["TELEMETRY_KEY"]), ("5", "mytrojan", "tlm_third"))
+
+    def loaded(self):
+        loaded = {}
+        agent.load_env_file(self.path("etc", "trojan-telemetry.env"), loaded)
+        return loaded
+
+    def test_client_settings_and_extra_source_keys_are_written_in_a_private_env_file(self):
+        sites = "dentalrendering=dental.example:dental;museum=museum.example:museum"
+        code, output = self.install(TELEMETRY_SITES=sites, TELEMETRY_KEY_DENTALRENDERING="tlm_d", TELEMETRY_KEY_MUSEUM="tlm_m",
+                                    TOP_CLIENTS="10", TOP_CLIENT_DOMAINS="5", GEO_DOWNLOAD="0")
+        self.assertEqual(code, 0, output)
+        self.assertEqual(self.loaded(), {"TELEMETRY_GATEWAY": "https://gw.example", "TELEMETRY_KEY": "tlm_a'b", "TELEMETRY_SITES": sites,
+                                         "TELEMETRY_KEY_DENTALRENDERING": "tlm_d", "TELEMETRY_KEY_MUSEUM": "tlm_m", "TOP_CLIENTS": "10",
+                                         "TOP_CLIENT_DOMAINS": "5", "GEO_DOWNLOAD": "0"})
+        self.assertEqual(stat.S_IMODE(os.stat(self.path("etc", "trojan-telemetry.env")).st_mode), 0o600)
+
+    def test_reinstalling_the_trojan_key_keeps_the_site_keys_and_sites(self):
+        sites = "museum=museum.example:museum"
+        self.assertEqual(self.install(TELEMETRY_SITES=sites, TELEMETRY_KEY_MUSEUM="tlm_m")[0], 0)
+        self.assertEqual(self.install(TELEMETRY_KEY="tlm_new", TELEMETRY_REPLACE_TROJAN_KEY="1")[0], 0)
+        loaded = self.loaded()
+        self.assertEqual((loaded["TELEMETRY_KEY"], loaded["TELEMETRY_KEY_MUSEUM"], loaded["TELEMETRY_SITES"]), ("tlm_new", "tlm_m", sites))
+        self.assertEqual(self.install(TELEMETRY_KEY="tlm_new", TELEMETRY_KEY_MUSEUM="tlm_rotated")[0], 0)
+        self.assertEqual(self.loaded()["TELEMETRY_KEY_MUSEUM"], "tlm_rotated")
+
+    def test_telemetry_source_stores_the_key_for_that_source_and_keeps_the_trojan_key(self):
+        sites = "dentalrendering=dental.example:dental"
+        self.assertEqual(self.install(TELEMETRY_KEY="tlm_trojan", TELEMETRY_SITES=sites)[0], 0)
+        code, output = sh([BASH, os.path.join(self.out, "install.sh")],
+                          self.env(TELEMETRY_SOURCE="dentalrendering", TELEMETRY_KEY="tlm_dental", TELEMETRY_GATEWAY="https://gw.example"))
+        self.assertEqual(code, 0, output)
+        self.assertEqual(self.loaded(), {"TELEMETRY_GATEWAY": "https://gw.example", "TELEMETRY_KEY": "tlm_trojan", "TELEMETRY_SITES": sites,
+                                         "TELEMETRY_KEY_DENTALRENDERING": "tlm_dental"})
+        self.assertNotIn("TELEMETRY_SOURCE", open(self.path("etc", "trojan-telemetry.env")).read())
+
+    def test_telemetry_source_may_leave_out_the_gateway_and_dashes_become_underscores(self):
+        self.assertEqual(self.install(TELEMETRY_KEY="tlm_trojan")[0], 0)
+        code, output = sh([BASH, os.path.join(self.out, "install.sh")], self.env(TELEMETRY_SOURCE="my-site", TELEMETRY_KEY="tlm_x"))
+        self.assertEqual(code, 0, output)
+        self.assertEqual(self.loaded()["TELEMETRY_KEY_MY_SITE"], "tlm_x")
+        self.assertEqual(self.loaded()["TELEMETRY_GATEWAY"], "https://gw.example")
+
+    def test_telemetry_source_needs_the_trojan_source_installed_first(self):
+        code, output = sh([BASH, os.path.join(self.out, "install.sh")],
+                          self.env(TELEMETRY_SOURCE="museum", TELEMETRY_KEY="tlm_m", TELEMETRY_GATEWAY="https://gw.example"))
+        self.assertNotEqual(code, 0)
+        self.assertIn("trojan", output)
+        self.assertFalse(os.path.exists(self.path("etc")))
+
+    def test_a_bad_source_name_or_a_line_break_in_a_site_key_is_refused(self):
+        for source in ("Museum", "a b", "1x", "x" * 40, "trojan-vm"):
+            code, output = self.install(TELEMETRY_SOURCE=source)
+            self.assertNotEqual(code, 0, source)
+            self.assertIn("TELEMETRY_SOURCE", output)
+        code, output = self.install(TELEMETRY_KEY_MUSEUM="tlm_m\nTROJAN_USERS=evil")
+        self.assertNotEqual(code, 0)
+        self.assertIn("line breaks", output)
+        self.assertFalse(os.path.exists(self.path("etc")))
+
+    def test_a_pasted_website_command_cannot_replace_the_saved_trojan_key(self):
+        self.assertEqual(self.install(TELEMETRY_KEY="tlm_trojan")[0], 0)
+        code, output = self.install(TELEMETRY_KEY="tlm_website")
+        self.assertNotEqual(code, 0)
+        self.assertIn("TELEMETRY_REPLACE_TROJAN_KEY", output)
+        self.assertEqual(self.loaded()["TELEMETRY_KEY"], "tlm_trojan")
+        self.assertEqual(self.install(TELEMETRY_KEY="tlm_trojan")[0], 0)  # the same key again is an ordinary update
+        self.assertEqual(self.install(TELEMETRY_KEY="tlm_new", TELEMETRY_REPLACE_TROJAN_KEY="1")[0], 0)
+        self.assertEqual(self.loaded()["TELEMETRY_KEY"], "tlm_new")
+
+    def test_the_replace_flag_never_applies_with_a_telemetry_source(self):
+        self.assertEqual(self.install(TELEMETRY_KEY="tlm_trojan")[0], 0)
+        code, output = sh([BASH, os.path.join(self.out, "install.sh")], self.env(TELEMETRY_SOURCE="museum", TELEMETRY_KEY="tlm_m", TELEMETRY_REPLACE_TROJAN_KEY="1"))
+        self.assertEqual(code, 0, output)
+        self.assertEqual(self.loaded()["TELEMETRY_KEY"], "tlm_trojan")
+        self.assertNotIn("TELEMETRY_REPLACE", open(self.path("etc", "trojan-telemetry.env")).read())
+
+    def test_the_sites_check_is_anchored_to_a_source_name(self):
+        self.assertEqual(self.install(TELEMETRY_KEY="tlm_trojan", TELEMETRY_SITES="xmuseum=a.example:a")[0], 0)
+        code, output = sh([BASH, os.path.join(self.out, "install.sh")], self.env(TELEMETRY_SOURCE="museum", TELEMETRY_KEY="tlm_m"))
+        self.assertEqual(code, 0, output)
+        self.assertIn("does not list museum", output)
+
+    def test_a_source_that_telemetry_sites_does_not_list_is_warned_about(self):
+        self.assertEqual(self.install(TELEMETRY_KEY="tlm_trojan")[0], 0)
+        code, output = sh([BASH, os.path.join(self.out, "install.sh")], self.env(TELEMETRY_SOURCE="museum", TELEMETRY_KEY="tlm_m"))
+        self.assertEqual(code, 0, output)
+        self.assertIn("TELEMETRY_SITES", output)
+        self.assertIn("museum", output)
 
     def test_uninstall_removes_the_program_and_configuration_and_keeps_state_unless_purged(self):
         self.assertEqual(self.install()[0], 0)

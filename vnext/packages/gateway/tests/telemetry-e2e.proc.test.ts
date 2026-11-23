@@ -89,7 +89,7 @@ async function runAgent(nowIso: string) {
     env: {
       PATH: `${join(dir, "bin")}:${process.env.PATH ?? ""}`, TZ: "UTC", HOME: dir,
       TELEMETRY_GATEWAY: `http://127.0.0.1:${server.port}`, TELEMETRY_KEY: key, TROJAN_CONFIG: join(dir, "config.json"),
-      PROBE_HOST: "127.0.0.1", PROBE_PORT: String(closedPort), PROBE_TIMEOUT: "2",
+      PROBE_HOST: "127.0.0.1", PROBE_PORT: String(closedPort), PROBE_TIMEOUT: "2", GEO_DOWNLOAD: "0",
       FAKE_DOCKER_LOG: join(dir, "docker.log"), FAKE_VNSTAT_JSON: join(dir, "vnstat.json"),
     },
     stdout: "pipe", stderr: "pipe",
@@ -119,7 +119,12 @@ test.skipIf(!python)("the real agent pushes computed hours and the gateway repor
   expect(first.code, first.err).toBe(0)
 
   const metrics = (await get("/metrics")).metrics.map((m: { metric: string }) => m.metric)
-  expect(metrics).toEqual(["nic.rx_bytes", "nic.total_bytes", "nic.tx_bytes", "probe.fail", "probe.ok", "proxy.connections", "proxy.recv_bytes", "proxy.sent_bytes", "proxy.total_bytes"])
+  expect(metrics).toEqual(["nic.rx_bytes", "nic.total_bytes", "nic.tx_bytes", "probe.fail", "probe.ok", "proxy.client_bytes", "proxy.client_connections", "proxy.client_match_rate", "proxy.connections", "proxy.recv_bytes", "proxy.sent_bytes", "proxy.total_bytes"])
+
+  // No nginx records in this fixture, so every tunnel is unattributed; the gateway accepts the three-dimension client points and the 0 match rate.
+  const byClient = await get(`/top?metric=proxy.client_bytes&groupBy=client&${window}`)
+  expect(byClient.rows.map((r: { key: string }) => r.key)).toEqual(["(unmatched)"])
+  expect(byClient.total).toBeGreaterThan(0)
 
   const byDomain = await get(`/series?metric=proxy.sent_bytes&groupBy=domain&top=10&${window}`)
   const values = (key: string) => byDomain.groups.find((g: { key: string }) => g.key === key)?.values

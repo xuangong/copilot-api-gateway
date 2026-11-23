@@ -10,7 +10,9 @@ import calendar
 import collections
 import fcntl
 import hashlib
+import ipaddress
 import json
+import mmap
 import os
 import re
 import shlex
@@ -24,8 +26,9 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import zlib
 
-AGENT_VERSION = "1.0.2"
+AGENT_VERSION = "1.1.0"
 
 HOUR = 3600
 DAY = 86400
@@ -106,6 +109,53 @@ def split_target(target):
     return host.strip("[]"), port
 
 
+SOURCE_NAME = re.compile(r"^[a-z][a-z0-9-]{0,31}$")
+SNI_NAME = re.compile(r"^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$")
+SITE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+PRIMARY_SOURCE = "trojan-vm"
+
+
+def parse_sites(text, reserved):
+    """'source=sni:site,sni:site;source2=...' -> [(source, {sni: site})]. Names and SNIs are validated and unique."""
+    sources = []
+    seen_sni = set(reserved)
+    for part in text.split(";"):
+        part = part.strip()
+        if not part:
+            continue
+        name, equals, rest = part.partition("=")
+        name = name.strip()
+        if not equals or not SOURCE_NAME.match(name) or name == PRIMARY_SOURCE or any(name == known for known, _ in sources):
+            raise ConfigError("TELEMETRY_SITES: bad or repeated source name '%s'" % name[:40])
+        routes = {}
+        for item in rest.split(","):
+            item = item.strip()
+            if not item:
+                continue
+            sni, colon, site = item.partition(":")
+            sni, site = sni.strip().lower(), site.strip()
+            if not colon or not SNI_NAME.match(sni) or not SITE_NAME.match(site):
+                raise ConfigError("TELEMETRY_SITES: '%s' must look like sni.example:site" % item[:60])
+            if sni in seen_sni:
+                raise ConfigError("TELEMETRY_SITES: %s is listed twice or is the trojan SNI" % sni)
+            seen_sni.add(sni)
+            routes[sni] = site
+        if not routes:
+            raise ConfigError("TELEMETRY_SITES: source %s has no sni:site entries" % name)
+        sources.append((name, routes))
+    return sources
+
+
+class Target(object):
+    """One telemetry source this agent pushes to: its gateway, push key and outbox directory name."""
+
+    def __init__(self, name, gateway, key, outbox_name):
+        self.name = name
+        self.gateway = gateway
+        self.key = key
+        self.outbox_name = outbox_name
+
+
 class Config(object):
     def __init__(self, env):
         self.gateway = env.get("TELEMETRY_GATEWAY", "").strip().rstrip("/")
@@ -138,6 +188,21 @@ class Config(object):
         self.probe_timeout = _number(env, "PROBE_TIMEOUT", 15.0, 0.5, 120.0, float)
         # Test-only: trust this CA file instead of the system store when verifying the proxy certificate.
         self.ca_file = env.get("PROBE_CA_FILE", "") or None
+        self.top_clients = _number(env, "TOP_CLIENTS", 50, 1, 1000, int)
+        self.top_client_domains = _number(env, "TOP_CLIENT_DOMAINS", 20, 1, 1000, int)
+        self.geo_download = env.get("GEO_DOWNLOAD", "") != "0"
+        self.targets = [Target(PRIMARY_SOURCE, self.gateway, self.key, "outbox")]
+        self.routes = {}
+        self.skipped_sources = []
+        for name, sites in parse_sites(env.get("TELEMETRY_SITES", ""), [self.sni]):
+            key = env.get("TELEMETRY_KEY_" + name.upper().replace("-", "_"), "").strip()
+            if not key:
+                warn("TELEMETRY_SITES names source %s but TELEMETRY_KEY_%s is not set; that source is skipped" % (name, name.upper().replace("-", "_")))
+                self.skipped_sources.append(name)
+                continue
+            self.targets.append(Target(name, self.gateway, key, "outbox-" + name))
+            for sni, site in sites.items():
+                self.routes[sni] = (name, site)
 
 
 def load_env_file(path, environ):
@@ -261,23 +326,729 @@ def registrable_domain(host):
     return ".".join(labels[-2:])
 
 
-def parse_log_text(text, user_map):
-    """{(user, domain): [sent_bytes, recv_bytes, connections]} for every closed-tunnel line. `text` is a string or any iterable of lines."""
-    totals = {}
-    for raw in (text.splitlines() if isinstance(text, str) else text):
+def tunnel_domain(host):
+    # Hosts on the wire are ASCII (punycode); anything else is garbage and shares one group. The gateway caps a dimension
+    # value at 256 characters, so cutting here also keeps duplicates merged.
+    return INVALID_DOMAIN if any(ord(ch) > 127 for ch in host) else (registrable_domain(host) or UNKNOWN_DOMAIN)[:MAX_DIM_VALUE]
+
+
+CONN_LINE = re.compile(
+    r"nginx_stream_conn t=\S+ ms=(?P<ms>[0-9]+(?:\.[0-9]+)?) ip=(?P<ip>\S+) port=(?P<port>[0-9]+) "
+    r'sni="?(?P<sni>[^"\s]*)"? up=\S+ sent=(?P<sent>[0-9]+) recv=(?P<recv>[0-9]+) dur=(?P<dur>[0-9.]+) st=(?P<st>[0-9]+)')
+DOCKER_STAMP = re.compile(r"^(\d{4})-(\d\d)-(\d\d)T(\d\d):(\d\d):(\d\d)(\.\d+)?Z ")
+OWN_STAMP = re.compile(r'time="(\d{4})-(\d\d)-(\d\d)T(\d\d):(\d\d):(\d\d)Z"|\[\w+\]\s+(\d{4})/(\d\d)/(\d\d) (\d\d):(\d\d):(\d\d)')
+PRECISE_TOLERANCE = 2.0
+SECOND_TOLERANCE = 2.5
+MAX_RECORDS = 200000
+
+
+def normalize_ip(text):
+    """Canonical text of an IPv4/IPv6 address (v4-mapped IPv6 becomes IPv4), or None."""
+    try:
+        address = ipaddress.ip_address(text.strip().strip("[]"))
+    except ValueError:
+        return None
+    mapped = getattr(address, "ipv4_mapped", None)
+    return str(mapped if mapped is not None else address)
+
+
+def client_network(ip):
+    """Websites keep only the network: IPv4 /24, IPv6 /48."""
+    address = ipaddress.ip_address(ip)
+    return str(ipaddress.ip_network("%s/%d" % (ip, 24 if address.version == 4 else 48), strict=False))
+
+
+def parse_conn_line(raw):
+    """One `nginx_stream_conn` record, or None. `sni` is lowercased and '' when missing."""
+    match = CONN_LINE.search(raw)
+    if not match:
+        return None
+    ip = normalize_ip(match.group("ip"))
+    if ip is None:
+        return None
+    sni = match.group("sni").lower()
+    try:
+        dur = float(match.group("dur"))
+    except ValueError:
+        return None
+    return {"ms": float(match.group("ms")), "ip": ip, "port": int(match.group("port")), "sni": "" if sni == "-" else sni,
+            "sent": int(match.group("sent")), "recv": int(match.group("recv")), "dur": dur, "status": int(match.group("st"))}
+
+
+def parse_line_time(raw):
+    """(epoch seconds, tolerance) of a log line: Docker's UTC prefix (precise), else the line's own second-precision stamp read as UTC."""
+    match = DOCKER_STAMP.match(raw)
+    if match:
+        whole = calendar.timegm(tuple(int(part) for part in match.groups()[:6]) + (0, 0, 0))
+        return whole + float(match.group(7) or 0), PRECISE_TOLERANCE
+    match = OWN_STAMP.search(raw)
+    if match:
+        parts = [part for part in match.groups() if part is not None]
+        return calendar.timegm(tuple(int(part) for part in parts) + (0, 0, 0)) + 0.5, SECOND_TOLERANCE
+    return None
+
+
+class LogScan(object):
+    """What one pass over an hour of `docker logs` yields: per-user/domain totals (as before), the closed trojan tunnels, the nginx
+    connections of the trojan SNI, and per-site aggregates for website SNIs. `routes` maps an SNI to (source, site)."""
+
+    def __init__(self, user_map, routes=None, trojan_sni=None, limit=MAX_RECORDS):
+        self.user_map = user_map
+        self.routes = routes or {}
+        self.trojan_sni = (trojan_sni or "").lower()
+        self.limit = limit
+        self.totals = {}
+        self.tunnels = []
+        self.conns = []
+        self.sites = {}
+        self.dropped = 0
+
+    def add_line(self, raw):
+        if "nginx_stream_conn" in raw:
+            self.add_conn(raw)
+            return
         match = LOG_LINE.search(raw)
         if not match:
-            continue
+            return
         host, _ = split_target(match.group("target"))
-        # Hosts on the wire are ASCII (punycode); anything else is garbage and shares one group. The gateway caps a dimension
-        # value at 256 characters, so cutting here also keeps duplicates merged.
-        domain = INVALID_DOMAIN if any(ord(ch) > 127 for ch in host) else (registrable_domain(host) or UNKNOWN_DOMAIN)[:MAX_DIM_VALUE]
-        key = (user_map.get(match.group("user").lower(), UNKNOWN_USER), domain)
-        bucket = totals.setdefault(key, [0, 0, 0])
-        bucket[0] += to_bytes(match.group("sent"), match.group("sent_unit"))
-        bucket[1] += to_bytes(match.group("recv"), match.group("recv_unit"))
+        domain = tunnel_domain(host)
+        user = self.user_map.get(match.group("user").lower(), UNKNOWN_USER)
+        sent = to_bytes(match.group("sent"), match.group("sent_unit"))
+        recv = to_bytes(match.group("recv"), match.group("recv_unit"))
+        bucket = self.totals.setdefault((user, domain), [0, 0, 0])
+        bucket[0] += sent
+        bucket[1] += recv
         bucket[2] += 1
-    return totals
+        stamp = parse_line_time(raw) if self.trojan_sni else None
+        if stamp is not None:
+            if len(self.tunnels) < self.limit:
+                # The printed size is rounded to 0.005 of its unit, so the real count may be that much lower.
+                self.tunnels.append((stamp[0], stamp[1], sent, recv, user, domain, int(0.005 * UNITS[match.group("sent_unit")])))
+            else:
+                self.dropped += 1
+
+    def add_conn(self, raw):
+        record = parse_conn_line(raw)
+        if record is None:
+            return
+        sni = record["sni"]
+        if sni and sni == self.trojan_sni:
+            if len(self.conns) < self.limit:
+                self.conns.append((record["ms"], record["ip"], record["sent"], record["recv"]))
+            else:
+                self.dropped += 1
+        elif sni in self.routes:
+            source, site = self.routes[sni]
+            key = (source, site, client_network(record["ip"]))
+            if key not in self.sites and len(self.sites) >= self.limit:
+                self.dropped += 1
+                return
+            bucket = self.sites.setdefault(key, [0, 0, 0, record["ip"]])
+            bucket[0] += record["sent"]
+            bucket[1] += record["recv"]
+            bucket[2] += 1
+
+    def merge(self, other):
+        for key, values in other.totals.items():
+            bucket = self.totals.setdefault(key, [0, 0, 0])
+            for index in range(3):
+                bucket[index] += values[index]
+        for key, values in other.sites.items():
+            bucket = self.sites.setdefault(key, [0, 0, 0, values[3]])
+            for index in range(3):
+                bucket[index] += values[index]
+        for ours, theirs in ((self.tunnels, other.tunnels), (self.conns, other.conns)):
+            room = max(0, self.limit - len(ours))
+            ours.extend(theirs[:room])
+            self.dropped += max(0, len(theirs) - room)
+        self.dropped += other.dropped
+        return self
+
+
+def parse_log_text(text, user_map):
+    """{(user, domain): [sent_bytes, recv_bytes, connections]} for every closed-tunnel line. `text` is a string or any iterable of lines."""
+    scan = LogScan(user_map)
+    for raw in (text.splitlines() if isinstance(text, str) else text):
+        scan.add_line(raw)
+    return scan.totals
+
+
+# ---- geo databases ----
+
+class Ip2Region(object):
+    """Minimal ip2region xdb searcher (IPv4 only). Layout: 256-byte header, a 256 x 256 vector index of (first, last) segment-index
+    pointers (8 bytes each), then regions and the 14-byte segment index entries (start u32, end u32, length u16, pointer u32), all
+    little-endian. `data` is bytes or an mmap."""
+    HEADER = 256
+    VECTOR = 256 * 256 * 8
+    BLOCK = 14
+
+    def __init__(self, data, handle=None):
+        self.data = data
+        self.handle = handle
+        if len(data) < self.HEADER + self.VECTOR:
+            raise ValueError("not an ip2region database (too small)")
+        start, end = struct.unpack_from("<II", data, 8)
+        if struct.unpack_from("<H", data, 16)[0] == 6:
+            raise ValueError("an IPv6 ip2region database is not supported")
+        if not self.HEADER + self.VECTOR <= start <= end or end + self.BLOCK > len(data):
+            raise ValueError("ip2region header points outside the file")
+
+    @classmethod
+    def open(cls, path):
+        handle = open(path, "rb")
+        try:
+            return cls(mmap.mmap(handle.fileno(), 0, access=mmap.ACCESS_READ), handle)
+        except (ValueError, OSError):
+            handle.close()
+            raise
+
+    def close(self):
+        try:
+            if hasattr(self.data, "close"):
+                self.data.close()
+        finally:
+            if self.handle is not None:
+                self.handle.close()
+
+    def search(self, ip):
+        """The region string of an IPv4 address, or None (IPv6, garbage, or no segment)."""
+        try:
+            address = int(ipaddress.IPv4Address(ip))
+        except (ValueError, ipaddress.AddressValueError):
+            return None
+        cell = self.HEADER + ((address >> 24) & 0xFF) * 256 * 8 + ((address >> 16) & 0xFF) * 8
+        first, last = struct.unpack_from("<II", self.data, cell)
+        if first == 0 and last == 0:
+            return None
+        low, high = 0, (last - first) // self.BLOCK
+        while low <= high:
+            middle = (low + high) // 2
+            at = first + middle * self.BLOCK
+            if at + self.BLOCK > len(self.data):
+                return None
+            begin, end, length, pointer = struct.unpack_from("<IIHI", self.data, at)
+            if address < begin:
+                high = middle - 1
+            elif address > end:
+                low = middle + 1
+            else:
+                if pointer + length > len(self.data):
+                    return None
+                return bytes(self.data[pointer:pointer + length]).decode("utf-8", "replace")
+        return None
+
+
+class Mmdb(object):
+    """Minimal MaxMind DB reader: the binary search tree plus the data-section decoder (maps, arrays, strings, integers, doubles,
+    booleans and pointers), enough for DB-IP Lite City and ASN. `data` is bytes or an mmap."""
+    MARKER = b"\xab\xcd\xefMaxMind.com"
+    MAX_DEPTH = 24
+    NODE_BUDGET = 20000  # values decoded per lookup, so a hostile file cannot make one lookup run for long
+
+    def __init__(self, data, handle=None):
+        self.data = data
+        self.handle = handle
+        self._spent = 0
+        at = data.rfind(self.MARKER, max(0, len(data) - 131072)) if len(data) else -1
+        if at < 0:
+            raise ValueError("not a MaxMind DB (no metadata)")
+        meta_start = at + len(self.MARKER)
+        metadata, _ = self.decode(meta_start, meta_start)
+        try:
+            self.node_count = int(metadata["node_count"])
+            self.record_size = int(metadata["record_size"])
+            self.ip_version = int(metadata["ip_version"])
+        except (KeyError, TypeError, ValueError):
+            raise ValueError("MaxMind DB metadata is incomplete")
+        if self.record_size not in (24, 28, 32) or self.ip_version not in (4, 6):
+            raise ValueError("unsupported MaxMind DB layout")
+        self.metadata = metadata
+        self.node_bytes = self.record_size // 4
+        self.tree_size = self.node_count * self.node_bytes
+        self.data_start = self.tree_size + 16
+        if self.data_start > at:
+            raise ValueError("MaxMind DB search tree is truncated")
+        self.ipv4_start = None
+        self._spent = 0
+
+    @classmethod
+    def open(cls, path):
+        handle = open(path, "rb")
+        try:
+            return cls(mmap.mmap(handle.fileno(), 0, access=mmap.ACCESS_READ), handle)
+        except (ValueError, OSError):
+            handle.close()
+            raise
+
+    def close(self):
+        try:
+            if hasattr(self.data, "close"):
+                self.data.close()
+        finally:
+            if self.handle is not None:
+                self.handle.close()
+
+    def _record(self, node, bit):
+        base = node * self.node_bytes
+        chunk = self.data[base:base + self.node_bytes]
+        if len(chunk) != self.node_bytes:
+            raise ValueError("MaxMind DB search tree is truncated")
+        if self.record_size == 24:
+            return int.from_bytes(chunk[3 * bit:3 * bit + 3], "big")
+        if self.record_size == 28:
+            if bit == 0:
+                return ((chunk[3] & 0xF0) << 20) | int.from_bytes(chunk[0:3], "big")
+            return ((chunk[3] & 0x0F) << 24) | int.from_bytes(chunk[4:7], "big")
+        return int.from_bytes(chunk[4 * bit:4 * bit + 4], "big")
+
+    def _walk(self, node, value, width):
+        for depth in range(width):
+            if node >= self.node_count:
+                break
+            node = self._record(node, (value >> (width - 1 - depth)) & 1)
+        return node
+
+    def get(self, ip):
+        """The record of an address (a dict), or None."""
+        try:
+            address = ipaddress.ip_address(ip)
+        except ValueError:
+            return None
+        address = getattr(address, "ipv4_mapped", None) or address
+        value = int(address)
+        if address.version == 4:
+            if self.ip_version == 6:
+                if self.ipv4_start is None:
+                    self.ipv4_start = self._walk(0, 0, 96)
+                node = self._walk(self.ipv4_start, value, 32)
+            else:
+                node = self._walk(0, value, 32)
+        elif self.ip_version == 6:
+            node = self._walk(0, value, 128)
+        else:
+            return None
+        if node <= self.node_count:
+            return None
+        offset = node - self.node_count + self.tree_size
+        if offset >= len(self.data):
+            raise ValueError("MaxMind DB record points outside the file")
+        self._spent = 0
+        return self.decode(offset, self.data_start)[0]
+
+    def decode(self, offset, base, depth=0):
+        """(value, offset after it). Pointers are relative to `base`, the start of the data section."""
+        if depth > self.MAX_DEPTH:
+            raise ValueError("MaxMind DB data nests too deeply (a pointer loop?)")
+        self._spent += 1
+        if self._spent > self.NODE_BUDGET:
+            raise ValueError("MaxMind DB record is too large to decode")
+        data = self.data
+        if offset >= len(data):
+            raise ValueError("MaxMind DB data is truncated")
+        control = data[offset]
+        offset += 1
+        kind = control >> 5
+        if kind == 1:
+            span = (control >> 3) & 3
+            width = span + 1
+            raw = int.from_bytes(data[offset:offset + width], "big")
+            if span == 0:
+                target = ((control & 7) << 8) | raw
+            elif span == 1:
+                target = (((control & 7) << 16) | raw) + 2048
+            elif span == 2:
+                target = (((control & 7) << 24) | raw) + 526336
+            else:
+                target = raw
+            value, _ = self.decode(base + target, base, depth + 1)
+            return value, offset + width
+        if kind == 0:
+            kind = 7 + data[offset]
+            offset += 1
+        size = control & 0x1F
+        if size == 29:
+            size = 29 + data[offset]
+            offset += 1
+        elif size == 30:
+            size = 285 + int.from_bytes(data[offset:offset + 2], "big")
+            offset += 2
+        elif size == 31:
+            size = 65821 + int.from_bytes(data[offset:offset + 3], "big")
+            offset += 3
+        if kind == 7:
+            result = {}
+            for _ in range(size):
+                key, offset = self.decode(offset, base, depth + 1)
+                result[key], offset = self.decode(offset, base, depth + 1)
+            return result, offset
+        if kind == 11:
+            items = []
+            for _ in range(size):
+                item, offset = self.decode(offset, base, depth + 1)
+                items.append(item)
+            return items, offset
+        if kind == 14:
+            return size == 1, offset
+        raw = bytes(data[offset:offset + size])
+        if len(raw) != size:
+            raise ValueError("MaxMind DB data is truncated")
+        end = offset + size
+        if kind == 2:
+            return raw.decode("utf-8", "replace"), end
+        if kind == 3:
+            return struct.unpack(">d", raw)[0], end
+        if kind == 15:
+            return struct.unpack(">f", raw)[0], end
+        if kind in (5, 6, 9, 10):
+            return int.from_bytes(raw, "big"), end
+        if kind == 8:
+            return struct.unpack(">i", raw.rjust(4, b"\x00"))[0], end
+        if kind == 4:
+            return raw, end
+        raise ValueError("unsupported MaxMind DB type %d" % kind)
+
+
+# ---- locations ----
+
+UNKNOWN_LOCATION = "未知"
+CLOUDFLARE_ASN = 13335
+ORG_SUFFIXES = frozenset(["inc", "llc", "ltd", "limited", "corp", "corporation", "gmbh", "co", "sa", "ag", "bv", "plc", "srl", "sas", "oy"])
+
+
+def parse_region(region):
+    """(country, province, city, isp) of an ip2region record. Current upstream is 'country|province|city|isp|CC' (a two-letter code
+    last); the older 'country|region|province|city|isp' and 'country|province|city|isp' are read too; '0' and empty fields are dropped."""
+    parts = [part.strip() for part in (region or "").split("|")]
+    parts = ["" if part == "0" else part for part in parts]
+    if len(parts) >= 5 and re.match(r"^[A-Z]{2}$", parts[4]):
+        country, province, city, isp = parts[:4]  # current upstream: country|province|city|isp|CC
+    elif len(parts) >= 5:
+        country, _, province, city, isp = parts[:5]
+    elif len(parts) == 4:
+        country, province, city, isp = parts
+    else:
+        country, province, city, isp = (parts + ["", "", "", ""])[:4]
+    return country, province, city, isp
+
+
+def short_org(name):
+    """'Amazon.com, Inc.' -> 'Amazon'; a network operator's name without legal suffixes."""
+    text = (name or "").split(",")[0].strip()
+    words = text.split()
+    while len(words) > 1 and words[-1].strip(".").lower() in ORG_SUFFIXES:
+        words.pop()
+    text = " ".join(words)
+    if text.lower().endswith(".com") and len(text) > 4:
+        text = text[:-4]
+    return text[:40]
+
+
+def _english(record, key):
+    value = record.get(key) if isinstance(record, dict) else None
+    names = value.get("names") if isinstance(value, dict) else None
+    return names.get("en", "") if isinstance(names, dict) else ""
+
+
+GEO_MAX_AGE_DAYS = 35
+GEO_RETRY_SECONDS = 6 * HOUR
+GEO_DOWNLOAD_DEADLINE = 900
+IP2REGION_BASE = "https://raw.githubusercontent.com/lionsoul2014/ip2region/master/data/"
+DBIP_BASE = "https://download.db-ip.com/free/"
+GEO_FILES = (  # (kind, file name, size cap of the decompressed file, gzip, reader class)
+    ("ip2region", "ip2region.xdb", 64 * 1024 * 1024, False, Ip2Region),
+    ("city", "dbip-city-lite.mmdb", 400 * 1024 * 1024, True, Mmdb),
+    ("asn", "dbip-asn-lite.mmdb", 120 * 1024 * 1024, True, Mmdb),
+)
+
+
+def geo_urls(kind, now_epoch):
+    """Download candidates, best first. ip2region: the official repository's file (IPv4 only); DB-IP Lite: this month, then last month's."""
+    if kind == "ip2region":
+        # The plain ip2region.xdb no longer exists upstream; the IPv4 file is the one to fetch.
+        return [IP2REGION_BASE + "ip2region_v4.xdb"]
+    moment = time.gmtime(now_epoch)
+    year, month = moment.tm_year, moment.tm_mon
+    previous = (year, month - 1) if month > 1 else (year - 1, 12)
+    return [DBIP_BASE + "dbip-%s-lite-%04d-%02d.mmdb.gz" % (kind, y, m) for y, m in ((year, month), previous)]
+
+
+class _SafeRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if not _download_url_ok(newurl):
+            raise IOError("refusing to follow a redirect to %s" % newurl.split("?")[0])
+        return urllib.request.HTTPRedirectHandler.redirect_request(self, req, fp, code, msg, headers, newurl)
+
+
+def _download_url_ok(url):
+    parts = urllib.parse.urlparse(url)
+    return parts.scheme == "https" or (parts.scheme == "http" and parts.hostname in ("127.0.0.1", "localhost", "::1"))
+
+
+def download_file(url, destination, max_bytes, gunzip, timeout=30, deadline=GEO_DOWNLOAD_DEADLINE):
+    """Streams `url` to `destination` (gunzipped on the fly), never more than `max_bytes` decompressed bytes and never longer than
+    `deadline` seconds in total. https only (plain http for loopback in tests). Any failure raises IOError and the caller removes the file."""
+    if not _download_url_ok(url):
+        raise IOError("only https downloads are allowed")
+    limit = time.monotonic() + deadline
+    opener = urllib.request.build_opener(_SafeRedirect())
+    request = urllib.request.Request(url, headers={"User-Agent": "trojan-telemetry/" + AGENT_VERSION})
+    decoder = zlib.decompressobj(16 + zlib.MAX_WBITS) if gunzip else None
+    written = 0
+    try:
+        with opener.open(request, timeout=timeout) as response, open(destination, "wb") as out:
+            if response.status != 200:
+                raise IOError("HTTP %d" % response.status)
+            while True:
+                if time.monotonic() > limit:
+                    raise IOError("download timed out")
+                chunk = response.read(65536)
+                if not chunk:
+                    break
+                done = False
+                if decoder is not None:
+                    chunk = decoder.decompress(chunk, max_bytes - written + 1)
+                    if decoder.eof:
+                        done = True  # nothing after the end of the gzip stream is read
+                    elif decoder.unconsumed_tail:
+                        raise IOError("download is larger than %d bytes" % max_bytes)
+                written += len(chunk)
+                if written > max_bytes:
+                    raise IOError("download is larger than %d bytes" % max_bytes)
+                out.write(chunk)
+                if done:
+                    break
+            if decoder is not None:
+                tail = decoder.flush()
+                written += len(tail)
+                if written > max_bytes:
+                    raise IOError("download is larger than %d bytes" % max_bytes)
+                out.write(tail)
+    except zlib.error as exc:
+        raise IOError("bad gzip data: %s" % exc)
+    except (urllib.error.URLError, ValueError) as exc:
+        raise IOError(str(exc))
+
+
+class GeoStore(object):
+    """The geo database files in one directory: monthly refresh with fixed URLs, failures keep what is there."""
+
+    def __init__(self, directory, fetcher=None, download=True, clock=time.monotonic):
+        self.directory = directory
+        self.fetcher = fetcher or download_file
+        self.download = download
+        self.clock = clock
+
+    def _path(self, name):
+        return os.path.join(self.directory, name)
+
+    def refresh(self, now_epoch, budget=GEO_DOWNLOAD_DEADLINE):
+        """Downloads what is due. `budget` seconds cover the whole refresh: each download gets what is left, none starts when it is spent."""
+        self.spent_at = self.clock() + budget
+        if not self.download:
+            return
+        try:
+            os.makedirs(self.directory, mode=0o700, exist_ok=True)
+        except OSError as exc:
+            warn("cannot create %s: %s" % (self.directory, exc))
+            return
+        for kind, name, cap, gunzip, reader in GEO_FILES:
+            path = self._path(name)
+            age = self._age(path, now_epoch) if self._readable(reader, path) else float("inf")
+            if age < GEO_MAX_AGE_DAYS * DAY or self._age(path + ".attempt", now_epoch) < GEO_RETRY_SECONDS:
+                continue
+            if self.spent_at - self.clock() <= 0:
+                warn("geo download budget spent; %s waits for the next run" % name)
+                continue
+            self._touch(path + ".attempt", now_epoch)
+            self._fetch(kind, name, cap, gunzip, reader, now_epoch)
+
+    @staticmethod
+    def _readable(reader, path):
+        """A missing file is simply due; a present but unreadable one counts as missing too (it is replaced after the retry window)."""
+        if not os.path.exists(path):
+            return True
+        try:
+            GeoStore._probe(reader, path)
+            return True
+        except Exception:
+            return False
+
+    @staticmethod
+    def _age(path, now_epoch):
+        try:
+            return now_epoch - os.stat(path).st_mtime
+        except OSError:
+            return float("inf")
+
+    @staticmethod
+    def _touch(path, now_epoch):
+        try:
+            with open(path, "a"):
+                pass
+            os.utime(path, (now_epoch, now_epoch))
+        except OSError:
+            pass
+
+    def _fetch(self, kind, name, cap, gunzip, reader, now_epoch):
+        path = self._path(name)
+        temporary = path + ".download"
+        for url in geo_urls(kind, now_epoch):
+            try:
+                left = self.spent_at - self.clock()
+                if left <= 0:
+                    raise IOError("download budget spent")
+                self.fetcher(url, temporary, cap, gunzip, deadline=left)
+                self._probe(reader, temporary)
+            except Exception as exc:
+                warn("could not refresh %s from %s: %s%s" % (name, url, exc, "; keeping the previous file" if os.path.exists(path) else ""))
+                self._discard(temporary)
+                continue
+            os.replace(temporary, path)
+            self._touch(path, now_epoch)
+            self._discard(path + ".attempt")
+            print("geo: refreshed %s" % name)
+            return
+
+    @staticmethod
+    def _probe(reader, path):
+        opened = reader.open(path)
+        opened.close()
+        return None
+
+    @staticmethod
+    def _discard(path):
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+
+    def load(self):
+        readers = {}
+        for kind, name, cap, gunzip, reader in GEO_FILES:
+            path = self._path(name)
+            if not os.path.exists(path):
+                continue
+            try:
+                readers[kind] = reader.open(path)
+            except Exception as exc:
+                warn("ignoring unreadable geo database %s: %s" % (name, exc))
+        return Geo(readers.get("ip2region"), readers.get("city"), readers.get("asn"))
+
+
+class Geo(object):
+    """Offline IP to short location text. Any reader may be None (that database is absent)."""
+
+    def __init__(self, ip2region=None, city=None, asn=None):
+        self.ip2region = ip2region
+        self.city = city
+        self.asn = asn
+        self.cache = {}
+
+    def close(self):
+        for reader in (self.ip2region, self.city, self.asn):
+            if reader is not None and hasattr(reader, "close"):
+                try:
+                    reader.close()
+                except Exception:
+                    pass
+
+    def location(self, ip):
+        found = self.cache.get(ip)
+        if found is None:
+            if len(self.cache) >= 50000:
+                self.cache.clear()
+            found = self.cache[ip] = self._lookup(ip)[:MAX_DIM_VALUE]
+        return found
+
+    def _lookup(self, ip):
+        address = normalize_ip(ip)
+        if address is None:
+            return UNKNOWN_LOCATION
+        is_v4 = "." in address
+        record = self._safe(self.asn, "get", address)
+        number = record.get("autonomous_system_number") if isinstance(record, dict) else None
+        org = short_org(record.get("autonomous_system_organization")) if isinstance(record, dict) else ""
+        if number == CLOUDFLARE_ASN:
+            return "Cloudflare"
+        region = self._safe(self.ip2region, "search", address) if is_v4 else None
+        country, province, town, isp = parse_region(region)
+        if country == "中国":
+            place = " ".join(dict.fromkeys(part for part in (province, town) if part)) or country
+            return place + (" · " + isp if isp else "")
+        record = self._safe(self.city, "get", address)
+        if isinstance(record, dict):
+            code = (record.get("country") or {}).get("iso_code", "") if isinstance(record.get("country"), dict) else ""
+            subdivisions = record.get("subdivisions")
+            sub = _english({"s": subdivisions[0]} if isinstance(subdivisions, list) and subdivisions else {}, "s")
+            place = ", ".join(part for part in (code, _english(record, "city") or sub) if part)
+            if place:
+                return place + (" · " + org if org else "")
+        if country:
+            extra = org or short_org(isp)
+            return country + (" · " + extra if extra else "")
+        return UNKNOWN_LOCATION + (" · " + org if org else "")
+
+    @staticmethod
+    def _safe(reader, method, address):
+        if reader is None:
+            return None
+        try:
+            return getattr(reader, method)(address)
+        except Exception as exc:  # a damaged database must not stop the hour
+            warn("geo lookup failed: %s" % exc)
+            return None
+
+
+# ---- client correlation ----
+
+TLS_RATIO = 1.15
+TLS_SLACK = 8 * 1024
+UNMATCHED = "(unmatched)"
+
+
+def correlate(tunnels, conns):
+    """Attributes trojan tunnels to nginx connections. Returns ([client ip or None per tunnel], matched count).
+
+    A tunnel (time, tolerance, sent, recv, user, domain, slack) may take an unused connection (ms epoch, ip, sent, recv) whose close time is
+    within the tunnel's tolerance and whose nginx `sent` is at least the tunnel's (less its rounding slack) and within 15 percent or 8 KiB above it (nginx counts
+    TLS records, trojan-go the payload). The best candidate has the smallest time gap, then the smallest relative byte difference;
+    tunnels choose in order of their bytes, largest first, and every connection is used once.
+    """
+    buckets = {}
+    for index, record in enumerate(conns):
+        buckets.setdefault(int(record[0]), []).append(index)
+    used = set()
+    result = [None] * len(tunnels)
+    matched = 0
+    order = sorted(range(len(tunnels)), key=lambda i: (-(tunnels[i][2] + tunnels[i][3]), i))
+    for index in order:
+        when, tolerance, sent = tunnels[index][0], tunnels[index][1], tunnels[index][2]
+        slack = tunnels[index][6] if len(tunnels[index]) > 6 else 0
+        best = None
+        for second in range(int(when - tolerance) - 1, int(when + tolerance) + 2):
+            for candidate in buckets.get(second, ()):
+                if candidate in used:
+                    continue
+                stamp, _, nginx_sent, _ = conns[candidate]
+                gap = abs(stamp - when)
+                if gap > tolerance + 1e-9 or nginx_sent < sent - slack:
+                    continue
+                if nginx_sent > sent * TLS_RATIO and nginx_sent - sent > TLS_SLACK:
+                    continue
+                rank = (gap, abs(nginx_sent - sent) / float(max(sent, 1)), candidate)
+                if best is None or rank < best[0]:
+                    best = (rank, candidate)
+        if best is not None:
+            used.add(best[1])
+            result[index] = conns[best[1]][1]
+            matched += 1
+    return result, matched
+
+
+def match_rate(matched, total):
+    """Per mille of the tunnels that found their client; None when there were no tunnels."""
+    return None if total <= 0 else matched * 1000 // total
 
 
 def fold_top(totals, top_n):
@@ -306,8 +1077,9 @@ def point(metric, hour_iso, dims, value, unit):
     return entry
 
 
-def build_proxy_points(hour_epoch, totals, top_n):
-    """Proxy points for one hour; the per-user top N is halved until the hour fits one push batch (points and bytes)."""
+def build_proxy_points(hour_epoch, totals, top_n, reserve_points=0, reserve_bytes=0):
+    """Proxy points for one hour; the per-user top N is halved until the hour fits one push batch (points and bytes), leaving
+    room for the points other builders add to the same hour."""
     label = iso_hour(hour_epoch)
     while True:
         folded = fold_top(totals, top_n)
@@ -320,10 +1092,109 @@ def build_proxy_points(hour_epoch, totals, top_n):
             # Both directions leave the VM again, so their sum is this group's share of the outbound traffic.
             points.append(point("proxy.total_bytes", label, dict(dims), sent + recv, "bytes"))
             points.append(point("proxy.connections", label, dict(dims), connections, "count"))
-        if (len(points) <= MAX_BATCH_POINTS and sum(len(json.dumps(p, separators=(",", ":"))) + 1 for p in points) <= MAX_BATCH_BYTES) or top_n <= 1:
+        if (len(points) + reserve_points <= MAX_BATCH_POINTS and points_size(points) + reserve_bytes <= MAX_BATCH_BYTES) or top_n <= 1:
             return points
         top_n = max(1, top_n // 2)
 
+
+
+# ---- client and site points ----
+
+RESERVED_POINTS = 8  # NIC totals (3) and the probe (up to 4) join the same hour
+RESERVED_BYTES = 2048
+CLIENT_MAX_POINTS = 3000
+CLIENT_MAX_BYTES = 450 * 1024
+
+
+def _location(geo, client):
+    if client == OTHER:
+        return OTHER
+    if client == UNMATCHED or geo is None:
+        return UNKNOWN_LOCATION
+    return geo.location(client)
+
+
+def fold_clients(groups, top_clients, top_domains):
+    """{(client, domain): [bytes, connections]} -> the same with only each hour's top clients by bytes (the unmatched group always stays),
+    each client's top domains, and everything else folded into '(other)'."""
+    by_client = {}
+    for (client, domain), values in groups.items():
+        by_client.setdefault(client, []).append((domain, values))
+    ranked = sorted((c for c in by_client if c != UNMATCHED), key=lambda c: (-sum(v[0] for _, v in by_client[c]), c))
+    keep = set(ranked[:top_clients])
+    if UNMATCHED in by_client:
+        keep.add(UNMATCHED)
+    folded = {}
+
+    def add(key, values):
+        bucket = folded.setdefault(key, [0, 0])
+        bucket[0] += values[0]
+        bucket[1] += values[1]
+
+    for client, items in by_client.items():
+        if client not in keep:
+            for _, values in items:
+                add((OTHER, OTHER), values)
+            continue
+        items.sort(key=lambda item: (-item[1][0], item[0]))
+        for domain, values in items[:top_domains]:
+            add((client, domain), values)
+        for _, values in items[top_domains:]:
+            add((client, OTHER), values)
+    return folded
+
+
+def build_client_points(hour_epoch, scan, geo, top_clients, top_domains):
+    """proxy.client_bytes / proxy.client_connections per (client, location, domain) plus the hour's match rate. Top-N is halved
+    until the result fits its share of a push batch."""
+    if not scan.tunnels:
+        return []
+    label = iso_hour(hour_epoch)
+    clients, matched = correlate(scan.tunnels, scan.conns)
+    groups = {}
+    for (_, _, sent, recv, _, domain, _), ip in zip(scan.tunnels, clients):
+        bucket = groups.setdefault((ip or UNMATCHED, domain), [0, 0])
+        bucket[0] += sent + recv
+        bucket[1] += 1
+    while True:
+        folded = fold_clients(groups, top_clients, top_domains)
+        points = []
+        for (client, domain) in sorted(folded):
+            total, connections = folded[(client, domain)]
+            dims = {"client": client, "location": _location(geo, client), "domain": domain}
+            points.append(point("proxy.client_bytes", label, dict(dims), total, "bytes"))
+            points.append(point("proxy.client_connections", label, dict(dims), connections, "count"))
+        if (len(points) <= CLIENT_MAX_POINTS and points_size(points) <= CLIENT_MAX_BYTES) or (top_clients <= 1 and top_domains <= 1):
+            break
+        top_clients, top_domains = max(1, top_clients // 2), max(1, top_domains // 2)
+    points.append(point("proxy.client_match_rate", label, {}, match_rate(matched, len(scan.tunnels)), "count"))
+    return points
+
+
+def build_site_points(hour_epoch, scan, geo, source, top_clients):
+    """site.sent_bytes / site.recv_bytes / site.connections per (site, client network, location) for one website source."""
+    label = iso_hour(hour_epoch)
+    by_site = {}
+    for (name, site, network), values in scan.sites.items():
+        if name == source:
+            by_site.setdefault(site, {})[network] = values
+    while True:
+        points = []
+        for site in sorted(by_site):
+            networks = by_site[site]
+            ranked = sorted(networks, key=lambda n: (-(networks[n][0] + networks[n][1]), n))
+            rows = [(network, networks[network][:3], _location(geo, networks[network][3])) for network in ranked[:top_clients]]
+            rest = ranked[top_clients:]
+            if rest:
+                rows.append((OTHER, [sum(networks[n][i] for n in rest) for i in range(3)], OTHER))
+            for network, (sent, recv, connections), location in rows:
+                dims = {"site": site, "client": network, "location": location}
+                points.append(point("site.sent_bytes", label, dict(dims), sent, "bytes"))
+                points.append(point("site.recv_bytes", label, dict(dims), recv, "bytes"))
+                points.append(point("site.connections", label, dict(dims), connections, "count"))
+        if (len(points) <= MAX_BATCH_POINTS and points_size(points) <= MAX_BATCH_BYTES) or top_clients <= 1:
+            return points
+        top_clients = max(1, top_clients // 2)
 
 
 # ---- NIC totals ----
@@ -401,17 +1272,23 @@ def atomic_write(path, text):
 class State(object):
     """cursor.json holds the last fully processed hour; outbox/ holds computed, unpushed hours."""
 
-    def __init__(self, directory):
+    def __init__(self, directory, outbox_name="outbox"):
         self.directory = directory
-        self.outbox = os.path.join(directory, "outbox")
+        self.outbox = os.path.join(directory, outbox_name)
         self.cursor_path = os.path.join(directory, "cursor.json")
+
+    def for_target(self, target):
+        """The same state directory (shared cursor) with the outbox of another source."""
+        return State(self.directory, target.outbox_name)
 
     def ensure(self):
         os.makedirs(self.outbox, exist_ok=True)
 
     def clean_temporaries(self):
         """Removes half-written *.tmp files left by a crash. Call only while holding the lock."""
-        for directory in (self.directory, self.outbox):
+        outboxes = [os.path.join(self.directory, name) for name in os.listdir(self.directory)
+                    if name.startswith("outbox") and os.path.isdir(os.path.join(self.directory, name))]
+        for directory in [self.directory] + outboxes:
             for name in os.listdir(directory):
                 if name.endswith(".tmp"):
                     try:
@@ -496,44 +1373,38 @@ class State(object):
 
 # ---- streaming `docker logs` ----
 
-def merge_totals(parts):
-    merged = {}
-    for part in parts:
-        for key, values in part.items():
-            bucket = merged.setdefault(key, [0, 0, 0])
-            for index in range(3):
-                bucket[index] += values[index]
-    return merged
+def parse_streams(new_scan, streams):
+    """One scan of several line iterables (stdout and stderr)."""
+    scan = new_scan()
+    for stream in streams:
+        for raw in stream:
+            scan.add_line(raw)
+    return scan
 
 
-def parse_streams(user_map, streams):
-    """Combined totals of several line iterables (stdout and stderr)."""
-    return merge_totals(parse_log_text(stream, user_map) for stream in streams)
+def stream_logs(args, new_scan, timeout=300):
+    """Runs a command and scans stdout and stderr line by line as they arrive, never holding a whole hour in memory.
 
-
-def stream_logs(args, user_map, timeout=300):
-    """Runs a command and parses stdout and stderr line by line as they arrive, never holding a whole hour in memory.
-
-    Returns (returncode, totals, stderr tail). 127 means the program is missing and 124 that it timed out.
+    `new_scan()` makes an empty LogScan. Returns (returncode, scan, stderr tail). 127 means the program is missing and 124 that it timed out.
     """
     try:
         process = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding="utf-8", errors="replace")
     except OSError:
-        return 127, {}, "%s: command not found" % args[0]
+        return 127, new_scan(), "%s: command not found" % args[0]
     tail = collections.deque(maxlen=3)
     results = {}
 
     def read_stderr():
-        def lines():
+        err_scan = new_scan()
+        try:
             for raw in process.stderr:
                 if raw.strip():
                     tail.append(raw.strip()[:200])
-                yield raw
-        try:
-            results["err"] = parse_log_text(lines(), user_map)
+                err_scan.add_line(raw)
+            results["err"] = err_scan
         except Exception as exc:  # recorded and surfaced below; keep draining so the child never blocks on a full pipe
             results["error"] = "stderr: %s" % exc
-            results["err"] = {}
+            results["err"] = new_scan()
             for _ in process.stderr:
                 pass
 
@@ -547,9 +1418,10 @@ def stream_logs(args, user_map, timeout=300):
     reader = threading.Thread(target=read_stderr)
     timer.start()
     reader.start()
-    out_totals = {}
+    out_scan = new_scan()
     try:
-        out_totals = parse_log_text(process.stdout, user_map)
+        for raw in process.stdout:
+            out_scan.add_line(raw)
     except Exception as exc:
         results["error"] = "stdout: %s" % exc
         process.kill()
@@ -562,12 +1434,8 @@ def stream_logs(args, user_map, timeout=300):
     if "error" in results:
         raise CollectError("cannot read the %s log: %s" % (args[0], results["error"]))
     if expired.is_set():
-        return 124, {}, "%s: timed out" % args[0]
-    return code, parse_streams_merge(out_totals, results.get("err", {})), " | ".join(tail)
-
-
-def parse_streams_merge(first, second):
-    return merge_totals([first, second])
+        return 124, new_scan(), "%s: timed out" % args[0]
+    return code, out_scan.merge(results.get("err") or new_scan()), " | ".join(tail)
 
 
 class SystemRunner(object):
@@ -576,25 +1444,31 @@ class SystemRunner(object):
     def __call__(self, args, timeout=300):
         return run_command(args, timeout)
 
-    def stream_logs(self, args, user_map, timeout=300):
-        return stream_logs(args, user_map, timeout)
+    def stream_logs(self, args, new_scan, timeout=300):
+        return stream_logs(args, new_scan, timeout)
 
 
 # ---- collect ----
 
 def docker_logs_args(cfg, hour_epoch):
-    """Absolute UTC bounds: Docker stamps its own UTC times, so the container's timezone and the VM's do not matter."""
-    return ["docker", "logs", "--since", iso_hour(hour_epoch), "--until", iso_hour(hour_epoch + HOUR), "--", cfg.container]
+    """Absolute UTC bounds: Docker stamps its own UTC times, so the container's timezone and the VM's do not matter. `-t` prefixes
+    every line with that UTC time, which dates the trojan-go lines precisely for the client correlation."""
+    return ["docker", "logs", "--since", iso_hour(hour_epoch), "--until", iso_hour(hour_epoch + HOUR), "-t", "--", cfg.container]
 
 
-def compute_hour(cfg, user_map, nic, hour_epoch, runner):
+def compute_hour(cfg, user_map, nic, hour_epoch, runner, geo=None):
+    """{source name: points} for one hour. The trojan source gets the proxy and NIC points, every other source its own."""
     label = iso_hour(hour_epoch)
     # `docker logs` keeps the container's streams apart and trojan-go may log to either, so both are parsed (streamed, not buffered).
     streamer = getattr(runner, "stream_logs", stream_logs)
-    code, totals, err = streamer(docker_logs_args(cfg, hour_epoch), user_map)
+    code, scan, err = streamer(docker_logs_args(cfg, hour_epoch), lambda: LogScan(user_map, cfg.routes, cfg.sni))
     if code != 0:
         raise CollectError("docker logs failed (%d): %s" % (code, err.strip()[:200]))
-    points = build_proxy_points(hour_epoch, totals, cfg.top_domains)
+    if scan.dropped:
+        warn("%d log record(s) beyond the per-hour cap were not attributed to clients" % scan.dropped)
+    client_points = build_client_points(hour_epoch, scan, geo, cfg.top_clients, cfg.top_client_domains)
+    points = build_proxy_points(hour_epoch, scan.totals, cfg.top_domains, len(client_points) + RESERVED_POINTS, points_size(client_points) + RESERVED_BYTES)
+    points.extend(client_points)
     row = nic.get(hour_epoch)
     if row is not None:
         rx, tx = row
@@ -602,20 +1476,25 @@ def compute_hour(cfg, user_map, nic, hour_epoch, runner):
         points.append(point("nic.rx_bytes", label, {}, rx, "bytes"))
         # Both directions together: for billing schemes that charge inbound as well as outbound traffic.
         points.append(point("nic.total_bytes", label, {}, rx + tx, "bytes"))
-    return points
+    result = dict((target.name, build_site_points(hour_epoch, scan, geo, target.name, cfg.top_clients)) for target in cfg.targets[1:])
+    result[cfg.targets[0].name] = points
+    return result
 
 
-def collect(cfg, state, user_map, runner, now_epoch):
-    """Processes every closed hour in (cursor, last closed]. The outbox file is written before the cursor moves."""
+def collect(cfg, state, user_map, runner, now_epoch, geo=None):
+    """Processes every closed hour in (cursor, last closed]. Every source's outbox file is written before the cursor moves."""
     last_closed = floor_hour(now_epoch) - HOUR
     cursor = state.read_cursor()
     if cursor is None:
         cursor = last_closed - BACKFILL_HOURS * HOUR
     cursor = max(cursor, last_closed - OUTBOX_MAX_AGE_DAYS * DAY)
     nic = NicTotals(cfg, runner)
+    states = [(target, state.for_target(target)) for target in cfg.targets]
     hour = cursor + HOUR
     while hour <= last_closed:
-        state.write_outbox(hour, compute_hour(cfg, user_map, nic, hour, runner), False)
+        per_source = compute_hour(cfg, user_map, nic, hour, runner, geo)
+        for target, target_state in states:
+            target_state.write_outbox(hour, per_source.get(target.name, []), False)
         state.write_cursor(hour)
         hour += HOUR
 
@@ -965,23 +1844,54 @@ def run_probe(cfg, state, passwords, now_epoch, prober=probe):
 
 # ---- command line ----
 
-def run_once(cfg, state, runner, now_epoch):
+def geo_store(cfg, state, fetcher=None):
+    return GeoStore(os.path.join(state.directory, "geo"), fetcher=fetcher, download=cfg.geo_download)
+
+
+def open_geo(cfg, state):
+    """Opens the geo databases that are there. Problems are warnings: without a database every location is unknown."""
+    try:
+        return geo_store(cfg, state).load()
+    except Exception as exc:
+        warn("geo databases unavailable: %s" % exc)
+        return Geo()
+
+
+def refresh_geo(cfg, state, now_epoch, fetcher=None):
+    """Downloads due geo databases within one 15 minute budget per run (far below the unit's TimeoutStartSec)."""
+    try:
+        geo_store(cfg, state, fetcher).refresh(now_epoch)
+    except Exception as exc:
+        warn("geo refresh failed: %s" % exc)
+
+
+def run_once(cfg, state, runner, now_epoch, geo_fetcher=None):
     ok = True
     user_map, passwords = build_user_map(cfg, runner)
+    for target in cfg.targets:
+        state.for_target(target).ensure()
+    geo = open_geo(cfg, state)
     try:
-        collect(cfg, state, user_map, runner, now_epoch)
+        collect(cfg, state, user_map, runner, now_epoch, geo)
     except CollectError as exc:
         warn(str(exc))
         ok = False
+    finally:
+        geo.close()
     run_probe(cfg, state, passwords, now_epoch)
-    discard_expired(state, now_epoch)
-    warn_about_quarantine(state)
-    if not push_outbox(cfg, state, now_epoch=now_epoch):
-        ok = False
+    for target in cfg.targets:
+        target_state = state.for_target(target)
+        discard_expired(target_state, now_epoch)
+        warn_about_quarantine(target_state)
+        # Each source is pushed on its own, so a refusal for one never holds back the others.
+        if not push_outbox(target, target_state, now_epoch=now_epoch):
+            ok = False
+    # Last, so a slow download can never delay an hour's push; the next run uses what it fetched.
+    refresh_geo(cfg, state, now_epoch, geo_fetcher)
     return 0 if ok else 1
 
 
-def main(argv=None, environ=None, runner=None, clock=time.time):
+def main(argv=None, environ=None, runner=None, clock=time.time, geo_fetcher=None):
     runner = runner or SystemRunner()
     env = os.environ if environ is None else environ
     parser = argparse.ArgumentParser(prog="trojan-telemetry", description="Hourly telemetry agent for a trojan-go proxy.")
@@ -1005,7 +1915,7 @@ def main(argv=None, environ=None, runner=None, clock=time.time):
         return 0
     try:
         state.clean_temporaries()
-        return run_once(cfg, state, runner, now_epoch)
+        return run_once(cfg, state, runner, now_epoch, geo_fetcher)
     finally:
         os.close(lock)
 

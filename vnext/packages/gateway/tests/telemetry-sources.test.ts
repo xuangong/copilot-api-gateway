@@ -157,3 +157,54 @@ test("a new source is stamped with the telemetry clock", async () => {
   telemetryClock.now = () => Date.UTC(2030, 0, 2, 3, 4, 5)
   try { expect((await create()).source.createdAt).toBe("2030-01-02T03:04:05.000Z") } finally { telemetryClock.now = original }
 })
+
+test("the install command names the agent source for a website source and otherwise is the plain trojan command", async () => {
+  const plain = await create()
+  expect(plain.install).not.toContain("TELEMETRY_SOURCE")
+  const response = await call("/sources", "POST", { name: "Museum", agentSource: "museum" })
+  expect(response.status).toBe(201)
+  const { source, key, install } = await response.json() as Created
+  expect(install).toContain("TELEMETRY_SOURCE='museum'")
+  expect(install).toContain(`TELEMETRY_KEY='${key}'`)
+  expect(source.settings).toEqual({ agentSource: "museum" })
+  const rotated = await (await call(`/sources/${source.id}/rotate-key?agentSource=my-site`, "POST")).json() as { key: string; install: string }
+  expect(rotated.install).toContain("TELEMETRY_SOURCE='my-site'")
+  expect(rotated.install).toContain(rotated.key)
+  const plainRotate = await (await call(`/sources/${plain.source.id}/rotate-key`, "POST")).json() as { install: string }
+  expect(plainRotate.install).not.toContain("TELEMETRY_SOURCE")
+  for (const text of [install, rotated.install, plainRotate.install, plain.install]) expect(text).not.toContain("TELEMETRY_REPLACE_TROJAN_KEY")
+})
+
+test("a rotated key uses the agent source stored at creation unless the query overrides it", async () => {
+  const { source } = await (await call("/sources", "POST", { name: "Museum", agentSource: "museum" })).json() as Created
+  const again = await (await call(`/sources/${source.id}/rotate-key`, "POST")).json() as { install: string }
+  expect(again.install).toContain("TELEMETRY_SOURCE='museum'")
+  const override = await (await call(`/sources/${source.id}/rotate-key?agentSource=other`, "POST")).json() as { install: string }
+  expect(override.install).toContain("TELEMETRY_SOURCE='other'")
+  expect(override.install).not.toContain("'museum'")
+})
+
+test("saving settings keeps the stored agent source unless the request names one, and it validates like the query", async () => {
+  const { source } = await (await call("/sources", "POST", { name: "Museum", agentSource: "museum" })).json() as Created
+  const saved = await (await call(`/sources/${source.id}`, "PATCH", { settings: { budgetMetric: "nic.tx_bytes" } })).json() as { source: Created["source"] }
+  expect(saved.source.settings).toEqual({ budgetMetric: "nic.tx_bytes", agentSource: "museum" })
+  const changed = await (await call(`/sources/${source.id}`, "PATCH", { settings: { agentSource: "dental" } })).json() as { source: Created["source"] }
+  expect(changed.source.settings).toEqual({ agentSource: "dental" })
+  for (const agentSource of ["Museum", "trojan-vm", "a b", ""]) expect((await call(`/sources/${source.id}`, "PATCH", { settings: { agentSource } })).status).toBe(400)
+  const listed = await (await call("/sources", "GET")).json() as { sources: Array<Created["source"]> }
+  expect(listed.sources.find(item => item.id === source.id)?.settings).toEqual({ agentSource: "dental" })
+})
+
+test("trojan-vm is the trojan source itself and never an agent source name", async () => {
+  expect((await call("/sources", "POST", { name: "x", agentSource: "trojan-vm" })).status).toBe(400)
+  const { source } = await create()
+  expect((await call(`/sources/${source.id}/rotate-key?agentSource=trojan-vm`, "POST")).status).toBe(400)
+})
+
+test("an agent source must be a lower-case name", async () => {
+  for (const agentSource of ["Museum", "a b", "1x", "x".repeat(40), "a'; rm -rf /; '", ""]) {
+    expect((await call("/sources", "POST", { name: "x", agentSource })).status).toBe(400)
+  }
+  const { source } = await create()
+  expect((await call(`/sources/${source.id}/rotate-key?agentSource=${encodeURIComponent("a'b")}`, "POST")).status).toBe(400)
+})

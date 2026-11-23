@@ -2,6 +2,10 @@
 # Installs, updates or removes the trojan telemetry agent (see docs/telemetry-v1.md).
 #
 #   curl -fsSL <release>/install.sh | sudo TELEMETRY_GATEWAY='https://gateway.example' TELEMETRY_KEY='tlm_...' bash
+#   Further sources on the same VM (websites): TELEMETRY_SITES='source=sni:site,...;...' maps SNIs to sources and each source's push
+#   key is stored as TELEMETRY_KEY_<SOURCE> (upper case, dashes as underscores). Either pass that variable directly or run the
+#   command with TELEMETRY_SOURCE=<source> and the source's key in TELEMETRY_KEY: the key is then stored for that source and
+#   the trojan key, gateway and every other setting already in the env file are kept.
 #   (the dashboard's command first verifies this file against a pinned hash and also sets TELEMETRY_AGENT_SHA256, which the
 #   downloaded agent must match in addition to SHA256SUMS)
 #   curl -fsSL <release>/install.sh | sudo bash -s -- --uninstall [--purge]   (unpinned: nothing verifies the script; for a
@@ -18,7 +22,7 @@ APP_DIR="$PREFIX/opt/trojan-telemetry"
 ENV_FILE="$PREFIX/etc/trojan-telemetry.env"
 STATE_DIR="$PREFIX/var/lib/trojan-telemetry"
 UNIT_DIR="$PREFIX/etc/systemd/system"
-OPTIONAL_KEYS="TROJAN_CONTAINER TELEMETRY_IFACE TROJAN_USERS TOP_DOMAINS TROJAN_CONFIG TROJAN_SNI PROBE_HOST PROBE_PORT PROBE_TARGET PROBE_TIMEOUT"
+OPTIONAL_KEYS="TROJAN_CONTAINER TELEMETRY_IFACE TROJAN_USERS TOP_DOMAINS TROJAN_CONFIG TROJAN_SNI PROBE_HOST PROBE_PORT PROBE_TARGET PROBE_TIMEOUT TELEMETRY_SITES TOP_CLIENTS TOP_CLIENT_DOMAINS GEO_DOWNLOAD"
 
 require_root() {
   if [ -z "$PREFIX" ] && [ "$(id -u)" -ne 0 ]; then die "run as root (for example with sudo)"; fi
@@ -49,6 +53,14 @@ saved_value() {
   printf '%s' "$value"
 }
 
+# Names of the per-source key variables: those in the environment plus those already saved.
+source_key_names() {
+  {
+    compgen -A export | grep -E '^TELEMETRY_KEY_[A-Z0-9_]+$' || true
+    { [ -f "$ENV_FILE" ] && grep -oE '^TELEMETRY_KEY_[A-Z0-9_]+' "$ENV_FILE"; } || true
+  } | sort -u
+}
+
 write_env() {
   local tmp="$ENV_FILE.tmp" key line
   mkdir -p "$(dirname "$ENV_FILE")"
@@ -57,7 +69,7 @@ write_env() {
     {
       printf 'TELEMETRY_GATEWAY=%s\n' "$(quote "$TELEMETRY_GATEWAY")"
       printf 'TELEMETRY_KEY=%s\n' "$(quote "$TELEMETRY_KEY")"
-      for key in $OPTIONAL_KEYS; do
+      for key in $OPTIONAL_KEYS $(source_key_names); do
         if [ -n "${!key+x}" ]; then
           printf '%s=%s\n' "$key" "$(quote "${!key}")"
         else
@@ -127,13 +139,36 @@ install_agent() {
     __*) [ -n "$BASE_URL" ] || die "this install.sh is not a release build (no version stamped); set TELEMETRY_BASE_URL to a built release" ;;
   esac
   BASE_URL="${BASE_URL:-https://github.com/xuangong/copilot-api-gateway/releases/download/telemetry-agent-v$VERSION}"
+  local source="${TELEMETRY_SOURCE:-}" key
+  case "$source" in
+    "") ;;
+    trojan-vm) die "TELEMETRY_SOURCE must be a website source name such as museum; trojan-vm is the trojan source itself (leave TELEMETRY_SOURCE unset)" ;;
+    *) [[ "$source" =~ ^[a-z][a-z0-9-]{0,31}$ ]] || die "TELEMETRY_SOURCE must be a lower-case name such as museum" ;;
+  esac
+  if [ -n "$source" ]; then
+    # TELEMETRY_KEY is this source's key: store it under its own name and keep the trojan key and gateway that are already saved.
+    [ -n "${TELEMETRY_KEY:-}" ] || die "TELEMETRY_KEY is required"
+    case "$TELEMETRY_KEY" in *$'\n'*|*$'\r'*) die "TELEMETRY_KEY must not contain line breaks" ;; esac
+    key="TELEMETRY_KEY_$(printf '%s' "$source" | tr 'a-z-' 'A-Z_')"
+    export "$key=$TELEMETRY_KEY"
+    TELEMETRY_KEY="$(saved_value TELEMETRY_KEY)"
+    [ -n "$TELEMETRY_KEY" ] || die "no trojan source is installed yet; run the trojan source's install command first (without TELEMETRY_SOURCE)"
+    [ -n "${TELEMETRY_GATEWAY:-}" ] || TELEMETRY_GATEWAY="$(saved_value TELEMETRY_GATEWAY)"
+  fi
   [ -n "${TELEMETRY_GATEWAY:-}" ] || die "TELEMETRY_GATEWAY is required"
   [ -n "${TELEMETRY_KEY:-}" ] || die "TELEMETRY_KEY is required"
+  if [ -z "$source" ]; then
+    # The trojan key is replaced only on purpose: a website source's command pasted without TELEMETRY_SOURCE would otherwise take over the trojan source.
+    local saved_key
+    saved_key="$(saved_value TELEMETRY_KEY)"
+    if [ -n "$saved_key" ] && [ "$saved_key" != "$TELEMETRY_KEY" ] && [ "${TELEMETRY_REPLACE_TROJAN_KEY:-}" != 1 ]; then
+      die "a different trojan TELEMETRY_KEY is already installed; this command would replace it. If this is the trojan source's rotated key, run it again with TELEMETRY_REPLACE_TROJAN_KEY=1; for a website source use TELEMETRY_SOURCE=<name>"
+    fi
+  fi
   case "$TELEMETRY_GATEWAY$TELEMETRY_KEY" in
     *$'\n'*|*$'\r'*) die "TELEMETRY_GATEWAY and TELEMETRY_KEY must not contain line breaks" ;;
   esac
-  local key
-  for key in $OPTIONAL_KEYS; do
+  for key in $OPTIONAL_KEYS $(source_key_names); do
     case "${!key:-}" in
       *$'\n'*|*$'\r'*) die "$key must not contain line breaks" ;;
     esac
@@ -168,6 +203,9 @@ install_agent() {
   chmod 700 "$STATE_DIR"
   install -m 755 "$work/trojan-telemetry.py" "$APP_DIR/trojan-telemetry.py"
   write_env
+  if [ -n "$source" ] && ! saved_value TELEMETRY_SITES | grep -Eq "(^|;)[[:space:]]*$source[[:space:]]*="; then
+    warn "TELEMETRY_SITES does not list $source yet; this source collects nothing until you set it (TELEMETRY_SITES='$source=sni.example:site') and run the installer again"
+  fi
   write_units
   if [ -z "$PREFIX" ]; then
     systemctl daemon-reload

@@ -3,6 +3,7 @@ import {
   TELEMETRY_DIMS_RETENTION_DAYS, TELEMETRY_PLAIN_RETENTION_DAYS, TELEMETRY_UNITS, canonicalDims,
   type TelemetryPoint, type TelemetryUnit,
 } from "../../repo/telemetry"
+import { AGENT_SOURCE_PATTERN } from "./agent-release"
 import { TelemetryError } from "./common"
 
 export const PUSH_LIMITS = { bodyBytes: 2 * 1024 * 1024, points: 20_000, metrics: 20, hours: 168, value: 1e15 } as const
@@ -92,6 +93,8 @@ export const settingsSchema = z.object({
   labels: z.record(z.string().regex(DIM_KEY_PATTERN), z.record(z.string().min(1).max(256), z.string().min(1).max(64)))
     .refine(value => Object.keys(value).length <= 8).optional(),
   staleAfterHours: z.number().int().min(1).max(720).optional(),
+  /** The VM agent's name for this source (a website source); set at creation and used by the install command. */
+  agentSource: z.string().regex(AGENT_SOURCE_PATTERN).optional(),
 }).strict()
 export type TelemetrySettings = z.infer<typeof settingsSchema>
 

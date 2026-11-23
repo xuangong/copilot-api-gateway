@@ -91,16 +91,16 @@ class FakeRunner(object):
             return self.vnstat_code, self.vnstat if self.vnstat_code == 0 else "", "" if self.vnstat_code == 0 else "vnstat: failed"
         return 1, "", "unsupported"
 
-    def stream_logs(self, args, user_map, timeout=300):
+    def stream_logs(self, args, new_scan, timeout=300):
         """`logs[since]` is a string for stdout, or an (stdout, stderr) pair; both streams are parsed."""
         self.calls.append(list(args))
         since = args[3]
         if since in self.fail_since:
-            return 1, {}, "Error: no such container"
+            return 1, new_scan(), "Error: no such container"
         streams = self.logs.get(since, "")
         if isinstance(streams, str):
             streams = (streams, "")
-        return 0, agent.parse_streams(user_map, [s.splitlines() for s in streams]), ""
+        return 0, agent.parse_streams(new_scan, [s.splitlines() for s in streams]), ""
 
     def since(self):
         return [call[3] for call in self.calls if call[:2] == ["docker", "logs"]]
@@ -121,7 +121,7 @@ class RunnerCase(unittest.TestCase):
         self.server = PushServer()
         self.addCleanup(self.close_server)
         self.runner = FakeRunner()
-        self.env = {"TELEMETRY_GATEWAY": self.server.url, "TELEMETRY_KEY": KEY, "TROJAN_USERS": HASH_A}
+        self.env = {"TELEMETRY_GATEWAY": self.server.url, "TELEMETRY_KEY": KEY, "TROJAN_USERS": HASH_A, "GEO_DOWNLOAD": "0"}
 
     def restore_tz(self):
         if self.previous_tz is None:
@@ -136,11 +136,11 @@ class RunnerCase(unittest.TestCase):
         except Exception:
             pass
 
-    def run_main(self, now=NOW, env=None):
+    def run_main(self, now=NOW, env=None, **kwargs):
         out = io.StringIO()
         with mock.patch.object(sys, "stdout", out), mock.patch.object(sys, "stderr", io.StringIO()):
             code = agent.main(["run", "--state-dir", self.state_dir, "--env-file", os.path.join(self.tmp, "none.env"), "--now", now],
-                              environ=dict(self.env if env is None else env), runner=self.runner)
+                              environ=dict(self.env if env is None else env), runner=self.runner, **kwargs)
         return code, out.getvalue()
 
     def set_cursor(self, iso):
@@ -179,8 +179,8 @@ class CollectTest(RunnerCase):
         self.assertEqual(self.run_main()[0], 0)
         docker = [call for call in self.runner.calls if call[:2] == ["docker", "logs"]]
         self.assertEqual(docker, [
-            ["docker", "logs", "--since", "2026-11-16T12:00:00Z", "--until", "2026-11-16T13:00:00Z", "--", "ctr"],
-            ["docker", "logs", "--since", "2026-11-16T13:00:00Z", "--until", "2026-11-16T14:00:00Z", "--", "ctr"],
+            ["docker", "logs", "--since", "2026-11-16T12:00:00Z", "--until", "2026-11-16T13:00:00Z", "-t", "--", "ctr"],
+            ["docker", "logs", "--since", "2026-11-16T13:00:00Z", "--until", "2026-11-16T14:00:00Z", "-t", "--", "ctr"],
         ])
 
     def test_lines_from_both_stdout_and_stderr_are_counted(self):
@@ -326,8 +326,8 @@ class HardeningTest(RunnerCase):
         self.assertEqual(agent.parse_log_text([bad, good], {HASH_A: "#1"}), {("#1", "example.com"): [1024, 1, 1]})
         child = StreamLogsTest("test_a_missing_program_is_127").child
         child.__self__.tmp = self.tmp
-        code, totals, _ = agent.stream_logs(child([bad, good], [bad, good]), {HASH_A: "#1"})
-        self.assertEqual((code, totals), (0, {("#1", "example.com"): [2048, 2, 2]}))
+        code, scan, _ = agent.stream_logs(child([bad, good], [bad, good]), lambda: agent.LogScan({HASH_A: "#1"}))
+        self.assertEqual((code, scan.totals), (0, {("#1", "example.com"): [2048, 2, 2]}))
 
     def test_a_failure_in_the_stderr_reader_becomes_a_collect_error(self):
         class Exploding(object):
@@ -343,7 +343,7 @@ class HardeningTest(RunnerCase):
         child.tmp = self.tmp
         with mock.patch.object(agent, "LOG_LINE", Exploding(agent.LOG_LINE)):
             with self.assertRaises(agent.CollectError):
-                agent.stream_logs(child.child([], ["BOOM"]), {})
+                agent.stream_logs(child.child([], ["BOOM"]), lambda: agent.LogScan({}))
 
     def test_the_container_name_follows_a_double_dash(self):
         cfg = agent.Config(dict(self.env, TROJAN_CONTAINER="--all"))
@@ -382,18 +382,18 @@ class StreamLogsTest(RunnerCase):
     def test_both_streams_of_a_real_process_are_parsed_and_merged(self):
         out = [line(HASH_A, "a.example.com:1", "1 KiB", "1 KiB", "t")] * 3
         err = [line(HASH_A, "b.example.com:1", "1 KiB", "1 KiB", "t")] * 2 + ["noise"]
-        code, totals, _ = agent.stream_logs(self.child(out, err), {HASH_A: "#1"})
+        code, scan, _ = agent.stream_logs(self.child(out, err), lambda: agent.LogScan({HASH_A: "#1"}))
         self.assertEqual(code, 0)
-        self.assertEqual(totals, {("#1", "example.com"): [5120, 5120, 5]})
+        self.assertEqual(scan.totals, {("#1", "example.com"): [5120, 5120, 5]})
 
     def test_a_large_stderr_does_not_block_and_failures_report_the_tail(self):
         err = ["x" * 100] * 20000 + ["boom"]
-        code, totals, tail = agent.stream_logs(self.child([], err, 3), {})
-        self.assertEqual((code, totals), (3, {}))
+        code, scan, tail = agent.stream_logs(self.child([], err, 3), lambda: agent.LogScan({}))
+        self.assertEqual((code, scan.totals), (3, {}))
         self.assertIn("boom", tail)
 
     def test_a_missing_program_is_127(self):
-        self.assertEqual(agent.stream_logs(["/nonexistent/docker-xyz"], {})[0], 127)
+        self.assertEqual(agent.stream_logs(["/nonexistent/docker-xyz"], lambda: agent.LogScan({}))[0], 127)
 
     def test_the_system_runner_streams_logs_from_docker(self):
         self.assertTrue(callable(getattr(agent.SystemRunner(), "stream_logs")))
